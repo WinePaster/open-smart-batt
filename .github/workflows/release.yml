@@ -64,7 +64,7 @@ jobs:
           echo "PRERELEASE=$PRE" >> "$GITHUB_OUTPUT"
           echo "→ versionName=$VER  versionCode=$BUILD  tag=$TAG  prerelease=$PRE"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
