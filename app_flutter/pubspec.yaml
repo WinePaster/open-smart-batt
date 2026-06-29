@@ -48,7 +48,7 @@ dependencies:
   # i18n / formatting
   intl: ^0.20.0
   # CSV / .log export + share sheet
-  share_plus: ^10.0.0
+  share_plus: ^12.0.2
   csv: ^6.0.0
   # open external links (GitHub / docs)
   url_launcher: ^6.3.0
