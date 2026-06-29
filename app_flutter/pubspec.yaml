@@ -44,7 +44,7 @@ dependencies:
   # State management
   provider: ^6.1.0
   # Runtime permissions (BLE / location / background)
-  permission_handler: ^11.0.0
+  permission_handler: ^12.0.3
   # i18n / formatting
   intl: ^0.20.0
   # CSV / .log export + share sheet
