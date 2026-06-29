@@ -30,6 +30,20 @@ Future<void> main() async {
 
   // Composition root: open DB, build repos + BLE service, wire controllers.
   final services = await AppServices.create();
+
+  // Capture runtime errors into the diagnostic log so users can export them
+  // from the phone alone (Settings → 診斷 → 匯出診斷日誌), no PC needed.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    services.logRepo
+        .insertLog(LogEntry.event('FlutterError: ${details.exceptionAsString()}'))
+        .ignore();
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    services.logRepo.insertLog(LogEntry.event('Uncaught: $error')).ignore();
+    return true;
+  };
+
   runApp(OpenRceBattApp(services: services));
 }
 
@@ -79,6 +93,16 @@ class _OpenRceBattAppState extends State<OpenRceBattApp> {
           darkTheme: AppTheme.dark(),
           themeMode: _themeModeOf(settings.themeMode),
           home: const RootShell(),
+          // Global font bump (×1.15) on top of the user's system text scale.
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: TextScaler.linear(mq.textScaler.scale(1) * 1.15),
+              ),
+              child: child!,
+            );
+          },
         ),
       ),
     );
@@ -168,7 +192,7 @@ class _RootShellState extends State<RootShell> {
             NavigationDestination(
               icon: Icon(Icons.speed_outlined),
               selectedIcon: Icon(Icons.speed),
-              label: '儀表板',
+              label: '裝置',
             ),
             NavigationDestination(
               icon: Icon(Icons.history_outlined),

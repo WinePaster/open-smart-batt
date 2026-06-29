@@ -17,6 +17,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
+import '../data/data.dart';
 import '../models/models.dart';
 import '../protocol/protocol.dart';
 import 'device_controller.dart';
@@ -28,9 +29,11 @@ class ConnectionController extends ChangeNotifier {
     this._ble, {
     required SettingsController settings,
     DeviceController? devices,
+    LogRepo? logs,
   }) {
     _settings = settings;
     _devices = devices;
+    _logs = logs;
     _linkSub = _ble.linkState.listen(_onLinkState);
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
@@ -51,6 +54,16 @@ class ConnectionController extends ChangeNotifier {
   final BleService _ble;
   late final SettingsController _settings;
   late final DeviceController? _devices;
+  LogRepo? _logs;
+
+  /// Record a connection/scan/error event to the diagnostic log (always on —
+  /// these are cheap and are what users export when something fails).
+  void _event(String message) {
+    final logs = _logs;
+    if (logs == null) return;
+    unawaited(
+        logs.insertLog(LogEntry.event(message), maxBytes: _settings.logMaxBytes));
+  }
 
   StreamSubscription<BleLinkState>? _linkSub;
   StreamSubscription<List<DiscoveredDevice>>? _scanSub;
@@ -121,9 +134,11 @@ class ConnectionController extends ChangeNotifier {
     final ok = await _ble.ensurePermissions();
     if (!ok) {
       _lastError = 'permission_denied';
+      _event('scan aborted: permission denied');
       notifyListeners();
       return;
     }
+    _event('scan start');
     await _ble.startScan(timeout: timeout);
   }
 
@@ -142,9 +157,11 @@ class ConnectionController extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
+    _event('connect → $deviceId');
     final ok = await _ble.ensurePermissions();
     if (!ok) {
       _lastError = 'permission_denied';
+      _event('connect aborted: permission denied');
       notifyListeners();
       return;
     }
@@ -152,6 +169,7 @@ class ConnectionController extends ChangeNotifier {
       await _ble.connect(deviceId, timeout: timeout);
     } catch (e) {
       _lastError = e.toString();
+      _event('connect error: $e');
       notifyListeners();
       rethrow;
     }
@@ -223,6 +241,7 @@ class ConnectionController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
+    _event('link: ${s.name}');
 
     if (s == BleLinkState.ready) {
       _lastError = null;
@@ -274,6 +293,7 @@ class ConnectionController extends ChangeNotifier {
   void _onScanning(bool scanning) {
     if (_scanning == scanning) return;
     _scanning = scanning;
+    if (!scanning) _event('scan done: ${_scanResults.length} device(s)');
     notifyListeners();
   }
 

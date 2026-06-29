@@ -66,6 +66,7 @@ class AppServices {
       bleService,
       settings: settings,
       devices: devices,
+      logs: logRepo,
     );
     final telemetry = TelemetryController(
       bleService,

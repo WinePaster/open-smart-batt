@@ -4,8 +4,8 @@
 /// (DEFAULT OFF). Exportable as a .log file.
 library;
 
-/// Direction of a logged BLE packet.
-enum LogDirection { tx, rx }
+/// Direction of a logged BLE packet, or `event` for a connection/error note.
+enum LogDirection { tx, rx, event }
 
 /// One raw BLE packet (or note) for the diagnostics log.
 class LogEntry {
@@ -50,9 +50,21 @@ class LogEntry {
         note: note,
       );
 
+  /// A connection/error event (no raw bytes). Always safe to record.
+  factory LogEntry.event(String message, {DateTime? at}) => LogEntry(
+        timestamp: at ?? DateTime.now(),
+        direction: LogDirection.event,
+        hex: '',
+        note: message,
+      );
+
   /// One-line `.log` rendering: `2026-06-29T13:09:12.000 TX b823... # note`.
   String toLogLine() {
-    final dir = direction == LogDirection.tx ? 'TX' : 'RX';
+    final dir = switch (direction) {
+      LogDirection.tx => 'TX',
+      LogDirection.rx => 'RX',
+      LogDirection.event => 'EVT',
+    };
     final n = note == null ? '' : ' # $note';
     return '${timestamp.toIso8601String()} $dir $hex$n';
   }
@@ -69,7 +81,10 @@ class LogEntry {
         id: (m['id'] as num?)?.toInt(),
         timestamp: DateTime.fromMillisecondsSinceEpoch(
             (m['timestamp'] as num).toInt()),
-        direction: m['direction'] == 'tx' ? LogDirection.tx : LogDirection.rx,
+        direction: LogDirection.values.firstWhere(
+          (d) => d.name == m['direction'],
+          orElse: () => LogDirection.rx,
+        ),
         hex: m['hex'] as String,
         note: m['note'] as String?,
       );
