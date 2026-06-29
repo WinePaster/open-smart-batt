@@ -35,9 +35,28 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # BLE transport
+  flutter_blue_plus: ^1.32.0
+  # Local storage (history, saved devices, settings, diagnostic log)
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+  # State management
+  provider: ^6.1.0
+  # Runtime permissions (BLE / location / background)
+  permission_handler: ^11.0.0
+  # i18n / formatting
+  intl: ^0.20.0
+  # CSV / .log export + share sheet
+  share_plus: ^10.0.0
+  csv: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # In-memory / headless sqflite for unit-testing the data layer.
+  sqflite_common_ffi: ^2.3.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

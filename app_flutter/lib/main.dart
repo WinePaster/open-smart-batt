@@ -1,121 +1,603 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 
-void main() {
-  runApp(const MyApp());
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+
+import 'ble/ble.dart';
+import 'data/data.dart';
+import 'state/state.dart';
+import 'theme/app_theme.dart';
+import 'ui/dashboard/dashboard_page.dart';
+
+/// Public project page (shown in the community disclaimer + Settings → About).
+const String kProjectUrl = 'https://github.com/WinePaster/open-rce-batt';
+
+/// Human-facing version string (mockup: `v0.1.0`). pubspec is 0.1.0+1.
+const String kAppVersionLabel = 'v0.1.0';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Portrait-locked (mockup: 直式鎖定).
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Composition root: open DB, build repos + BLE service, wire controllers.
+  final services = await AppServices.create();
+  runApp(OpenRceBattApp(services: services));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+/// Root app. Provides the state controllers via [MultiProvider] and owns the
+/// [AppServices] lifecycle (disposed when the app is torn down).
+class OpenRceBattApp extends StatefulWidget {
+  const OpenRceBattApp({super.key, required this.services});
 
-  // This widget is the root of your application.
+  final AppServices services;
+
+  @override
+  State<OpenRceBattApp> createState() => _OpenRceBattAppState();
+}
+
+class _OpenRceBattAppState extends State<OpenRceBattApp> {
+  @override
+  void dispose() {
+    // Fire-and-forget teardown of streams / BLE link / DB on app exit.
+    widget.services.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+    final s = widget.services;
+    return MultiProvider(
+      providers: [
+        // Services the UI may read directly (history/log/CSV export, raw BLE).
+        Provider<BleService>.value(value: s.ble),
+        Provider<HistoryRepo>.value(value: s.historyRepo),
+        Provider<DeviceRepo>.value(value: s.deviceRepo),
+        Provider<SettingsRepo>.value(value: s.settingsRepo),
+        Provider<LogRepo>.value(value: s.logRepo),
+        // Controllers (lifecycle owned by AppServices, hence .value).
+        ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+        ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+        ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
+        ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+      ],
+      child: MaterialApp(
+        title: 'Open-RCE-Batt',
+        debugShowCheckedModeBanner: false,
+        // Dark-only industrial theme (the mockup has no light variant).
+        theme: AppTheme.dark(),
+        home: const RootShell(),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+// ---------------------------------------------------------------------------
+// Root shell: brand app bar + bottom nav (Dashboard / History / Settings) and
+// the one-time community disclaimer gate.
+// ---------------------------------------------------------------------------
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+/// The three bottom-nav destinations (mockup: 儀表板 / 歷史 / 設定).
+enum _Tab { dashboard, history, settings }
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+/// Top-level navigation shell. Replaces the placeholder home: hosts the three
+/// screens in an [IndexedStack] (state preserved across tab switches) and shows
+/// the startup community disclaimer once on first launch.
+class RootShell extends StatefulWidget {
+  const RootShell({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<RootShell> createState() => _RootShellState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _RootShellState extends State<RootShell> {
+  _Tab _tab = _Tab.dashboard;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  @override
+  void initState() {
+    super.initState();
+    // After first frame, gate the UI behind the community disclaimer (once).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowDisclaimer());
+  }
+
+  Future<void> _maybeShowDisclaimer() async {
+    if (await Disclaimer.acknowledged()) return;
+    if (!mounted) return;
+    await showCommunityDisclaimer(context);
+    await Disclaimer.markAcknowledged();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+      appBar: const _BrandAppBar(),
+      body: IndexedStack(
+        index: _tab.index,
+        children: const [
+          _DashboardTab(),
+          _HistoryTab(),
+          _SettingsTab(),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          backgroundColor: AppColors.panel,
+          indicatorColor: AppColors.amber.withValues(alpha: 0.16),
+          labelTextStyle: WidgetStateProperty.resolveWith(
+            (states) => TextStyle(
+              fontSize: 10,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w600,
+              color: states.contains(WidgetState.selected)
+                  ? AppColors.amber
+                  : AppColors.muted,
+            ),
+          ),
+          iconTheme: WidgetStateProperty.resolveWith(
+            (states) => IconThemeData(
+              color: states.contains(WidgetState.selected)
+                  ? AppColors.amber
+                  : AppColors.muted,
+            ),
+          ),
+        ),
+        child: NavigationBar(
+          selectedIndex: _tab.index,
+          onDestinationSelected: (i) => setState(() => _tab = _Tab.values[i]),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.speed_outlined),
+              selectedIcon: Icon(Icons.speed),
+              label: '儀表板',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history),
+              label: '歷史',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: '設定',
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+/// App bar showing the brand mark + a live connection-state pill (mockup
+/// `.appbar` / `.conn`). Tapping the pill is wired by the device-list screen;
+/// here it surfaces the current link state.
+class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _BrandAppBar();
+
+  @override
+  Size get preferredSize => const Size.fromHeight(58);
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      titleSpacing: 16,
+      toolbarHeight: 58,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppColors.panel,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.amber, width: 1.4),
+            ),
+            child: const Icon(Icons.bolt, size: 18, color: AppColors.amber),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'OPEN-RCE-BATT',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                  color: AppColors.text,
+                ),
+              ),
+              Text(
+                'CAPACITOR MONITOR',
+                style: TextStyle(
+                  fontSize: 8.5,
+                  letterSpacing: 2,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: const [
+        Padding(
+          padding: EdgeInsets.only(right: 14),
+          child: Center(child: _ConnectionPill()),
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact connection indicator (mockup `.conn` pill). Green when the link is
+/// ready, amber while connecting, danger-red otherwise.
+class _ConnectionPill extends StatelessWidget {
+  const _ConnectionPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final conn = context.watch<ConnectionController>();
+    final (Color color, String label) = switch (conn.linkState) {
+      BleLinkState.ready => (AppColors.good, 'CONNECTED'),
+      BleLinkState.connecting ||
+      BleLinkState.connected =>
+        (AppColors.amber, 'CONNECTING'),
+      BleLinkState.disconnecting => (AppColors.amber, 'CLOSING'),
+      BleLinkState.disconnected => (AppColors.danger, 'OFFLINE'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bluetooth, size: 13, color: color),
+          const SizedBox(width: 6),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              letterSpacing: 0.5,
+              color: AppColors.text,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tab bodies. These are lightweight placeholders that observe the provider
+// graph so the wiring is visibly working; the screen agents replace each with
+// the full Dashboard / History / Settings UI.
+// ---------------------------------------------------------------------------
+
+class _DashboardTab extends StatelessWidget {
+  const _DashboardTab();
+
+  @override
+  Widget build(BuildContext context) {
+    // The dashboard's scan button defaults to ConnectionController.startScan;
+    // when the device-list sheet lands, wire [onScanRequested] to open it.
+    return const DashboardPage();
+  }
+}
+
+class _HistoryTab extends StatelessWidget {
+  const _HistoryTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _TabScaffold(
+      icon: Icons.history,
+      title: '歷史 · HISTORY',
+      lines: ['telemetry records + CSV export'],
+    );
+  }
+}
+
+class _SettingsTab extends StatelessWidget {
+  const _SettingsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsController>();
+    return _TabScaffold(
+      icon: Icons.settings,
+      title: '設定 · SETTINGS',
+      lines: [
+        'poll ${settings.pollIntervalMs} ms',
+        'raw packet log: ${settings.rawPacketLog ? "on" : "off"}',
+        kAppVersionLabel,
+      ],
+      footer: TextButton(
+        onPressed: () => showCommunityDisclaimer(context),
+        child: const Text('重看開場聲明'),
+      ),
+    );
+  }
+}
+
+/// Shared placeholder layout for the not-yet-implemented tab bodies.
+class _TabScaffold extends StatelessWidget {
+  const _TabScaffold({
+    required this.icon,
+    required this.title,
+    required this.lines,
+    this.footer,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<String> lines;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 42, color: AppColors.amber),
+          const SizedBox(height: 14),
+          Text(title, style: AppTextStyles.cardHeading),
+          const SizedBox(height: 12),
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(line, style: AppTextStyles.label),
+            ),
+          if (footer != null) ...[const SizedBox(height: 12), footer!],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Community disclaimer (mockup startup `.modal` / `.sheet`).
+// ---------------------------------------------------------------------------
+
+/// Persists whether the user has acknowledged the startup disclaimer. Stored as
+/// a marker file in the app-support dir (this is OUR own state, not the
+/// vendor's). Versioned so a future material change to the text can re-prompt.
+class Disclaimer {
+  Disclaimer._();
+
+  static const String _markerName = 'disclaimer_ack_v1';
+
+  static Future<File> _marker() async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/$_markerName');
+  }
+
+  static Future<bool> acknowledged() async {
+    try {
+      return (await _marker()).exists();
+    } catch (_) {
+      // If we can't read the marker, fall back to showing the notice.
+      return false;
+    }
+  }
+
+  static Future<void> markAcknowledged() async {
+    try {
+      await (await _marker()).writeAsString(DateTime.now().toIso8601String());
+    } catch (_) {
+      // Best-effort; worst case the notice shows again next launch.
+    }
+  }
+}
+
+/// Shows the one-time community disclaimer: non-official / non-commercial
+/// notice, GitHub link, and the do-not-re-lock safety warning. Reusable from
+/// Settings → 版權與免責聲明 (`重看開場聲明`).
+Future<void> showCommunityDisclaimer(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: const Color(0xD904060A),
+    builder: (_) => const _DisclaimerDialog(),
+  );
+}
+
+class _DisclaimerDialog extends StatelessWidget {
+  const _DisclaimerDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.panel2,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.amber, width: 1.4),
+                ),
+                child: const Icon(Icons.bolt, size: 30, color: AppColors.amber),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'OPEN-RCE-BATT',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: AppColors.text,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '社群自救版 · COMMUNITY EDITION',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 3,
+                  color: AppColors.amber,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const _DisclaimerBody(),
+              const SizedBox(height: 12),
+              const _DoNotRelockWarning(),
+              const SizedBox(height: 12),
+              _GitHubButton(),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 6),
+                    child: Text(
+                      '我了解，開始使用',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DisclaimerBody extends StatelessWidget {
+  const _DisclaimerBody();
+
+  @override
+  Widget build(BuildContext context) {
+    const muted = TextStyle(
+      fontSize: 12,
+      height: 1.7,
+      color: AppColors.muted,
+    );
+    const strong = TextStyle(
+      fontSize: 12,
+      height: 1.7,
+      color: AppColors.text,
+      fontWeight: FontWeight.w700,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          const TextSpan(children: [
+            TextSpan(text: '本 App 為', style: muted),
+            TextSpan(text: '社群獨立開發', style: strong),
+            TextSpan(
+              text: '的開源工具，基於公開逆向研究，透過藍牙與您',
+              style: muted,
+            ),
+            TextSpan(text: '已購買的 RCE 智慧電容／電池', style: strong),
+            TextSpan(text: '通訊。', style: muted),
+          ]),
+        ),
+        const SizedBox(height: 9),
+        Text.rich(
+          const TextSpan(children: [
+            TextSpan(text: '本專案', style: muted),
+            TextSpan(text: '非', style: strong),
+            TextSpan(
+              text: ' RCE 官方產品、與原廠無任何關係，僅供已購買硬體之車主',
+              style: muted,
+            ),
+            TextSpan(text: '個人、非商業', style: strong),
+            TextSpan(text: '用途。', style: muted),
+          ]),
+        ),
+      ],
+    );
+  }
+}
+
+/// The "do not re-lock" safety warning (mockup `.warnbox`).
+class _DoNotRelockWarning extends StatelessWidget {
+  const _DoNotRelockWarning();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.amber.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Icon(Icons.warning_amber_rounded, size: 15, color: AppColors.amber),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.5,
+                color: AppColors.amber,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// GitHub link row (mockup `.ghbtn`). url_launcher is not a dependency, so this
+/// copies the project URL to the clipboard and confirms via a SnackBar.
+class _GitHubButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          await Clipboard.setData(const ClipboardData(text: kProjectUrl));
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已複製連結：$kProjectUrl')),
+          );
+        },
+        icon: const Icon(Icons.code, size: 16),
+        label: const Text(
+          '查看 GitHub 專案與文件',
+          style: TextStyle(fontSize: 12.5),
+        ),
       ),
     );
   }
