@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,8 +18,6 @@ import '../../theme/app_theme.dart';
 import '../util/export_share.dart';
 import '../widgets/industrial.dart';
 
-/// App version shown in About (matches pubspec `version: 0.1.0+1` / mockup).
-const String kAppVersion = 'v0.2.1';
 
 /// Community project links (mockup startup disclaimer + About card).
 const String kGithubUrl = 'https://github.com/WinePaster/open-rce-batt';
@@ -109,6 +108,19 @@ class _DisplayCard extends StatelessWidget {
       headingIcon: Icons.speed,
       child: Column(
         children: [
+          SettingsRow(
+            label: '主題',
+            sub: '介面配色（自動：跟隨系統）',
+            trailing: SegmentedControl<AppThemeMode>(
+              selected: s.themeMode,
+              onChanged: s.setThemeMode,
+              options: const [
+                (value: AppThemeMode.light, label: '淺色'),
+                (value: AppThemeMode.dark, label: '深色'),
+                (value: AppThemeMode.auto, label: '自動'),
+              ],
+            ),
+          ),
           SettingsRow(
             label: '溫度單位',
             last: true,
@@ -343,9 +355,19 @@ class _AboutCard extends StatelessWidget {
           SettingsRow(
             label: '版本',
             sub: 'Open-RCE-Batt 社群版',
-            trailing: Text(
-              kAppVersion,
-              style: AppTextStyles.mono.copyWith(color: AppColors.muted),
+            trailing: FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (context, snap) {
+                final v = snap.hasData
+                    ? 'v${snap.data!.version} (+${snap.data!.buildNumber})'
+                    : '…';
+                return Text(
+                  v,
+                  style: AppTextStyles.mono(context).copyWith(
+                    color: context.colors.muted,
+                  ),
+                );
+              },
             ),
           ),
           SettingsLinkRow(
@@ -374,19 +396,20 @@ void _showAbout(BuildContext context) {
   showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.panel,
+      backgroundColor: context.colors.panel,
       title: const Text('版權與免責聲明', style: TextStyle(fontSize: 17)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               '本 App 為社群獨立開發的開源工具，基於公開逆向研究，'
               '透過藍牙與您已購買的 RCE 智慧電容／電池通訊。\n\n'
               '本專案非 RCE 官方產品、與原廠無任何關係，'
               '僅供已購買硬體之車主個人、非商業用途。',
-              style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.muted),
+              style: TextStyle(
+                  fontSize: 12.5, height: 1.7, color: context.colors.muted),
             ),
             const SizedBox(height: 12),
             Container(
@@ -469,16 +492,17 @@ Future<bool> _confirm(
   final result = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.panel,
+      backgroundColor: context.colors.panel,
       title: Text(title, style: const TextStyle(fontSize: 17)),
       content: Text(
         body,
-        style: const TextStyle(fontSize: 12.5, height: 1.6, color: AppColors.muted),
+        style: TextStyle(
+            fontSize: 12.5, height: 1.6, color: context.colors.muted),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('取消', style: TextStyle(color: AppColors.muted)),
+          child: Text('取消', style: TextStyle(color: context.colors.muted)),
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(true),

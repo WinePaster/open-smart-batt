@@ -173,9 +173,9 @@ class StatusControls extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('啟用防盜模式'),
-        content: const Text(
+        content: Text(
           '防盜模式尚未經完整驗證，僅在支援的型號顯示。確定要送出防盜指令嗎？',
-          style: TextStyle(color: AppColors.muted),
+          style: TextStyle(color: context.colors.muted),
         ),
         actions: [
           TextButton(
@@ -265,18 +265,18 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final accent = switch (tone) {
       _Tone.good => AppColors.good,
       _Tone.warn => AppColors.amber,
       _Tone.locked => AppColors.danger,
-      _Tone.neutral => AppColors.muted,
+      _Tone.neutral => colors.muted,
     };
-    final borderColor =
-        tone == _Tone.neutral ? AppColors.line : accent;
+    final borderColor = tone == _Tone.neutral ? colors.line : accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 11),
       decoration: BoxDecoration(
-        color: AppColors.panel2,
+        color: colors.panel2,
         border: Border.all(color: borderColor),
         borderRadius: BorderRadius.circular(9),
       ),
@@ -287,10 +287,10 @@ class _Badge extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 9,
               letterSpacing: 1,
-              color: AppColors.muted,
+              color: colors.muted,
             ),
           ),
           const SizedBox(height: 4),
@@ -299,7 +299,7 @@ class _Badge extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: tone == _Tone.neutral ? AppColors.text : accent,
+              color: tone == _Tone.neutral ? colors.text : accent,
             ),
           ),
         ],
@@ -336,9 +336,9 @@ class _CtrlButton extends StatelessWidget {
         fg = AppColors.onAmber;
         border = Colors.transparent;
       case _BtnVariant.ghost:
-        bg = AppColors.panel2;
-        fg = AppColors.text;
-        border = AppColors.line;
+        bg = context.colors.panel2;
+        fg = context.colors.text;
+        border = context.colors.line;
       case _BtnVariant.warn:
         bg = Colors.transparent;
         fg = AppColors.danger;

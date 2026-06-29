@@ -164,10 +164,11 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            color: AppColors.panel,
-            border: Border(top: BorderSide(color: AppColors.line2)),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+          decoration: BoxDecoration(
+            color: context.colors.panel,
+            border: Border(top: BorderSide(color: context.colors.line2)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(18)),
           ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
@@ -182,7 +183,7 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: AppColors.line2,
+                      color: context.colors.line2,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -231,12 +232,13 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                     ),
 
                 const SizedBox(height: 6),
-                const Padding(
-                  padding: EdgeInsets.all(8),
+                Padding(
+                  padding: const EdgeInsets.all(8),
                   child: Text(
                     '顯示附近 BLE 裝置；認不出時可看訊號強度或靠近電容再掃',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    style:
+                        TextStyle(fontSize: 11, color: context.colors.muted),
                   ),
                 ),
               ],
@@ -290,13 +292,13 @@ class _Header extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
+          Text(
             '選擇裝置',
             style: TextStyle(
               fontSize: 16,
               letterSpacing: 0.5,
               fontWeight: FontWeight.w700,
-              color: AppColors.text,
+              color: context.colors.text,
             ),
           ),
           // rescan pill (mockup `.rescan`).
@@ -306,8 +308,8 @@ class _Header extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
               decoration: BoxDecoration(
-                color: AppColors.panel2,
-                border: Border.all(color: AppColors.line),
+                color: context.colors.panel2,
+                border: Border.all(color: context.colors.line),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -358,7 +360,7 @@ class _SectionLabel extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: AppColors.amber),
           const SizedBox(width: 8),
-          Text(text, style: _devsecStyle),
+          Text(text, style: _devsecStyle(context)),
         ],
       ),
     );
@@ -384,7 +386,7 @@ class _ScanSectionLabel extends StatelessWidget {
               scanning
                   ? '附近掃描中…'
                   : '附近裝置',
-              style: _devsecStyle,
+              style: _devsecStyle(context),
             ),
           ),
         ],
@@ -393,12 +395,12 @@ class _ScanSectionLabel extends StatelessWidget {
   }
 }
 
-const TextStyle _devsecStyle = TextStyle(
-  fontSize: 10,
-  letterSpacing: 2,
-  color: AppColors.muted,
-  fontWeight: FontWeight.w600,
-);
+TextStyle _devsecStyle(BuildContext context) => TextStyle(
+      fontSize: 10,
+      letterSpacing: 2,
+      color: context.colors.muted,
+      fontWeight: FontWeight.w600,
+    );
 
 /// Pulsing amber dot (mockup `@keyframes pulse`).
 class _ScanDot extends StatefulWidget {
@@ -486,9 +488,9 @@ class _DeviceRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 9),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.panel2,
+        color: context.colors.panel2,
         border: Border.all(
-          color: isConnected ? AppColors.good : AppColors.line,
+          color: isConnected ? AppColors.good : context.colors.line,
         ),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -499,8 +501,8 @@ class _DeviceRow extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: AppColors.bg,
-              border: Border.all(color: AppColors.line),
+              color: context.colors.bg,
+              border: Border.all(color: context.colors.line),
               borderRadius: BorderRadius.circular(9),
             ),
             child: const Icon(Icons.battery_full, size: 19, color: AppColors.amber),
@@ -523,7 +525,9 @@ class _DeviceRow extends StatelessWidget {
                           fontSize: 14,
                           fontWeight:
                               aliasMuted ? FontWeight.w600 : FontWeight.w700,
-                          color: aliasMuted ? AppColors.muted : AppColors.text,
+                          color: aliasMuted
+                              ? context.colors.muted
+                              : context.colors.text,
                         ),
                       ),
                     ),
@@ -531,8 +535,8 @@ class _DeviceRow extends StatelessWidget {
                       const SizedBox(width: 7),
                       InkWell(
                         onTap: onEdit,
-                        child: const Icon(Icons.edit_outlined,
-                            size: 14, color: AppColors.muted),
+                        child: Icon(Icons.edit_outlined,
+                            size: 14, color: context.colors.muted),
                       ),
                     ],
                   ],
@@ -542,9 +546,9 @@ class _DeviceRow extends StatelessWidget {
                   meta,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono.copyWith(
+                  style: AppTextStyles.mono(context).copyWith(
                     fontSize: 10.5,
-                    color: AppColors.muted,
+                    color: context.colors.muted,
                   ),
                 ),
               ],
@@ -675,7 +679,7 @@ class _EmptyHint extends StatelessWidget {
       child: Center(
         child: Text(
           text,
-          style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+          style: TextStyle(fontSize: 11.5, color: context.colors.muted),
         ),
       ),
     );

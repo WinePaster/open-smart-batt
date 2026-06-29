@@ -16,7 +16,10 @@ class Db {
   Db._();
 
   /// Bump on any schema change and add a branch in [AppDatabase._onUpgrade].
-  static const int schemaVersion = 1;
+  ///
+  /// v2: settings gained `theme_mode TEXT` (tri-state light/dark/auto); the
+  /// legacy `dark_theme` bool column is retained for migration.
+  static const int schemaVersion = 2;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_rce_batt.db';
@@ -80,8 +83,14 @@ class AppDatabase {
   }
 
   static Future<void> _onUpgrade(Database db, int from, int to) async {
-    // v1 is the initial schema. Future migrations: `if (from < 2) { ... }`.
-    // Keep migrations additive and idempotent.
+    // v1 is the initial schema. Keep migrations additive and idempotent.
+    if (from < 2) {
+      // Add the tri-state theme column. No DEFAULT: existing rows get NULL so
+      // AppSettings.fromMap migrates them from the legacy `dark_theme` bool.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN theme_mode TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -124,6 +133,7 @@ class AppDatabase {
       poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
       background_keep_alive INTEGER NOT NULL DEFAULT 0,
       dark_theme INTEGER NOT NULL DEFAULT 1,
+      theme_mode TEXT,
       lang TEXT NOT NULL DEFAULT 'zhHant',
       temp_unit TEXT NOT NULL DEFAULT 'celsius',
       auto_log INTEGER NOT NULL DEFAULT 1,

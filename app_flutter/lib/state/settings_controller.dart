@@ -30,7 +30,7 @@ class SettingsController extends ChangeNotifier {
   bool get autoReconnect => _settings.autoReconnect;
   int get pollIntervalMs => _settings.pollIntervalMs;
   bool get backgroundKeepAlive => _settings.backgroundKeepAlive;
-  bool get darkTheme => _settings.darkTheme;
+  AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
   bool get autoLog => _settings.autoLog;
@@ -59,8 +59,8 @@ class SettingsController extends ChangeNotifier {
       update(_settings.copyWith(pollIntervalMs: v));
   Future<void> setBackgroundKeepAlive(bool v) =>
       update(_settings.copyWith(backgroundKeepAlive: v));
-  Future<void> setDarkTheme(bool v) =>
-      update(_settings.copyWith(darkTheme: v));
+  Future<void> setThemeMode(AppThemeMode v) =>
+      update(_settings.copyWith(themeMode: v));
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));
   Future<void> setTempUnit(TempUnit v) =>
       update(_settings.copyWith(tempUnit: v));

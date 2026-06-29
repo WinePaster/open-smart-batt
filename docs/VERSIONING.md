@@ -44,6 +44,12 @@ CI 偵測到 `v*` tag → 用該版號編 APK → 發佈 Release `v0.4.0`。
 `bump` 選 `prerelease` 或 tag 帶後綴（例 `v0.4.0-rc.1`）→ 標記為 GitHub *pre-release*，
 不會被當成「最新正式版」，方便先給少數車友試裝。
 
+## 版本顯示規則（單一真實來源）
+
+- **App 內絕不寫死版本字串。** 「設定 → 關於」用 `package_info_plus` 讀取**安裝 APK 的真實 versionName/versionCode**，永遠與發佈一致。
+- 版本的唯一來源：CI 的 `--build-name`（= tag 版號）與 `--build-number`（= `github.run_number`）。本機編譯時自帶 `--build-name/--build-number` 亦同。
+- `pubspec.yaml` 的 `version:` 僅作為「未帶 build flag 時」的後備值。
+
 ## APK 命名
 
 ```

@@ -36,14 +36,15 @@ class ReadoutGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hairline grid: 1px [AppColors.line] background showing through 1px gaps.
+    // Hairline grid: 1px line background showing through 1px gaps.
+    final line = context.colors.line;
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.line,
+          color: line,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.line),
+          border: Border.all(color: line),
         ),
         child: Column(
           children: [
@@ -76,7 +77,7 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.panel2,
+      color: context.colors.panel2,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -84,12 +85,12 @@ class _StatTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(item.icon, size: 14, color: AppColors.muted),
+              Icon(item.icon, size: 14, color: context.colors.muted),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   item.label.toUpperCase(),
-                  style: AppTextStyles.label,
+                  style: AppTextStyles.label(context),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -99,15 +100,15 @@ class _StatTile extends StatelessWidget {
           RichText(
             text: TextSpan(
               text: item.value,
-              style: AppTextStyles.statValue,
+              style: AppTextStyles.statValue(context),
               children: [
                 if (item.unit != null)
                   TextSpan(
                     text: ' ${item.unit}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                     ),
                   ),
               ],

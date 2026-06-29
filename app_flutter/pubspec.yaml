@@ -54,6 +54,8 @@ dependencies:
   url_launcher: ^6.3.0
   # keep the screen awake while connected (monitoring while riding)
   wakelock_plus: ^1.2.0
+  # read the real APK version for the About screen (single source of truth)
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_test:

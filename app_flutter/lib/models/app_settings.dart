@@ -9,6 +9,10 @@ enum AppLang { zhHant, en }
 /// Temperature display unit.
 enum TempUnit { celsius, fahrenheit }
 
+/// App theme preference. [auto] follows the OS (system) brightness. DEFAULT is
+/// [light].
+enum AppThemeMode { light, dark, auto }
+
 /// All user-configurable settings. Defaults match the mockup's shown state
 /// (raw-packet diagnostics OFF by default).
 class AppSettings {
@@ -23,8 +27,8 @@ class AppSettings {
   final bool backgroundKeepAlive;
 
   // --- display ---
-  /// Dark theme (industrial theme is dark; this is a forward-compat toggle).
-  final bool darkTheme;
+  /// Theme preference (light / dark / auto). DEFAULT [AppThemeMode.light].
+  final AppThemeMode themeMode;
   final AppLang lang;
   final TempUnit tempUnit;
 
@@ -43,7 +47,7 @@ class AppSettings {
     this.autoReconnect = true,
     this.pollIntervalMs = 1000,
     this.backgroundKeepAlive = false,
-    this.darkTheme = true,
+    this.themeMode = AppThemeMode.light,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
     this.autoLog = true,
@@ -58,7 +62,7 @@ class AppSettings {
     bool? autoReconnect,
     int? pollIntervalMs,
     bool? backgroundKeepAlive,
-    bool? darkTheme,
+    AppThemeMode? themeMode,
     AppLang? lang,
     TempUnit? tempUnit,
     bool? autoLog,
@@ -69,7 +73,7 @@ class AppSettings {
         autoReconnect: autoReconnect ?? this.autoReconnect,
         pollIntervalMs: pollIntervalMs ?? this.pollIntervalMs,
         backgroundKeepAlive: backgroundKeepAlive ?? this.backgroundKeepAlive,
-        darkTheme: darkTheme ?? this.darkTheme,
+        themeMode: themeMode ?? this.themeMode,
         lang: lang ?? this.lang,
         tempUnit: tempUnit ?? this.tempUnit,
         autoLog: autoLog ?? this.autoLog,
@@ -81,7 +85,7 @@ class AppSettings {
         'auto_reconnect': autoReconnect ? 1 : 0,
         'poll_interval_ms': pollIntervalMs,
         'background_keep_alive': backgroundKeepAlive ? 1 : 0,
-        'dark_theme': darkTheme ? 1 : 0,
+        'theme_mode': themeMode.name,
         'lang': lang.name,
         'temp_unit': tempUnit.name,
         'auto_log': autoLog ? 1 : 0,
@@ -93,7 +97,7 @@ class AppSettings {
         autoReconnect: (m['auto_reconnect'] as num?)?.toInt() != 0,
         pollIntervalMs: (m['poll_interval_ms'] as num?)?.toInt() ?? 1000,
         backgroundKeepAlive: (m['background_keep_alive'] as num?)?.toInt() == 1,
-        darkTheme: (m['dark_theme'] as num?)?.toInt() != 0,
+        themeMode: _themeModeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],
           orElse: () => AppLang.zhHant,
@@ -107,4 +111,24 @@ class AppSettings {
         logMaxBytes:
             (m['log_max_bytes'] as num?)?.toInt() ?? (5 * 1024 * 1024),
       );
+
+  /// Resolve the theme mode from a persisted row.
+  ///
+  /// Prefers the new `theme_mode` string column. Falls back to migrating the
+  /// legacy `dark_theme` bool/int (true → dark, false → light). Defaults to
+  /// [AppThemeMode.light] when neither is present.
+  static AppThemeMode _themeModeFromMap(Map<String, Object?> m) {
+    final raw = m['theme_mode'];
+    if (raw is String && raw.isNotEmpty) {
+      for (final e in AppThemeMode.values) {
+        if (e.name == raw) return e;
+      }
+    }
+    final legacy = m['dark_theme'];
+    if (legacy != null) {
+      final on = (legacy as num).toInt() != 0;
+      return on ? AppThemeMode.dark : AppThemeMode.light;
+    }
+    return AppThemeMode.light;
+  }
 }

@@ -29,7 +29,10 @@ class DisconnectedState extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          constraints: BoxConstraints(
+            minHeight: constraints.maxHeight,
+            minWidth: constraints.maxWidth, // fill width (IndexedStack passes loose constraints)
+          ),
           child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
         child: Column(
@@ -37,41 +40,41 @@ class DisconnectedState extends StatelessWidget {
           children: [
             const _PulseIcon(),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               '尚未連線裝置',
               style: TextStyle(
                 fontSize: 23,
                 letterSpacing: 0.5,
                 fontWeight: FontWeight.w700,
-                color: AppColors.text,
+                color: context.colors.text,
               ),
             ),
             const SizedBox(height: 10),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
-              child: const Text(
+              child: Text(
                 '選擇已儲存的裝置快速重連，或掃描附近的 RCE 電容。',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14.5,
                   height: 1.7,
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                 ),
               ),
             ),
             const SizedBox(height: 26),
 
             if (devices.isNotEmpty) ...[
-              const Align(
+              Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Text(
                     '快速選擇',
                     style: TextStyle(
                       fontSize: 10,
                       letterSpacing: 2,
-                      color: AppColors.muted,
+                      color: context.colors.muted,
                     ),
                   ),
                 ),
@@ -135,8 +138,8 @@ class _QuickPick extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.panel,
-              border: Border.all(color: AppColors.line),
+              color: context.colors.panel,
+              border: Border.all(color: context.colors.line),
               borderRadius: BorderRadius.circular(11),
             ),
             child: Row(
@@ -151,18 +154,18 @@ class _QuickPick extends StatelessWidget {
                         alias,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.text,
+                          color: context.colors.text,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         _metaLine(device),
-                        style: AppTextStyles.mono.copyWith(
+                        style: AppTextStyles.mono(context).copyWith(
                           fontSize: 10.5,
-                          color: AppColors.muted,
+                          color: context.colors.muted,
                         ),
                       ),
                     ],
@@ -208,8 +211,8 @@ class _DeviceGlyph extends StatelessWidget {
       width: 38,
       height: 38,
       decoration: BoxDecoration(
-        color: AppColors.bg,
-        border: Border.all(color: AppColors.line),
+        color: context.colors.bg,
+        border: Border.all(color: context.colors.line),
         borderRadius: BorderRadius.circular(9),
       ),
       child: const Icon(Icons.battery_charging_full,
@@ -271,8 +274,8 @@ class _PulseIconState extends State<_PulseIcon>
             width: 96,
             height: 96,
             decoration: BoxDecoration(
-              color: AppColors.panel,
-              border: Border.all(color: AppColors.line),
+              color: context.colors.panel,
+              border: Border.all(color: context.colors.line),
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Icon(Icons.bluetooth, size: 42, color: AppColors.amber),

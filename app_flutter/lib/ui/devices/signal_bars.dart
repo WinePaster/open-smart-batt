@@ -1,7 +1,7 @@
 /// Open-RCE-Batt — RSSI signal-strength bars (mockup `.sig` `.sig i`).
 ///
 /// Four ascending bars; bars at-or-below [level] light up [AppColors.good],
-/// the rest stay [AppColors.line2]. Pure presentation widget.
+/// the rest stay the neutral `line2` color. Pure presentation widget.
 library;
 
 import 'package:flutter/material.dart';
@@ -41,7 +41,7 @@ class SignalBars extends StatelessWidget {
               width: 3,
               height: _heights[i],
               decoration: BoxDecoration(
-                color: lit ? AppColors.good : AppColors.line2,
+                color: lit ? AppColors.good : context.colors.line2,
                 borderRadius: BorderRadius.circular(1),
               ),
             ),

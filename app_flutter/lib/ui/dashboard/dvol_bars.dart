@@ -69,10 +69,10 @@ class _CellRow extends StatelessWidget {
           width: 50,
           child: Text(
             'CELL ${index + 1}',
-            style: AppTextStyles.mono.copyWith(
+            style: AppTextStyles.mono(context).copyWith(
               fontSize: 10,
               letterSpacing: 1,
-              color: AppColors.muted,
+              color: context.colors.muted,
             ),
           ),
         ),
@@ -81,8 +81,8 @@ class _CellRow extends StatelessWidget {
           child: Container(
             height: 7,
             decoration: BoxDecoration(
-              color: AppColors.panel2,
-              border: Border.all(color: AppColors.line),
+              color: context.colors.panel2,
+              border: Border.all(color: context.colors.line),
               borderRadius: BorderRadius.circular(3),
             ),
             clipBehavior: Clip.antiAlias,
@@ -109,7 +109,7 @@ class _CellRow extends StatelessWidget {
           child: Text(
             value == null ? '-- V' : '${value!.toStringAsFixed(2)} V',
             textAlign: TextAlign.right,
-            style: AppTextStyles.mono.copyWith(fontSize: 12),
+            style: AppTextStyles.mono(context).copyWith(fontSize: 12),
           ),
         ),
       ],

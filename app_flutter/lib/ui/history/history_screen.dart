@@ -113,7 +113,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.amber,
-            backgroundColor: AppColors.panel,
+            backgroundColor: context.colors.panel,
             onRefresh: () async => _reload(),
             child: FutureBuilder<_HistoryData>(
               future: _future,
@@ -219,7 +219,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Text(
         '共 $n 筆 · 本機 SQLite · 可匯出 CSV / 分享',
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 11, color: AppColors.muted),
+        style: TextStyle(fontSize: 11, color: context.colors.muted),
       ),
     );
   }
@@ -235,7 +235,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Text(
             text,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+            style: TextStyle(fontSize: 12.5, color: context.colors.muted),
           ),
         ),
       );
@@ -312,9 +312,9 @@ class _HistoryRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.panel2,
+        color: context.colors.panel2,
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: context.colors.line),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,9 +323,9 @@ class _HistoryRow extends StatelessWidget {
             width: 64,
             child: Text(
               DateFormat('HH:mm:ss').format(sample.timestamp),
-              style: AppTextStyles.mono.copyWith(
+              style: AppTextStyles.mono(context).copyWith(
                 fontSize: 10.5,
-                color: AppColors.muted,
+                color: context.colors.muted,
               ),
             ),
           ),
@@ -334,12 +334,13 @@ class _HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_primaryLine(), style: AppTextStyles.mono.copyWith(
+                Text(_primaryLine(), style: AppTextStyles.mono(context).copyWith(
                   fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
                 Text(
                   _subLine(),
-                  style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+                  style: TextStyle(
+                      fontSize: 10.5, color: context.colors.muted),
                 ),
               ],
             ),

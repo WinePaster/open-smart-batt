@@ -274,7 +274,8 @@ void main() {
       expect(s.autoReconnect, isTrue);
       expect(s.pollIntervalMs, 1000);
       expect(s.backgroundKeepAlive, isFalse);
-      expect(s.darkTheme, isTrue);
+      // Theme defaults to light (tri-state {light, dark, auto}).
+      expect(s.themeMode, AppThemeMode.light);
       expect(s.lang, AppLang.zhHant);
       expect(s.tempUnit, TempUnit.celsius);
       expect(s.autoLog, isTrue);
@@ -287,7 +288,7 @@ void main() {
         autoReconnect: false,
         pollIntervalMs: 500,
         backgroundKeepAlive: true,
-        darkTheme: false,
+        themeMode: AppThemeMode.auto,
         lang: AppLang.en,
         tempUnit: TempUnit.fahrenheit,
         autoLog: false,
@@ -300,7 +301,7 @@ void main() {
       expect(s.autoReconnect, isFalse);
       expect(s.pollIntervalMs, 500);
       expect(s.backgroundKeepAlive, isTrue);
-      expect(s.darkTheme, isFalse);
+      expect(s.themeMode, AppThemeMode.auto);
       expect(s.lang, AppLang.en);
       expect(s.tempUnit, TempUnit.fahrenheit);
       expect(s.autoLog, isFalse);

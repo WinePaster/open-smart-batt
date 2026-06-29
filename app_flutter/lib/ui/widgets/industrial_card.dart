@@ -33,15 +33,16 @@ class IndustrialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       child: CustomPaint(
-        foregroundPainter: const _CornerTicksPainter(),
+        foregroundPainter: _CornerTicksPainter(colors.line2),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.panel,
+            color: colors.panel,
             borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(color: colors.line),
           ),
           padding: padding,
           child: Column(
@@ -76,7 +77,7 @@ class CardHeading extends StatelessWidget {
           Icon(icon, size: 13, color: AppColors.amber),
           const SizedBox(width: 7),
         ],
-        Text(text.toUpperCase(), style: AppTextStyles.cardHeading),
+        Text(text.toUpperCase(), style: AppTextStyles.cardHeading(context)),
         const SizedBox(width: 7),
         const Expanded(child: _FadeRule()),
       ],
@@ -84,7 +85,8 @@ class CardHeading extends StatelessWidget {
   }
 }
 
-/// The `.hl` gradient rule: 1px line fading from [AppColors.line] to transparent.
+/// The `.hl` gradient rule: 1px line fading from the neutral line color to
+/// transparent.
 class _FadeRule extends StatelessWidget {
   const _FadeRule();
 
@@ -92,9 +94,9 @@ class _FadeRule extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 1,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.line, Colors.transparent],
+          colors: [context.colors.line, Colors.transparent],
         ),
       ),
     );
@@ -103,14 +105,17 @@ class _FadeRule extends StatelessWidget {
 
 /// Draws the two L-shaped corner ticks (mockup `.card::before/::after`).
 class _CornerTicksPainter extends CustomPainter {
-  const _CornerTicksPainter();
+  const _CornerTicksPainter(this.tickColor);
+
+  /// Corner-tick stroke color (neutral `line2`).
+  final Color tickColor;
 
   static const double _len = 8;
 
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
-      ..color = AppColors.line2.withValues(alpha: 0.7)
+      ..color = tickColor.withValues(alpha: 0.7)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
@@ -125,5 +130,6 @@ class _CornerTicksPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CornerTicksPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _CornerTicksPainter oldDelegate) =>
+      oldDelegate.tickColor != tickColor;
 }

@@ -32,9 +32,9 @@ class SegmentedControl<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.panel2,
+        color: context.colors.panel2,
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: context.colors.line),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(
@@ -75,7 +75,7 @@ class _SegButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.onAmber : AppColors.muted,
+            color: selected ? AppColors.onAmber : context.colors.muted,
           ),
         ),
       ),
@@ -111,15 +111,17 @@ class FilterChip2 extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: on ? AppColors.amber : AppColors.panel2,
+          color: on ? AppColors.amber : context.colors.panel2,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: on ? Colors.transparent : AppColors.line),
+          border:
+              Border.all(color: on ? Colors.transparent : context.colors.line),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 13, color: on ? AppColors.onAmber : AppColors.text),
+              Icon(icon,
+                  size: 13, color: on ? AppColors.onAmber : context.colors.text),
               const SizedBox(width: 6),
             ],
             Text(
@@ -128,7 +130,7 @@ class FilterChip2 extends StatelessWidget {
                 fontSize: 11,
                 letterSpacing: 0.5,
                 fontWeight: on ? FontWeight.w700 : FontWeight.w400,
-                color: on ? AppColors.onAmber : AppColors.text,
+                color: on ? AppColors.onAmber : context.colors.text,
               ),
             ),
           ],
@@ -166,7 +168,7 @@ class SettingsRow extends StatelessWidget {
       decoration: BoxDecoration(
         border: last
             ? null
-            : const Border(bottom: BorderSide(color: AppColors.line)),
+            : Border(bottom: BorderSide(color: context.colors.line)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -176,7 +178,8 @@ class SettingsRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(fontSize: 13, color: AppColors.text)),
+                    style: TextStyle(
+                        fontSize: 13, color: context.colors.text)),
                 if (sub != null) ...[
                   const SizedBox(height: 3),
                   Text(
@@ -184,7 +187,8 @@ class SettingsRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10.5,
                       height: 1.5,
-                      color: subHighlight ? AppColors.amber : AppColors.muted,
+                      color:
+                          subHighlight ? AppColors.amber : context.colors.muted,
                     ),
                   ),
                 ],
@@ -228,7 +232,7 @@ class SettingsLinkRow extends StatelessWidget {
         decoration: BoxDecoration(
           border: last
               ? null
-              : const Border(bottom: BorderSide(color: AppColors.line)),
+              : Border(bottom: BorderSide(color: context.colors.line)),
         ),
         child: Row(
           children: [
@@ -239,7 +243,8 @@ class SettingsLinkRow extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, color: AppColors.cyan)),
             ),
             trailing ??
-                const Icon(Icons.chevron_right, size: 16, color: AppColors.muted),
+                Icon(Icons.chevron_right,
+                    size: 16, color: context.colors.muted),
           ],
         ),
       ),

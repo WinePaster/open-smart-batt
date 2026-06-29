@@ -81,26 +81,26 @@ class _AliasDialogState extends State<_AliasDialog> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.text,
+                  color: context.colors.text,
                 ),
               ),
               const SizedBox(height: 5),
               Text(
                 body,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   height: 1.6,
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                 ),
               ),
               const SizedBox(height: 15),
               TextField(
                 controller: _ctrl,
                 autofocus: true,
-                style: const TextStyle(fontSize: 14, color: AppColors.text),
+                style: TextStyle(fontSize: 14, color: context.colors.text),
                 cursorColor: AppColors.amber,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _submit(),
@@ -162,13 +162,13 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.panel2,
-          border: Border.all(color: AppColors.line),
+          color: context.colors.panel2,
+          border: Border.all(color: context.colors.line),
           borderRadius: BorderRadius.circular(7),
         ),
         child: Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          style: TextStyle(fontSize: 11, color: context.colors.muted),
         ),
       ),
     );
@@ -196,9 +196,9 @@ class _DialogButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 11),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: filled ? AppColors.amber : AppColors.panel2,
+          color: filled ? AppColors.amber : context.colors.panel2,
           border: Border.all(
-            color: filled ? Colors.transparent : AppColors.line,
+            color: filled ? Colors.transparent : context.colors.line,
           ),
           borderRadius: BorderRadius.circular(9),
         ),
@@ -207,7 +207,7 @@ class _DialogButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: filled ? AppColors.onAmber : AppColors.muted,
+            color: filled ? AppColors.onAmber : context.colors.muted,
           ),
         ),
       ),

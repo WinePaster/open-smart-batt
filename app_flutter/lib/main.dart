@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'ble/ble.dart';
 import 'data/data.dart';
+import 'models/models.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
 import 'ui/dashboard/dashboard_page.dart';
@@ -68,15 +69,27 @@ class _OpenRceBattAppState extends State<OpenRceBattApp> {
         ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
         ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
       ],
-      child: MaterialApp(
-        title: 'Open-RCE-Batt',
-        debugShowCheckedModeBanner: false,
-        // Dark-only industrial theme (the mockup has no light variant).
-        theme: AppTheme.dark(),
-        home: const RootShell(),
+      // Rebuild MaterialApp when the theme preference changes.
+      child: Consumer<SettingsController>(
+        builder: (context, settings, _) => MaterialApp(
+          title: 'Open-RCE-Batt',
+          debugShowCheckedModeBanner: false,
+          // Real light / dark themes (DEFAULT light); `auto` follows the OS.
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: _themeModeOf(settings.themeMode),
+          home: const RootShell(),
+        ),
       ),
     );
   }
+
+  /// Maps the persisted [AppThemeMode] to Flutter's [ThemeMode].
+  static ThemeMode _themeModeOf(AppThemeMode m) => switch (m) {
+        AppThemeMode.light => ThemeMode.light,
+        AppThemeMode.dark => ThemeMode.dark,
+        AppThemeMode.auto => ThemeMode.system,
+      };
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +141,7 @@ class _RootShellState extends State<RootShell> {
       ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          backgroundColor: AppColors.panel,
+          backgroundColor: context.colors.panel,
           indicatorColor: AppColors.amber.withValues(alpha: 0.16),
           labelTextStyle: WidgetStateProperty.resolveWith(
             (states) => TextStyle(
@@ -137,14 +150,14 @@ class _RootShellState extends State<RootShell> {
               fontWeight: FontWeight.w600,
               color: states.contains(WidgetState.selected)
                   ? AppColors.amber
-                  : AppColors.muted,
+                  : context.colors.muted,
             ),
           ),
           iconTheme: WidgetStateProperty.resolveWith(
             (states) => IconThemeData(
               color: states.contains(WidgetState.selected)
                   ? AppColors.amber
-                  : AppColors.muted,
+                  : context.colors.muted,
             ),
           ),
         ),
@@ -195,7 +208,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: AppColors.panel,
+              color: context.colors.panel,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.amber, width: 1.4),
             ),
@@ -205,14 +218,14 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
                 'OPEN-RCE-BATT',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.6,
-                  color: AppColors.text,
+                  color: context.colors.text,
                 ),
               ),
               Text(
@@ -220,7 +233,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
                 style: TextStyle(
                   fontSize: 8.5,
                   letterSpacing: 2,
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                 ),
               ),
             ],
@@ -259,9 +272,9 @@ class _ConnectionPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.panel,
+          color: context.colors.panel,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.line),
+          border: Border.all(color: context.colors.line),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -276,10 +289,10 @@ class _ConnectionPill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 letterSpacing: 0.5,
-                color: AppColors.text,
+                color: context.colors.text,
               ),
             ),
           ],
@@ -354,21 +367,21 @@ class _DisclaimerDialog extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppColors.panel2,
+                  color: context.colors.panel2,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppColors.amber, width: 1.4),
                 ),
                 child: const Icon(Icons.bolt, size: 30, color: AppColors.amber),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'OPEN-RCE-BATT',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1,
-                  color: AppColors.text,
+                  color: context.colors.text,
                 ),
               ),
               const SizedBox(height: 4),
@@ -417,22 +430,22 @@ class _DisclaimerBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const muted = TextStyle(
+    final muted = TextStyle(
       fontSize: 12,
       height: 1.7,
-      color: AppColors.muted,
+      color: context.colors.muted,
     );
-    const strong = TextStyle(
+    final strong = TextStyle(
       fontSize: 12,
       height: 1.7,
-      color: AppColors.text,
+      color: context.colors.text,
       fontWeight: FontWeight.w700,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text.rich(
-          const TextSpan(children: [
+          TextSpan(children: [
             TextSpan(text: '本 App 為', style: muted),
             TextSpan(text: '社群獨立開發', style: strong),
             TextSpan(
@@ -445,7 +458,7 @@ class _DisclaimerBody extends StatelessWidget {
         ),
         const SizedBox(height: 9),
         Text.rich(
-          const TextSpan(children: [
+          TextSpan(children: [
             TextSpan(text: '本專案', style: muted),
             TextSpan(text: '非', style: strong),
             TextSpan(

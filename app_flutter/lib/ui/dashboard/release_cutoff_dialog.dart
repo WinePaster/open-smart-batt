@@ -136,21 +136,21 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 '解除斷電',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.text,
+                  color: context.colors.text,
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
+              Text(
                 '送出已知安全的「解除」指令(mode 0x06)。可用斷電密碼，或直接輸入你的驗證值。',
                 style: TextStyle(
                   fontSize: 11.5,
                   height: 1.6,
-                  color: AppColors.muted,
+                  color: context.colors.muted,
                 ),
               ),
               const SizedBox(height: 14),
@@ -175,7 +175,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
               if (!_skipAuth && _mode == _AuthMode.password) ...[
                 TextField(
                   controller: _dealer,
-                  style: const TextStyle(fontSize: 14, color: AppColors.text),
+                  style: TextStyle(fontSize: 14, color: context.colors.text),
                   cursorColor: AppColors.amber,
                   keyboardType: TextInputType.number,
                   onChanged: (_) => setState(() {}),
@@ -188,7 +188,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _password,
-                  style: const TextStyle(fontSize: 14, color: AppColors.text),
+                  style: TextStyle(fontSize: 14, color: context.colors.text),
                   cursorColor: AppColors.amber,
                   obscureText: true,
                   onChanged: (_) => setState(() {}),
@@ -203,7 +203,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
               if (!_skipAuth && _mode == _AuthMode.code) ...[
                 TextField(
                   controller: _cb,
-                  style: const TextStyle(fontSize: 14, color: AppColors.text),
+                  style: TextStyle(fontSize: 14, color: context.colors.text),
                   cursorColor: AppColors.amber,
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
@@ -215,7 +215,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _pwsum,
-                  style: const TextStyle(fontSize: 14, color: AppColors.text),
+                  style: TextStyle(fontSize: 14, color: context.colors.text),
                   cursorColor: AppColors.amber,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
@@ -243,10 +243,11 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                         _error = null;
                       }),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         '實驗：只送 mode、跳過驗證（未證實，備案）',
-                        style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+                        style: TextStyle(
+                            fontSize: 11.5, color: context.colors.muted),
                       ),
                     ),
                   ],
@@ -344,10 +345,12 @@ class _Btn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: filled
-              ? (enabled ? AppColors.amber : AppColors.amber.withValues(alpha: 0.4))
-              : AppColors.panel2,
+              ? (enabled
+                  ? AppColors.amber
+                  : AppColors.amber.withValues(alpha: 0.4))
+              : context.colors.panel2,
           border: Border.all(
-            color: filled ? Colors.transparent : AppColors.line,
+            color: filled ? Colors.transparent : context.colors.line,
           ),
           borderRadius: BorderRadius.circular(9),
         ),
@@ -356,7 +359,7 @@ class _Btn extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: filled ? AppColors.onAmber : AppColors.muted,
+            color: filled ? AppColors.onAmber : context.colors.muted,
           ),
         ),
       ),

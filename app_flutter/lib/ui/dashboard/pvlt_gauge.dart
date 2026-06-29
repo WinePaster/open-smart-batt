@@ -37,6 +37,7 @@ class PvltGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final f = fraction.clamp(0.0, 1.0);
+    final colors = context.colors;
     return SizedBox(
       width: size,
       height: size,
@@ -50,7 +51,7 @@ class PvltGauge extends StatelessWidget {
             curve: Curves.easeOut,
             builder: (context, value, _) => CustomPaint(
               size: Size.square(size),
-              painter: _GaugePainter(value),
+              painter: _GaugePainter(value, colors),
             ),
           ),
           _CenterReadout(pvlt: pvlt, sohBucket: sohBucket),
@@ -77,7 +78,7 @@ class _CenterReadout extends StatelessWidget {
         RichText(
           text: TextSpan(
             text: pvlt == null ? '--' : pvlt!.toStringAsFixed(2),
-            style: AppTextStyles.gaugeValue,
+            style: AppTextStyles.gaugeValue(context),
             children: const [
               TextSpan(
                 text: ' V',
@@ -91,12 +92,12 @@ class _CenterReadout extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 7),
-        const Text(
+        Text(
           'PVLT · 主電壓',
           style: TextStyle(
             fontSize: 10,
             letterSpacing: 3,
-            color: AppColors.muted,
+            color: context.colors.muted,
           ),
         ),
         const SizedBox(height: 10),
@@ -121,20 +122,24 @@ class _CenterReadout extends StatelessWidget {
 
 /// Paints the tick ring, value arc, pointer and hub (mockup `buildGauge`).
 class _GaugePainter extends CustomPainter {
-  const _GaugePainter(this.fraction);
+  const _GaugePainter(this.fraction, this.colors);
 
   /// 0..1 sweep fraction.
   final double fraction;
+
+  /// Active neutral palette (so the dial repaints per theme).
+  final AppPalette colors;
 
   // Geometry mirrors the mockup: 270° sweep starting at 135°.
   static const double _startDeg = 135;
   static const double _sweepDeg = 270;
   static const int _tickCount = 30;
 
-  // Gauge-internal greys from the mockup SVG (not part of the shared palette).
-  static const Color _trackColor = Color(0xFF222932);
-  static const Color _tickMajor = Color(0xFF5A6678);
-  static const Color _tickMinor = Color(0xFF333B46);
+  // Gauge greys derived from the neutral palette so the dial recolors with the
+  // theme (track = hairline, major ticks = muted, minor ticks = stronger line).
+  Color get _trackColor => colors.line;
+  Color get _tickMajor => colors.muted;
+  Color get _tickMinor => colors.line2;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -206,7 +211,7 @@ class _GaugePainter extends CustomPainter {
     canvas.drawCircle(
       center,
       4,
-      Paint()..color = AppColors.panel2,
+      Paint()..color = colors.panel2,
     );
     canvas.drawCircle(
       center,
@@ -220,5 +225,5 @@ class _GaugePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GaugePainter oldDelegate) =>
-      oldDelegate.fraction != fraction;
+      oldDelegate.fraction != fraction || oldDelegate.colors != colors;
 }
