@@ -55,7 +55,7 @@ dependencies:
   # keep the screen awake while connected (monitoring while riding)
   wakelock_plus: ^1.2.0
   # read the real APK version for the About screen (single source of truth)
-  package_info_plus: ^8.0.0
+  package_info_plus: ^9.0.1
   # GitHub release update check
   http: ^1.2.0
 
