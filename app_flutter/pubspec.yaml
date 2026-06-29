@@ -49,7 +49,7 @@ dependencies:
   intl: ^0.20.0
   # CSV / .log export + share sheet
   share_plus: ^10.0.0
-  csv: ^6.0.0
+  csv: ^8.0.0
   # open external links (GitHub / docs)
   url_launcher: ^6.3.0
   # keep the screen awake while connected (monitoring while riding)
