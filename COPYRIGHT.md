@@ -32,7 +32,7 @@
 
 ### 4. 非商業維修權目的
 
-本專案為**非商業性質**，目的是讓**已經購買** RCE 硬體的合法擁有者，在原廠停止營運後，能繼續維修、設定與使用自有設備（right-to-repair / 維修權）。本專案不販售、不營利、不提供商業服務。
+本專案為**非商業性質**，目的是讓**已經購買** RCE 硬體的合法擁有者，在原廠（**RCE 低碳動能開發股份有限公司**，已於[官方 Facebook 宣布停業](https://www.facebook.com/rce168/posts/pfbid08erjAACc445fd3eZargF8EnF84wBeP22cwutPyhwSguDDKPbLsGR6wJzXhVx5LE7l?locale=zh_TW)）停止營運後，能繼續維修、設定與使用自有設備（right-to-repair / 維修權）。本專案不販售、不營利、不提供商業服務。
 
 ### 5. 法律理由摘要（台灣法律脈絡，依使用者評估）
 
@@ -77,7 +77,7 @@ All code, text, and resources in `app/` are original work by contributors.
 
 ### 4. Non-commercial right-to-repair purpose
 
-This project is **non-commercial**. Its purpose is to let lawful owners of **already-purchased** RCE hardware continue to repair, configure, and use their own devices after the vendor ceased operations (right-to-repair). It is not sold, generates no revenue, and offers no commercial service.
+This project is **non-commercial**. Its purpose is to let lawful owners of **already-purchased** RCE hardware continue to repair, configure, and use their own devices after the vendor — **RCE 低碳動能開發股份有限公司** (RCE Low-Carbon Energy Development Co., Ltd.) — [announced its closure on its official Facebook page](https://www.facebook.com/rce168/posts/pfbid08erjAACc445fd3eZargF8EnF84wBeP22cwutPyhwSguDDKPbLsGR6wJzXhVx5LE7l?locale=zh_TW) (right-to-repair). It is not sold, generates no revenue, and offers no commercial service.
 
 ### 5. Legal-reasoning summary (Taiwan-law context, per the user's assessment)
 

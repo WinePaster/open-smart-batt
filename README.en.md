@@ -11,10 +11,13 @@
 ## What this is
 
 A community **right-to-repair** project run by the **owners/holders** of RCE iBatt
-hardware. The original vendor (RCE) ceased operations and its official app is no
-longer maintained, leaving many **already-purchased** devices unable to be
-configured, monitored, or used. This project provides a **freshly written** client
-so those devices can keep being used by their lawful owners.
+hardware. The original vendor — **RCE 低碳動能開發股份有限公司** (RCE Low-Carbon Energy
+Development Co., Ltd., "iBatt" brand) — [announced its closure on its official
+Facebook page](https://www.facebook.com/rce168/posts/pfbid08erjAACc445fd3eZargF8EnF84wBeP22cwutPyhwSguDDKPbLsGR6wJzXhVx5LE7l?locale=zh_TW),
+and its official app and cloud service are no longer maintained, leaving many
+**already-purchased** devices unable to be configured, monitored, or used. This
+project provides a **freshly written** client so those devices can keep being used
+by their lawful owners.
 
 ## Important statement
 
