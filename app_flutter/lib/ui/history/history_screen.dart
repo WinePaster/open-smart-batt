@@ -10,7 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
@@ -36,7 +36,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   static const int _rowCap = 1000;
 
-  HistoryFilter _filter = HistoryFilter.all;
+  HistoryFilter _filter = HistoryFilter.today; // default to today
   bool _exporting = false;
 
   late Future<_HistoryData> _future;
@@ -139,6 +139,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
                   children: [
+                    IndustrialCard(
+                      heading: _filter == HistoryFilter.today
+                          ? '今日電壓趨勢'
+                          : '電壓趨勢',
+                      headingIcon: Icons.show_chart,
+                      child: _VoltageChart(samples: rows),
+                    ),
                     IndustrialCard(
                       padding: const EdgeInsets.all(11),
                       child: Column(
@@ -427,4 +434,130 @@ class _StatusTag extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lightweight PVLT line chart (CustomPaint — no chart dependency).
+class _VoltageChart extends StatelessWidget {
+  const _VoltageChart({required this.samples});
+
+  final List<TelemetrySample> samples;
+
+  @override
+  Widget build(BuildContext context) {
+    final pts = samples.where((s) => s.pvlt != null).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    if (pts.length < 2) {
+      return SizedBox(
+        height: 130,
+        child: Center(
+          child: Text('資料不足以繪圖（需至少 2 筆）',
+              style: TextStyle(fontSize: 12, color: context.colors.muted)),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 160,
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _ChartPainter(
+          pts,
+          line: AppColors.amber,
+          grid: context.colors.line,
+          text: context.colors.muted,
+        ),
+      ),
+    );
+  }
+}
+
+class _ChartPainter extends CustomPainter {
+  _ChartPainter(this.pts,
+      {required this.line, required this.grid, required this.text});
+
+  final List<TelemetrySample> pts; // sorted ascending, pvlt non-null
+  final Color line;
+  final Color grid;
+  final Color text;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const left = 38.0, bottom = 18.0, top = 8.0, right = 6.0;
+    final plotW = size.width - left - right;
+    final plotH = size.height - top - bottom;
+
+    var minV = pts.first.pvlt!, maxV = minV;
+    for (final p in pts) {
+      final v = p.pvlt!;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+    // Pad the range; avoid a zero span.
+    var lo = minV - 0.2, hi = maxV + 0.2;
+    if (hi - lo < 0.5) {
+      final mid = (lo + hi) / 2;
+      lo = mid - 0.25;
+      hi = mid + 0.25;
+    }
+
+    double xAt(int i) => left + plotW * (i / (pts.length - 1));
+    double yAt(double v) => top + plotH * (1 - (v - lo) / (hi - lo));
+
+    final gridPaint = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    void tp(String s, double x, double y, {bool rightAlign = false}) {
+      final painter = TextPainter(
+        text: TextSpan(
+            text: s, style: TextStyle(color: text, fontSize: 9)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      painter.paint(canvas, Offset(rightAlign ? x - painter.width : x, y));
+    }
+
+    // Y grid: lo / mid / hi.
+    for (final v in [lo, (lo + hi) / 2, hi]) {
+      final y = yAt(v);
+      canvas.drawLine(Offset(left, y), Offset(size.width - right, y),
+          gridPaint..color = grid.withValues(alpha: 0.5));
+      tp(v.toStringAsFixed(1), left - 4, y - 6, rightAlign: true);
+    }
+
+    // Time labels (start / end).
+    final fmt = DateFormat('HH:mm');
+    tp(fmt.format(pts.first.timestamp), left, size.height - 12);
+    tp(fmt.format(pts.last.timestamp), size.width - right, size.height - 12,
+        rightAlign: true);
+
+    // The voltage polyline.
+    final path = Path();
+    for (var i = 0; i < pts.length; i++) {
+      final x = xAt(i), y = yAt(pts[i].pvlt!);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = line
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // Latest point marker.
+    final lx = xAt(pts.length - 1), ly = yAt(pts.last.pvlt!);
+    canvas.drawCircle(Offset(lx, ly), 3, Paint()..color = line);
+    tp('${pts.last.pvlt!.toStringAsFixed(2)}V', lx - 2, ly - 16,
+        rightAlign: true);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ChartPainter old) =>
+      old.pts.length != pts.length ||
+      (pts.isNotEmpty &&
+          old.pts.isNotEmpty &&
+          old.pts.last.timestamp != pts.last.timestamp);
 }

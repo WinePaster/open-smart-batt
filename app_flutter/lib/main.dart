@@ -137,6 +137,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   _Tab _tab = _Tab.dashboard;
+  int _historyEpoch = 0; // bumped on each switch to 歷史 to force a reload
 
   @override
   void initState() {
@@ -167,10 +168,11 @@ class _RootShellState extends State<RootShell> {
       appBar: const _BrandAppBar(),
       body: IndexedStack(
         index: _tab.index,
-        children: const [
-          DashboardPage(),
-          HistoryScreen(),
-          SettingsScreen(),
+        children: [
+          const DashboardPage(),
+          // Re-keyed on each switch to 歷史 so it reloads the latest records.
+          HistoryScreen(key: ValueKey(_historyEpoch)),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBarTheme(
@@ -197,7 +199,10 @@ class _RootShellState extends State<RootShell> {
         ),
         child: NavigationBar(
           selectedIndex: _tab.index,
-          onDestinationSelected: (i) => setState(() => _tab = _Tab.values[i]),
+          onDestinationSelected: (i) => setState(() {
+            _tab = _Tab.values[i];
+            if (_tab == _Tab.history) _historyEpoch++;
+          }),
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.speed_outlined),

@@ -57,6 +57,7 @@ class BleService {
   StreamSubscription<List<ScanResult>>? _scanSub;
   Timer? _keepAlive;
   bool _settingUp = false;
+  bool _retryingConnect = false;
 
   // Cached guids (cheap, but build once).
   static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
@@ -105,6 +106,9 @@ class BleService {
 
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId => _device?.remoteId.str;
+
+  /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
+  String get connectedDeviceName => _device?.platformName ?? '';
 
   /// True while a scan is in progress.
   bool get isScanning => FlutterBluePlus.isScanningNow;
@@ -179,18 +183,32 @@ class BleService {
       final name = r.device.platformName.isNotEmpty
           ? r.device.platformName
           : r.advertisementData.advName;
+      // RCE if it advertises our service UUID (most precise) OR its name starts
+      // with "RCE" (e.g. RCE-SCAP_II). Either signal flags it as a vendor device.
+      final isVendor =
+          r.advertisementData.serviceUuids.contains(_serviceGuid) ||
+              name.toUpperCase().startsWith('RCE');
       final existing = _scanSeen[id];
       if (existing == null ||
           existing.rssi != r.rssi ||
-          existing.name != name) {
-        _scanSeen[id] =
-            DiscoveredDevice(id: id, name: name, rssi: r.rssi);
+          existing.name != name ||
+          existing.isVendor != isVendor) {
+        _scanSeen[id] = DiscoveredDevice(
+          id: id,
+          name: name,
+          rssi: r.rssi,
+          isVendor: isVendor,
+        );
         changed = true;
       }
     }
     if (changed) {
+      // RCE (vendor) devices first, then by signal strength.
       final list = _scanSeen.values.toList()
-        ..sort((a, b) => b.rssi.compareTo(a.rssi));
+        ..sort((a, b) {
+          if (a.isVendor != b.isVendor) return a.isVendor ? -1 : 1;
+          return b.rssi.compareTo(a.rssi);
+        });
       _scan.add(list);
     }
   }
@@ -217,12 +235,28 @@ class BleService {
 
     _connSub = device.connectionState.listen(_onConnectionState);
 
-    try {
-      // mtu:null => no MTU negotiation (work within the default ATT MTU 23).
-      await device.connect(mtu: null, timeout: timeout);
-    } catch (e) {
+    // Android BLE frequently fails the FIRST connect attempt (connects then
+    // immediately disconnects). Retry a few times so the user taps only once;
+    // suppress teardown on transient drops during the retry window.
+    _retryingConnect = true;
+    Object? lastErr;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // mtu:null => no MTU negotiation (work within the default ATT MTU 23).
+        await device.connect(mtu: null, timeout: timeout);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) {
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+        }
+      }
+    }
+    _retryingConnect = false;
+    if (lastErr != null) {
       await _teardown(emitDisconnected: true);
-      rethrow;
+      throw lastErr;
     }
   }
 
@@ -230,6 +264,8 @@ class BleService {
     if (s == BluetoothConnectionState.connected) {
       await _setupConnection();
     } else if (s == BluetoothConnectionState.disconnected) {
+      // Ignore transient drops while still retrying the initial connect.
+      if (_retryingConnect) return;
       await _teardown(emitDisconnected: true);
     }
   }

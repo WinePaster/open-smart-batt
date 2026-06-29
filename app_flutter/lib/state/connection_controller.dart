@@ -112,6 +112,9 @@ class ConnectionController extends ChangeNotifier {
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId => _ble.connectedDeviceId ?? _desiredDeviceId;
 
+  /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
+  String get connectedDeviceName => _ble.connectedDeviceName;
+
   /// Last connection error message (cleared on a successful connect).
   String? get lastError => _lastError;
 

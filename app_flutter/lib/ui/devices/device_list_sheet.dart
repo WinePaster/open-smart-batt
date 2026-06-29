@@ -62,6 +62,10 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
   /// BLE id of the row whose connect is in flight (drives the row spinner).
   String? _connectingId;
 
+  /// When false (default) the nearby list shows only RCE devices; the toggle
+  /// reveals all nearby BLE devices.
+  bool _showAllNearby = false;
+
   /// Captured in [initState] so [dispose] can stop the scan without touching
   /// the (possibly deactivated) element tree.
   ConnectionController? _conn;
@@ -137,6 +141,47 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     }
   }
 
+  /// Disconnect the live link, then close the sheet.
+  Future<void> _disconnect() async {
+    final conn = context.read<ConnectionController>();
+    await conn.disconnect();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Remove a saved device after confirmation (also disconnects if it's live).
+  Future<void> _removeDevice(SavedDevice d) async {
+    final devices = context.read<DeviceController>();
+    final conn = context.read<ConnectionController>();
+    final alias = d.alias.isEmpty ? d.id : d.alias;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: ctx.colors.panel,
+        title: Text('移除裝置', style: TextStyle(color: ctx.colors.text, fontSize: 16)),
+        content: Text('將「$alias」從已儲存清單移除？（不影響裝置本身）',
+            style: TextStyle(color: ctx.colors.muted, fontSize: 13)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('取消', style: TextStyle(color: ctx.colors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('移除', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (conn.isOnline && conn.connectedDeviceId == d.id) {
+      await conn.disconnect();
+    }
+    await devices.remove(d.id);
+    // Re-scan so the just-removed device pops back into the nearby list once it
+    // resumes advertising (a just-disconnected device needs a few seconds).
+    if (mounted) await _rescan();
+  }
+
   @override
   Widget build(BuildContext context) {
     final conn = context.watch<ConnectionController>();
@@ -150,10 +195,15 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     final rssiById = <String, int>{for (final r in scan) r.id: r.rssi};
 
     // Nearby = scan hits not already in the saved list.
-    final nearby = [
+    final nearbyAll = [
       for (final r in scan)
         if (!devices.isSaved(r.id)) r,
     ];
+    // Default: only RCE devices; toggle reveals everything.
+    final nearby = _showAllNearby
+        ? nearbyAll
+        : [for (final r in nearbyAll) if (r.isVendor) r];
+    final hiddenCount = nearbyAll.length - nearby.length;
 
     final media = MediaQuery.of(context);
     final maxHeight = media.size.height * 0.82;
@@ -210,6 +260,8 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                       isConnected: conn.isOnline && connectedId == d.id,
                       isConnecting: _connectingId == d.id,
                       onEdit: () => _rename(d),
+                      onDelete: () => _removeDevice(d),
+                      onDisconnect: _disconnect,
                       onConnect: () => _connectSaved(d),
                     ),
 
@@ -222,23 +274,31 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                 else
                   for (final r in nearby)
                     _DeviceRow(
-                      alias: r.name.isEmpty ? 'RCE-BATT 未命名' : r.name,
+                      alias: r.name.isEmpty ? 'Unknown' : r.name,
                       aliasMuted: true,
+                      isVendor: r.isVendor,
                       meta: '${_shortId(r.id)} · RSSI ${r.rssi} dBm',
                       signalLevel: signalLevelFromRssi(r.rssi),
                       isConnected: conn.isOnline && connectedId == r.id,
                       isConnecting: _connectingId == r.id,
+                      onDisconnect: _disconnect,
                       onConnect: () => _connectNew(r),
                     ),
 
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    '顯示附近 BLE 裝置；認不出時可看訊號強度或靠近電容再掃',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(fontSize: 11, color: context.colors.muted),
+                const SizedBox(height: 2),
+                Center(
+                  child: TextButton(
+                    onPressed: () =>
+                        setState(() => _showAllNearby = !_showAllNearby),
+                    child: Text(
+                      _showAllNearby
+                          ? '只顯示 RCE 裝置'
+                          : (hiddenCount > 0
+                              ? '顯示全部 BLE 裝置（隱藏了 $hiddenCount 個非 RCE）'
+                              : '顯示全部 BLE 裝置'),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.amber),
+                    ),
                   ),
                 ),
               ],
@@ -471,6 +531,9 @@ class _DeviceRow extends StatelessWidget {
     required this.isConnecting,
     required this.onConnect,
     this.onEdit,
+    this.onDelete,
+    this.onDisconnect,
+    this.isVendor = false,
   });
 
   final String alias;
@@ -481,12 +544,14 @@ class _DeviceRow extends StatelessWidget {
   final bool isConnecting;
   final VoidCallback onConnect;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onDisconnect;
+  final bool isVendor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: context.colors.panel2,
         border: Border.all(
@@ -494,7 +559,14 @@ class _DeviceRow extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // Tapping anywhere on the row connects (inner edit/delete/中斷 buttons
+        // absorb their own taps); a connected row's row-tap is a no-op.
+        onTap: isConnected || isConnecting ? null : onConnect,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
         children: [
           // icon tile (mockup `.dico`).
           Container(
@@ -531,12 +603,36 @@ class _DeviceRow extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (isVendor) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.amber,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('RCE',
+                            style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.onAmber)),
+                      ),
+                    ],
                     if (onEdit != null) ...[
                       const SizedBox(width: 7),
                       InkWell(
                         onTap: onEdit,
                         child: Icon(Icons.edit_outlined,
                             size: 14, color: context.colors.muted),
+                      ),
+                    ],
+                    if (onDelete != null) ...[
+                      const SizedBox(width: 7),
+                      InkWell(
+                        onTap: onDelete,
+                        child: Icon(Icons.delete_outline,
+                            size: 15, color: context.colors.muted),
                       ),
                     ],
                   ],
@@ -562,9 +658,11 @@ class _DeviceRow extends StatelessWidget {
           _ConnectButton(
             connected: isConnected,
             connecting: isConnecting,
-            onTap: onConnect,
+            onTap: isConnected ? (onDisconnect ?? onConnect) : onConnect,
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -585,20 +683,24 @@ class _ConnectButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (connected) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          border: Border.all(color: AppColors.good),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text(
-          '已連線',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-            color: AppColors.good,
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            border: Border.all(color: AppColors.danger),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            '中斷',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: AppColors.danger,
+            ),
           ),
         ),
       );

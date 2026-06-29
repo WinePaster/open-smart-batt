@@ -67,19 +67,6 @@ class _ConnectionCard extends StatelessWidget {
             ),
           ),
           SettingsRow(
-            label: '自動記錄間隔',
-            sub: '寫入歷史紀錄的頻率（遙測畫面即時更新）',
-            trailing: SegmentedControl<int>(
-              selected: s.pollIntervalMs,
-              onChanged: s.setPollIntervalMs,
-              options: const [
-                (value: 500, label: '0.5s'),
-                (value: 1000, label: '1s'),
-                (value: 2000, label: '2s'),
-              ],
-            ),
-          ),
-          SettingsRow(
             label: '連線時保持螢幕喚醒',
             sub: '螢幕不自動關閉，方便邊騎邊看（連線時生效）',
             last: true,

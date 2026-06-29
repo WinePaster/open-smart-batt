@@ -47,19 +47,25 @@ class ReadoutGrid extends StatelessWidget {
           border: Border.all(color: line),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             for (var row = 0; row < items.length; row += 2)
               Padding(
                 padding: EdgeInsets.only(top: row == 0 ? 0 : 1),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: _StatTile(item: items[row])),
-                    if (row + 1 < items.length) ...[
-                      const SizedBox(width: 1),
-                      Expanded(child: _StatTile(item: items[row + 1])),
+                // IntrinsicHeight bounds the row height so the stretched tiles
+                // (equal height) don't try to fill the ListView's unbounded
+                // height — that bug left the whole grid unrendered.
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _StatTile(item: items[row])),
+                      if (row + 1 < items.length) ...[
+                        const SizedBox(width: 1),
+                        Expanded(child: _StatTile(item: items[row + 1])),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
           ],

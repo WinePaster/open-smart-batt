@@ -28,10 +28,16 @@ class DiscoveredDevice {
   /// Signal strength (dBm); larger (closer to 0) is stronger.
   final int rssi;
 
+  /// True if the advertisement includes the vendor service UUID (07b9fff0) —
+  /// i.e. very likely an RCE device. (Some units may not advertise it, so a
+  /// false value does NOT rule out an RCE device.)
+  final bool isVendor;
+
   const DiscoveredDevice({
     required this.id,
     required this.name,
     required this.rssi,
+    this.isVendor = false,
   });
 
   @override

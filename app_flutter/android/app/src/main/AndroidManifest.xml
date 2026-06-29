@@ -1,11 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- BLE permissions (Open-RCE-Batt).
          Android 12+ (API 31+): runtime BLUETOOTH_SCAN + BLUETOOTH_CONNECT.
          Pre-12: legacy BLUETOOTH / BLUETOOTH_ADMIN + ACCESS_FINE_LOCATION
          (location is required to scan for BLE devices below API 31). -->
     <!-- check GitHub for app updates -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />

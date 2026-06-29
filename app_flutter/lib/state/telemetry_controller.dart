@@ -43,7 +43,6 @@ class TelemetryController extends ChangeNotifier {
   StreamSubscription<BleLinkState>? _linkSub;
 
   late TelemetrySample _sample;
-  DateTime? _lastLogAt;
 
   // ---- raw sample + capability gating -----------------------------------
 
@@ -150,14 +149,59 @@ class TelemetryController extends ChangeNotifier {
     _maybeAutoLog(s);
   }
 
+  // ---- per-minute aggregation -------------------------------------------
+  // History stores ONE averaged row per minute (not every poll): accumulate
+  // each minute's samples, then flush the average on minute-rollover/disconnect.
+  DateTime? _bucketMinute;
+  TelemetrySample? _bucketLast;
+  double _sPvlt = 0, _sSvlt = 0, _sTemp = 0, _sCur = 0;
+  int _nPvlt = 0, _nSvlt = 0, _nTemp = 0, _nCur = 0;
+
   void _maybeAutoLog(TelemetrySample s) {
     if (!_settings.autoLog) return;
-    final now = s.timestamp;
-    final last = _lastLogAt;
-    final interval = Duration(milliseconds: _settings.pollIntervalMs);
-    if (last != null && now.difference(last) < interval) return;
-    _lastLogAt = now;
-    unawaited(_history.insertSample(s));
+    final t = s.timestamp;
+    final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
+    if (_bucketMinute != null && minute.isAfter(_bucketMinute!)) {
+      _flushBucket();
+    }
+    _bucketMinute = minute;
+    _bucketLast = s;
+    if (s.pvlt != null) {
+      _sPvlt += s.pvlt!;
+      _nPvlt++;
+    }
+    if (s.svlt != null) {
+      _sSvlt += s.svlt!;
+      _nSvlt++;
+    }
+    if (s.temperatureC != null) {
+      _sTemp += s.temperatureC!;
+      _nTemp++;
+    }
+    if (s.current != null) {
+      _sCur += s.current!;
+      _nCur++;
+    }
+  }
+
+  /// Write the current minute's averaged sample to history, then reset.
+  void _flushBucket() {
+    final m = _bucketMinute;
+    final last = _bucketLast;
+    if (m != null && last != null) {
+      final avg = last.copyWith(
+        timestamp: m,
+        pvlt: _nPvlt > 0 ? _sPvlt / _nPvlt : null,
+        svlt: _nSvlt > 0 ? _sSvlt / _nSvlt : null,
+        temperatureC: _nTemp > 0 ? (_sTemp / _nTemp).round() : null,
+        current: _nCur > 0 ? _sCur / _nCur : null,
+      );
+      unawaited(_history.insertSample(avg));
+    }
+    _bucketMinute = null;
+    _bucketLast = null;
+    _sPvlt = _sSvlt = _sTemp = _sCur = 0;
+    _nPvlt = _nSvlt = _nTemp = _nCur = 0;
   }
 
   void _onPacket(BlePacketEvent e) {
@@ -167,12 +211,14 @@ class TelemetryController extends ChangeNotifier {
   }
 
   void _onLinkState(BleLinkState s) {
-    // Clear the live readouts when the link drops so the dashboard doesn't
-    // show stale values (history rows already persisted are unaffected).
-    if (s == BleLinkState.disconnected && hasData) {
-      _sample = TelemetrySample.empty();
-      _lastLogAt = null;
-      notifyListeners();
+    if (s == BleLinkState.disconnected) {
+      // Persist the final partial minute before clearing live state.
+      _flushBucket();
+      // Clear the live readouts so the dashboard doesn't show stale values.
+      if (hasData) {
+        _sample = TelemetrySample.empty();
+        notifyListeners();
+      }
     }
   }
 
