@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open-RCE-Batt · UI Mockup</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#14171d; --panel2:#1b1f27; --line:#2a3039; --line2:#363d48;
+    --txt:#e8edf4; --muted:#838d9c; --amber:#f6a821; --amber-d:#c8861a;
+    --cyan:#46d4c8; --danger:#ff5765; --good:#5ad27e;
+    --mono:ui-monospace,'SF Mono','Roboto Mono','JetBrains Mono',monospace;
+    --shadow:0 8px 26px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;color:var(--txt);min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       gap:18px;padding:26px 12px 60px;font-family:'Inter',system-ui,'PingFang TC','Microsoft JhengHei',sans-serif;
+       background:
+         radial-gradient(900px 600px at 80% -8%,#161a22 0%,transparent 60%),
+         repeating-linear-gradient(45deg,rgba(255,255,255,.014) 0 1px,transparent 1px 5px),
+         var(--bg);}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* mockup toolbar */
+  .toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;justify-content:center;
+           background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 13px}
+  .toolbar b{font-size:14px;letter-spacing:.5px}
+  .toolbar .amb{color:var(--amber)}
+  .toolbar button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+                  padding:6px 11px;border-radius:8px;font-size:12px;cursor:pointer;transition:.15s}
+  .toolbar button:hover{border-color:var(--amber)}
+  .toolbar button.on{background:var(--amber);color:#1a1205;border-color:transparent;font-weight:700}
+  .toolbar .sep{width:1px;height:20px;background:var(--line)}
+  .toolbar span{font-size:12px;color:var(--muted)}
+
+  /* device */
+  .device{position:relative;background:#04060a;border:9px solid #04060a;border-radius:40px;
+          box-shadow:var(--shadow),0 0 0 1px #20262f;overflow:hidden;transition:width .35s,height .35s}
+  .device.portrait{width:362px;height:762px}
+  .device.landscape{width:762px;height:392px}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;background:
+          repeating-linear-gradient(45deg,rgba(255,255,255,.012) 0 1px,transparent 1px 6px),var(--bg)}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:20px;
+         background:#04060a;border-radius:0 0 14px 14px;z-index:30}
+
+  .statusbar{display:flex;justify-content:space-between;padding:8px 20px 3px;font-size:11px;color:var(--muted)}
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:5px 15px 11px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .mark{width:32px;height:32px}
+  .brand h1{font-size:15px;margin:0;font-weight:800;letter-spacing:.6px}
+  .brand span{font-size:9.5px;color:var(--muted);display:block;margin-top:1px;letter-spacing:2px;text-transform:uppercase}
+  .conn{display:flex;align-items:center;gap:6px;font-size:11px;background:var(--panel);border:1px solid var(--line);
+        padding:6px 10px;border-radius:8px;cursor:pointer;letter-spacing:.5px}
+  .conn .ic{width:13px;height:13px;color:var(--danger)}
+  .conn.online .ic{color:var(--good)}
+  .conn .dot{width:6px;height:6px;border-radius:50%;background:var(--danger)}
+  .conn.online .dot{background:var(--good);box-shadow:0 0 7px var(--good)}
+
+  .body{flex:1;overflow-y:auto;padding:3px 15px 14px;scrollbar-width:thin}
+  .body::-webkit-scrollbar{width:4px}.body::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+  /* cards — industrial: flat, thin frame, corner ticks */
+  .card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+        padding:15px;margin-bottom:14px}
+  .card::before,.card::after{content:'';position:absolute;width:8px;height:8px;border:1px solid var(--line2);opacity:.7}
+  .card::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+  .card::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+  .card h3{margin:0 0 13px;font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:2px;
+           text-transform:uppercase;display:flex;align-items:center;gap:7px}
+  .card h3 .ic{width:13px;height:13px;color:var(--amber)}
+  .hl{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+
+  /* gauge */
+  .gauge{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .ring{position:relative;width:206px;height:206px}
+  .ring .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .num{font-size:50px;font-weight:700;line-height:1;color:var(--txt);letter-spacing:-1px}
+  .ring .num .u{font-size:16px;color:var(--amber);margin-left:3px}
+  .ring .lbl{font-size:10px;color:var(--muted);margin-top:7px;letter-spacing:3px}
+  .ring .sub{font-size:11px;color:var(--cyan);margin-top:10px;letter-spacing:1px}
+  .ring .pk{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);letter-spacing:1px}
+
+  /* readouts grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .stat{background:var(--panel2);padding:13px 14px;display:flex;flex-direction:column;gap:7px}
+  .stat .k{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;letter-spacing:1px;text-transform:uppercase}
+  .stat .k .ic{width:14px;height:14px;color:var(--muted)}
+  .stat .v{font-size:23px;font-weight:600;letter-spacing:-.5px}
+  .stat .v .u{font-size:11px;color:var(--muted);font-weight:500;margin-left:2px}
+
+  /* dvol */
+  .cell{display:flex;align-items:center;gap:11px;margin:10px 0}
+  .cell:first-of-type{margin-top:2px}
+  .cell .name{font-size:10px;color:var(--muted);width:50px;letter-spacing:1px}
+  .bar{flex:1;height:7px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden;position:relative}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--amber-d),var(--amber));transition:width .6s}
+  .cell .cv{font-size:12px;width:54px;text-align:right}
+
+  /* status */
+  .statusrow{display:flex;gap:9px}
+  .badge{flex:1;text-align:center;padding:11px 6px;border-radius:9px;border:1px solid var(--line);background:var(--panel2)}
+  .badge .bi{width:18px;height:18px;margin:0 auto 6px;color:var(--muted);display:block}
+  .badge .t{font-size:9px;color:var(--muted);letter-spacing:1px}
+  .badge .s{font-size:13px;font-weight:700;margin-top:4px}
+  .badge.active{border-color:var(--good)} .badge.active .s{color:var(--good)} .badge.active .bi{color:var(--good)}
+  .badge.locked{border-color:var(--danger)} .badge.locked .s{color:var(--danger)} .badge.locked .bi{color:var(--danger)}
+  .ctrlrow{display:flex;gap:9px;margin-top:13px}
+  .btn{flex:1;padding:12px;border-radius:10px;border:1px solid transparent;font-size:13px;font-weight:700;cursor:pointer;
+       transition:.15s;display:flex;align-items:center;justify-content:center;gap:7px;letter-spacing:.5px}
+  .btn .ic{width:15px;height:15px}
+  .btn.primary{background:var(--amber);color:#1a1205}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border-color:var(--line)}
+  .btn.warn{background:transparent;color:var(--danger);border-color:var(--danger)}
+  .btn:active{transform:scale(.97)}
+  .note{font-size:10.5px;color:var(--amber);margin-top:11px;display:flex;gap:7px;align-items:flex-start;line-height:1.6}
+  .note .ic{width:14px;height:14px;flex-shrink:0;margin-top:1px}
+
+  /* landscape */
+  .device.landscape .dash{display:grid;grid-template-columns:240px 1fr 1fr;gap:13px;align-items:start}
+
+  /* history */
+  .toolrow{display:flex;gap:7px;margin-bottom:12px;align-items:center}
+  .chip{font-size:11px;padding:7px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);
+        cursor:pointer;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+  .chip.on{background:var(--amber);color:#1a1205;font-weight:700;border-color:transparent}
+  .chip .ic{width:13px;height:13px}
+  .grow{flex:1}
+  .hrow{display:flex;align-items:center;gap:12px;padding:12px;border-radius:9px;background:var(--panel2);
+        border:1px solid var(--line);margin-bottom:8px}
+  .hrow .time{font-size:10.5px;color:var(--muted);width:70px;flex-shrink:0}
+  .hrow .hv{font-size:14px;font-weight:600}
+  .hrow .hsub{font-size:10.5px;color:var(--muted);margin-top:3px}
+  .hrow .tag{font-size:9px;padding:3px 8px;border-radius:5px;background:#15281c;color:var(--good);letter-spacing:1px;border:1px solid #1e3b29}
+  .hrow .tag.w{background:#2a2415;color:var(--amber);border-color:#3b3119}
+  .hrow .tag.e{background:#16242b;color:var(--cyan);border-color:#1d3640}
+
+  /* settings */
+  .srow{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);gap:12px}
+  .srow:last-child{border-bottom:none}
+  .srow .sl{font-size:13px}.srow .sl small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px;line-height:1.5}
+  .srow .sl.link{color:var(--cyan);display:flex;align-items:center;gap:8px}
+  .srow .sl.link .ic{width:15px;height:15px}
+  .toggle{width:44px;height:25px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);
+          position:relative;cursor:pointer;transition:.2s;flex-shrink:0}
+  .toggle.on{background:var(--amber);border-color:transparent}
+  .toggle i{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:4px;background:#dfe5ee;transition:.2s}
+  .toggle.on i{left:21px;background:#1a1205}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:7px;overflow:hidden;flex-shrink:0}
+  .seg button{background:none;border:none;color:var(--muted);padding:6px 11px;font-size:11px;cursor:pointer}
+  .seg button.on{background:var(--amber);color:#1a1205;font-weight:700}
+  .chev{color:var(--muted);width:16px;height:16px}
+
+  /* nav */
+  .nav{display:flex;background:var(--panel);border-top:1px solid var(--line)}
+  .nav button{flex:1;background:none;border:none;color:var(--muted);padding:10px 0 13px;font-size:9.5px;
+              display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;letter-spacing:1px;position:relative}
+  .nav button.on{color:var(--amber)}
+  .nav button.on::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:26px;height:2px;background:var(--amber)}
+  .nav .ic{width:21px;height:21px}
+
+  .page{display:none}.page.on{display:block}
+
+  /* empty / disconnected state */
+  .empty{display:none;flex-direction:column;align-items:center;text-align:center;padding:50px 24px 30px}
+  .empty.on{display:flex}
+  .empty .bigico{width:96px;height:96px;border-radius:24px;background:var(--panel);border:1px solid var(--line);
+                 display:grid;place-items:center;margin-bottom:22px;position:relative}
+  .empty .bigico::after{content:'';position:absolute;inset:-1px;border-radius:24px;border:1px solid var(--amber);opacity:.25;
+                        animation:ring 2s ease-out infinite}
+  @keyframes ring{0%{transform:scale(1);opacity:.35}100%{transform:scale(1.25);opacity:0}}
+  .empty .bigico .ic{width:42px;height:42px;color:var(--amber)}
+  .empty h2{font-size:18px;margin:0 0 8px;letter-spacing:.5px}
+  .empty p{font-size:12.5px;color:var(--muted);line-height:1.7;margin:0 0 24px;max-width:240px}
+  .empty .btn{max-width:240px}
+  .empty .last{margin-top:22px;font-size:11px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+               border-radius:9px;padding:11px 14px;display:flex;align-items:center;gap:9px;cursor:pointer}
+  .empty .last .ic{width:15px;height:15px;color:var(--muted)}
+  .empty .last b{color:var(--txt);font-weight:600}
+  .empty .last .mono{color:var(--cyan)}
+  .dash.off{display:none}
+  .empty .qsec{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;align-self:flex-start;margin:6px 2px 10px}
+  .qpick{display:flex;align-items:center;gap:12px;width:100%;max-width:300px;padding:12px;border-radius:11px;
+         background:var(--panel);border:1px solid var(--line);margin-bottom:10px;cursor:pointer;transition:.15s}
+  .qpick:hover{border-color:var(--amber)}
+  .qpick .dico{width:38px;height:38px;border-radius:9px;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center}
+  .qpick .dico .ic{width:19px;height:19px;color:var(--amber)}
+  .qpick .dmain{flex:1;text-align:left}
+  .qpick .dalias{font-size:14px;font-weight:700}
+  .qpick .dmeta{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
+
+  /* modal */
+  .modal{position:absolute;inset:0;background:rgba(4,6,10,.85);backdrop-filter:blur(5px);z-index:50;
+         display:flex;align-items:center;justify-content:center;padding:24px;transition:.25s}
+  .modal.hidden{opacity:0;pointer-events:none}
+  .sheet{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;max-width:328px}
+  .sheet::before,.sheet::after{content:'';position:absolute;width:12px;height:12px;border:1px solid var(--amber);opacity:.6}
+  .sheet::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+  .sheet::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+  .sheet .mark{width:56px;height:56px;margin:0 auto 14px;display:block}
+  .sheet h2{margin:0 0 3px;text-align:center;font-size:19px;letter-spacing:1px}
+  .sheet .tag2{text-align:center;font-size:10px;color:var(--amber);margin-bottom:16px;letter-spacing:3px}
+  .sheet p{font-size:12px;color:var(--muted);line-height:1.7;margin:9px 0}
+  .sheet p b{color:var(--txt)}
+  .ghbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;margin-top:6px;
+         border-radius:9px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);font-size:12.5px;cursor:pointer;text-decoration:none}
+  .ghbtn .ic{width:16px;height:16px}
+  .ok{width:100%;margin-top:9px;padding:13px;border-radius:9px;border:none;background:var(--amber);color:#1a1205;font-weight:800;font-size:14px;cursor:pointer;letter-spacing:1px}
+  .warnbox{background:rgba(246,168,33,.07);border:1px solid rgba(246,168,33,.28);border-radius:9px;padding:10px;margin-top:8px;display:flex;gap:8px}
+  .warnbox .ic{width:15px;height:15px;color:var(--amber);flex-shrink:0;margin-top:1px}
+  .warnbox p{color:var(--amber);margin:0;font-size:11px;line-height:1.5}
+
+  /* device sheet (bottom) */
+  .devwrap{position:absolute;inset:0;z-index:48;display:flex;align-items:flex-end;
+           background:rgba(4,6,10,.72);backdrop-filter:blur(3px);transition:.25s}
+  .devwrap.hidden{opacity:0;pointer-events:none}
+  .devpanel{width:100%;max-height:82%;overflow-y:auto;background:var(--panel);border-top:1px solid var(--line2);
+            border-radius:18px 18px 0 0;padding:14px 16px 22px;transition:transform .3s}
+  .devwrap.hidden .devpanel{transform:translateY(100%)}
+  .handle{width:38px;height:4px;border-radius:3px;background:var(--line2);margin:0 auto 14px}
+  .devhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .devhead h2{margin:0;font-size:16px;letter-spacing:.5px}
+  .rescan{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--amber);background:var(--panel2);
+          border:1px solid var(--line);padding:7px 11px;border-radius:8px;cursor:pointer}
+  .rescan .ic{width:13px;height:13px}
+  .devsec{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:14px 2px 9px;display:flex;align-items:center;gap:8px}
+  .devsec .ic{width:12px;height:12px;color:var(--amber)}
+  .devsec .scan-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+  .drow{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;background:var(--panel2);
+        border:1px solid var(--line);margin-bottom:9px}
+  .drow.cur{border-color:var(--good)}
+  .dico{width:38px;height:38px;border-radius:9px;background:var(--bg);border:1px solid var(--line);
+        display:grid;place-items:center;flex-shrink:0}
+  .dico .ic{width:19px;height:19px;color:var(--amber)}
+  .dmain{flex:1;min-width:0}
+  .dalias{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px}
+  .dalias .edit{width:13px;height:13px;color:var(--muted);cursor:pointer}
+  .dmeta{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
+  .sig{display:flex;align-items:flex-end;gap:2px;height:15px}
+  .sig i{width:3px;background:var(--line2);border-radius:1px}
+  .sig i:nth-child(1){height:5px}.sig i:nth-child(2){height:8px}.sig i:nth-child(3){height:11px}.sig i:nth-child(4){height:15px}
+  .sig.s3 i:nth-child(-n+3),.sig.s4 i,.sig.s2 i:nth-child(-n+2),.sig.s1 i:nth-child(1){background:var(--good)}
+  .dbtn{font-size:11px;font-weight:700;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid transparent;letter-spacing:.5px}
+  .dbtn.go{background:var(--amber);color:#1a1205}
+  .dbtn.on2{background:transparent;color:var(--good);border-color:var(--good)}
+  /* alias dialog */
+  .aliasdlg{position:absolute;inset:0;z-index:55;display:flex;align-items:center;justify-content:center;
+            padding:26px;background:rgba(4,6,10,.85);backdrop-filter:blur(5px);transition:.2s}
+  .aliasdlg.hidden{opacity:0;pointer-events:none}
+  .adlg{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:300px;width:100%}
+  .adlg h3{margin:0 0 5px;font-size:16px}
+  .adlg p{margin:0 0 15px;font-size:11.5px;color:var(--muted);line-height:1.6}
+  .ainput{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:9px;padding:12px;
+          color:var(--txt);font-size:14px;margin-bottom:8px}
+  .ainput:focus{outline:none;border-color:var(--amber)}
+  .achips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+  .achip{font-size:11px;padding:6px 10px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;color:var(--muted)}
+  .adlg .arow{display:flex;gap:9px}
+  .adlg .arow button{flex:1;padding:11px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid var(--line)}
+  .adlg .arow .cancel{background:var(--panel2);color:var(--muted)}
+  .adlg .arow .save{background:var(--amber);color:#1a1205;border-color:transparent}
+</style>
+</head>
+<body>
+
+<!-- ===== SVG icon sprite (custom line set) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <defs>
+  <!-- brand mark: capacitor plates + bolt in a hex -->
+  <symbol id="logo" viewBox="0 0 48 48">
+    <path d="M24 2 43 13 43 35 24 46 5 35 5 13Z" fill="#14171d" stroke="#f6a821" stroke-width="1.6"/>
+    <path d="M17 16 17 32 M21 12 21 36" stroke="#f6a821" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M31 16 31 32 M27 12 27 36" stroke="#46d4c8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M25 19 21.5 25 26 25 23 30" fill="none" stroke="#e8edf4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 17a9 9 0 1117 0"/><path d="M12 13l4-3"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/><path d="M3.5 17h17"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 14.5V5a2 2 0 014 0v9.5a4 4 0 11-4 0z"/><path d="M12 14V9"/></symbol>
+  <symbol id="i-current" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12h4l2.5-7 5 14 2.5-7H22"/></symbol>
+  <symbol id="i-health" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 12h4l1.5-4 3 8 2-5 1.5 1H21"/><path d="M20 8.5a3.4 3.4 0 00-6-2 3.4 3.4 0 00-6 2"/></symbol>
+  <symbol id="i-cells" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="9" width="16" height="6" rx="1.5"/><path d="M21 11v2"/><path d="M7 9v6M11 9v6M15 9v6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v8"/><path d="M6.5 7a8 8 0 1011 0"/></symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 7.5 17 16l-5 4V4l5 4L7 16.5"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="8" width="8" height="11" rx="4"/><path d="M8 12H4M16 12h4M8 16H4M16 16h4M9 8l-2-3M15 8l2-3M12 8V5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 13a4 4 0 005.6 0l2.8-2.8A4 4 0 0012.8 4.6L11 6.4M14 11a4 4 0 00-5.6 0L5.6 13.8A4 4 0 0011.2 19.4L13 17.6"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17h.01"/></symbol>
+ </defs>
+</svg>
+
+<div class="toolbar">
+  <svg class="mark" style="width:22px;height:22px"><use href="#logo"/></svg>
+  <b>OPEN-RCE-BATT</b><span>UI Mockup · 工業儀表風 · 直式鎖定</span>
+  <div class="sep"></div>
+  <button onclick="showModal()">重看開場聲明</button>
+  <button onclick="openDev()">裝置清單</button>
+  <button onclick="toggleConn()">切換連線</button>
+</div>
+
+<div class="device portrait" id="device">
+  <div class="notch"></div>
+  <div class="screen">
+
+    <div class="modal" id="modal">
+      <div class="sheet">
+        <svg class="mark"><use href="#logo"/></svg>
+        <h2>OPEN-RCE-BATT</h2>
+        <div class="tag2">社群自救版 · COMMUNITY EDITION</div>
+        <p>本 App 為<b>社群獨立開發</b>的開源工具，基於公開逆向研究，透過藍牙與您<b>已購買的 RCE 智慧電容／電池</b>通訊。</p>
+        <p>本專案<b>非</b> RCE 官方產品、與原廠無任何關係，僅供已購買硬體之車主<b>個人、非商業</b>用途。</p>
+        <div class="warnbox"><svg class="ic"><use href="#i-warn"/></svg><p>解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。</p></div>
+        <a class="ghbtn" href="https://github.com/WinePaster/open-rce-batt" target="_blank"><svg class="ic"><use href="#i-gh"/></svg>查看 GitHub 專案與文件</a>
+        <button class="ok" onclick="hideModal()">我了解，開始使用</button>
+      </div>
+    </div>
+
+    <!-- device select sheet -->
+    <div class="devwrap hidden" id="devwrap">
+      <div class="devpanel">
+        <div class="handle"></div>
+        <div class="devhead">
+          <h2>選擇裝置</h2>
+          <div class="rescan" onclick="event.stopPropagation()"><svg class="ic"><use href="#i-power"/></svg>重新掃描</div>
+        </div>
+
+        <div class="devsec"><svg class="ic"><use href="#i-bt"/></svg>已儲存裝置</div>
+        <div class="drow cur">
+          <div class="dico"><svg class="ic"><use href="#i-cells"/></svg></div>
+          <div class="dmain">
+            <div class="dalias">電容 #1（前車）<svg class="edit" onclick="openAlias('電容 #1（前車）')"><use href="#i-doc"/></svg></div>
+            <div class="dmeta">07b9…c46c · 13.42V · 剛剛</div>
+          </div>
+          <div class="sig s4"><i></i><i></i><i></i><i></i></div>
+          <div class="dbtn on2">已連線</div>
+        </div>
+        <div class="drow">
+          <div class="dico"><svg class="ic"><use href="#i-cells"/></svg></div>
+          <div class="dmain">
+            <div class="dalias">電容 #2（後備）<svg class="edit" onclick="openAlias('電容 #2（後備）')"><use href="#i-doc"/></svg></div>
+            <div class="dmeta">07b9…a1b2 · 上次 2 天前</div>
+          </div>
+          <div class="sig s2"><i></i><i></i><i></i><i></i></div>
+          <div class="dbtn go">連線</div>
+        </div>
+
+        <div class="devsec"><span class="scan-dot"></span>附近掃描中… (service 07b9fff0)</div>
+        <div class="drow">
+          <div class="dico"><svg class="ic"><use href="#i-cells"/></svg></div>
+          <div class="dmain">
+            <div class="dalias" style="color:var(--muted);font-weight:600">RCE-BATT 未命名</div>
+            <div class="dmeta">07b9…7f3e · RSSI −72 dBm</div>
+          </div>
+          <div class="sig s3"><i></i><i></i><i></i><i></i></div>
+          <div class="dbtn go" onclick="openAlias('')">連線</div>
+        </div>
+        <div style="text-align:center;color:var(--muted);font-size:11px;margin-top:6px;padding:8px">只顯示 RCE 服務 (07b9fff0) 的裝置</div>
+      </div>
+    </div>
+
+    <!-- alias dialog (after connecting) -->
+    <div class="aliasdlg hidden" id="aliasdlg">
+      <div class="adlg">
+        <h3>儲存裝置</h3>
+        <p>已連線成功。為這顆裝置取一個好記的別名，下次可在「已儲存裝置」快速重連。</p>
+        <input class="ainput" id="aliasInput" placeholder="例如：電容 #1（前車）" value="">
+        <div class="achips">
+          <span class="achip" onclick="pick('電容 #1（前車）')">電容 #1（前車）</span>
+          <span class="achip" onclick="pick('電容 #2（後備）')">電容 #2（後備）</span>
+          <span class="achip" onclick="pick('機車電容')">機車電容</span>
+        </div>
+        <div class="arow">
+          <button class="cancel" onclick="closeAlias()">略過</button>
+          <button class="save" onclick="closeAlias()">儲存別名</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar"><span class="mono">13:09</span><span>BLE · 69%</span></div>
+    <div class="appbar">
+      <div class="brand">
+        <svg class="mark"><use href="#logo"/></svg>
+        <div><h1>OPEN-RCE-BATT</h1><span>Capacitor Monitor</span></div>
+      </div>
+      <div class="conn online" id="connPill" onclick="openDev()">
+        <svg class="ic"><use href="#i-bt"/></svg><span class="dot"></span><span id="connText">CONNECTED</span>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- DASHBOARD -->
+      <div class="page on" id="page-dash">
+        <div class="empty" id="emptyState">
+          <div class="bigico"><svg class="ic"><use href="#i-bt"/></svg></div>
+          <h2>尚未連線裝置</h2>
+          <p>選擇已儲存的裝置快速重連，或掃描附近的 RCE 電容。</p>
+          <div class="qsec">快速選擇</div>
+          <div class="qpick" onclick="toggleConn()">
+            <div class="dico"><svg class="ic"><use href="#i-cells"/></svg></div>
+            <div class="dmain"><div class="dalias">電容 #1（前車）</div><div class="dmeta">上次 13.42 V · 2 分鐘前</div></div>
+            <div class="sig s4"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="qpick" onclick="toggleConn()">
+            <div class="dico"><svg class="ic"><use href="#i-cells"/></svg></div>
+            <div class="dmain"><div class="dalias">電容 #2（後備）</div><div class="dmeta">上次 2 天前</div></div>
+            <div class="sig s2"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <button class="btn ghost" style="max-width:260px;margin-top:14px" onclick="openDev()"><svg class="ic"><use href="#i-bt"/></svg>掃描其他裝置</button>
+        </div>
+        <div class="dash" id="dashLive">
+          <div class="card" style="text-align:center">
+            <div class="gauge">
+              <div class="ring">
+                <svg width="206" height="206" id="gaugeSvg"></svg>
+                <div class="val">
+                  <div class="num"><span id="pvlt">13.42</span><span class="u">V</span></div>
+                  <div class="lbl">PVLT · 主電壓</div>
+                  <div class="sub">SOH 85% · 健康良好</div>
+                </div>
+                <div class="pk mono">8.0 — 16.0 V</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card span2">
+            <h3><svg class="ic"><use href="#i-gauge"/></svg>即時讀數<span class="hl"></span></h3>
+            <div class="grid2">
+              <div class="stat"><div class="k"><svg class="ic"><use href="#i-temp"/></svg>溫度 TEMP</div><div class="v mono">28<span class="u">°C</span></div></div>
+              <div class="stat"><div class="k"><svg class="ic"><use href="#i-current"/></svg>主電流</div><div class="v mono" id="cur">2.4<span class="u">A</span></div></div>
+              <div class="stat"><div class="k"><svg class="ic"><use href="#i-bolt"/></svg>次電壓 SVLT</div><div class="v mono" id="svlt">12.8<span class="u">V</span></div></div>
+              <div class="stat"><div class="k"><svg class="ic"><use href="#i-health"/></svg>健康 SOH</div><div class="v mono">85<span class="u">%</span></div></div>
+            </div>
+          </div>
+
+          <div class="card span2">
+            <h3><svg class="ic"><use href="#i-cells"/></svg>分串電壓 DVOL<span class="hl"></span></h3>
+            <div class="cell"><span class="name mono">CELL 1</span><div class="bar"><i style="width:88%"></i></div><span class="cv mono">3.36 V</span></div>
+            <div class="cell"><span class="name mono">CELL 2</span><div class="bar"><i style="width:85%"></i></div><span class="cv mono">3.34 V</span></div>
+            <div class="cell"><span class="name mono">CELL 3</span><div class="bar"><i style="width:90%"></i></div><span class="cv mono">3.38 V</span></div>
+            <div class="cell"><span class="name mono">CELL 4</span><div class="bar"><i style="width:84%"></i></div><span class="cv mono">3.33 V</span></div>
+          </div>
+
+          <div class="card span2">
+            <h3><svg class="ic"><use href="#i-shield"/></svg>防護狀態 / 模式<span class="hl"></span></h3>
+            <div class="statusrow">
+              <div class="badge active"><svg class="bi"><use href="#i-power"/></svg><div class="t">運行模式</div><div class="s">正常</div></div>
+              <div class="badge active"><svg class="bi"><use href="#i-health"/></svg><div class="t">電容狀態</div><div class="s">正常</div></div>
+              <div class="badge"><svg class="bi"><use href="#i-power"/></svg><div class="t">斷電</div><div class="s">關閉</div></div>
+            </div>
+            <div class="ctrlrow">
+              <button class="btn ghost"><svg class="ic"><use href="#i-health"/></svg>檢測電容</button>
+              <button class="btn warn"><svg class="ic"><use href="#i-power"/></svg>解除斷電</button>
+            </div>
+            <div class="note"><svg class="ic"><use href="#i-warn"/></svg>本機已偵測為「超級電容」，僅顯示支援的功能（防盜模式僅在支援的電池型號出現）。解除斷電後建議勿再上鎖；電容本身過壓/低壓/過溫保護仍有效。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div class="page" id="page-hist">
+        <div class="toolrow">
+          <div class="chip on">全部</div><div class="chip">今天</div><div class="chip">警告</div>
+          <div class="grow"></div>
+          <div class="chip" style="background:var(--amber);color:#1a1205;font-weight:700;border-color:transparent"><svg class="ic"><use href="#i-dl"/></svg>匯出 CSV</div>
+        </div>
+        <div class="card" style="padding:11px">
+          <div class="hrow"><div class="time mono">13:09:12</div><div class="grow"><div class="hv mono">13.42 V · 28°C</div><div class="hsub">SOH 85% · 電流 2.4A</div></div><div class="tag">正常</div></div>
+          <div class="hrow"><div class="time mono">13:08:12</div><div class="grow"><div class="hv mono">13.40 V · 28°C</div><div class="hsub">SOH 85% · 電流 2.3A</div></div><div class="tag">正常</div></div>
+          <div class="hrow"><div class="time mono">13:07:12</div><div class="grow"><div class="hv mono">12.10 V · 31°C</div><div class="hsub">SOH 84% · 低電壓警告</div></div><div class="tag w">警告</div></div>
+          <div class="hrow"><div class="time mono">13:06:12</div><div class="grow"><div class="hv mono">13.38 V · 27°C</div><div class="hsub">SOH 85% · 電流 1.9A</div></div><div class="tag">正常</div></div>
+          <div class="hrow"><div class="time mono">13:05:12</div><div class="grow"><div class="hv mono">13.41 V · 27°C</div><div class="hsub">斷電已解除</div></div><div class="tag e">事件</div></div>
+        </div>
+        <div class="card" style="text-align:center;color:var(--muted);font-size:11px">共 1,284 筆 · 本機 SQLite · 可匯出 CSV / 分享</div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="page" id="page-set">
+        <div class="card">
+          <h3><svg class="ic"><use href="#i-bt"/></svg>連線<span class="hl"></span></h3>
+          <div class="srow"><div class="sl">自動重連<small>連線中斷時自動嘗試重連</small></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+          <div class="srow"><div class="sl">輪詢間隔<small>遙測更新頻率</small></div><div class="seg"><button>0.5s</button><button class="on">1s</button><button>2s</button></div></div>
+          <div class="srow"><div class="sl">背景保持連線<small>螢幕關閉時持續紀錄</small></div><div class="toggle" onclick="this.classList.toggle('on')"><i></i></div></div>
+        </div>
+        <div class="card">
+          <h3><svg class="ic"><use href="#i-gauge"/></svg>顯示<span class="hl"></span></h3>
+          <div class="srow"><div class="sl">深色主題</div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+          <div class="srow"><div class="sl">語言 Language</div><div class="seg"><button class="on">繁中</button><button>EN</button></div></div>
+          <div class="srow"><div class="sl">溫度單位</div><div class="seg"><button class="on">°C</button><button>°F</button></div></div>
+        </div>
+        <div class="card">
+          <h3><svg class="ic"><use href="#i-doc"/></svg>資料<span class="hl"></span></h3>
+          <div class="srow"><div class="sl">自動紀錄<small>連線時自動寫入歷史</small></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-dl"/></svg>匯出全部資料 (CSV)</div><svg class="chev"><use href="#i-chev"/></svg></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-trash"/></svg>清除歷史紀錄</div><svg class="chev"><use href="#i-chev"/></svg></div>
+        </div>
+        <div class="card">
+          <h3><svg class="ic"><use href="#i-bug"/></svg>診斷 / 開發者<span class="hl"></span></h3>
+          <div class="srow"><div class="sl">記錄原始藍牙封包<small>記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。<b style="color:var(--amber)">預設關閉</b></small></div><div class="toggle" onclick="this.classList.toggle('on')"><i></i></div></div>
+          <div class="srow"><div class="sl">日誌容量上限<small>超過自動輪替覆蓋</small></div><div class="seg"><button class="on">5 MB</button><button>20 MB</button></div></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-dl"/></svg>匯出診斷日誌 (.log)</div><svg class="chev"><use href="#i-chev"/></svg></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-trash"/></svg>清除診斷日誌</div><svg class="chev"><use href="#i-chev"/></svg></div>
+        </div>
+        <div class="card">
+          <h3>關於<span class="hl"></span></h3>
+          <div class="srow"><div class="sl">版本<small>Open-RCE-Batt 社群版</small></div><span class="mono" style="color:var(--muted)">v0.1.0</span></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-gh"/></svg>GitHub 專案頁面</div><svg class="chev"><use href="#i-chev"/></svg></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-doc"/></svg>協定文件 PROTOCOL.md</div><svg class="chev"><use href="#i-chev"/></svg></div>
+          <div class="srow"><div class="sl link"><svg class="ic"><use href="#i-link"/></svg>版權與免責聲明</div><svg class="chev"><use href="#i-chev"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="on" onclick="nav('dash',this)"><svg class="ic"><use href="#i-gauge"/></svg>儀表板</button>
+      <button onclick="nav('hist',this)"><svg class="ic"><use href="#i-clock"/></svg>歷史</button>
+      <button onclick="nav('set',this)"><svg class="ic"><use href="#i-gear"/></svg>設定</button>
+    </div>
+  </div>
+</div>
+
+<p style="color:var(--muted);font-size:12px;max-width:560px;text-align:center;line-height:1.7">
+  <b style="color:var(--txt)">設計預覽（mockup）</b>，資料為模擬。上方可切直式／橫式、重看開場聲明、切換連線。icon 全為自製 SVG 線性圖示。
+</p>
+
+<script>
+  // build instrument gauge with tick marks + amber arc
+  function buildGauge(pct){
+    const cx=103,cy=103,r=84,start=135,sweep=270;
+    let s=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#222932" stroke-width="2"/>`;
+    // ticks
+    for(let i=0;i<=30;i++){
+      const a=(start+sweep*i/30)*Math.PI/180;
+      const major=i%5===0, rl=major?12:7;
+      const x1=cx+Math.cos(a)*(r-2),y1=cy+Math.sin(a)*(r-2);
+      const x2=cx+Math.cos(a)*(r-2-rl),y2=cy+Math.sin(a)*(r-2-rl);
+      s+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${major?'#5a6678':'#333b46'}" stroke-width="${major?1.6:1}"/>`;
+    }
+    // value arc
+    const ar=r+9, a0=start*Math.PI/180, a1=(start+sweep*pct)*Math.PI/180;
+    const large=sweep*pct>180?1:0;
+    const x0=cx+Math.cos(a0)*ar,y0=cy+Math.sin(a0)*ar,x1=cx+Math.cos(a1)*ar,y1=cy+Math.sin(a1)*ar;
+    s+=`<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${ar} ${ar} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="#f6a821" stroke-width="3" stroke-linecap="round"/>`;
+    // pointer
+    const pr=r-16,px=cx+Math.cos(a1)*pr,py=cy+Math.sin(a1)*pr;
+    s+=`<line x1="${cx}" y1="${cy}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="#f6a821" stroke-width="2.2" stroke-linecap="round"/>`;
+    s+=`<circle cx="${cx}" cy="${cy}" r="4" fill="#1b1f27" stroke="#f6a821" stroke-width="1.6"/>`;
+    document.getElementById('gaugeSvg').innerHTML=s;
+  }
+  buildGauge(0.62);
+
+  function setOri(o){const d=document.getElementById('device');d.classList.remove('portrait','landscape');d.classList.add(o);
+    document.getElementById('btnP').classList.toggle('on',o==='portrait');document.getElementById('btnL').classList.toggle('on',o==='landscape');}
+  function nav(p,el){document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));document.getElementById('page-'+p).classList.add('on');
+    document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));el.classList.add('on');}
+  function showModal(){document.getElementById('modal').classList.remove('hidden')}
+  function hideModal(){document.getElementById('modal').classList.add('hidden')}
+  function openDev(){document.getElementById('devwrap').classList.remove('hidden')}
+  function closeDev(){document.getElementById('devwrap').classList.add('hidden')}
+  document.getElementById('devwrap').addEventListener('click',e=>{if(e.target.id==='devwrap')closeDev()});
+  function openAlias(v){document.getElementById('aliasInput').value=v||'';document.getElementById('aliasdlg').classList.remove('hidden')}
+  function closeAlias(){document.getElementById('aliasdlg').classList.add('hidden');closeDev()}
+  function pick(v){document.getElementById('aliasInput').value=v}
+  let online=true;
+  function applyConn(){
+    const pill=document.getElementById('connPill');pill.classList.toggle('online',online);
+    document.getElementById('connText').textContent=online?'CONNECTED':'OFFLINE';
+    document.getElementById('emptyState').classList.toggle('on',!online);
+    document.getElementById('dashLive').classList.toggle('off',!online);
+    if(online)document.getElementById('aliasdlg').classList.add('hidden');
+  }
+  function toggleConn(){online=!online;applyConn();closeDev&&document.getElementById('devwrap').classList.add('hidden');}
+  setInterval(()=>{if(!online)return;
+    const pv=(13.2+Math.random()*0.5);document.getElementById('pvlt').textContent=pv.toFixed(2);
+    buildGauge((pv-8)/8);
+    document.getElementById('cur').innerHTML=(1.8+Math.random()*1.2).toFixed(1)+'<span class="u">A</span>';
+    document.getElementById('svlt').innerHTML=(12.6+Math.random()*0.4).toFixed(1)+'<span class="u">V</span>';
+  },1400);
+</script>
+</body>
+</html>

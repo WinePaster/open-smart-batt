@@ -1,0 +1,110 @@
+name: Release APK
+
+# 兩種觸發：
+#   A. 一鍵自動推進 — Actions → Run workflow → 選 bump(patch/minor/major/prerelease)
+#   B. 明確版號     — 推 tag v*.*.*（例 git push origin v0.4.0）
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: '版號推進方式'
+        type: choice
+        default: patch
+        options: [patch, minor, major, prerelease]
+
+permissions:
+  contents: write   # 建立 tag / 發佈 Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # 不中斷進行中的發佈，避免 tag 競態
+
+env:
+  FLUTTER_VERSION: '3.44.4'
+  APP_DIR: app_flutter
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 需要完整 tag 歷史來算下一版
+
+      - name: 計算版號 (versionName) 與 build number (versionCode)
+        id: ver
+        run: |
+          set -e
+          BUILD="${{ github.run_number }}"      # 單調遞增 → Android versionCode
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            VER="${TAG#v}"
+          else
+            # base ONLY from stable tags (exclude -rc/-* prereleases) so prereleases
+            # never out-sort or consume the next stable patch
+            LATEST="$(git tag -l 'v*.*.*' | grep -vE -- '-' | sort -V | tail -n1)"
+            LATEST="${LATEST:-v0.0.0}"
+            BASE="${LATEST#v}"
+            IFS='.' read -r MA MI PA <<< "$BASE"
+            case "${{ github.event.inputs.bump }}" in
+              major) MA=$((MA+1)); MI=0; PA=0; VER="$MA.$MI.$PA" ;;
+              minor) MI=$((MI+1)); PA=0;        VER="$MA.$MI.$PA" ;;
+              patch) PA=$((PA+1));              VER="$MA.$MI.$PA" ;;
+              prerelease) PA=$((PA+1));         VER="$MA.$MI.$PA-rc.${BUILD}" ;;
+            esac
+            TAG="v${VER}"
+          fi
+          PRE=false; [[ "$VER" == *-* ]] && PRE=true
+          echo "VERSION=$VER" >> "$GITHUB_OUTPUT"
+          echo "TAG=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "BUILD=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "PRERELEASE=$PRE" >> "$GITHUB_OUTPUT"
+          echo "→ versionName=$VER  versionCode=$BUILD  tag=$TAG  prerelease=$PRE"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
+
+      - name: 編譯 release APK
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.ver.outputs.VERSION }}" \
+            --build-number="${{ steps.ver.outputs.BUILD }}"
+
+      - name: 重新命名 APK
+        run: |
+          SRC="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
+          OUT="open-rce-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
+          cp "$SRC" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "APK=$OUT" >> "$GITHUB_ENV"
+
+      - name: 發佈 GitHub Release（含 APK）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.TAG }}
+          name: Open-RCE-Batt ${{ steps.ver.outputs.TAG }}
+          prerelease: ${{ steps.ver.outputs.PRERELEASE }}
+          generate_release_notes: true
+          body: |
+            社群自救版 · 非官方 · 非商業。
+            ⚠️ 此 APK 目前為 **debug 簽章**（尚未設定正式簽章金鑰）；**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
+            versionName `${{ steps.ver.outputs.VERSION }}` · versionCode `${{ steps.ver.outputs.BUILD }}`
+          files: |
+            ${{ env.APK }}
+            ${{ env.APK }}.sha256

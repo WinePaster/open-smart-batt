@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-rce-batt"
+version = "0.1.0"
+description = "Community clean-room BLE client for the RCE iBatt smart battery"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Open-RCE-Batt contributors" }]
+keywords = ["ble", "bluetooth", "battery", "ibatt", "rce", "right-to-repair"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Communications",
+]
+dependencies = ["bleak>=0.21"]
+
+[project.urls]
+Homepage = "https://github.com/WinePaster/open-rce-batt"
+
+[project.scripts]
+rce-batt = "rce_batt.cli:main"
+
+[tool.setuptools]
+packages = ["rce_batt"]

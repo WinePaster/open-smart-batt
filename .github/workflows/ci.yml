@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.4'
+  APP_DIR: app_flutter
+
+jobs:
+  analyze-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: pub get
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
+      - name: analyze
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter analyze
+      - name: build debug APK (smoke test)
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter build apk --debug

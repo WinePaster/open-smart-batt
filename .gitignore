@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Flutter / Android (future app)
+**/.dart_tool/
+**/build/
+*.apk
+*.aab
+.gradle/
+local.properties
+key.properties
+*.keystore
+*.jks
+*.iml
+.idea/
+
+# Compiled / native / decompiled binaries — NEVER commit (vendor IP risk)
+*.so
+*.dex
+*.aar
+*.class
+*.smali
+/out_blutter/
+
+# Captures / private data — NEVER commit raw logs or DB (may contain personal data)
+btsnoop*
+*.btsnoop
+bugreport*
+*.ab
+*.db
+*.db-wal
+*.db-shm
+phone_db/
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
