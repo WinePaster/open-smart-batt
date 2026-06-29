@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # BLE transport
-  flutter_blue_plus: ^1.32.0
+  flutter_blue_plus: ^2.3.9
   # Local storage (history, saved devices, settings, diagnostic log)
   sqflite: ^2.3.0
   path: ^1.9.0
