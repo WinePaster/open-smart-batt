@@ -216,7 +216,7 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                 _ScanSectionLabel(scanning: conn.isScanning),
                 if (nearby.isEmpty)
                   _EmptyHint(
-                    conn.isScanning ? '掃描中…' : '附近沒有 RCE 裝置',
+                    conn.isScanning ? '掃描中…' : '附近找不到裝置（確認電容已上電、藍牙開啟，並靠近一點）',
                   )
                 else
                   for (final r in nearby)
@@ -234,7 +234,7 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                 const Padding(
                   padding: EdgeInsets.all(8),
                   child: Text(
-                    '只顯示 RCE 服務 (07b9fff0) 的裝置',
+                    '顯示附近 BLE 裝置；認不出時可看訊號強度或靠近電容再掃',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 11, color: AppColors.muted),
                   ),
@@ -382,8 +382,8 @@ class _ScanSectionLabel extends StatelessWidget {
           Expanded(
             child: Text(
               scanning
-                  ? '附近掃描中… (service 07b9fff0)'
-                  : '附近裝置 (service 07b9fff0)',
+                  ? '附近掃描中…'
+                  : '附近裝置',
               style: _devsecStyle,
             ),
           ),

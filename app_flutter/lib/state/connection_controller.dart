@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
 import '../models/models.dart';
@@ -34,6 +35,17 @@ class ConnectionController extends ChangeNotifier {
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
     _adapterSub = _ble.adapterState.listen(_onAdapterState);
+    _settings.addListener(_updateWakelock);
+  }
+
+  /// Keep the screen awake while connected, when the user enabled the option
+  /// (consumes SettingsController.backgroundKeepAlive). Re-evaluated on link
+  /// state changes and whenever the setting toggles.
+  void _updateWakelock() {
+    final shouldKeep = isOnline && _settings.backgroundKeepAlive;
+    // Fire-and-forget; ignore platform errors (e.g. in unit tests / unsupported
+    // platforms where the plugin channel is absent).
+    WakelockPlus.toggle(enable: shouldKeep).catchError((_) {});
   }
 
   final BleService _ble;
@@ -228,6 +240,7 @@ class ConnectionController extends ChangeNotifier {
         _scheduleReconnect();
       }
     }
+    _updateWakelock();
     notifyListeners();
   }
 
@@ -272,6 +285,8 @@ class ConnectionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _settings.removeListener(_updateWakelock);
+    WakelockPlus.toggle(enable: false).catchError((_) {});
     _reconnectTimer?.cancel();
     _linkSub?.cancel();
     _scanSub?.cancel();

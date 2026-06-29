@@ -67,8 +67,8 @@ class _ConnectionCard extends StatelessWidget {
             ),
           ),
           SettingsRow(
-            label: '輪詢間隔',
-            sub: '遙測更新頻率',
+            label: '自動記錄間隔',
+            sub: '寫入歷史紀錄的頻率（遙測畫面即時更新）',
             trailing: SegmentedControl<int>(
               selected: s.pollIntervalMs,
               onChanged: s.setPollIntervalMs,
@@ -80,8 +80,8 @@ class _ConnectionCard extends StatelessWidget {
             ),
           ),
           SettingsRow(
-            label: '背景保持連線',
-            sub: '螢幕關閉時持續紀錄',
+            label: '連線時保持螢幕喚醒',
+            sub: '螢幕不自動關閉，方便邊騎邊看（連線時生效）',
             last: true,
             trailing: _Toggle(
               value: s.backgroundKeepAlive,
@@ -109,21 +109,6 @@ class _DisplayCard extends StatelessWidget {
       headingIcon: Icons.speed,
       child: Column(
         children: [
-          SettingsRow(
-            label: '深色主題',
-            trailing: _Toggle(value: s.darkTheme, onChanged: s.setDarkTheme),
-          ),
-          SettingsRow(
-            label: '語言 Language',
-            trailing: SegmentedControl<AppLang>(
-              selected: s.lang,
-              onChanged: s.setLang,
-              options: const [
-                (value: AppLang.zhHant, label: '繁中'),
-                (value: AppLang.en, label: 'EN'),
-              ],
-            ),
-          ),
           SettingsRow(
             label: '溫度單位',
             last: true,
