@@ -5,11 +5,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-  # Flutter/Dart 套件（只收非 major：major 升級常含破壞性 API 變更，手動處理）
-  - package-ecosystem: pub
-    directory: /app_flutter
-    schedule:
-      interval: weekly
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+  # Flutter/Dart (pub) updates are managed MANUALLY: even non-major plugin bumps
+  # break `flutter analyze` / the Android build here, so Dependabot pub PRs are
+  # pure noise. Re-enable deliberately if needed.
