@@ -4,8 +4,8 @@
 // emulator / no platform channels). This exercises OUR app DB (not the
 // vendor's): HistoryRepo, DeviceRepo, SettingsRepo, LogRepo.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:open_rce_batt/data/data.dart';
-import 'package:open_rce_batt/models/models.dart';
+import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/models/models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -187,6 +187,37 @@ void main() {
       expect(await repo.isSaved('AA:BB:CC:DD:EE:FF'), isTrue);
       expect(await repo.isSaved('NOPE'), isFalse);
       expect(await repo.getDevice('NOPE'), isNull);
+    });
+
+    // D.3: the v3 schema persists `name` (stable advertised name) and `stale`
+    // so the iOS NSUUID rebind can actually fire after a reinstall. Before the
+    // fix toMap() dropped these columns and they always round-tripped empty.
+    test('persists name + stale, enabling rebind after NSUUID rotation',
+        () async {
+      final repo = DeviceRepo(appDb.db);
+      await repo.upsertSavedDevice(
+        const SavedDevice(
+          id: 'old-nsuuid',
+          alias: '電容 #1',
+          name: 'RCE-SCAP_II',
+          stale: true,
+        ),
+      );
+
+      final d = await repo.getDevice('old-nsuuid');
+      expect(d, isNotNull);
+      expect(d!.name, 'RCE-SCAP_II'); // column now exists + is written
+      expect(d.stale, isTrue);
+
+      // Simulate a reinstall: same physical battery now advertises a NEW
+      // NSUUID. rebindSavedDeviceId must resolve to it via the persisted name.
+      final rebound = rebindSavedDeviceId(
+        savedId: d.id,
+        savedName: d.name,
+        candidates: const {'new-nsuuid': 'RCE-SCAP_II'},
+        useNameKey: true, // iOS
+      );
+      expect(rebound, 'new-nsuuid');
     });
 
     test('upsert replaces an existing device (same id)', () async {

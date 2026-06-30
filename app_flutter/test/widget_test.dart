@@ -12,10 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:open_rce_batt/ble/ble.dart';
-import 'package:open_rce_batt/data/data.dart';
-import 'package:open_rce_batt/main.dart';
-import 'package:open_rce_batt/state/state.dart';
+import 'package:open_smart_batt/ble/ble.dart';
+import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/main.dart';
+import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Inert BleService: never reaches the (unsupported) flutter_blue_plus platform.

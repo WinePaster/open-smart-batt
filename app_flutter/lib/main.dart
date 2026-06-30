@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:open_rce_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -187,14 +187,22 @@ class _RootShellState extends State<RootShell> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: const _BrandAppBar(),
-      body: IndexedStack(
-        index: _tab.index,
-        children: [
-          const DashboardPage(),
-          // Re-keyed on each switch to 歷史 so it reloads the latest records.
-          HistoryScreen(key: ValueKey(_historyEpoch)),
-          const SettingsScreen(),
-        ],
+      // The AppBar already insets the top (status bar / notch / Dynamic Island)
+      // and the NavigationBar insets the bottom (home indicator); guard the
+      // body's horizontal edges too (top: false / bottom: false avoid double
+      // padding). No-op on Android, where these insets are 0.
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: IndexedStack(
+          index: _tab.index,
+          children: [
+            const DashboardPage(),
+            // Re-keyed on each switch to 歷史 so it reloads the latest records.
+            HistoryScreen(key: ValueKey(_historyEpoch)),
+            const SettingsScreen(),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(

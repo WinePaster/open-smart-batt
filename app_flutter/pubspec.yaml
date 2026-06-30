@@ -1,4 +1,4 @@
-name: open_rce_batt
+name: open_smart_batt
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.0+1
+version: 0.6.0+101
 
 environment:
   sdk: ^3.12.2
@@ -65,6 +65,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # On-device e2e harness (integration_test/). Boots the app on a real device
+  # to smoke-test the first frame; the BLE paths still need a physical iPhone +
+  # RCE battery (see integration_test/app_test.dart).
+  integration_test:
+    sdk: flutter
+
   # In-memory / headless sqflite for unit-testing the data layer.
   sqflite_common_ffi: ^2.3.0
 
@@ -81,8 +87,11 @@ dev_dependencies:
 # Launcher icon generation (run: dart run flutter_launcher_icons)
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
   image_path: "assets/icon/icon.png"
+  # iOS App Store rejects icons with an alpha channel; use a pre-flattened
+  # opaque 1024x1024 copy (icon.png onto #0B0D11) for the iOS icon set only.
+  image_path_ios: "assets/icon/icon_ios_opaque.png"
   adaptive_icon_background: "#0B0D11"
   adaptive_icon_foreground: "assets/icon/icon_fg.png"
   min_sdk_android: 21

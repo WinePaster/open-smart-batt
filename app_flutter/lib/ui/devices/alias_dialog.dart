@@ -8,7 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'package:open_rce_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../theme/app_theme.dart';
 
 /// Prompt for a device alias.

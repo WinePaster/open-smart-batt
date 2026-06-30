@@ -68,6 +68,25 @@ class BleService {
   /// keeps receiving the `#` byte; exact cadence is not protocol-critical.
   static const Duration keepAliveInterval = Duration(seconds: 1);
 
+  /// Per-platform connect tuning (D.4). Android's `connectGatt` fails fast on a
+  /// stale handle and frequently bounces on the FIRST attempt, so a few retries
+  /// at a generous timeout are appropriate. iOS's `connectPeripheral` has NO
+  /// native timeout (it waits forever) and a stale/uncached NSUUID never
+  /// resolves, so we use a SINGLE attempt at a SHORT timeout — that way a stale
+  /// saved id surfaces an error in seconds instead of 3×20s = 60s of frozen
+  /// spinner. Both are pure functions of the platform for unit-testing.
+  static const Duration androidConnectTimeout = Duration(seconds: 20);
+  static const Duration iosConnectTimeout = Duration(seconds: 8);
+
+  /// Number of connect attempts to make on [isIOS]. iOS = 1 (no native
+  /// timeout, retrying only multiplies the freeze); Android = 3 (connect-bounce
+  /// recovery).
+  static int connectAttemptsFor({required bool isIOS}) => isIOS ? 1 : 3;
+
+  /// Connect timeout to use on [isIOS].
+  static Duration connectTimeoutFor({required bool isIOS}) =>
+      isIOS ? iosConnectTimeout : androidConnectTimeout;
+
   // ---- outbound streams ----
   final StreamController<TelemetrySample> _telemetry =
       StreamController<TelemetrySample>.broadcast();
@@ -161,13 +180,41 @@ class BleService {
   Future<void> startScan(
       {Duration timeout = const Duration(seconds: 15)}) async {
     if (FlutterBluePlus.isScanningNow) return;
+    // D.1: on iOS the CBCentralManager transitions `.unknown` → `.poweredOn`
+    // asynchronously (a few hundred ms after first init, and only once the
+    // permission dialog is resolved). Calling startScan before the adapter is
+    // on throws a FlutterBluePlusException — so wait (bounded) for `on` first.
+    await _awaitAdapterOn(const Duration(seconds: 6));
     _scanSeen.clear();
     _scan.add(const []);
+    // D.1: do NOT swallow the "Bluetooth must be turned on" / unauthorized
+    // failure — let it propagate so the controller can surface a real UI error
+    // (and distinguish off vs unauthorized via the adapter state).
     await FlutterBluePlus.startScan(
       timeout: timeout,
       androidScanMode: AndroidScanMode.lowLatency,
     );
   }
+
+  /// Wait until the Bluetooth adapter reports `on`, bounded by [timeout]. On
+  /// timeout we fall through (the subsequent startScan will throw the
+  /// FlutterBluePlusException the caller surfaces).
+  Future<void> _awaitAdapterOn(Duration timeout) async {
+    if (FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on) return;
+    try {
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(timeout);
+    } on TimeoutException {
+      // Fall through — startScan will throw and the controller reports it.
+    }
+  }
+
+  /// Deep-link to the OS app-settings page (D.2): used when Bluetooth
+  /// permission is `unauthorized` so the user can grant it. Returns true if the
+  /// settings page was opened.
+  Future<bool> openBluetoothSettings() => openAppSettings();
 
   /// Stop an in-progress scan.
   Future<void> stopScan() async {
@@ -220,8 +267,7 @@ class BleService {
   /// Connect to [deviceId], discover the GATT characteristics, enable notify,
   /// and begin streaming telemetry + keep-alives. Tears down any prior link
   /// first. Emits [BleLinkState] transitions on [linkState].
-  Future<void> connect(String deviceId,
-      {Duration timeout = const Duration(seconds: 20)}) async {
+  Future<void> connect(String deviceId, {Duration? timeout}) async {
     await disconnect();
     await stopScan();
 
@@ -235,20 +281,27 @@ class BleService {
 
     _connSub = device.connectionState.listen(_onConnectionState);
 
-    // Android BLE frequently fails the FIRST connect attempt (connects then
-    // immediately disconnects). Retry a few times so the user taps only once;
-    // suppress teardown on transient drops during the retry window.
-    _retryingConnect = true;
+    // D.4: platform-gate the retry. Android BLE frequently fails the FIRST
+    // connect attempt (connects then immediately disconnects) and fails fast on
+    // a stale handle, so retrying a few times lets the user tap only once. iOS
+    // has no native connect timeout and a stale NSUUID never resolves, so a
+    // single short-timeout attempt surfaces the error in seconds instead of
+    // multiplying the freeze. Suppress teardown on transient drops during the
+    // (Android) retry window.
+    final isIOS = Platform.isIOS;
+    final attempts = connectAttemptsFor(isIOS: isIOS);
+    final effTimeout = timeout ?? connectTimeoutFor(isIOS: isIOS);
+    _retryingConnect = attempts > 1;
     Object? lastErr;
-    for (var attempt = 1; attempt <= 3; attempt++) {
+    for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
         // mtu:null => no MTU negotiation (work within the default ATT MTU 23).
-        await device.connect(mtu: null, timeout: timeout);
+        await device.connect(mtu: null, timeout: effTimeout);
         lastErr = null;
         break;
       } catch (e) {
         lastErr = e;
-        if (attempt < 3) {
+        if (attempt < attempts) {
           await Future<void>.delayed(const Duration(milliseconds: 600));
         }
       }

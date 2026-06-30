@@ -5,8 +5,10 @@
 /// the download page in the browser.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:open_rce_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -42,7 +44,11 @@ Future<void> runUpdateCheck(BuildContext context, {required bool manual}) async 
       title: Text(l10n.updateAvailableTitle(update.latestTag),
           style: TextStyle(fontSize: 16, color: ctx.colors.text)),
       content: Text(
-        l10n.updateAvailableBody(info.version),
+        // iOS has no APK side-load flow; show a neutral release-page message
+        // instead of the Android "download APK / uninstall old build" text.
+        Platform.isIOS
+            ? l10n.updateAvailableBodyIos(info.version)
+            : l10n.updateAvailableBody(info.version),
         style: TextStyle(fontSize: 12.5, height: 1.6, color: ctx.colors.muted),
       ),
       actions: [
@@ -54,7 +60,9 @@ Future<void> runUpdateCheck(BuildContext context, {required bool manual}) async 
         TextButton(
           onPressed: () async {
             Navigator.of(ctx).pop();
-            final url = update.apkUrl ?? update.htmlUrl;
+            // iOS must never open an .apk asset; always use the release page
+            // (D.6). Selection extracted to a pure helper for unit-testing.
+            final url = updateUrlFor(update, isIOS: Platform.isIOS);
             await launchUrl(Uri.parse(url),
                 mode: LaunchMode.externalApplication);
           },

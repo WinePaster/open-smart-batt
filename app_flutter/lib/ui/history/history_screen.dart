@@ -12,7 +12,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:open_rce_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 
@@ -100,6 +100,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() => _exporting = true);
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    // iPad popover anchor (D.7): capture before any await invalidates context.
+    final origin = sharePositionFromContext(context);
     try {
       final csv =
           await _tele.exportHistoryCsv(since: _sinceFor(_range), limit: _rowCap);
@@ -112,9 +114,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       await shareTextAsFile(
         content: csv,
-        filename: 'open-rce-batt-history-${exportStamp()}.csv',
+        filename: 'opensmartbatt-history-${exportStamp()}.csv',
         mimeType: 'text/csv',
         subject: l10n.historyExportSubject,
+        sharePositionOrigin: origin,
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(

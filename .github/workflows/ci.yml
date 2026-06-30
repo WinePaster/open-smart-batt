@@ -41,3 +41,38 @@ jobs:
       - name: build debug APK (smoke test)
         working-directory: ${{ env.APP_DIR }}
         run: flutter build apk --debug
+
+  # iOS compile smoke test. Independent of the Android job above; added by the
+  # iOS port (does NOT alter analyze-build).
+  ios-build:
+    name: iOS compile smoke test (compile-only)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # TODO(maintainer): pin to the exact Xcode that ships Flutter 3.44.4's
+          # toolchain once you confirm it's available on the runner image.
+          # `latest-stable` avoids a missing-version failure until then.
+          xcode-version: latest-stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: pub get
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
+      - name: analyze
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter analyze
+      - name: build iOS (no codesign, compile-only)
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter build ios --debug --no-codesign
+      # IMPORTANT: compile-only. The CI runner / simulator has no Bluetooth radio,
+      # so the flutter_blue_plus scan / connect / keep-alive path (the reason this
+      # app exists) is NEVER exercised here. A green check does NOT mean iOS works
+      # — all functional verification must come from manual on-device QA
+      # (docs/ios-qa-checklist.md, needs an iPhone + a physical RCE battery).

@@ -19,10 +19,12 @@ class Db {
   ///
   /// v2: settings gained `theme_mode TEXT` (tri-state light/dark/auto); the
   /// legacy `dark_theme` bool column is retained for migration.
-  static const int schemaVersion = 2;
+  /// v3: saved_devices gained `name` (stable advertised name, the iOS NSUUID
+  /// rebind key — D.3) and `stale` (failed-to-resolve flag).
+  static const int schemaVersion = 3;
 
   /// On-disk database file name (lives under the platform databases dir).
-  static const String fileName = 'open_rce_batt.db';
+  static const String fileName = 'open_smart_batt.db';
 
   // --- tables ---
   static const String tableHistory = 'history';
@@ -91,6 +93,16 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN theme_mode TEXT',
       );
     }
+    if (from < 3) {
+      // D.3: stable advertised name (iOS NSUUID rebind key) + stale flag.
+      // Additive with safe defaults so pre-v3 rows migrate cleanly.
+      await db.execute(
+        "ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN name TEXT NOT NULL DEFAULT ''",
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN stale INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -122,8 +134,10 @@ class AppDatabase {
     CREATE TABLE ${Db.tableSavedDevices} (
       id TEXT PRIMARY KEY,
       alias TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
       last_seen INTEGER,
-      last_value REAL
+      last_value REAL,
+      stale INTEGER NOT NULL DEFAULT 0
     )
     ''',
     '''

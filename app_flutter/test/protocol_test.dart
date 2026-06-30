@@ -11,8 +11,8 @@
 //   * selector dispatch (each selector folds into the right field; unknowns no-op).
 //   * telemetry decode formulas with hand-computed expected values.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:open_rce_batt/models/models.dart';
-import 'package:open_rce_batt/protocol/protocol.dart';
+import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/protocol/protocol.dart';
 
 // ---------------------------------------------------------------------------
 // Test helpers — build inbound frames with a correct (or deliberately broken)

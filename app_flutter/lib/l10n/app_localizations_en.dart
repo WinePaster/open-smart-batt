@@ -133,6 +133,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String updateAvailableBodyIos(String version) {
+    return 'Current version v$version. Open the GitHub release page to view the latest version and installation notes.';
+  }
+
+  @override
   String get updateLaterButton => 'Later';
 
   @override
@@ -446,7 +451,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyExportCsv => 'Export CSV';
 
   @override
-  String get historyExportSubject => 'Open-RCE-Batt History';
+  String get historyExportSubject => 'OpenSmartBatt History';
 
   @override
   String get historyChartTodayTitle => 'Today\'s Voltage Trend';
@@ -617,7 +622,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsClearHistoryLabel => 'Clear history';
 
   @override
-  String get settingsExportSubjectAllData => 'Open-RCE-Batt all data';
+  String get settingsExportSubjectAllData => 'OpenSmartBatt all data';
 
   @override
   String get settingsClearHistoryTitle => 'Clear history';
@@ -659,7 +664,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogEmpty => 'Diagnostic log is empty';
 
   @override
-  String get settingsExportSubjectDiagLog => 'Open-RCE-Batt diagnostic log';
+  String get settingsExportSubjectDiagLog => 'OpenSmartBatt diagnostic log';
 
   @override
   String get settingsClearLogTitle => 'Clear diagnostic log';
@@ -678,7 +683,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsVersionLabel => 'Version';
 
   @override
-  String get settingsVersionSub => 'Open-RCE-Batt Community Edition';
+  String get settingsVersionSub => 'OpenSmartBatt Community Edition';
 
   @override
   String get settingsCheckUpdateLabel => 'Check for updates';

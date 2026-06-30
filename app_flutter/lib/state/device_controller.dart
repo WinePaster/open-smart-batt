@@ -61,12 +61,14 @@ class DeviceController extends ChangeNotifier {
   Future<void> saveNew(
     String id,
     String alias, {
+    String name = '',
     DateTime? lastSeen,
     double? lastValue,
   }) {
     return save(SavedDevice(
       id: id,
       alias: alias,
+      name: name,
       lastSeen: lastSeen ?? DateTime.now(),
       lastValue: lastValue,
     ));

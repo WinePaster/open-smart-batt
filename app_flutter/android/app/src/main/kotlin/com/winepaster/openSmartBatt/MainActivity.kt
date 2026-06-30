@@ -1,4 +1,4 @@
-package com.winepaster.open_rce_batt
+package com.winepaster.openSmartBatt
 
 import io.flutter.embedding.android.FlutterActivity
 

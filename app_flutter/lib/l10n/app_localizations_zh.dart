@@ -127,6 +127,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String updateAvailableBodyIos(String version) {
+    return '目前版本 v$version。前往 GitHub release 頁面查看最新版本與安裝說明。';
+  }
+
+  @override
   String get updateLaterButton => '稍後';
 
   @override
@@ -425,7 +430,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyExportCsv => '匯出 CSV';
 
   @override
-  String get historyExportSubject => 'Open-RCE-Batt 歷史紀錄';
+  String get historyExportSubject => 'OpenSmartBatt 歷史紀錄';
 
   @override
   String get historyChartTodayTitle => '今日電壓趨勢';
@@ -587,7 +592,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsClearHistoryLabel => '清除歷史紀錄';
 
   @override
-  String get settingsExportSubjectAllData => 'Open-RCE-Batt 全部資料';
+  String get settingsExportSubjectAllData => 'OpenSmartBatt 全部資料';
 
   @override
   String get settingsClearHistoryTitle => '清除歷史紀錄';
@@ -626,7 +631,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLogEmpty => '診斷日誌為空';
 
   @override
-  String get settingsExportSubjectDiagLog => 'Open-RCE-Batt 診斷日誌';
+  String get settingsExportSubjectDiagLog => 'OpenSmartBatt 診斷日誌';
 
   @override
   String get settingsClearLogTitle => '清除診斷日誌';
@@ -644,7 +649,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsVersionLabel => '版本';
 
   @override
-  String get settingsVersionSub => 'Open-RCE-Batt 社群版';
+  String get settingsVersionSub => 'OpenSmartBatt 社群版';
 
   @override
   String get settingsCheckUpdateLabel => '檢查更新';

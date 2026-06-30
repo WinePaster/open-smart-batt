@@ -1,7 +1,7 @@
 # Open-RCE-Batt
 
 > Community self-help · Right-to-repair · Independent clean-room reimplementation
-> An Android app (Flutter) + protocol documentation to keep monitoring RCE smart
+> An Android / iOS app (Flutter) + protocol documentation to keep monitoring RCE smart
 > capacitors/batteries after the vendor's cloud shutdown.
 
 **中文版 → [README.md](./README.md)**
@@ -31,6 +31,20 @@ by their lawful owners.
 - Protocol facts and data formats are functional facts generally not protected by
   copyright; see [`COPYRIGHT.md`](./COPYRIGHT.md).
 
+## Naming (why the project and the app have different names)
+
+This project deliberately **separates the project name from the app's public identity**. App Store / TestFlight review often rejects a non-brand-holder over the vendor's trademarks (Guideline 4.1 / 5.2), so the **published app uses a neutral, non-trademarked identity**, while the open-source project keeps a descriptive name so affected hardware owners can find it.
+
+| Use | Name | Note |
+|---|---|---|
+| Open-source project / GitHub repo | **open-rce-batt** | Describes "serves RCE hardware"; keeps discoverability |
+| App display name (iOS + Android) | **OpenSmartBatt** | Neutral, non-trademarked public identity |
+| iOS bundle id / Android applicationId | **com.winepaster.openSmartBatt** | Consistent across both platforms |
+| Dart package name | open_smart_batt | Internal |
+| Compatible hardware | **RCE** low-carbon capacitors / batteries | Nominative fair use — describes the target hardware, not the app's brand |
+
+> In short: **the app is called OpenSmartBatt, but it is a community client compatible with RCE devices.** References to `RCE` in the code (BLE device-name match, disclaimer, etc.) are functional / nominative, not RCE-as-app-brand.
+
 ## Repository structure
 
 ```
@@ -44,11 +58,11 @@ open-rce-batt/
 │   ├── HCI_CAPTURE_GUIDE.md       community guide to capture unlock packets
 │   ├── VERSIONING.md             version scheme
 │   └── UNVERIFIED.md             items still needing hardware confirmation
-├── app_flutter/                  ★ Android app (Flutter, written from the spec)
+├── app_flutter/                  ★ Android / iOS app (Flutter, written from the spec)
 ├── app/                          reference Python (bleak) CLI client
 ├── tools/parse_btsnoop.py        btsnoop → GATT extractor (privacy-safe)
 ├── mockup/index.html             UI design preview
-└── .github/workflows/            CI + auto-versioned APK release
+└── .github/workflows/            CI (Android + iOS compile smoke test) + auto-versioned APK / IPA release
 ```
 
 `docs/` holds the protocol spec & verification (**facts**). `app_flutter/` and `app/`
@@ -71,11 +85,39 @@ are written **only** from `docs/`, never touching the original app.
 
 ## Install
 
+### Android
+
 - **Build from source (recommended)**: install Flutter, then
   `cd app_flutter && flutter build apk --release`; the APK lands in
   `build/app/outputs/flutter-apk/`.
 - Or let the GitHub Actions **Release APK** workflow produce it (with a SHA256;
   currently debug-signed — verify the hash).
+- Android can be **sideloaded onto any device with no account** (debug-signed APK +
+  SHA256 trust).
+
+### iOS
+
+> **App store name: `OpenSmartBatt`** (bundle id `com.winepaster.openSmartBatt`).
+> The iOS build deliberately uses a neutral, non-trademarked app identity to avoid
+> App Store rejection of a non-brand-holder over the vendor's marks (RCE/iBatt;
+> Guideline 4.1/5.2). The project (repo `open-rce-batt`) is still a community client
+> **compatible with RCE 低碳動能 hardware** — stating "compatible with RCE devices" is
+> nominative fair use and does not conflict with a neutral app identity.
+
+- iOS must be built from source on **macOS + Xcode**: `cd app_flutter && flutter build ios`
+  (contributors can verify locally with `--no-codesign`, no Apple account needed).
+- **iOS has no account-free install path like Android's.** Apple platforms do not allow
+  arbitrary account-free sideloading:
+  - **TestFlight**: requires the maintainer's **paid Apple Developer account**, passing
+    Beta App Review; each build expires after 90 days; external testing is capped at
+    10000 testers.
+  - **App Store**: requires full review + the $99/year account.
+  - A free Apple ID local sideload lasts only 7 days and requires **the user** to own a
+    Mac + Xcode to re-sign.
+- In short: **an owner with only an iPhone and no Mac/Apple account has no directly
+  installable path on iOS.** Set expectations accordingly — do not assume parity with the
+  Android APK flow. See [`docs/VERSIONING.md`](./docs/VERSIONING.md) for the iOS version /
+  IPA notes.
 
 ## Safety note
 

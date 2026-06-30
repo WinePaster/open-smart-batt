@@ -1,7 +1,7 @@
 # Open-RCE-Batt
 
 > 社群自助 · 維修權 · 獨立淨室重製
-> Android App（Flutter）+ 通訊協定文件，用於在原廠雲端關閉後繼續監看 RCE 智慧電容／電池。
+> Android／iOS App（Flutter）+ 通訊協定文件，用於在原廠雲端關閉後繼續監看 RCE 智慧電容／電池。
 
 **English version → [README.en.md](./README.en.md)**
 
@@ -19,6 +19,20 @@
 - 我們**不散布**原廠 App 的任何程式碼、素材、圖示或字串。
 - 通訊協定的事實與資料格式屬功能性事實，依一般理解不受著作權保護；詳見 [`COPYRIGHT.md`](./COPYRIGHT.md)。
 
+## 命名說明（為何專案與 App 名稱不同）
+
+本專案刻意採用**「專案名」與「App 對外身分」分離**的命名，原因是 App Store／TestFlight 審查常以商標理由（Guideline 4.1／5.2）駁回使用廠商品牌的非品牌持有者，因此**上架的 App 採中性、非商標化身分**；而開源專案本身保留描述性名稱以利相容硬體的車主搜尋得到。
+
+| 用途 | 名稱 | 說明 |
+|---|---|---|
+| 開源專案／GitHub repo | **open-rce-batt** | 描述「服務 RCE 硬體」，保留可發現性 |
+| App 顯示名（iOS + Android） | **OpenSmartBatt** | 中性、非商標化的對外身分 |
+| iOS bundle id / Android applicationId | **com.winepaster.openSmartBatt** | 兩平台一致 |
+| Dart 套件名 | open_smart_batt | 內部 |
+| 相容硬體 | **RCE** 低碳動能電容／電池 | 指名性合理使用（nominative）；描述相容對象，非自我品牌 |
+
+> 換言之：**App 叫 OpenSmartBatt，但它是一個相容 RCE 裝置的社群客戶端。** 程式中對 `RCE` 的引用（藍牙裝置名比對、免責聲明等）為功能性／指名性使用，並非以 RCE 作為 App 品牌。
+
 ## 倉庫結構
 
 ```
@@ -31,11 +45,11 @@ open-rce-batt/
 │   ├── HCI_CAPTURE_GUIDE.md      社群擷取解鎖封包指南
 │   ├── VERSIONING.md             版號規則
 │   └── UNVERIFIED.md             仍需硬體確認的項目
-├── app_flutter/                  ★ Android App（Flutter，依規格全新撰寫）
+├── app_flutter/                  ★ Android／iOS App（Flutter，依規格全新撰寫）
 ├── app/                          參考用 Python(bleak) CLI 客戶端
 ├── tools/parse_btsnoop.py        btsnoop → GATT 萃取器（去識別化）
 ├── mockup/index.html             UI 設計預覽
-└── .github/workflows/            CI + 自動版號 APK release
+└── .github/workflows/            CI（Android + iOS 編譯煙霧測試）+ 自動版號 APK / IPA release
 ```
 
 `docs/` 為協定規格與驗證文件（**事實**）。`app_flutter/`、`app/` **僅**依 `docs/` 撰寫，未接觸原廠 App。
@@ -49,8 +63,23 @@ open-rce-batt/
 
 ## 安裝
 
+### Android
+
 - **自行編譯（建議）**：安裝 Flutter，`cd app_flutter && flutter build apk --release`，APK 於 `build/app/outputs/flutter-apk/`。
 - 或由 GitHub Actions 的 **Release APK** 工作流程自動產生（附 SHA256；目前為 debug 簽章，請核對雜湊）。
+- Android 可在**任意裝置免帳號側載**（debug 簽章 APK + SHA256 信任）。
+
+### iOS
+
+> **App 上架名稱：`OpenSmartBatt`**（bundle id `com.winepaster.openSmartBatt`）。
+> iOS 版刻意採用中性、非商標化的 app 身分，避免 App Store 審查就廠商品牌（RCE／iBatt）駁回非品牌持有者（Guideline 4.1／5.2）。本專案（repo `open-rce-batt`）仍是相容 **RCE 低碳動能** 硬體的社群客戶端——「相容 RCE 裝置」屬指名性合理使用，與 app 身分中性並不衝突。
+
+- iOS 需在 **macOS + Xcode** 上自原始碼建置：`cd app_flutter && flutter build ios`（貢獻者本機驗證可用 `--no-codesign`，無需 Apple 帳號）。
+- **iOS 沒有 Android 的免帳號安裝路徑。** Apple 平台不允許任意裝置免帳號側載：
+  - **TestFlight**：需維護者的**付費 Apple Developer 帳號**、通過 Beta App Review，每個 build 90 天到期，外部測試上限 10000 人。
+  - **App Store**：需完整審查 + 每年 99 美元帳號。
+  - 免費 Apple ID 本機側載僅 7 天有效，且要求**使用者自己**擁有 Mac + Xcode 重新簽章。
+- 簡言之：**只有一支 iPhone、沒有 Mac/Apple 帳號的車主，iOS 上沒有可直接安裝的路徑**；請據此設定期待，勿假設與 Android 的 APK 流程對等。詳見 [`docs/VERSIONING.md`](./docs/VERSIONING.md) 的 iOS 版號／IPA 說明。
 
 ## 安全須知
 
@@ -62,6 +91,8 @@ open-rce-batt/
 ## 授權
 
 本專案程式碼採 **GNU GPLv3**（見 [`LICENSE`](./LICENSE)）。散布衍生版或改裝 APK 時**必須一併以 GPLv3 開源**——確保這個社群自救工具永遠對社群開放、不會被閉源或商業化關起來。協定文件（`docs/`）為功能性事實、不受著作權限制。
+
+> **iOS / App Store 散佈：** 為讓 iOS 版（`OpenSmartBatt`）能合法透過 Apple App Store／TestFlight 散佈（純 GPLv3 與 Apple 的 Usage Rules／DRM 衝突），唯一著作權人已依 GPLv3 §7 授予 **App Store 附加許可**；原始碼仍完整以 GPLv3 公開。詳見 [`COPYRIGHT.md`](./COPYRIGHT.md) 的「App Store 散佈例外」。
 
 ## 協定文件
 

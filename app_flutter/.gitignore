@@ -43,3 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# iOS / CocoaPods related
+# Policy: commit Podfile, Podfile.lock and Runner.xcworkspace; ignore Pods/.
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+**/xcuserdata/
+*.ipa
+*.dSYM.zip
+ServiceDefinitions.json

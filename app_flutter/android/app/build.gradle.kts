@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.winepaster.open_rce_batt"
+    namespace = "com.winepaster.openSmartBatt"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.winepaster.open_rce_batt"
+        applicationId = "com.winepaster.openSmartBatt"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // flutter_blue_plus (BLE) requires API 21+. Never go below 21.

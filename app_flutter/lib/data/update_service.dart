@@ -28,6 +28,16 @@ class UpdateInfo {
   final String? apkUrl;
 }
 
+/// Pick the URL the "download" action should open for a given platform (D.6).
+/// Pure + unit-testable (no `dart:io` Platform read here — the caller passes
+/// [isIOS]).
+///
+/// iOS has no APK side-load path, so it must ALWAYS open the release page
+/// ([UpdateInfo.htmlUrl]) and never an `.apk` asset. Android prefers the direct
+/// [UpdateInfo.apkUrl] when present, falling back to the release page.
+String updateUrlFor(UpdateInfo update, {required bool isIOS}) =>
+    isIOS ? update.htmlUrl : (update.apkUrl ?? update.htmlUrl);
+
 class UpdateService {
   const UpdateService();
 

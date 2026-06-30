@@ -18,11 +18,16 @@ enum BleLinkState { disconnected, connecting, connected, ready, disconnecting }
 
 /// A device found while scanning on the vendor service UUID (mockup screen 3).
 class DiscoveredDevice {
-  /// Platform remote id (Android: MAC; iOS: a UUID). Stable per device; this is
-  /// the `id` used by [SavedDevice] and by [BleService.connect].
+  /// Platform remote id (Android: MAC; iOS: an install-scoped NSUUID). On
+  /// Android this is globally stable; on iOS it is volatile (changes on
+  /// reinstall / differs per phone), so [SavedDevice] rebinds it against the
+  /// stable advertised [name] on each fresh discovery (D.3). Used by
+  /// [BleService.connect].
   final String id;
 
-  /// Advertised name (may be empty — the protocol does not filter by name).
+  /// Advertised local name (may be empty — the protocol does not filter by
+  /// name). On iOS this is the STABLE secondary key used to rebind a volatile
+  /// NSUUID (D.3).
   final String name;
 
   /// Signal strength (dBm); larger (closer to 0) is stronger.

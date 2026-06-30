@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:open_rce_batt/protocol/protocol.dart';
+import 'package:open_smart_batt/protocol/protocol.dart';
 
 void main() {
   group('CommandBuilder.parseAuthValue ("use my code" direct entry)', () {

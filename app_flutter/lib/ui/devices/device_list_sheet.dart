@@ -13,10 +13,12 @@
 /// from docs/PROTOCOL.md (service 07b9fff0, RSSI). State via provider.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:open_rce_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../ble/ble.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -46,9 +48,13 @@ Future<void> showDeviceListSheet(BuildContext context) async {
   if (devices.isSaved(connectedNewId)) return; // already named elsewhere
 
   final tele = host.read<TelemetryController>();
+  // Capture the stable advertised name now (D.3): on iOS the saved id is a
+  // volatile NSUUID, so the name is what rebinds the record after a reinstall.
+  final advName = host.read<ConnectionController>().connectedDeviceName;
   final alias = await showAliasDialog(host);
   if (alias == null || !host.mounted) return;
-  await devices.saveNew(connectedNewId, alias, lastValue: tele.pvlt);
+  await devices.saveNew(connectedNewId, alias,
+      name: advName, lastValue: tele.pvlt);
 }
 
 /// The sheet body (mockup `.devpanel`). Starts a scan on open, stops on close.
@@ -75,8 +81,11 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
   void initState() {
     super.initState();
     _conn = context.read<ConnectionController>();
-    // Begin scanning as soon as the sheet appears.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startScan());
+    // Begin scanning as soon as the sheet appears. D.1: startScan now awaits
+    // the adapter and surfaces adapter-off / unauthorized as real errors (via
+    // the controller's lastError + the adapter note below) rather than throwing
+    // out of this post-frame callback.
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_startScan()));
   }
 
   @override
@@ -86,9 +95,9 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     super.dispose();
   }
 
-  void _startScan() {
+  Future<void> _startScan() async {
     if (!mounted) return;
-    context.read<ConnectionController>().startScan();
+    await context.read<ConnectionController>().startScan();
   }
 
   Future<void> _rescan() async {
@@ -248,7 +257,13 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                   ),
                 ),
                 _Header(scanning: conn.isScanning, onRescan: _rescan),
-                if (!conn.isAdapterOn) const _AdapterOffNote(),
+                if (!conn.isAdapterOn)
+                  _AdapterOffNote(
+                    // D.2: distinguish "permission denied" (deep-link Settings)
+                    // from "radio off" (toggle Bluetooth).
+                    unauthorized: conn.isAdapterUnauthorized,
+                    onOpenSettings: conn.openBluetoothSettings,
+                  ),
 
                 // ---- saved devices --------------------------------------
                 _SectionLabel(
@@ -750,9 +765,19 @@ class _ConnectButton extends StatelessWidget {
   }
 }
 
-/// Adapter-off banner shown inside the sheet (mockup `.warnbox` tone).
+/// Adapter-off / unauthorized banner shown inside the sheet (mockup `.warnbox`
+/// tone). D.2: when [unauthorized] the message points at the OS Settings (the
+/// Bluetooth *permission* was denied — a radio toggle won't help) and exposes a
+/// deep-link pill via [onOpenSettings]; otherwise it's the plain "turn on
+/// Bluetooth" note.
 class _AdapterOffNote extends StatelessWidget {
-  const _AdapterOffNote();
+  const _AdapterOffNote({
+    this.unauthorized = false,
+    this.onOpenSettings,
+  });
+
+  final bool unauthorized;
+  final Future<void> Function()? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -771,11 +796,42 @@ class _AdapterOffNote extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
+              // NOTE: a dedicated "enable Bluetooth permission in Settings"
+              // string for the unauthorized case is a pending l10n addition;
+              // until then we reuse the adapter-off copy and lean on the
+              // Settings deep-link pill to signal the actionable path.
               l10n.devicesAdapterOff,
               style: const TextStyle(
                   fontSize: 11, height: 1.5, color: AppColors.amber),
             ),
           ),
+          if (unauthorized && onOpenSettings != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () => unawaited(onOpenSettings!.call()),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: context.colors.panel2,
+                  border: Border.all(color: const Color(0x47F6A821)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.settings, size: 13, color: AppColors.amber),
+                    const SizedBox(width: 6),
+                    Text(
+                      l10n.navSettings,
+                      style: const TextStyle(fontSize: 11, color: AppColors.amber),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

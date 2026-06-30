@@ -105,4 +105,46 @@ copyrightable and are not restricted by the GPLv3.
 
 ---
 
+## App Store／受管散佈例外（GPLv3 §7 附加許可）/ App Store Distribution Exception (additional permission under GPLv3 §7)
+
+> 為何需要：純 GPLv3 二進位檔透過 Apple App Store／TestFlight 散佈，會與 Apple 條款對終端使用者施加的 Usage Rules／DRM 衝突（GPL 禁止「進一步限制」）。作為**唯一著作權人**，下列附加許可化解此衝突，使 iOS 版（`OpenSmartBatt`）得以合法上架，同時完整保留使用者對原始碼的 GPL 權利。
+
+### 繁體中文
+
+作為本專案唯一著作權人，**WinePaster** 依 GNU GPLv3 第 7 條，對本專案程式碼授予下列**附加許可（additional permission）**：
+
+> 允許將本程式（及其改作版本）透過**受管應用程式散佈平台**（包含但不限於 Apple App Store 與 Apple TestFlight，及功能相當之平台）散佈（convey），並得在該等平台對終端使用者施加之使用條款、Usage Rules 或數位版權管理（DRM）下散佈，**即使**該等條款在 GPL 第 6 條／第 10 條下原屬被禁止之「進一步限制（further restrictions）」。
+
+適用範圍與限制：
+
+1. **僅**適用於透過上述平台散佈**二進位檔**之行為；
+2. **不減損**任何接受者依 GPL 取得**對應原始碼（Corresponding Source）**之權利——完整原始碼持續以純 GPLv3 公開於 <https://github.com/WinePaster/open-rce-batt>；
+3. **不限制**任何人於上述平台之外，行使其依 GPL 使用、研究、修改、再散布之權利；
+4. 依 GPL 第 7 條，任何接受者**得自其取得之副本中移除本附加許可**。
+
+**對未來貢獻者的提醒：** 為維持本例外之有效性，凡併入本專案之具著作權貢獻，均視為以「GPLv3＋本附加許可」相同條款提供；不同意者請勿提交（見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)）。
+
+簽署 / Granted by：**WinePaster** · 2026-06-30
+（授權相關問題請至 GitHub Issues 提出：<https://github.com/WinePaster/open-rce-batt/issues>）
+
+### English
+
+As the sole copyright holder of this project, **WinePaster** grants the following **additional permission** to the project's code under section 7 of the GNU GPLv3:
+
+> You are permitted to convey the Program (and modified versions of it) through **managed application-distribution platforms** — including but not limited to the Apple App Store and Apple TestFlight, and equivalent platforms — and to do so under the terms of use, Usage Rules, or digital rights management (DRM) that such platforms impose on end users, **even though** those terms would otherwise be "further restrictions" prohibited by section 6 / section 10 of the GPL.
+
+Scope and limits:
+
+1. It applies **only** to conveying **binaries** through such platforms;
+2. It does **not** diminish any recipient's right to the **Corresponding Source** under the GPL — the complete source remains publicly available under plain GPLv3 at <https://github.com/WinePaster/open-rce-batt>;
+3. It does **not** restrict anyone from exercising their GPL rights to use, study, modify, and redistribute the Program outside such platforms;
+4. Under section 7 of the GPL, any recipient **may remove this additional permission** from their copy.
+
+**Note to future contributors:** To keep this exception valid, any copyrightable contribution merged into this project is taken to be offered under the same "GPLv3 + this additional permission" terms; if you do not agree, please do not submit (see [`CONTRIBUTING.md`](./CONTRIBUTING.md)).
+
+Signed: **WinePaster** · 2026-06-30
+(For licensing questions, please open a GitHub issue: <https://github.com/WinePaster/open-rce-batt/issues>)
+
+---
+
 *See also: [`README.md`](./README.md), [`CLEANROOM.md`](./CLEANROOM.md), [`CONTRIBUTING.md`](./CONTRIBUTING.md), [`LICENSE`](./LICENSE).*

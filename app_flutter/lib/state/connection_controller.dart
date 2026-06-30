@@ -10,10 +10,11 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show BluetoothAdapterState;
+    show BluetoothAdapterState, FlutterBluePlusException;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
@@ -79,6 +80,13 @@ class ConnectionController extends ChangeNotifier {
   bool _manualDisconnect = false;
   Timer? _reconnectTimer;
   String? _lastError;
+  bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
+  int _reconnectAttempts = 0;
+
+  /// Cap on consecutive auto-reconnect attempts before giving up (D.4). Without
+  /// a cap a stale iOS NSUUID would re-arm forever; capping lets the error
+  /// surface within seconds instead of an endless reconnect loop.
+  static const int maxReconnectAttempts = 5;
 
   // ---- exposed state ----------------------------------------------------
 
@@ -109,6 +117,13 @@ class ConnectionController extends ChangeNotifier {
   /// True if the radio is on.
   bool get isAdapterOn => _adapter == BluetoothAdapterState.on;
 
+  /// True when BLE is unavailable because the OS-level Bluetooth *permission*
+  /// was denied (iOS `CBManagerAuthorization` / Android revoke), as opposed to
+  /// the radio merely being switched off. Drives the D.2 distinction: this case
+  /// needs a "go to Settings" deep-link, NOT a "turn on Bluetooth" prompt.
+  bool get isAdapterUnauthorized =>
+      _adapter == BluetoothAdapterState.unauthorized;
+
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId => _ble.connectedDeviceId ?? _desiredDeviceId;
 
@@ -129,9 +144,20 @@ class ConnectionController extends ChangeNotifier {
   /// Query the adapter state directly (true if the radio is on).
   Future<bool> checkAdapterOn() => _ble.isAdapterOn();
 
+  /// Deep-link to the OS app-settings page so the user can grant Bluetooth
+  /// permission (D.2 — only meaningful when [isAdapterUnauthorized]).
+  Future<void> openBluetoothSettings() async {
+    await _ble.openBluetoothSettings();
+  }
+
   // ---- scanning ---------------------------------------------------------
 
   /// Start a vendor-service-filtered scan after ensuring permissions.
+  ///
+  /// D.1/D.2: a failed startScan (adapter off / unauthorized) is surfaced as a
+  /// real error via [lastError] instead of being swallowed, distinguishing the
+  /// `bluetooth_unauthorized` (needs Settings deep-link) and `bluetooth_off`
+  /// (needs the radio toggled) cases.
   Future<void> startScan(
       {Duration timeout = const Duration(seconds: 15)}) async {
     final ok = await _ble.ensurePermissions();
@@ -141,20 +167,37 @@ class ConnectionController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _wantScan = true;
     _event('scan start');
-    await _ble.startScan(timeout: timeout);
+    try {
+      await _ble.startScan(timeout: timeout);
+      _lastError = null;
+    } on FlutterBluePlusException catch (e) {
+      _lastError = _adapter == BluetoothAdapterState.unauthorized
+          ? 'bluetooth_unauthorized'
+          : 'bluetooth_off';
+      _event('scan failed ($_lastError): ${e.description ?? e.code}');
+      notifyListeners();
+    } catch (e) {
+      _lastError = e.toString();
+      _event('scan failed: $e');
+      notifyListeners();
+    }
   }
 
   /// Stop the current scan.
-  Future<void> stopScan() => _ble.stopScan();
+  Future<void> stopScan() {
+    _wantScan = false;
+    return _ble.stopScan();
+  }
 
   // ---- connection -------------------------------------------------------
 
   /// Connect to a device by BLE id. Cancels any pending auto-reconnect, ensures
   /// permissions, and remembers the id as the auto-reconnect target.
-  Future<void> connect(String deviceId,
-      {Duration timeout = const Duration(seconds: 20)}) async {
+  Future<void> connect(String deviceId, {Duration? timeout}) async {
     _reconnectTimer?.cancel();
+    _reconnectAttempts = 0; // fresh manual connect resets the backoff
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
     _lastError = null;
@@ -179,7 +222,33 @@ class ConnectionController extends ChangeNotifier {
   }
 
   /// Connect to a previously-saved device.
-  Future<void> connectToSaved(SavedDevice device) => connect(device.id);
+  ///
+  /// D.3: on iOS the saved NSUUID is install-scoped and may be stale, so we
+  /// rebind it to a freshly-discovered device advertising the same name before
+  /// connecting. If neither the saved id nor a name match is currently visible,
+  /// the connect surfaces a `device_stale` error (no infinite retry — D.4 caps
+  /// the reconnect loop). Android keeps using the stable MAC unchanged.
+  Future<void> connectToSaved(SavedDevice device) async {
+    final targetId = rebindSavedDeviceId(
+      savedId: device.id,
+      savedName: device.name,
+      candidates: {for (final r in _scanResults) r.id: r.name},
+      useNameKey: Platform.isIOS,
+    );
+    if (targetId != device.id) {
+      _event('rebound saved id ${device.id} → $targetId (name=${device.name})');
+    }
+    try {
+      await connect(targetId);
+    } catch (e) {
+      // iOS: a failed connect to a saved record usually means the NSUUID is
+      // stale — flag it so the UI can prompt a re-pick instead of spinning.
+      if (Platform.isIOS) _lastError = 'device_stale';
+      _event('saved connect failed${Platform.isIOS ? ' (stale?)' : ''}: $e');
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   /// User-initiated disconnect (suppresses auto-reconnect).
   Future<void> disconnect() async {
@@ -248,6 +317,7 @@ class ConnectionController extends ChangeNotifier {
 
     if (s == BleLinkState.ready) {
       _lastError = null;
+      _reconnectAttempts = 0; // healthy link clears the backoff counter
       // Stamp last-seen on the saved entry (if any).
       final id = _ble.connectedDeviceId;
       if (id != null) {
@@ -270,7 +340,19 @@ class ConnectionController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     final id = _desiredDeviceId;
     if (id == null) return;
-    _reconnectTimer = Timer(const Duration(seconds: 3), () async {
+    // D.4: cap the auto-reconnect loop. A stale (iOS) id never resolves, so an
+    // uncapped loop would re-arm forever; after [maxReconnectAttempts] we give
+    // up and surface a real error within seconds.
+    if (_reconnectAttempts >= maxReconnectAttempts) {
+      _lastError = 'reconnect_exhausted';
+      _event('auto-reconnect gave up after $_reconnectAttempts attempts '
+          '(stale device?)');
+      notifyListeners();
+      return;
+    }
+    final delay = reconnectBackoff(_reconnectAttempts);
+    _reconnectAttempts++;
+    _reconnectTimer = Timer(delay, () async {
       if (_manualDisconnect ||
           !_settings.autoReconnect ||
           _desiredDeviceId != id ||
@@ -280,7 +362,8 @@ class ConnectionController extends ChangeNotifier {
       try {
         await _ble.connect(id);
       } catch (_) {
-        // Will surface another disconnected event; back off by rescheduling.
+        // Will surface another disconnected event; back off by rescheduling
+        // (capped + exponentially delayed above).
         if (!_manualDisconnect && _settings.autoReconnect) {
           _scheduleReconnect();
         }
@@ -301,8 +384,19 @@ class ConnectionController extends ChangeNotifier {
   }
 
   void _onAdapterState(BluetoothAdapterState s) {
-    if (_adapter == s) return;
+    final prev = _adapter;
+    if (prev == s) return;
     _adapter = s;
+    // D.2: when the radio / permission resolves to ON after having been
+    // not-yet-on (iOS `.unknown`/`.unauthorized`/`.notDetermined` → `.on`, or
+    // the user toggled the radio), automatically re-fire a scan the user had
+    // asked for so they don't have to tap rescan again.
+    if (s == BluetoothAdapterState.on &&
+        prev != BluetoothAdapterState.on &&
+        _wantScan &&
+        !_scanning) {
+      unawaited(startScan());
+    }
     notifyListeners();
   }
 
@@ -317,4 +411,19 @@ class ConnectionController extends ChangeNotifier {
     _adapterSub?.cancel();
     super.dispose();
   }
+}
+
+/// Exponential auto-reconnect backoff (D.4). Pure + unit-testable.
+///
+/// Returns `base * 2^attempt`, clamped to [cap]. `attempt` is the zero-based
+/// retry index (0 → base, 1 → 2×base, …). Negative inputs are treated as 0.
+Duration reconnectBackoff(
+  int attempt, {
+  Duration base = const Duration(seconds: 2),
+  Duration cap = const Duration(seconds: 30),
+}) {
+  final n = attempt < 0 ? 0 : (attempt > 16 ? 16 : attempt);
+  final ms = base.inMilliseconds * (1 << n);
+  final capMs = cap.inMilliseconds;
+  return Duration(milliseconds: ms > capMs ? capMs : ms);
 }

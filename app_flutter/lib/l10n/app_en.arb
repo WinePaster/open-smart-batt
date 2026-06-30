@@ -52,6 +52,10 @@
   "@updateAvailableBody": {
     "placeholders": { "version": { "type": "String" } }
   },
+  "updateAvailableBodyIos": "Current version v{version}. Open the GitHub release page to view the latest version and installation notes.",
+  "@updateAvailableBodyIos": {
+    "placeholders": { "version": { "type": "String" } }
+  },
   "updateLaterButton": "Later",
   "updateDownloadButton": "Download",
 
@@ -188,7 +192,7 @@
   "historyFilterToday": "Today",
   "historyFilterWarning": "Warnings",
   "historyExportCsv": "Export CSV",
-  "historyExportSubject": "Open-RCE-Batt History",
+  "historyExportSubject": "OpenSmartBatt History",
   "historyChartTodayTitle": "Today's Voltage Trend",
   "historyChartTitle": "Voltage Trend",
   "historyRangeToday": "Today",
@@ -250,7 +254,7 @@
   "settingsAutoLogSub": "Automatically write to history while connected",
   "settingsExportAllLabel": "Export all data (CSV)",
   "settingsClearHistoryLabel": "Clear history",
-  "settingsExportSubjectAllData": "Open-RCE-Batt all data",
+  "settingsExportSubjectAllData": "OpenSmartBatt all data",
   "settingsClearHistoryTitle": "Clear history",
   "settingsClearHistoryBody": "This will delete all telemetry history on this device. This action cannot be undone.",
   "settingsClearConfirm": "Clear",
@@ -263,13 +267,13 @@
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
-  "settingsExportSubjectDiagLog": "Open-RCE-Batt diagnostic log",
+  "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
   "settingsClearLogTitle": "Clear diagnostic log",
   "settingsClearLogBody": "This will delete all raw TX/RX packet records on this device.",
   "settingsLogCleared": "Diagnostic log cleared",
   "settingsAboutHeading": "About",
   "settingsVersionLabel": "Version",
-  "settingsVersionSub": "Open-RCE-Batt Community Edition",
+  "settingsVersionSub": "OpenSmartBatt Community Edition",
   "settingsCheckUpdateLabel": "Check for updates",
   "settingsGithubLabel": "GitHub project page",
   "settingsProtocolDocLabel": "Protocol document PROTOCOL.md",

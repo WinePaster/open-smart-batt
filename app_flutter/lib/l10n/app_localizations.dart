@@ -272,6 +272,12 @@ abstract class AppLocalizations {
   /// **'Current version v{version}. Go to GitHub to download the latest APK; uninstall the old version first before installing (a different signature prevents overwriting).'**
   String updateAvailableBody(String version);
 
+  /// No description provided for @updateAvailableBodyIos.
+  ///
+  /// In en, this message translates to:
+  /// **'Current version v{version}. Open the GitHub release page to view the latest version and installation notes.'**
+  String updateAvailableBodyIos(String version);
+
   /// No description provided for @updateLaterButton.
   ///
   /// In en, this message translates to:
@@ -815,7 +821,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyExportSubject.
   ///
   /// In en, this message translates to:
-  /// **'Open-RCE-Batt History'**
+  /// **'OpenSmartBatt History'**
   String get historyExportSubject;
 
   /// No description provided for @historyChartTodayTitle.
@@ -1091,7 +1097,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsExportSubjectAllData.
   ///
   /// In en, this message translates to:
-  /// **'Open-RCE-Batt all data'**
+  /// **'OpenSmartBatt all data'**
   String get settingsExportSubjectAllData;
 
   /// No description provided for @settingsClearHistoryTitle.
@@ -1169,7 +1175,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsExportSubjectDiagLog.
   ///
   /// In en, this message translates to:
-  /// **'Open-RCE-Batt diagnostic log'**
+  /// **'OpenSmartBatt diagnostic log'**
   String get settingsExportSubjectDiagLog;
 
   /// No description provided for @settingsClearLogTitle.
@@ -1205,7 +1211,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVersionSub.
   ///
   /// In en, this message translates to:
-  /// **'Open-RCE-Batt Community Edition'**
+  /// **'OpenSmartBatt Community Edition'**
   String get settingsVersionSub;
 
   /// No description provided for @settingsCheckUpdateLabel.
