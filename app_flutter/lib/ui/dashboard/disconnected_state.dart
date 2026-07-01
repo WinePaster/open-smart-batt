@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — dashboard disconnected empty state (mockup `.empty`).
+/// OpenSmartBatt — dashboard disconnected empty state (mockup `.empty`).
 ///
 /// Shown when no device is connected: a pulsing Bluetooth glyph, a prompt, a
 /// quick-select list of saved devices (one-tap reconnect) and a "scan others"

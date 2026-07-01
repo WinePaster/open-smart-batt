@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — telemetry snapshot model.
+/// OpenSmartBatt — telemetry snapshot model.
 ///
 /// PURE Dart (no Flutter imports) so the protocol decoder and unit tests can use
 /// it freely. Immutable; the decoder accumulates via [copyWith]. Each inbound

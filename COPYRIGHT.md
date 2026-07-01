@@ -118,14 +118,14 @@ copyrightable and are not restricted by the GPLv3.
 適用範圍與限制：
 
 1. **僅**適用於透過上述平台散佈**二進位檔**之行為；
-2. **不減損**任何接受者依 GPL 取得**對應原始碼（Corresponding Source）**之權利——完整原始碼持續以純 GPLv3 公開於 <https://github.com/WinePaster/open-rce-batt>；
+2. **不減損**任何接受者依 GPL 取得**對應原始碼（Corresponding Source）**之權利——完整原始碼持續以純 GPLv3 公開於 <https://github.com/WinePaster/open-smart-batt>；
 3. **不限制**任何人於上述平台之外，行使其依 GPL 使用、研究、修改、再散布之權利；
 4. 依 GPL 第 7 條，任何接受者**得自其取得之副本中移除本附加許可**。
 
 **對未來貢獻者的提醒：** 為維持本例外之有效性，凡併入本專案之具著作權貢獻，均視為以「GPLv3＋本附加許可」相同條款提供；不同意者請勿提交（見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)）。
 
 簽署 / Granted by：**WinePaster** · 2026-06-30
-（授權相關問題請至 GitHub Issues 提出：<https://github.com/WinePaster/open-rce-batt/issues>）
+（授權相關問題請至 GitHub Issues 提出：<https://github.com/WinePaster/open-smart-batt/issues>）
 
 ### English
 
@@ -136,14 +136,14 @@ As the sole copyright holder of this project, **WinePaster** grants the followin
 Scope and limits:
 
 1. It applies **only** to conveying **binaries** through such platforms;
-2. It does **not** diminish any recipient's right to the **Corresponding Source** under the GPL — the complete source remains publicly available under plain GPLv3 at <https://github.com/WinePaster/open-rce-batt>;
+2. It does **not** diminish any recipient's right to the **Corresponding Source** under the GPL — the complete source remains publicly available under plain GPLv3 at <https://github.com/WinePaster/open-smart-batt>;
 3. It does **not** restrict anyone from exercising their GPL rights to use, study, modify, and redistribute the Program outside such platforms;
 4. Under section 7 of the GPL, any recipient **may remove this additional permission** from their copy.
 
 **Note to future contributors:** To keep this exception valid, any copyrightable contribution merged into this project is taken to be offered under the same "GPLv3 + this additional permission" terms; if you do not agree, please do not submit (see [`CONTRIBUTING.md`](./CONTRIBUTING.md)).
 
 Signed: **WinePaster** · 2026-06-30
-(For licensing questions, please open a GitHub issue: <https://github.com/WinePaster/open-rce-batt/issues>)
+(For licensing questions, please open a GitHub issue: <https://github.com/WinePaster/open-smart-batt/issues>)
 
 ---
 

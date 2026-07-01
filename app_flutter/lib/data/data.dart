@@ -1,4 +1,4 @@
-/// Open-RCE-Batt local data layer — OUR app SQLite (not the vendor's).
+/// OpenSmartBatt local data layer — OUR app SQLite (not the vendor's).
 ///
 /// Barrel for the database opener + repositories. Depends on `models/` and
 /// `package:sqflite`; consumed by the state/controller layer.

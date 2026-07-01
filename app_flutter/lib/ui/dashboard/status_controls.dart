@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — protection status + mode controls (mockup 防護狀態 / 模式).
+/// OpenSmartBatt — protection status + mode controls (mockup 防護狀態 / 模式).
 ///
 /// Three status badges (run-mode / capacitor-health / cut-off) over a row of
 /// capability-gated action buttons:

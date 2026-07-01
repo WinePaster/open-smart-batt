@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — live readout grid (mockup `.grid2` / `.stat`).
+/// OpenSmartBatt — live readout grid (mockup `.grid2` / `.stat`).
 ///
 /// A 2x2 hairline grid of the four headline registers: temperature, main
 /// current, secondary voltage (SVLT) and state-of-health (SOH).

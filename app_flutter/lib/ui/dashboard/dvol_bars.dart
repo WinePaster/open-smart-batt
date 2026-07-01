@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — per-cell DVOL bars (mockup `.cell` / `.bar`).
+/// OpenSmartBatt — per-cell DVOL bars (mockup `.cell` / `.bar`).
 ///
 /// Renders the four series-cell voltages (selector 0x24) as labelled amber
 /// fill bars with a numeric readout. The fill fraction maps each cell voltage

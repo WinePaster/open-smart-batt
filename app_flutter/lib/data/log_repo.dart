@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — diagnostic raw-BLE log repository (mockup settings).
+/// OpenSmartBatt — diagnostic raw-BLE log repository (mockup settings).
 ///
 /// Optional TX/RX hex packet log, only written when `AppSettings.rawPacketLog`
 /// is ON (DEFAULT OFF). Capped/rotated by an approximate byte budget

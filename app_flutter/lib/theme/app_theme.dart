@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — industrial theme (light / dark).
+/// OpenSmartBatt — industrial theme (light / dark).
 ///
 /// Colors/typography lifted from the project's own UI mockup (mockup/index.html
 /// CSS `:root`): carbon background, thin frames, amber accent, cyan secondary,

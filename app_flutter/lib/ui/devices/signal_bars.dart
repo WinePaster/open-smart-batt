@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — RSSI signal-strength bars (mockup `.sig` `.sig i`).
+/// OpenSmartBatt — RSSI signal-strength bars (mockup `.sig` `.sig i`).
 ///
 /// Four ascending bars; bars at-or-below [level] light up [AppColors.good],
 /// the rest stay the neutral `line2` color. Pure presentation widget.

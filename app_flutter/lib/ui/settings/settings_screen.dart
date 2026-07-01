@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — Settings screen (mockup screen 5).
+/// OpenSmartBatt — Settings screen (mockup screen 5).
 ///
 /// Five cards: 連線 (connection), 顯示 (display), 資料 (data), 診斷/開發者
 /// (diagnostics — raw BLE packet log DEFAULT OFF + export `.log`), and 關於
@@ -22,9 +22,9 @@ import '../widgets/industrial.dart';
 
 
 /// Community project links (mockup startup disclaimer + About card).
-const String kGithubUrl = 'https://github.com/WinePaster/open-rce-batt';
+const String kGithubUrl = 'https://github.com/WinePaster/open-smart-batt';
 const String kProtocolUrl =
-    'https://github.com/WinePaster/open-rce-batt/blob/main/docs/PROTOCOL.md';
+    'https://github.com/WinePaster/open-smart-batt/blob/main/docs/PROTOCOL.md';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — device-list UI barrel (mockup screen 3).
+/// OpenSmartBatt — device-list UI barrel (mockup screen 3).
 ///
 /// Import this to reach the device-selection bottom sheet + alias dialog:
 /// `import 'package:open_smart_batt/ui/devices/devices.dart';`

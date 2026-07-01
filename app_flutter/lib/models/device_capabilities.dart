@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — device capability gating (mockup dashboard controls).
+/// OpenSmartBatt — device capability gating (mockup dashboard controls).
 ///
 /// PURE Dart. Drives which controls the dashboard shows: a capacitor exposes
 /// 檢測電容 (detect) + 解除斷電 (release cut-off); anti-theft 防盜 appears only

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — diagnostic raw-packet log entry (mockup settings: diagnostics).
+/// OpenSmartBatt — diagnostic raw-packet log entry (mockup settings: diagnostics).
 ///
 /// PURE Dart. Records raw BLE TX/RX hex when the diagnostics toggle is ON
 /// (DEFAULT OFF). Exportable as a .log file.

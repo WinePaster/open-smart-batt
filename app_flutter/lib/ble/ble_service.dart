@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — BLE transport service (flutter_blue_plus).
+/// OpenSmartBatt — BLE transport service (flutter_blue_plus).
 ///
 /// The single object that talks to the battery over BLE. Everything above it
 /// (the State controllers) consumes only its streams + methods; everything

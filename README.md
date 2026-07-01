@@ -1,4 +1,4 @@
-# Open-RCE-Batt
+# OpenSmartBatt
 
 > 社群自助 · 維修權 · 獨立淨室重製
 > Android／iOS App（Flutter）+ 通訊協定文件，用於在原廠雲端關閉後繼續監看 RCE 智慧電容／電池。
@@ -14,29 +14,21 @@
 ## 重要聲明
 
 - 本專案是**獨立淨室（clean-room）重製**，僅根據**公開可觀察的通訊協定事實**重新撰寫，並非複製原廠程式碼。
-- 本專案**與 RCE 公司、其關係企業或繼承者無任何關聯、背書或授權**。
+- 本專案**與 RCE 低碳動能開發股份有限公司、其關係企業或繼承者無任何關聯、背書或授權**。
 - 本專案為**非商業性質**，目的純粹是協助**已購買** RCE 硬體的擁有者行使維修權（right-to-repair）。
 - 我們**不散布**原廠 App 的任何程式碼、素材、圖示或字串。
 - 通訊協定的事實與資料格式屬功能性事實，依一般理解不受著作權保護；詳見 [`COPYRIGHT.md`](./COPYRIGHT.md)。
 
-## 命名說明（為何專案與 App 名稱不同）
+## 命名說明
 
-本專案刻意採用**「專案名」與「App 對外身分」分離**的命名，原因是 App Store／TestFlight 審查常以商標理由（Guideline 4.1／5.2）駁回使用廠商品牌的非品牌持有者，因此**上架的 App 採中性、非商標化身分**；而開源專案本身保留描述性名稱以利相容硬體的車主搜尋得到。
+專案與 App 共用一個中性名稱：**OpenSmartBatt**（repo `open-smart-batt`、bundle id／applicationId `com.winepaster.openSmartBatt`、Dart 套件 `open_smart_batt`）。名稱刻意中性、非商標化，以避免 App Store／TestFlight 審查就廠商商標（Guideline 4.1／5.2）駁回非品牌持有者。
 
-| 用途 | 名稱 | 說明 |
-|---|---|---|
-| 開源專案／GitHub repo | **open-rce-batt** | 描述「服務 RCE 硬體」，保留可發現性 |
-| App 顯示名（iOS + Android） | **OpenSmartBatt** | 中性、非商標化的對外身分 |
-| iOS bundle id / Android applicationId | **com.winepaster.openSmartBatt** | 兩平台一致 |
-| Dart 套件名 | open_smart_batt | 內部 |
-| 相容硬體 | **RCE** 低碳動能電容／電池 | 指名性合理使用（nominative）；描述相容對象，非自我品牌 |
-
-> 換言之：**App 叫 OpenSmartBatt，但它是一個相容 RCE 裝置的社群客戶端。** 程式中對 `RCE` 的引用（藍牙裝置名比對、免責聲明等）為功能性／指名性使用，並非以 RCE 作為 App 品牌。
+**「RCE」是硬體，不是 App。** OpenSmartBatt 是一個**相容 RCE**（RCE 低碳動能開發股份有限公司／iBatt 品牌）低碳動能電容／電池的社群客戶端。程式與文件中對 `RCE` 的引用（藍牙裝置名比對、非關聯免責聲明、「相容 RCE 裝置」）皆為功能性／指名性合理使用——描述相容硬體，非主張廠商品牌。本專案與 RCE 低碳動能開發股份有限公司、其關係企業或繼承者無任何關聯、背書或授權。
 
 ## 倉庫結構
 
 ```
-open-rce-batt/
+open-smart-batt/
 ├── README.md / README.en.md      說明（中／英）
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
@@ -72,7 +64,7 @@ open-rce-batt/
 ### iOS
 
 > **App 上架名稱：`OpenSmartBatt`**（bundle id `com.winepaster.openSmartBatt`）。
-> iOS 版刻意採用中性、非商標化的 app 身分，避免 App Store 審查就廠商品牌（RCE／iBatt）駁回非品牌持有者（Guideline 4.1／5.2）。本專案（repo `open-rce-batt`）仍是相容 **RCE 低碳動能** 硬體的社群客戶端——「相容 RCE 裝置」屬指名性合理使用，與 app 身分中性並不衝突。
+> iOS 版刻意採用中性、非商標化的 app 身分，避免 App Store 審查就廠商品牌（RCE／iBatt）駁回非品牌持有者（Guideline 4.1／5.2）。本專案（repo `open-smart-batt`）仍是相容 **RCE 低碳動能** 硬體的社群客戶端——「相容 RCE 裝置」屬指名性合理使用，與 app 身分中性並不衝突。
 
 - iOS 需在 **macOS + Xcode** 上自原始碼建置：`cd app_flutter && flutter build ios`（貢獻者本機驗證可用 `--no-codesign`，無需 Apple 帳號）。
 - **iOS 沒有 Android 的免帳號安裝路徑。** Apple 平台不允許任意裝置免帳號側載：

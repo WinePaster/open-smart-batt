@@ -20,7 +20,7 @@ import 'ui/settings/settings_screen.dart';
 import 'ui/util/update_check.dart';
 
 /// Public project page (shown in the community disclaimer + Settings → About).
-const String kProjectUrl = 'https://github.com/WinePaster/open-rce-batt';
+const String kProjectUrl = 'https://github.com/WinePaster/open-smart-batt';
 
 
 Future<void> main() async {
@@ -89,7 +89,7 @@ class _OpenRceBattAppState extends State<OpenRceBattApp> {
       // Rebuild MaterialApp when the theme preference changes.
       child: Consumer<SettingsController>(
         builder: (context, settings, _) => MaterialApp(
-          title: 'Open-RCE-Batt',
+          title: 'OpenSmartBatt',
           debugShowCheckedModeBanner: false,
           // Real light / dark themes (DEFAULT light); `auto` follows the OS.
           theme: AppTheme.light(),

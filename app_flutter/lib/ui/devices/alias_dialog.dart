@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — alias-naming dialog (mockup `.aliasdlg` / `.adlg`).
+/// OpenSmartBatt — alias-naming dialog (mockup `.aliasdlg` / `.adlg`).
 ///
 /// Shown after connecting a freshly-discovered device ("儲存裝置") so the user
 /// can give it a memorable alias for quick reconnect, and reused as the rename

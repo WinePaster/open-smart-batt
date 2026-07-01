@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — outbound command builders (PROTOCOL.md §5 / §6, plus
+/// OpenSmartBatt — outbound command builders (PROTOCOL.md §5 / §6, plus
 /// CAPTURE_VERIFIED §6 replay).
 ///
 /// PURE Dart. Every builder returns the exact bytes that go on the wire to the

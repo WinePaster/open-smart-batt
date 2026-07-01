@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — BLE-layer value types.
+/// OpenSmartBatt — BLE-layer value types.
 ///
 /// Small, Flutter-free-ish models that the State/UI layers consume instead of
 /// depending on `flutter_blue_plus` types directly. This keeps the rest of the

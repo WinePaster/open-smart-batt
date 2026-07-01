@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- BLE permissions (Open-RCE-Batt).
+    <!-- BLE permissions (OpenSmartBatt).
          Android 12+ (API 31+): runtime BLUETOOTH_SCAN + BLUETOOTH_CONNECT.
          Pre-12: legacy BLUETOOTH / BLUETOOTH_ADMIN + ACCESS_FINE_LOCATION
          (location is required to scan for BLE devices below API 31). -->

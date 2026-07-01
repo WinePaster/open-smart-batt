@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — composition root for the state layer.
+/// OpenSmartBatt — composition root for the state layer.
 ///
 /// Opens the app database, constructs the repositories + the BLE service, and
 /// wires the four [ChangeNotifier] controllers. Created once at startup (see

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — GitHub release update check.
+/// OpenSmartBatt — GitHub release update check.
 ///
 /// Queries the public GitHub Releases API for the latest tag and compares it to
 /// the running version. No device data is sent; only GitHub is contacted. The
@@ -41,7 +41,7 @@ String updateUrlFor(UpdateInfo update, {required bool isIOS}) =>
 class UpdateService {
   const UpdateService();
 
-  static const String _repo = 'WinePaster/open-rce-batt';
+  static const String _repo = 'WinePaster/open-smart-batt';
   static const String _api =
       'https://api.github.com/repos/$_repo/releases/latest';
 

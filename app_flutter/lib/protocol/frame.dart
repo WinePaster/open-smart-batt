@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — binary frame primitives.
+/// OpenSmartBatt — binary frame primitives.
 ///
 /// PURE Dart. No Flutter / no IO imports. Everything here is a deterministic
 /// pure function so it can be unit-tested directly.

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — GATT transport constants (CAPTURE_VERIFIED §1 / PROTOCOL.md §3).
+/// OpenSmartBatt — GATT transport constants (CAPTURE_VERIFIED §1 / PROTOCOL.md §3).
 ///
 /// PURE Dart. UUID strings only; the BLE layer wraps them in plugin types.
 library;

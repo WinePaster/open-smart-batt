@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — telemetry history repository.
+/// OpenSmartBatt — telemetry history repository.
 ///
 /// Persists [TelemetrySample] rows (mockup screen 4: History + CSV export).
 /// Rows are written when `AppSettings.autoLog` is on (controller decides).

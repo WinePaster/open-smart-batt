@@ -19,13 +19,13 @@ void main() {
   group('D.6 update URL selection (updateUrlFor)', () {
     const withApk = UpdateInfo(
       latestTag: 'v0.7.0',
-      htmlUrl: 'https://github.com/WinePaster/open-rce-batt/releases/tag/v0.7.0',
-      apkUrl: 'https://github.com/WinePaster/open-rce-batt/releases/'
-          'download/v0.7.0/open-rce-batt.apk',
+      htmlUrl: 'https://github.com/WinePaster/open-smart-batt/releases/tag/v0.7.0',
+      apkUrl: 'https://github.com/WinePaster/open-smart-batt/releases/'
+          'download/v0.7.0/open-smart-batt.apk',
     );
     const noApk = UpdateInfo(
       latestTag: 'v0.7.0',
-      htmlUrl: 'https://github.com/WinePaster/open-rce-batt/releases/tag/v0.7.0',
+      htmlUrl: 'https://github.com/WinePaster/open-smart-batt/releases/tag/v0.7.0',
     );
 
     test('iOS always opens the release page, never the .apk asset', () {

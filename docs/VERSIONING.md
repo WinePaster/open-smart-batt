@@ -56,7 +56,7 @@ CI 偵測到 `v*` tag → 用該版號編 APK → 發佈 Release `v0.4.0`。
 ## APK 命名
 
 ```
-open-rce-batt-v<versionName>-<build>.apk      例：open-rce-batt-v0.4.0-47.apk
+open-smart-batt-v<versionName>-<build>.apk      例：open-smart-batt-v0.4.0-47.apk
 ```
 
 ## iOS 版號（CFBundle 對映、IPA 命名、-rc.N 剝除）
@@ -95,7 +95,7 @@ rc 建置在 iOS 端應導向 TestFlight 內部測試群組（以遞增的 `CFBu
 ### IPA 命名
 
 ```
-open-rce-batt-v<numericVersion>-<build>.ipa   例：open-rce-batt-v0.4.0-47.ipa
+open-smart-batt-v<numericVersion>-<build>.ipa   例：open-smart-batt-v0.4.0-47.ipa
 ```
 
 `<numericVersion>` 為**已剝除後綴**的純數字版本（= `CFBundleShortVersionString`）。

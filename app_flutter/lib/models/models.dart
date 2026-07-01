@@ -1,4 +1,4 @@
-/// Open-RCE-Batt data models — pure Dart, no Flutter imports.
+/// OpenSmartBatt data models — pure Dart, no Flutter imports.
 ///
 /// Barrel export consumed by DB / State / UI layers.
 library;

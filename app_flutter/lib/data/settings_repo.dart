@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — app-settings repository (mockup screen 5).
+/// OpenSmartBatt — app-settings repository (mockup screen 5).
 ///
 /// Persists [AppSettings] as a single row. Includes the diagnostics raw-packet
 /// toggle (DEFAULT OFF), poll interval, theme and units.

@@ -1,4 +1,4 @@
-# Open-RCE-Batt
+# OpenSmartBatt
 
 > Community self-help · Right-to-repair · Independent clean-room reimplementation
 > An Android / iOS app (Flutter) + protocol documentation to keep monitoring RCE smart
@@ -23,32 +23,24 @@ by their lawful owners.
 
 - This is an **independent clean-room reimplementation**, written solely from
   **publicly observable protocol facts**, not by copying the vendor's code.
-- This project is **not affiliated with, endorsed by, or licensed by** RCE, its
-  affiliates, or any successor.
+- This project is **not affiliated with, endorsed by, or licensed by** RCE 低碳動能開發股份有限公司
+  (RCE Low-Carbon Energy Development Co., Ltd.), its affiliates, or any successor.
 - This project is **non-commercial**. Its only purpose is to help owners of
   **already-purchased** RCE hardware exercise their right to repair.
 - We **do not distribute** any of the original app's code, assets, icons, or strings.
 - Protocol facts and data formats are functional facts generally not protected by
   copyright; see [`COPYRIGHT.md`](./COPYRIGHT.md).
 
-## Naming (why the project and the app have different names)
+## Naming
 
-This project deliberately **separates the project name from the app's public identity**. App Store / TestFlight review often rejects a non-brand-holder over the vendor's trademarks (Guideline 4.1 / 5.2), so the **published app uses a neutral, non-trademarked identity**, while the open-source project keeps a descriptive name so affected hardware owners can find it.
+The project and the app share one neutral name: **OpenSmartBatt** (repo `open-smart-batt`, bundle id / applicationId `com.winepaster.openSmartBatt`, Dart package `open_smart_batt`). The name is deliberately neutral / non-trademarked to avoid App Store / TestFlight rejection of a non-brand-holder over the vendor's trademarks (Guideline 4.1 / 5.2).
 
-| Use | Name | Note |
-|---|---|---|
-| Open-source project / GitHub repo | **open-rce-batt** | Describes "serves RCE hardware"; keeps discoverability |
-| App display name (iOS + Android) | **OpenSmartBatt** | Neutral, non-trademarked public identity |
-| iOS bundle id / Android applicationId | **com.winepaster.openSmartBatt** | Consistent across both platforms |
-| Dart package name | open_smart_batt | Internal |
-| Compatible hardware | **RCE** low-carbon capacitors / batteries | Nominative fair use — describes the target hardware, not the app's brand |
-
-> In short: **the app is called OpenSmartBatt, but it is a community client compatible with RCE devices.** References to `RCE` in the code (BLE device-name match, disclaimer, etc.) are functional / nominative, not RCE-as-app-brand.
+**"RCE" is the hardware, not the app.** OpenSmartBatt is a community client *compatible with* RCE (RCE 低碳動能開發股份有限公司 / "iBatt" brand) low-carbon capacitors/batteries. References to `RCE` in the code and docs (BLE device-name match, the non-affiliation disclaimer, "compatible with RCE devices") are functional / nominative fair use — describing the target hardware, not claiming the vendor's brand. This project is not affiliated with, endorsed by, or licensed by RCE 低碳動能開發股份有限公司, its affiliates, or any successor.
 
 ## Repository structure
 
 ```
-open-rce-batt/
+open-smart-batt/
 ├── README.md / README.en.md      docs (zh / en)
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
@@ -100,7 +92,7 @@ are written **only** from `docs/`, never touching the original app.
 > **App store name: `OpenSmartBatt`** (bundle id `com.winepaster.openSmartBatt`).
 > The iOS build deliberately uses a neutral, non-trademarked app identity to avoid
 > App Store rejection of a non-brand-holder over the vendor's marks (RCE/iBatt;
-> Guideline 4.1/5.2). The project (repo `open-rce-batt`) is still a community client
+> Guideline 4.1/5.2). The project (repo `open-smart-batt`) is still a community client
 > **compatible with RCE 低碳動能 hardware** — stating "compatible with RCE devices" is
 > nominative fair use and does not conflict with a neutral app identity.
 

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — PVLT instrument gauge (mockup `buildGauge()` + `.ring`).
+/// OpenSmartBatt — PVLT instrument gauge (mockup `buildGauge()` + `.ring`).
 ///
 /// A 270° tick-ring dial with an amber value arc and pointer, faithfully
 /// reproducing the mockup's hand-built SVG gauge in a [CustomPainter]. The

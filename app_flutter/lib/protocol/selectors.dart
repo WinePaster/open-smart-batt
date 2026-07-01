@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — inbound notification selectors (PROTOCOL.md §5.2 / §8).
+/// OpenSmartBatt — inbound notification selectors (PROTOCOL.md §5.2 / §8).
 ///
 /// An inbound frame is `[0xB8, selector, 0x01, LEN, payload(LEN), XOR]`. The
 /// dispatch key is `byteList[1]` (the selector). These constants name the ones

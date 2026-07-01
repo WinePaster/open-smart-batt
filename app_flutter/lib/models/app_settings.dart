@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — app settings model (mockup screen 5).
+/// OpenSmartBatt — app settings model (mockup screen 5).
 ///
 /// PURE Dart. Persisted as a single key/value row set in our SQLite.
 library;

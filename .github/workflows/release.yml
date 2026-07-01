@@ -89,7 +89,7 @@ jobs:
       - name: 重新命名 APK
         run: |
           SRC="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
-          OUT="open-rce-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
+          OUT="open-smart-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
           cp "$SRC" "$OUT"
           sha256sum "$OUT" | tee "${OUT}.sha256"
           echo "APK=$OUT" >> "$GITHUB_ENV"
@@ -98,7 +98,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.TAG }}
-          name: Open-RCE-Batt ${{ steps.ver.outputs.TAG }}
+          name: OpenSmartBatt ${{ steps.ver.outputs.TAG }}
           prerelease: ${{ steps.ver.outputs.PRERELEASE }}
           generate_release_notes: true
           body: |

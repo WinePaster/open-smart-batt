@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — inbound notification frame model + stream reassembler.
+/// OpenSmartBatt — inbound notification frame model + stream reassembler.
 ///
 /// PURE Dart, no IO. The BLE layer feeds raw notification chunks into
 /// [FrameReassembler.addBytes]; sub-frames fragment across ATT packets, so the

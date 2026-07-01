@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — file export + share helper.
+/// OpenSmartBatt — file export + share helper.
 ///
 /// Writes a text blob (CSV / `.log`) to a temp file and hands it to the system
 /// share sheet via `share_plus`. Used by the History (CSV) and Settings

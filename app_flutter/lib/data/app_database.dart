@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — local SQLite database (OUR app DB, not the vendor's).
+/// OpenSmartBatt — local SQLite database (OUR app DB, not the vendor's).
 ///
 /// Owns connection lifecycle, schema DDL and migrations. Repositories
 /// ([HistoryRepo], [DeviceRepo], [SettingsRepo], [LogRepo]) take the opened

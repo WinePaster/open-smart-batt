@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — dashboard screen (mockup page `#page-dash`).
+/// OpenSmartBatt — dashboard screen (mockup page `#page-dash`).
 ///
 /// Live view: PVLT instrument gauge, the four-up readout grid, the DVOL per-cell
 /// bars and the protection-status / mode-controls card. When no device is

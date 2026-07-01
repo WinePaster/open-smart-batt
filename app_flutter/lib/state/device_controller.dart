@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — saved-device controller (mockup screen 3).
+/// OpenSmartBatt — saved-device controller (mockup screen 3).
 ///
 /// Owns the list of user-remembered batteries + their editable aliases for the
 /// quick-reconnect flow. Backed by [DeviceRepo]; the BLE id is the stable key.

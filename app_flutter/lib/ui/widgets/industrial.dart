@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — shared industrial-theme form widgets (History + Settings).
+/// OpenSmartBatt — shared industrial-theme form widgets (History + Settings).
 ///
 /// Replicates the look of the project's own UI mockup (mockup/index.html):
 /// amber segmented controls, amber filter chips, and the settings-style rows

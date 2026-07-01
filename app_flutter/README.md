@@ -1,4 +1,4 @@
-# open_rce_batt
+# OpenSmartBatt
 
 A new Flutter project.
 

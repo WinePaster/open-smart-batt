@@ -1,4 +1,4 @@
-/// Open-RCE-Batt protocol layer — pure Dart, no Flutter, no IO.
+/// OpenSmartBatt protocol layer — pure Dart, no Flutter, no IO.
 ///
 /// Barrel export. The BLE / State / UI layers depend ONLY on this surface for
 /// wire encoding & decoding. Transport constants live in [gatt].

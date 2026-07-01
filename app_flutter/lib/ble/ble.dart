@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — BLE layer barrel.
+/// OpenSmartBatt — BLE layer barrel.
 ///
 /// The State controllers import this; everything BLE-plugin-specific lives
 /// behind [BleService].

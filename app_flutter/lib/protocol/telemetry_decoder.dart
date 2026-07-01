@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — telemetry decoder (PROTOCOL.md §8 formulas).
+/// OpenSmartBatt — telemetry decoder (PROTOCOL.md §8 formulas).
 ///
 /// PURE Dart, deterministic, no IO. Two surfaces:
 ///   * static per-selector pure functions — easy to unit-test against a frame.

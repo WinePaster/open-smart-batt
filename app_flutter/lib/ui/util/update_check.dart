@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — run a GitHub update check and prompt the user.
+/// OpenSmartBatt — run a GitHub update check and prompt the user.
 ///
 /// Shared by the manual "檢查更新" button (Settings → 關於) and the silent
 /// on-launch check. Never auto-installs: on a newer release it offers to open

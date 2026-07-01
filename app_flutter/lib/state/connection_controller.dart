@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — connection controller (mockup screens 1-3 connection flow).
+/// OpenSmartBatt — connection controller (mockup screens 1-3 connection flow).
 ///
 /// Adapts [BleService] (streams + futures) into a [ChangeNotifier] the UI can
 /// `watch`. Owns: scan lifecycle, the single connection, derived online state,

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — saved-device repository (mockup screen 3).
+/// OpenSmartBatt — saved-device repository (mockup screen 3).
 ///
 /// Stores user-remembered batteries with editable aliases + last-seen metadata
 /// for the quick-reconnect list.

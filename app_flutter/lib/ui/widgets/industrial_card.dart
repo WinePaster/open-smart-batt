@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — industrial panel card (mockup `.card`).
+/// OpenSmartBatt — industrial panel card (mockup `.card`).
 ///
 /// Flat panel, thin frame, with the mockup's L-shaped corner ticks
 /// (`.card::before` / `.card::after`) and an optional section header

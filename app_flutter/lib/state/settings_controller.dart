@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — settings controller (mockup screen 5).
+/// OpenSmartBatt — settings controller (mockup screen 5).
 ///
 /// Owns the live [AppSettings] and persists every mutation through
 /// [SettingsRepo]. Other controllers ([TelemetryController],

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — saved device model (our own SQLite, not the vendor's).
+/// OpenSmartBatt — saved device model (our own SQLite, not the vendor's).
 ///
 /// PURE Dart. Represents a battery the user has chosen to remember, with an
 /// editable alias, for the device-list quick-reconnect flow (mockup screen 3).

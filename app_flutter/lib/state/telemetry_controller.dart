@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — telemetry controller (mockup dashboard + history).
+/// OpenSmartBatt — telemetry controller (mockup dashboard + history).
 ///
 /// Subscribes to [BleService]'s decoded telemetry stream, exposes the latest
 /// [TelemetrySample] plus derived gauge/readout values, drives history

@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — History screen (mockup screen 4).
+/// OpenSmartBatt — History screen (mockup screen 4).
 ///
 /// Trend chart (voltage + temperature, dual auto-scaled axes, drawn with
 /// CustomPaint — no chart dependency) + min/max/avg stats + a record list with

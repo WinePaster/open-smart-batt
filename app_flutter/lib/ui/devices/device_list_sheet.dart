@@ -1,4 +1,4 @@
-/// Open-RCE-Batt — device-list bottom sheet (mockup screen 3, `.devwrap`).
+/// OpenSmartBatt — device-list bottom sheet (mockup screen 3, `.devwrap`).
 ///
 /// A modal bottom sheet listing:
 ///   * 已儲存裝置 — saved batteries (editable alias, signal if nearby,
