@@ -59,6 +59,16 @@ class BleService {
   bool _settingUp = false;
   bool _retryingConnect = false;
 
+  /// Human-readable reason for the most recent disconnect (flutter_blue_plus
+  /// [DisconnectReason]: code + description), or null if none/unknown. Surfaced
+  /// so the controller can log WHY a link dropped (supervision timeout vs a
+  /// peripheral-initiated close), which is what on-device disconnect debugging
+  /// needs. Cross-platform.
+  String? _lastDisconnect;
+
+  /// The most recent disconnect reason (see [_lastDisconnect]).
+  String? get lastDisconnect => _lastDisconnect;
+
   // Cached guids (cheap, but build once).
   static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
   static final Guid _writeGuid = Guid(Gatt.writeCharUuid);
@@ -267,7 +277,8 @@ class BleService {
   /// Connect to [deviceId], discover the GATT characteristics, enable notify,
   /// and begin streaming telemetry + keep-alives. Tears down any prior link
   /// first. Emits [BleLinkState] transitions on [linkState].
-  Future<void> connect(String deviceId, {Duration? timeout}) async {
+  Future<void> connect(String deviceId,
+      {Duration? timeout, bool autoConnect = false}) async {
     await disconnect();
     await stopScan();
 
@@ -280,6 +291,24 @@ class BleService {
     _setState(BleLinkState.connecting);
 
     _connSub = device.connectionState.listen(_onConnectionState);
+
+    if (autoConnect) {
+      // Seamless reconnect: register a PENDING connection and let the OS
+      // (CoreBluetooth on iOS) reconnect the moment the peripheral reappears.
+      // connect() returns immediately here — the connectionState listener above
+      // drives setup once actually connected. mtu must be null with autoConnect;
+      // there is no timeout and no app-level retry loop (the OS holds it). Used
+      // only for re-connecting a link that was previously healthy (a dropped,
+      // known-good device), never for a first connect to a possibly-stale id.
+      _retryingConnect = false;
+      try {
+        await device.connect(mtu: null, autoConnect: true);
+      } catch (e) {
+        await _teardown(emitDisconnected: true);
+        rethrow;
+      }
+      return;
+    }
 
     // D.4: platform-gate the retry. Android BLE frequently fails the FIRST
     // connect attempt (connects then immediately disconnects) and fails fast on
@@ -317,6 +346,11 @@ class BleService {
     if (s == BluetoothConnectionState.connected) {
       await _setupConnection();
     } else if (s == BluetoothConnectionState.disconnected) {
+      // Capture WHY the link dropped (A: cross-platform disconnect diagnostics)
+      // before teardown clears the device handle.
+      final r = _device?.disconnectReason;
+      _lastDisconnect =
+          r == null ? null : 'code=${r.code} ${r.description ?? ''}'.trim();
       // Ignore transient drops while still retrying the initial connect.
       if (_retryingConnect) return;
       await _teardown(emitDisconnected: true);

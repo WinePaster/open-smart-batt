@@ -313,7 +313,12 @@ class ConnectionController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
-    _event('link: ${s.name}');
+    // A: log WHY on a drop (flutter_blue_plus disconnect reason), cross-platform.
+    if (s == BleLinkState.disconnected && _ble.lastDisconnect != null) {
+      _event('link: disconnected (${_ble.lastDisconnect})');
+    } else {
+      _event('link: ${s.name}');
+    }
 
     if (s == BleLinkState.ready) {
       _lastError = null;
@@ -327,13 +332,32 @@ class ConnectionController extends ChangeNotifier {
       // Unexpected drop while we still want this device → try to reconnect.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
-          _desiredDeviceId != null &&
-          (wasOnline || _link == BleLinkState.disconnected)) {
-        _scheduleReconnect();
+          _desiredDeviceId != null) {
+        if (wasOnline && Platform.isIOS) {
+          // B: iOS hands a dropped HEALTHY link to CoreBluetooth autoConnect for
+          // seamless OS-level recovery (no app-level backoff loop). A failed
+          // *initial* connect (not wasOnline) still uses the capped backoff path
+          // so a stale NSUUID surfaces fast (D.4).
+          _armAutoConnect();
+        } else {
+          _scheduleReconnect();
+        }
       }
     }
     _updateWakelock();
     notifyListeners();
+  }
+
+  /// B (iOS): hand reconnection of a dropped healthy link to CoreBluetooth.
+  /// `connect(autoConnect: true)` registers a pending connection that the OS
+  /// re-establishes the moment the peripheral reappears — seamless, no backoff
+  /// loop. Returns immediately; the connectionState stream drives setup.
+  void _armAutoConnect() {
+    _reconnectTimer?.cancel();
+    final id = _desiredDeviceId;
+    if (id == null) return;
+    _event('auto-reconnect: autoConnect armed (iOS)');
+    unawaited(_ble.connect(id, autoConnect: true).catchError((Object _) {}));
   }
 
   void _scheduleReconnect() {
