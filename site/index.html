@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenSmartBatt — 社群電池監看客戶端 / Community battery monitor</title>
+<meta name="description" content="OpenSmartBatt：相容 RCE 低碳動能智慧電容／電池的社群開源監看客戶端。A community, open-source client compatible with RCE low-carbon smart capacitor/battery hardware.">
+<style>
+  /* Palette mirrors the Flutter app's default (light) theme — AppPalette.light + brand accents */
+  :root{ --bg:#F4F6FA; --panel:#FFFFFF; --panel2:#EDF0F5; --line:#D4DAE3; --text:#11151B; --muted:#66707D; --amber:#F6A821; --amber-d:#C8861A; --on-amber:#1A1205; --danger:#FF5765; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,sans-serif}
+  .wrap{max-width:720px;margin:0 auto;padding:28px 20px 64px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+  .brand{font-size:22px;font-weight:700;letter-spacing:.2px}
+  .brand small{display:block;font-size:12px;font-weight:400;color:var(--muted)}
+  .langbtn{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+  h1{font-size:20px;margin:24px 0 8px}
+  h2{font-size:16px;margin:22px 0 6px}
+  p{margin:8px 0}
+  .muted{color:var(--muted);font-size:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 1px 2px rgba(17,21,27,.05)}
+  .warn{border-color:var(--amber);background:#FFF8EA}
+  .warn strong{color:var(--amber-d)}
+  .btn{display:inline-block;background:var(--amber);color:var(--on-amber);font-weight:700;text-decoration:none;padding:12px 18px;border-radius:10px;margin-top:6px}
+  .btn.sec{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:500}
+  .btn[aria-disabled="true"]{opacity:.4;pointer-events:none}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:4px 0}
+  a{color:var(--amber-d)}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.9em}
+  label.gate{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted);margin:10px 0;cursor:pointer}
+  label.gate input{margin-top:4px}
+  footer{margin-top:36px;border-top:1px solid var(--line);padding-top:16px;font-size:13px;color:var(--muted)}
+  /* i18n: default zh; toggling html[lang=en] flips. display:revert keeps spans inline, divs block, li list-item. */
+  .en{display:none}
+  html[lang="en"] .zh{display:none}
+  html[lang="en"] .en{display:revert}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">OpenSmartBatt<small><span class="zh">社群開源 · 維修權 · 非官方</span><span class="en">Community open-source · right-to-repair · unofficial</span></small></div>
+    <button class="langbtn" onclick="toggleLang()">中 / EN</button>
+  </header>
+
+  <!-- What it is -->
+  <div class="zh">
+    <p>OpenSmartBatt 是一個由硬體車主自發維護的<strong>開源監看客戶端</strong>，透過藍牙與您<strong>已購買的 RCE 低碳動能智慧電容／電池</strong>通訊，讓原廠停業後仍能繼續監看與設定自有設備。</p>
+  </div>
+  <div class="en">
+    <p>OpenSmartBatt is a community-maintained <strong>open-source monitoring client</strong> that talks over Bluetooth to <strong>the RCE low-carbon smart capacitor/battery you already own</strong>, so owners can keep monitoring and configuring their own hardware after the vendor shut down.</p>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="card warn">
+    <h2><span class="zh">⚠️ 重要免責聲明（安裝前請閱讀）</span><span class="en">⚠️ Important disclaimer (read before installing)</span></h2>
+    <div class="zh">
+      <ul>
+        <li>本專案<strong>與 RCE 低碳動能開發股份有限公司、其關係企業或繼承者無任何關聯、背書或授權</strong>；名稱僅為指示相容硬體之用。</li>
+        <li>本軟體為<strong>非商業</strong>用途，僅供<strong>已購買硬體的合法擁有者</strong>行使維修權（right-to-repair）自用。</li>
+        <li>本軟體與電池硬體互動，<strong>錯誤設定可能影響電池行為</strong>；請在了解風險下使用。</li>
+        <li><strong>解除斷電／鎖定後請勿重新上鎖</strong>；電池本身的過壓／低壓／過溫保護仍持續有效。</li>
+        <li>本軟體不提供任何擔保（GPLv3）。安裝與使用之風險由使用者自行承擔。</li>
+      </ul>
+    </div>
+    <div class="en">
+      <ul>
+        <li>This project is <strong>not affiliated with, endorsed by, or licensed by</strong> RCE 低碳動能開發股份有限公司 (RCE Low-Carbon Energy Development Co., Ltd.), its affiliates, or any successor; the name is used only to indicate compatible hardware.</li>
+        <li>It is <strong>non-commercial</strong>, for <strong>lawful owners of already-purchased hardware</strong> exercising their right to repair.</li>
+        <li>The software interacts with battery hardware; <strong>incorrect settings may affect battery behavior</strong>. Use only if you understand the risks.</li>
+        <li><strong>Do not re-lock after unlocking cutoff/lock</strong>; the hardware's over-/under-voltage and over-temperature protections remain active.</li>
+        <li>Provided with NO WARRANTY (GPLv3). You install and use it entirely at your own risk.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Android -->
+  <div class="card">
+    <h2>Android</h2>
+    <p class="zh muted">直接安裝最新版 APK（debug 簽章，請以 SHA256 為信任依據，或自行從原始碼編譯）。</p>
+    <p class="en muted">Install the latest APK directly (debug-signed — verify via SHA256, or build from source).</p>
+    <div class="row">
+      <a class="btn" href="https://github.com/WinePaster/open-smart-batt/releases/latest/download/open-smart-batt-latest.apk"><span class="zh">下載最新 APK</span><span class="en">Download latest APK</span></a>
+      <a class="btn sec" href="https://github.com/WinePaster/open-smart-batt/releases/latest"><span class="zh">發布頁 / SHA256</span><span class="en">Release page / SHA256</span></a>
+    </div>
+    <p class="muted" style="margin-top:10px"><span class="zh">＊固定名下載連結需待 CI 發布含 <code>open-smart-batt-latest.apk</code> 的版本後生效；在此之前請用「發布頁」。</span><span class="en">*The fixed-name link works once a release includes <code>open-smart-batt-latest.apk</code>; until then use "Release page".</span></p>
+  </div>
+
+  <!-- iOS -->
+  <div class="card">
+    <h2>iOS (TestFlight)</h2>
+    <p class="zh muted">iOS 無免帳號側載，僅能透過 TestFlight 測試。請先勾選確認已閱讀上方免責聲明。</p>
+    <p class="en muted">iOS has no account-free sideload; testing is via TestFlight only. Please confirm you have read the disclaimer above.</p>
+    <label class="gate"><input type="checkbox" id="agree" onchange="gate()"><span><span class="zh">我已閱讀並同意上方免責聲明，且我是硬體的合法擁有者。</span><span class="en">I have read and agree to the disclaimer above, and I am a lawful owner of the hardware.</span></span></label>
+    <a class="btn" id="tfbtn" aria-disabled="true" href="https://testflight.apple.com/join/REPLACE_AFTER_BETA_REVIEW"><span class="zh">加入 TestFlight</span><span class="en">Join TestFlight</span></a>
+    <p class="muted" style="margin-top:10px"><span class="zh">＊TestFlight 公開連結待 Apple Beta App Review 通過後填入。</span><span class="en">*The TestFlight public link will be added once Apple Beta App Review passes.</span></p>
+  </div>
+
+  <footer>
+    <p><a href="./privacy.html"><span class="zh">隱私權政策</span><span class="en">Privacy policy</span></a> · <a href="https://github.com/WinePaster/open-smart-batt"><span class="zh">原始碼 (GitHub, GPLv3)</span><span class="en">Source (GitHub, GPLv3)</span></a></p>
+    <p class="zh">本站不蒐集任何個人資料。免責聲明的正式同意於 App 首次啟動時進行。</p>
+    <p class="en">This site collects no personal data. Formal disclaimer consent happens in-app on first launch.</p>
+  </footer>
+</div>
+<script>
+  function toggleLang(){ document.documentElement.lang = (document.documentElement.lang==='en') ? 'zh-Hant' : 'en'; }
+  function gate(){ var ok=document.getElementById('agree').checked; document.getElementById('tfbtn').setAttribute('aria-disabled', ok?'false':'true'); }
+</script>
+</body>
+</html>

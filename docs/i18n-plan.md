@@ -1,4 +1,4 @@
-# Open-RCE-Batt — Internationalization (i18n) Implementation Plan
+# OpenSmartBatt — Internationalization (i18n) Implementation Plan
 
 Status: PLAN (not yet implemented)
 Target app: `app_flutter/` (Flutter, Dart SDK `^3.12.2`)
@@ -108,7 +108,7 @@ The `Consumer<SettingsController>` already rebuilds `MaterialApp` on settings ch
 ```dart
 child: Consumer<SettingsController>(
   builder: (context, settings, _) => MaterialApp(
-    title: 'Open-RCE-Batt',
+    title: 'OpenSmartBatt',
     debugShowCheckedModeBanner: false,
     theme: AppTheme.light(),
     darkTheme: AppTheme.dark(),
@@ -310,7 +310,7 @@ Identical strings are deduped into shared keys (`common*`, `relative*`). The "so
 | historyFilterToday | Today | 今天 | — |
 | historyFilterWarning | Warnings | 警告 | — |
 | historyExportCsv | Export CSV | 匯出 CSV | — |
-| historyExportSubject | Open-RCE-Batt History | Open-RCE-Batt 歷史紀錄 | — |
+| historyExportSubject | OpenSmartBatt History | OpenSmartBatt 歷史紀錄 | — |
 | historyChartTodayTitle | Today's Voltage Trend | 今日電壓趨勢 | — |
 | historyChartTitle | Voltage Trend | 電壓趨勢 | — |
 | historyLoadFailed | Failed to load history: {error} | 讀取歷史失敗：{error} | error (String) |
@@ -354,7 +354,7 @@ Identical strings are deduped into shared keys (`common*`, `relative*`). The "so
 | settingsAutoLogSub | Automatically write to history while connected | 連線時自動寫入歷史 | — |
 | settingsExportAllLabel | Export all data (CSV) | 匯出全部資料 (CSV) | — |
 | settingsClearHistoryLabel | Clear history | 清除歷史紀錄 | — |
-| settingsExportSubjectAllData | Open-RCE-Batt all data | Open-RCE-Batt 全部資料 | — |
+| settingsExportSubjectAllData | OpenSmartBatt all data | OpenSmartBatt 全部資料 | — |
 | settingsClearHistoryTitle | Clear history | 清除歷史紀錄 | — |
 | settingsClearHistoryBody | This will delete all telemetry history on this device. This action cannot be undone. | 將刪除本機所有遙測歷史。此動作無法復原。 | — |
 | settingsClearConfirm | Clear | 清除 | — |
@@ -367,13 +367,13 @@ Identical strings are deduped into shared keys (`common*`, `relative*`). The "so
 | settingsExportLogLabel | Export diagnostic log (.log) | 匯出診斷日誌 (.log) | — |
 | settingsClearLogLabel | Clear diagnostic log | 清除診斷日誌 | — |
 | settingsLogEmpty | Diagnostic log is empty | 診斷日誌為空 | — |
-| settingsExportSubjectDiagLog | Open-RCE-Batt diagnostic log | Open-RCE-Batt 診斷日誌 | — |
+| settingsExportSubjectDiagLog | OpenSmartBatt diagnostic log | OpenSmartBatt 診斷日誌 | — |
 | settingsClearLogTitle | Clear diagnostic log | 清除診斷日誌 | — |
 | settingsClearLogBody | This will delete all raw TX/RX packet records on this device. | 將刪除本機所有原始 TX/RX 封包紀錄。 | — |
 | settingsLogCleared | Diagnostic log cleared | 已清除診斷日誌 | — |
 | settingsAboutHeading | About | 關於 | — |
 | settingsVersionLabel | Version | 版本 | — |
-| settingsVersionSub | Open-RCE-Batt Community Edition | Open-RCE-Batt 社群版 | — |
+| settingsVersionSub | OpenSmartBatt Community Edition | OpenSmartBatt 社群版 | — |
 | settingsCheckUpdateLabel | Check for updates | 檢查更新 | — |
 | settingsGithubLabel | GitHub project page | GitHub 專案頁面 | — |
 | settingsProtocolDocLabel | Protocol document PROTOCOL.md | 協定文件 PROTOCOL.md | — |
@@ -698,7 +698,7 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "historyFilterToday": "Today",
   "historyFilterWarning": "Warnings",
   "historyExportCsv": "Export CSV",
-  "historyExportSubject": "Open-RCE-Batt History",
+  "historyExportSubject": "OpenSmartBatt History",
   "historyChartTodayTitle": "Today's Voltage Trend",
   "historyChartTitle": "Voltage Trend",
   "historyLoadFailed": "Failed to load history: {error}",
@@ -748,7 +748,7 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "settingsAutoLogSub": "Automatically write to history while connected",
   "settingsExportAllLabel": "Export all data (CSV)",
   "settingsClearHistoryLabel": "Clear history",
-  "settingsExportSubjectAllData": "Open-RCE-Batt all data",
+  "settingsExportSubjectAllData": "OpenSmartBatt all data",
   "settingsClearHistoryTitle": "Clear history",
   "settingsClearHistoryBody": "This will delete all telemetry history on this device. This action cannot be undone.",
   "settingsClearConfirm": "Clear",
@@ -761,13 +761,13 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
-  "settingsExportSubjectDiagLog": "Open-RCE-Batt diagnostic log",
+  "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
   "settingsClearLogTitle": "Clear diagnostic log",
   "settingsClearLogBody": "This will delete all raw TX/RX packet records on this device.",
   "settingsLogCleared": "Diagnostic log cleared",
   "settingsAboutHeading": "About",
   "settingsVersionLabel": "Version",
-  "settingsVersionSub": "Open-RCE-Batt Community Edition",
+  "settingsVersionSub": "OpenSmartBatt Community Edition",
   "settingsCheckUpdateLabel": "Check for updates",
   "settingsGithubLabel": "GitHub project page",
   "settingsProtocolDocLabel": "Protocol document PROTOCOL.md",
@@ -907,7 +907,7 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "historyFilterToday": "今天",
   "historyFilterWarning": "警告",
   "historyExportCsv": "匯出 CSV",
-  "historyExportSubject": "Open-RCE-Batt 歷史紀錄",
+  "historyExportSubject": "OpenSmartBatt 歷史紀錄",
   "historyChartTodayTitle": "今日電壓趨勢",
   "historyChartTitle": "電壓趨勢",
   "historyLoadFailed": "讀取歷史失敗：{error}",
@@ -945,7 +945,7 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "settingsAutoLogSub": "連線時自動寫入歷史",
   "settingsExportAllLabel": "匯出全部資料 (CSV)",
   "settingsClearHistoryLabel": "清除歷史紀錄",
-  "settingsExportSubjectAllData": "Open-RCE-Batt 全部資料",
+  "settingsExportSubjectAllData": "OpenSmartBatt 全部資料",
   "settingsClearHistoryTitle": "清除歷史紀錄",
   "settingsClearHistoryBody": "將刪除本機所有遙測歷史。此動作無法復原。",
   "settingsClearConfirm": "清除",
@@ -958,13 +958,13 @@ Pre-formatted display values (`value`, `svlt`, `pvlt`, `amps`, and `soh` that ma
   "settingsExportLogLabel": "匯出診斷日誌 (.log)",
   "settingsClearLogLabel": "清除診斷日誌",
   "settingsLogEmpty": "診斷日誌為空",
-  "settingsExportSubjectDiagLog": "Open-RCE-Batt 診斷日誌",
+  "settingsExportSubjectDiagLog": "OpenSmartBatt 診斷日誌",
   "settingsClearLogTitle": "清除診斷日誌",
   "settingsClearLogBody": "將刪除本機所有原始 TX/RX 封包紀錄。",
   "settingsLogCleared": "已清除診斷日誌",
   "settingsAboutHeading": "關於",
   "settingsVersionLabel": "版本",
-  "settingsVersionSub": "Open-RCE-Batt 社群版",
+  "settingsVersionSub": "OpenSmartBatt 社群版",
   "settingsCheckUpdateLabel": "檢查更新",
   "settingsGithubLabel": "GitHub 專案頁面",
   "settingsProtocolDocLabel": "協定文件 PROTOCOL.md",

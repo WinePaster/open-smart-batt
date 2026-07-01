@@ -1,4 +1,4 @@
-# open-rce-batt
+# open-smart-batt
 
 An independent, open-source (**GPLv3**) BLE client for the **RCE iBatt** smart
 battery, written in Python with [`bleak`](https://github.com/hbldh/bleak) so it
@@ -16,7 +16,7 @@ they already own.
 Requires Python 3.9+ and a working BlueZ/BLE stack on Linux.
 
 ```bash
-cd open-rce-batt/app
+cd open-smart-batt/app
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .          # installs the `rce-batt` console command
