@@ -89,15 +89,15 @@ jobs:
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         run: |
           SRC="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
-          OUT="open-rce-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
+          OUT="open-smart-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
           cp "$SRC" "$OUT"
           sha256sum "$OUT" | tee "${OUT}.sha256"
           echo "APK=$OUT" >> "$GITHUB_ENV"
           # 固定名副本：讓散佈網站可永久直連最新穩定版 APK，免查 API／免導頁：
-          #   https://github.com/WinePaster/open-rce-batt/releases/latest/download/open-rce-batt-latest.apk
+          #   https://github.com/WinePaster/open-smart-batt/releases/latest/download/open-smart-batt-latest.apk
           # 註：GitHub 的 /releases/latest/ 只指向最新「非 prerelease」版，故此連結自動跳過 -rc 預發版。
           # 含版本號的原檔名資產仍保留（封存／雜湊信任）；latest 只是額外副本。
-          LATEST="open-rce-batt-latest.apk"
+          LATEST="open-smart-batt-latest.apk"
           cp "$SRC" "$LATEST"
           sha256sum "$LATEST" | tee "${LATEST}.sha256"
           echo "LATEST_APK=$LATEST" >> "$GITHUB_ENV"
