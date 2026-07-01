@@ -169,8 +169,10 @@ class _RootShellState extends State<RootShell> {
   Future<void> _startup() async {
     await _maybeShowDisclaimer();
     if (!mounted) return;
-    // On-launch update check only on mobile (skips unit tests on the host).
-    if (Platform.isAndroid || Platform.isIOS) {
+    // On-launch update check: Android only. iOS updates arrive via TestFlight /
+    // the App Store; GitHub releases carry only the Android APK, so an in-app
+    // GitHub update prompt on iOS would point at an APK the user cannot install.
+    if (Platform.isAndroid) {
       await runUpdateCheck(context, manual: false);
     }
   }

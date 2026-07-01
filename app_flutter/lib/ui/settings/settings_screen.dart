@@ -6,6 +6,8 @@
 /// [SettingsController]; data/log actions go through [TelemetryController].
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -388,11 +390,14 @@ class _AboutCard extends StatelessWidget {
               },
             ),
           ),
-          SettingsLinkRow(
-            icon: Icons.system_update_alt,
-            label: l10n.settingsCheckUpdateLabel,
-            onTap: () => runUpdateCheck(context, manual: true),
-          ),
+          // Android-only: iOS updates come via TestFlight / the App Store, and
+          // GitHub releases carry only the Android APK, so hide this on iOS.
+          if (!Platform.isIOS)
+            SettingsLinkRow(
+              icon: Icons.system_update_alt,
+              label: l10n.settingsCheckUpdateLabel,
+              onTap: () => runUpdateCheck(context, manual: true),
+            ),
           SettingsLinkRow(
             icon: Icons.code,
             label: l10n.settingsGithubLabel,
