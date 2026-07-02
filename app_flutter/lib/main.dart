@@ -47,21 +47,21 @@ Future<void> main() async {
     return true;
   };
 
-  runApp(OpenRceBattApp(services: services));
+  runApp(OpenSmartBattApp(services: services));
 }
 
 /// Root app. Provides the state controllers via [MultiProvider] and owns the
 /// [AppServices] lifecycle (disposed when the app is torn down).
-class OpenRceBattApp extends StatefulWidget {
-  const OpenRceBattApp({super.key, required this.services});
+class OpenSmartBattApp extends StatefulWidget {
+  const OpenSmartBattApp({super.key, required this.services});
 
   final AppServices services;
 
   @override
-  State<OpenRceBattApp> createState() => _OpenRceBattAppState();
+  State<OpenSmartBattApp> createState() => _OpenSmartBattAppState();
 }
 
-class _OpenRceBattAppState extends State<OpenRceBattApp> {
+class _OpenSmartBattAppState extends State<OpenSmartBattApp> {
   @override
   void dispose() {
     // Fire-and-forget teardown of streams / BLE link / DB on app exit.
@@ -290,7 +290,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'OPEN-RCE-BATT',
+                'OPENSMARTBATT',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -446,7 +446,7 @@ class _DisclaimerDialog extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                'OPEN-RCE-BATT',
+                'OPENSMARTBATT',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 19,

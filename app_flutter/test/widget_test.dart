@@ -55,7 +55,7 @@ void main() {
       );
     });
 
-    await tester.pumpWidget(OpenRceBattApp(services: services));
+    await tester.pumpWidget(OpenSmartBattApp(services: services));
     // A couple of frames to let the provider graph + first build settle.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -64,11 +64,11 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(RootShell), findsOneWidget);
     // Brand mark from the app bar (mockup `.appbar`).
-    expect(find.text('OPEN-RCE-BATT'), findsWidgets);
+    expect(find.text('OPENSMARTBATT'), findsWidgets);
     // Nothing threw while building the tree.
     expect(tester.takeException(), isNull);
 
-    // Note: OpenRceBattApp.dispose() tears down `services` (controllers, BLE,
+    // Note: OpenSmartBattApp.dispose() tears down `services` (controllers, BLE,
     // DB) when the test framework unmounts the tree, so we don't dispose here
     // (doing so would double-dispose the ChangeNotifiers).
   });
