@@ -65,7 +65,7 @@ void main() {
       );
     });
 
-    await tester.pumpWidget(OpenRceBattApp(services: services));
+    await tester.pumpWidget(OpenSmartBattApp(services: services));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
