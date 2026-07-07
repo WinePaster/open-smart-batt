@@ -356,11 +356,23 @@ abstract class AppLocalizations {
   /// **'Health SOH'**
   String get dashboardReadoutSohLabel;
 
+  /// No description provided for @dashboardSerialLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Serial No.'**
+  String get dashboardSerialLabel;
+
   /// No description provided for @dashboardDvolHeading.
   ///
   /// In en, this message translates to:
   /// **'Per-Cell Voltage DVOL'**
   String get dashboardDvolHeading;
+
+  /// No description provided for @dashboardDvolPendingNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.'**
+  String get dashboardDvolPendingNote;
 
   /// No description provided for @dashboardProtectionHeading.
   ///
@@ -1255,6 +1267,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.'**
   String get settingsAboutDialogWarning;
+
+  /// No description provided for @packLabelIdentifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Identifying…'**
+  String get packLabelIdentifying;
+
+  /// No description provided for @packLabelAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-detect'**
+  String get packLabelAuto;
+
+  /// No description provided for @packLabelChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Set device type'**
+  String get packLabelChoose;
+
+  /// No description provided for @powerBankSocCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'SOC · State of Charge'**
+  String get powerBankSocCaption;
+
+  /// No description provided for @powerBankSocSubUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Cell -- V'**
+  String get powerBankSocSubUnknown;
+
+  /// No description provided for @powerBankCellSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Cell {volts} V'**
+  String powerBankCellSub(String volts);
+
+  /// No description provided for @powerBankSocReadoutLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Charge SOC'**
+  String get powerBankSocReadoutLabel;
+
+  /// No description provided for @powerBankCellVoltageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cell Voltage'**
+  String get powerBankCellVoltageLabel;
+
+  /// No description provided for @powerBankOutputVoltageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Output Voltage'**
+  String get powerBankOutputVoltageLabel;
+
+  /// No description provided for @usbPortsHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'USB Ports'**
+  String get usbPortsHeading;
+
+  /// No description provided for @usbPortTypeA.
+  ///
+  /// In en, this message translates to:
+  /// **'Type-A'**
+  String get usbPortTypeA;
+
+  /// No description provided for @usbPortTypeC.
+  ///
+  /// In en, this message translates to:
+  /// **'Type-C'**
+  String get usbPortTypeC;
+
+  /// No description provided for @usbPortStateUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get usbPortStateUnknown;
+
+  /// No description provided for @usbPortStateSupplying.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplying'**
+  String get usbPortStateSupplying;
+
+  /// No description provided for @usbPortStateIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get usbPortStateIdle;
+
+  /// No description provided for @usbPortPendingNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.'**
+  String get usbPortPendingNote;
 }
 
 class _AppLocalizationsDelegate

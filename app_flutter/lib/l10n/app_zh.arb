@@ -46,7 +46,9 @@
   "dashboardReadoutSvltLabel": "次電壓 SVLT",
   "dashboardReadoutCurrentLabel": "主電流",
   "dashboardReadoutSohLabel": "健康 SOH",
+  "dashboardSerialLabel": "產品序號",
   "dashboardDvolHeading": "分串電壓 DVOL",
+  "dashboardDvolPendingNote": "已收到分串電壓資料，但尚未收到電壓校正係數（VADJ），待其送達後即顯示校正後數值。",
   "dashboardProtectionHeading": "防護狀態 / 模式",
   "gaugePvltLabel": "PVLT · 主電壓",
   "gaugeSohUnknown": "SOH --",
@@ -198,5 +200,22 @@
   "settingsCopyrightLabel": "版權與免責聲明",
   "settingsAboutDialogTitle": "版權與免責聲明",
   "settingsAboutDialogBody": "本 App 為社群獨立開發的開源工具，基於公開逆向研究，透過藍牙與您已購買的 RCE 智慧電容／電池通訊。\n\n本專案非 RCE 官方產品、與原廠無任何關係，僅供已購買硬體之車主個人、非商業用途。",
-  "settingsAboutDialogWarning": "解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。"
+  "settingsAboutDialogWarning": "解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。",
+
+  "packLabelIdentifying": "辨識中…",
+  "packLabelAuto": "自動辨識",
+  "packLabelChoose": "設定裝置類型",
+  "powerBankSocCaption": "電量 · 充電狀態",
+  "powerBankSocSubUnknown": "電芯 -- V",
+  "powerBankCellSub": "電芯 {volts} V",
+  "powerBankSocReadoutLabel": "電量 SOC",
+  "powerBankCellVoltageLabel": "電芯電壓",
+  "powerBankOutputVoltageLabel": "輸出電壓",
+  "usbPortsHeading": "USB 埠",
+  "usbPortTypeA": "Type-A",
+  "usbPortTypeC": "Type-C",
+  "usbPortStateUnknown": "未知",
+  "usbPortStateSupplying": "供電中",
+  "usbPortStateIdle": "閒置",
+  "usbPortPendingNote": "供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。"
 }

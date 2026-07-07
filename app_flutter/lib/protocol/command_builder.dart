@@ -82,8 +82,19 @@ class CommandBuilder {
     return v & 0xFFFF;
   }
 
-  /// Keep-alive: the single byte 0x23 ('#'). Not a framed command.
+  /// Keep-alive: the single byte 0x23 ('#'). Not a framed command. The default
+  /// per-tick token (PROTOCOL.md §2 "otherwise").
   Uint8List keepAlive() => Uint8List.fromList(const [kKeepAliveByte]);
+
+  /// Extended-poll keep-alive: the 2 bytes 0x21 0x23 ('!#'). Not a framed
+  /// command. Sent on tick 1 for every device and every 5th tick for a power
+  /// bank — the ONLY token that makes a device stream device-type / SOC / port
+  /// state (PROTOCOL.md §2 / §12.1).
+  Uint8List extendedPoll() => Uint8List.fromList(kExtendedPollBytes);
+
+  /// Slow-metadata keep-alive: the single byte 0x40 ('@'). Not a framed command.
+  /// Sent every 25th tick to elicit slow-changing metadata (PROTOCOL.md §2).
+  Uint8List slowMetadataPoll() => Uint8List.fromList(const [kMetadataPollByte]);
 
   /// Mode-set sub-frame: `[B8, 23, flag, 01, mode, XOR]` (PROTOCOL.md §5.1).
   /// [flag] is byte[2]; 0x00 for a standalone mode write.

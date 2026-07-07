@@ -64,6 +64,7 @@ class DeviceController extends ChangeNotifier {
     String name = '',
     DateTime? lastSeen,
     double? lastValue,
+    ProductClass productClass = ProductClass.unknown,
   }) {
     return save(SavedDevice(
       id: id,
@@ -71,6 +72,7 @@ class DeviceController extends ChangeNotifier {
       name: name,
       lastSeen: lastSeen ?? DateTime.now(),
       lastValue: lastValue,
+      productClass: productClass,
     ));
   }
 
@@ -84,6 +86,15 @@ class DeviceController extends ChangeNotifier {
   Future<void> touch(String id, {DateTime? lastSeen, double? lastValue}) async {
     if (!isSaved(id)) return;
     await _repo.touch(id, lastSeen: lastSeen, lastValue: lastValue);
+    await load();
+  }
+
+  /// Persist the resolved product class / cosmetic pack label for [id] (design
+  /// 0001 §5 Phase 5). No-op if the device is not saved or already at [value].
+  Future<void> setProductClass(String id, ProductClass value) async {
+    final existing = deviceFor(id);
+    if (existing == null || existing.productClass == value) return;
+    await _repo.setProductClass(id, value);
     await load();
   }
 

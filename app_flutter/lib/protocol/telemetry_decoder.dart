@@ -9,6 +9,7 @@ library;
 
 import '../models/telemetry_sample.dart';
 import 'inbound_frame.dart';
+import 'metadata_parser.dart';
 import 'selectors.dart';
 
 /// Pure per-selector decode helpers. `b(i)` is the spec byte index (b4 = first
@@ -16,20 +17,46 @@ import 'selectors.dart';
 class TelemetryDecoder {
   TelemetrySample _sample;
 
-  TelemetryDecoder([TelemetrySample? initial])
-      : _sample = initial ?? TelemetrySample.empty();
+  /// Injected device-metadata parser. The open build
+  /// gets [NoopMetadataParser], which handles nothing — so the side-accumulator
+  /// below stays [EmptyDeviceMetadata] and no closed selector is touched.
+  final MetadataParser parser;
+
+  /// Side-accumulator for device metadata, kept OUT of [TelemetrySample] so it
+  /// never pollutes the open telemetry model. Opaque to the open side.
+  DeviceMetadata _info = const EmptyDeviceMetadata();
+
+  TelemetryDecoder({
+    TelemetrySample? initial,
+    this.parser = const NoopMetadataParser(),
+  }) : _sample = initial ?? TelemetrySample.empty();
 
   /// Current accumulated snapshot.
   TelemetrySample get sample => _sample;
 
-  /// Reset the accumulator (e.g. on reconnect).
-  void reset() => _sample = TelemetrySample.empty();
+  /// Current accumulated device metadata (opaque marker on the open side;
+  /// a closed parser folds it into its own concrete subtype).
+  DeviceMetadata get deviceMetadata => _info;
+
+  /// Reset the accumulator (e.g. on reconnect). Resets the metadata side-channel
+  /// alongside the telemetry sample.
+  void reset() {
+    _sample = TelemetrySample.empty();
+    _info = const EmptyDeviceMetadata();
+  }
 
   /// Fold one frame into the accumulator and return the new snapshot. Unknown
   /// selectors and bad-checksum frames leave the snapshot unchanged (except the
   /// timestamp is NOT bumped on no-op).
+  ///
+  /// Selectors the injected [parser] claims are folded into the opaque
+  /// [deviceMetadata] side-channel instead; the open build's
+  /// Noop parser claims none, so this is a behavioural no-op there.
   TelemetrySample ingest(InboundFrame f, {DateTime? at}) {
     if (!f.checksumOk) return _sample;
+    if (parser.handles(f.selector)) {
+      _info = parser.fold(_info, f);
+    }
     final updated = apply(_sample, f, at: at);
     _sample = updated;
     return updated;
@@ -83,6 +110,34 @@ class TelemetryDecoder {
   /// Capacity raw byte — selector 0x96: b6.
   static int capacityRaw(InboundFrame f) => f.b(6);
 
+  /// SOC percent — selector 0x96: b6 read DIRECTLY as a 0..100 percentage
+  /// (PROTOCOL.md §12.3). The device reports SOC straight; there is no
+  /// voltage->SOC curve. Clamped to 0..100. Distinct from [sohBucket].
+  static int socPercent(InboundFrame f) {
+    final v = f.b(6);
+    if (v < 0) return 0;
+    if (v > 100) return 100;
+    return v;
+  }
+
+  /// USB dual-port status — the power-bank "Command 7" frame (PROTOCOL.md §12.3).
+  ///
+  /// TODO(design 0001 §7 Q1): the exact SELECTOR value AND the bit offsets of
+  /// the Type-A/Type-C supply bits and the input/output fast-charge value fields
+  /// are UNKNOWN pending a live `!#` capture on a power bank (the value->label
+  /// tables in PROTOCOL.md §12.3 are certain, but the bit positions are not).
+  /// We deliberately do NOT decode here — returning [base] unchanged — rather
+  /// than invent bit positions. Wire this up (and add a case in [apply]) once
+  /// the selector + bit layout is confirmed.
+  static TelemetrySample applyPortStatus(
+    TelemetrySample base,
+    InboundFrame f, {
+    DateTime? at,
+  }) {
+    // Intentionally unimplemented — see TODO above.
+    return base;
+  }
+
   /// Capacity / SOH bucket — selector 0x96: from b6, int.tryParse digits then
   /// (n-1)*10 + 5. PROTOCOL.md §8.2 (bucket semantics unverified).
   static int? sohBucket(InboundFrame f) {
@@ -132,13 +187,25 @@ class TelemetryDecoder {
       case Selectors.vadj:
         return base.copyWith(timestamp: ts, vadj: vadj(f));
       case Selectors.dvol:
-        return base.copyWith(timestamp: ts, dvol: dvol(f, base.vadj ?? 1.0));
+        final scale = base.vadj;
+        if (scale == null) {
+          // VADJ (0x30) not yet seen: the raw cell bytes are valid but the
+          // volts scaling is unknown, so a `?? 1.0` default would publish a
+          // bogus ~0.16 V per cell. Surface a pending state instead of a wrong
+          // number. PROTOCOL.md §8.2 / §10 — resolve VADJ on-device.
+          return base.copyWith(timestamp: ts, dvolPending: true);
+        }
+        return base.copyWith(
+            timestamp: ts, dvol: dvol(f, scale), dvolPending: false);
       case Selectors.thresholds:
         return base.copyWith(
           timestamp: ts,
           warnOv: warnOv(f),
           warnUv: warnUv(f),
           warnOt: warnOt(f),
+          // b7: observed 4th field (UT / under-temp). Scaling unverified —
+          // keep the raw byte so the write path can preserve it (§8.5).
+          warnUtByte: f.b(7),
         );
       case Selectors.charge:
         return base.copyWith(
@@ -157,12 +224,17 @@ class TelemetryDecoder {
           timestamp: ts,
           capacityRaw: capacityRaw(f),
           sohBucket: sohBucket(f),
+          socPercent: socPercent(f),
         );
       case Selectors.deviceType:
         return base.copyWith(timestamp: ts, deviceType: f.b(4));
-      case Selectors.serialA:
       case Selectors.serialB:
         return base.copyWith(timestamp: ts, serial: serial(f));
+      case Selectors.year:
+        // 0x25 is 年份 (year), NOT the serial high-word — observed
+        // §8.5. Byte layout not yet captured, so decode is deferred rather
+        // than mis-folding it into `serial` (which corrupted the serial).
+        return base;
       case Selectors.dealerCode:
         return base.copyWith(timestamp: ts, dealerCode: dealerCode(f));
       case Selectors.mode:

@@ -27,6 +27,17 @@ const int kSyncByte = 0xB8;
 /// the write characteristic to make the battery stream telemetry.
 const int kKeepAliveByte = 0x23;
 
+/// The 2-byte ASCII extended-poll token `!#` (0x21 0x23) — PROTOCOL.md §2. Sent
+/// on tick 1 for every device (elicits the device-type 0x10 + capacity 0x96
+/// frames), and repeated every 5th tick for a power bank (continuous SOC / port
+/// refresh). A client that never sends `!#` never sees SOC or port state.
+const List<int> kExtendedPollBytes = [0x21, 0x23];
+
+/// The single-byte ASCII slow-metadata poll token `@` (0x40) — PROTOCOL.md §2.
+/// Sent every 25th tick to elicit slow-changing metadata (serial / dealer / FW /
+/// thresholds group).
+const int kMetadataPollByte = 0x40;
+
 /// XOR-fold checksum used by every binary frame (PROTOCOL.md §7).
 ///
 /// `getCheckSum(list) = list.reduce((a, b) => a ^ b)` over all bytes given.

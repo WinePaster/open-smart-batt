@@ -56,10 +56,11 @@ class TelemetryController extends ChangeNotifier {
       _sample.temperatureC != null ||
       _sample.current != null;
 
-  /// Capabilities derived from the device-type register (heuristic; gates the
-  /// dashboard controls 檢測電容 / 解除斷電 / 防盜).
-  DeviceCapabilities get capabilities =>
-      DeviceCapabilities.fromDeviceType(_sample.deviceType);
+  // NOTE: product class + capabilities are intentionally NOT exposed here.
+  // Design 0001 §3.1 mandates a single source of truth for "which class is
+  // this unit"; that lives on [ConnectionController] (the pack-class resolver),
+  // which drives routing, persistence AND capability gating. Deriving the class
+  // a second time from this controller's raw sample would let the two disagree.
 
   // ---- derived gauge / readout values -----------------------------------
 
@@ -81,8 +82,15 @@ class TelemetryController extends ChangeNotifier {
   /// Per-cell DVOL voltages (V), or null until decoded.
   List<double>? get dvol => _sample.dvol;
 
-  /// Capacity / SOH bucket (semantics heuristic).
+  /// True when DVOL frames are arriving but VADJ (scaling) is not yet known, so
+  /// per-cell voltages are shown as pending rather than a bogus value.
+  bool get dvolPending => _sample.dvolPending;
+
+  /// Capacity / SOH bucket (icon level; semantics heuristic).
   int? get sohBucket => _sample.sohBucket;
+
+  /// Device-reported state-of-charge percent (0..100), selector 0x96 b6.
+  int? get socPercent => _sample.socPercent;
 
   /// Reported mode/status code (selector 0x23).
   int? get mode => _sample.mode;
@@ -90,8 +98,12 @@ class TelemetryController extends ChangeNotifier {
   /// Raw TWF status bitfield (selector 0x20).
   int? get twfRaw => _sample.twfRaw;
 
-  /// Battery serial / dealer code (selectors 0x25-0x27).
+  /// Battery serial (selector 0x26, tail only).
   String? get serial => _sample.serial;
+
+  /// Full product serial = dealer code (0x27) + product serial (0x26); null
+  /// until both arrive (connect burst). See [TelemetrySample.fullSerial].
+  String? get fullSerial => _sample.fullSerial;
   String? get dealerCode => _sample.dealerCode;
 
   /// Warning thresholds (selector 0x2B), in physical units.
@@ -215,7 +227,8 @@ class TelemetryController extends ChangeNotifier {
 
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;
-    final entry = LogEntry.fromBytes(e.direction, e.bytes, at: e.at);
+    final entry = LogEntry.fromBytes(e.direction, e.bytes,
+        at: e.at, note: e.note);
     unawaited(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
   }
 

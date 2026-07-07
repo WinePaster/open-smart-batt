@@ -1,70 +1,93 @@
-/// OpenSmartBatt — device capability gating (mockup dashboard controls).
+/// OpenSmartBatt — device capability gating, DERIVED from [ProductClass].
 ///
-/// PURE Dart. Drives which controls the dashboard shows: a capacitor exposes
-/// 檢測電容 (detect) + 解除斷電 (release cut-off); anti-theft 防盜 appears only
-/// when the model supports it.
+/// PURE Dart. Design 0004 §3.2 gates controls PER CLASS (replacing the old
+/// `!isPowerBank` blanket that handed a capacitor and a battery the same control
+/// set — the bug in docs/devices.md's capability matrix):
 ///
-/// NOTE: Capability detection beyond device-type 0x44 ('D' = power bank) is NOT
-/// firmly established by the protocol facts. These flags are a best-effort
-/// heuristic with explicit, overridable fields; treat as inference until a live
-/// device confirms a capability register.
+/// | ProductClass     | 檢測電容 | 解除斷電 | 防盜        |
+/// |------------------|:------:|:------:|:-----------|
+/// | [powerBank]      |   —    |   —    |     —      |
+/// | [supercapacitor] |   ✅   |   ❌   |     ❌     |
+/// | [smartBattery]   |   ❌   |   ✅   | model-gated |
+/// | [unknown]        | bounded fallback: union EXCEPT anti-theft (§3.3)       |
+///
+/// The [unknown] row is a lenient-but-bounded fallback for a pack that has not
+/// been classified yet: it shows the UNION of pack controls except anti-theft,
+/// converging the moment a label resolves. Mis-gating here is safe — every
+/// gated control is read-only or auth-gated (status_controls.dart), so the
+/// fallback never fires a destructive command; it just avoids hiding 解除斷電
+/// from a battery that urgently needs it (design 0004 §3.3).
+///
+/// DVOL stays DATA-DRIVEN (`dvol != null`), NOT gated here — the old
+/// `supportsDvol` getter had no consumer and was removed (design 0004 §3.5/Q1).
 library;
 
-/// What a connected battery model supports.
+import 'product_class.dart';
+
+/// What a connected battery model supports, derived from its [ProductClass].
 class DeviceCapabilities {
-  /// Anti-theft (防盜) mode available (mode 1 / status 2).
-  final bool hasAntiTheft;
+  /// The unit's product class — the single source of truth for gating.
+  final ProductClass productClass;
 
-  /// Unit behaves as a super-capacitor (shows 檢測電容 + 解除斷電).
-  final bool isCapacitor;
-
-  /// Cut-off (斷電) release available (mode 2/6).
-  final bool hasCutOff;
-
-  /// Device-type byte == 0x44 ('D') -> power bank.
-  final bool isPowerBank;
-
-  /// DVOL per-cell readout supported (selector 0x24 gated on field_cb).
-  final bool supportsDvol;
+  /// Optional per-model override for anti-theft (防盜). Anti-theft is model-
+  /// gated and not derivable from the class alone (design 0001 §3.1); null means
+  /// "use the class default" (off).
+  final bool? antiTheftOverride;
 
   const DeviceCapabilities({
-    this.hasAntiTheft = false,
-    this.isCapacitor = true,
-    this.hasCutOff = true,
-    this.isPowerBank = false,
-    this.supportsDvol = true,
+    this.productClass = ProductClass.unknown,
+    this.antiTheftOverride,
   });
 
-  /// Conservative default for an unidentified RCE unit: capacitor with cut-off
-  /// release and DVOL, no anti-theft, not a power bank.
+  /// Bounded fallback for an unidentified pack (design 0004 §3.3): the UNION of
+  /// pack controls EXCEPT anti-theft — i.e. both 檢測電容 ([isCapacitor]) and
+  /// 解除斷電 ([hasCutOff]) are shown, but 防盜 ([hasAntiTheft]) is not. Not a
+  /// power bank. Converges to a single class as soon as the label resolves.
   static const DeviceCapabilities unknown = DeviceCapabilities();
 
-  /// Heuristic from the telemetry device-type byte (selector 0x10).
-  factory DeviceCapabilities.fromDeviceType(int? deviceType) {
-    final powerBank = deviceType == 0x44;
-    return DeviceCapabilities(
-      isPowerBank: powerBank,
-      isCapacitor: !powerBank,
-      hasCutOff: true,
-      supportsDvol: true,
-      // Anti-theft is model-gated and not derivable from device-type alone;
-      // default off until proven.
-      hasAntiTheft: false,
-    );
-  }
+  /// Capabilities for an explicit [ProductClass].
+  factory DeviceCapabilities.fromClass(ProductClass productClass) =>
+      DeviceCapabilities(productClass: productClass);
+
+  /// Capabilities inferred from the telemetry device-type byte (selector 0x10).
+  factory DeviceCapabilities.fromDeviceType(int? deviceType) =>
+      DeviceCapabilities(productClass: ProductClass.fromDeviceType(deviceType));
+
+  /// Device-type byte marks a power bank (0x22). Routes to the power-bank view.
+  bool get isPowerBank => productClass.isPowerBank;
+
+  /// 檢測電容 (capacitor self-check) available — a [supercapacitor] only, PLUS
+  /// the bounded [unknown] fallback (design 0004 §3.2/§3.3).
+  bool get isCapacitor =>
+      productClass == ProductClass.supercapacitor ||
+      productClass == ProductClass.unknown;
+
+  /// 解除斷電 (cut-off release) available — a [smartBattery] only, PLUS the
+  /// bounded [unknown] fallback (design 0004 §3.2/§3.3).
+  bool get hasCutOff =>
+      productClass == ProductClass.smartBattery ||
+      productClass == ProductClass.unknown;
+
+  /// 防盜 (anti-theft) available — [smartBattery] AND a per-model override
+  /// (model-gated, design 0004 §3.2). NEVER in the [unknown] fallback.
+  bool get hasAntiTheft =>
+      productClass == ProductClass.smartBattery && (antiTheftOverride ?? false);
 
   DeviceCapabilities copyWith({
-    bool? hasAntiTheft,
-    bool? isCapacitor,
-    bool? hasCutOff,
-    bool? isPowerBank,
-    bool? supportsDvol,
+    ProductClass? productClass,
+    bool? antiTheftOverride,
   }) =>
       DeviceCapabilities(
-        hasAntiTheft: hasAntiTheft ?? this.hasAntiTheft,
-        isCapacitor: isCapacitor ?? this.isCapacitor,
-        hasCutOff: hasCutOff ?? this.hasCutOff,
-        isPowerBank: isPowerBank ?? this.isPowerBank,
-        supportsDvol: supportsDvol ?? this.supportsDvol,
+        productClass: productClass ?? this.productClass,
+        antiTheftOverride: antiTheftOverride ?? this.antiTheftOverride,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeviceCapabilities &&
+      other.productClass == productClass &&
+      other.antiTheftOverride == antiTheftOverride;
+
+  @override
+  int get hashCode => Object.hash(productClass, antiTheftOverride);
 }

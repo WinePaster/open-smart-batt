@@ -175,7 +175,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardReadoutSohLabel => '健康 SOH';
 
   @override
+  String get dashboardSerialLabel => '產品序號';
+
+  @override
   String get dashboardDvolHeading => '分串電壓 DVOL';
+
+  @override
+  String get dashboardDvolPendingNote =>
+      '已收到分串電壓資料，但尚未收到電壓校正係數（VADJ），待其送達後即顯示校正後數值。';
 
   @override
   String get dashboardProtectionHeading => '防護狀態 / 模式';
@@ -672,4 +679,54 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsAboutDialogWarning => '解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。';
+
+  @override
+  String get packLabelIdentifying => '辨識中…';
+
+  @override
+  String get packLabelAuto => '自動辨識';
+
+  @override
+  String get packLabelChoose => '設定裝置類型';
+
+  @override
+  String get powerBankSocCaption => '電量 · 充電狀態';
+
+  @override
+  String get powerBankSocSubUnknown => '電芯 -- V';
+
+  @override
+  String powerBankCellSub(String volts) {
+    return '電芯 $volts V';
+  }
+
+  @override
+  String get powerBankSocReadoutLabel => '電量 SOC';
+
+  @override
+  String get powerBankCellVoltageLabel => '電芯電壓';
+
+  @override
+  String get powerBankOutputVoltageLabel => '輸出電壓';
+
+  @override
+  String get usbPortsHeading => 'USB 埠';
+
+  @override
+  String get usbPortTypeA => 'Type-A';
+
+  @override
+  String get usbPortTypeC => 'Type-C';
+
+  @override
+  String get usbPortStateUnknown => '未知';
+
+  @override
+  String get usbPortStateSupplying => '供電中';
+
+  @override
+  String get usbPortStateIdle => '閒置';
+
+  @override
+  String get usbPortPendingNote => '供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。';
 }

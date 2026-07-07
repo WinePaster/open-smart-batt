@@ -79,7 +79,9 @@
   "dashboardReadoutSvltLabel": "Secondary Voltage SVLT",
   "dashboardReadoutCurrentLabel": "Main Current",
   "dashboardReadoutSohLabel": "Health SOH",
+  "dashboardSerialLabel": "Serial No.",
   "dashboardDvolHeading": "Per-Cell Voltage DVOL",
+  "dashboardDvolPendingNote": "Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.",
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "PVLT · Primary Voltage",
   "gaugeSohUnknown": "SOH --",
@@ -280,5 +282,25 @@
   "settingsCopyrightLabel": "Copyright & disclaimer",
   "settingsAboutDialogTitle": "Copyright & disclaimer",
   "settingsAboutDialogBody": "This app is an independent, community-developed open-source tool based on public reverse-engineering research, communicating via Bluetooth with the RCE smart capacitor/battery you have purchased.\n\nThis project is not an official RCE product and has no affiliation with the manufacturer; it is intended solely for personal, non-commercial use by owners of the hardware.",
-  "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active."
+  "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
+
+  "packLabelIdentifying": "Identifying…",
+  "packLabelAuto": "Auto-detect",
+  "packLabelChoose": "Set device type",
+  "powerBankSocCaption": "SOC · State of Charge",
+  "powerBankSocSubUnknown": "Cell -- V",
+  "powerBankCellSub": "Cell {volts} V",
+  "@powerBankCellSub": {
+    "placeholders": { "volts": { "type": "String" } }
+  },
+  "powerBankSocReadoutLabel": "Charge SOC",
+  "powerBankCellVoltageLabel": "Cell Voltage",
+  "powerBankOutputVoltageLabel": "Output Voltage",
+  "usbPortsHeading": "USB Ports",
+  "usbPortTypeA": "Type-A",
+  "usbPortTypeC": "Type-C",
+  "usbPortStateUnknown": "Unknown",
+  "usbPortStateSupplying": "Supplying",
+  "usbPortStateIdle": "Idle",
+  "usbPortPendingNote": "Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout."
 }

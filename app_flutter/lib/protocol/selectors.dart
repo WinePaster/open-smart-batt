@@ -9,7 +9,9 @@ library;
 class Selectors {
   Selectors._();
 
-  /// Device type. b4; == 0x44 ('D') -> power-bank flag.
+  /// Device type (裝置識別). b4. Observed values: 0x02 = car smart
+  /// battery, 0x22 (34) = power bank, 0x17 (23) = super-cap. (0x44 was the Dart
+  /// Smi-tag of 34, not the wire byte.)
   static const int deviceType = 0x10;
 
   /// Main / primary battery voltage PVLT (V).
@@ -27,10 +29,11 @@ class Selectors {
   /// DVOL per-series cell voltages (4 cells). Gated by field_cb 0168/01690104.
   static const int dvol = 0x24;
 
-  /// Battery serial number (variant A).
-  static const int serialA = 0x25;
+  /// Year (年份) — §8.5. NOT the serial high-word (earlier
+  /// recon mislabelled it). Byte layout pending capture; not decoded yet.
+  static const int year = 0x25;
 
-  /// Battery serial number (variant B).
+  /// Battery serial number (電池序號) — e.g. 0001.
   static const int serialB = 0x26;
 
   /// Dealer code (經銷商代號); builds field_cb and seeds the auth `cb` value.
@@ -48,7 +51,9 @@ class Selectors {
   /// Secondary current (mA); logged only, not stored.
   static const int secondaryCurrent = 0x2F;
 
-  /// VADJ voltage-precision adjust; multiplier for DVOL.
+  /// VADJ = 分串電壓精度 (per-cell voltage precision, mV/LSB); multiplier for
+  /// DVOL. Observed ~20.36 (§8.5). Not seen on the passive
+  /// poll — see PROTOCOL.md §10.
   static const int vadj = 0x30;
 
   /// Secondary voltage SVLT (V).

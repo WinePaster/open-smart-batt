@@ -68,6 +68,17 @@ class DeviceRepo {
     );
   }
 
+  /// Persist the resolved product class / cosmetic pack label for [id] (design
+  /// 0001 §5 Phase 5). Returns rows affected (0 if the device is not saved).
+  Future<int> setProductClass(String id, ProductClass productClass) {
+    return _db.update(
+      Db.tableSavedDevices,
+      {'product_class': productClass.storageKey},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
     return _db.delete(

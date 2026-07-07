@@ -22,6 +22,7 @@ import '../data/data.dart';
 import '../models/models.dart';
 import '../protocol/protocol.dart';
 import 'device_controller.dart';
+import 'pack_class_resolver.dart';
 import 'settings_controller.dart';
 
 /// Live BLE connection + scan state for the UI.
@@ -39,6 +40,7 @@ class ConnectionController extends ChangeNotifier {
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
     _adapterSub = _ble.adapterState.listen(_onAdapterState);
+    _telemetrySub = _ble.telemetry.listen(_onTelemetrySample);
     _settings.addListener(_updateWakelock);
   }
 
@@ -70,6 +72,13 @@ class ConnectionController extends ChangeNotifier {
   StreamSubscription<List<DiscoveredDevice>>? _scanSub;
   StreamSubscription<bool>? _scanningSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<TelemetrySample>? _telemetrySub;
+
+  /// Cosmetic pack-label resolver (design 0001 §3.4). Watches telemetry over a
+  /// short settling window to label a non-power-bank pack as super-capacitor vs
+  /// smart battery. TEXT ONLY — it never influences routing.
+  final PackClassResolver _packResolver = PackClassResolver();
+  ProductClass _packLabel = ProductClass.unknown;
 
   BleLinkState _link = BleLinkState.disconnected;
   List<DiscoveredDevice> _scanResults = const [];
@@ -135,6 +144,55 @@ class ConnectionController extends ChangeNotifier {
 
   /// Saved devices for the quick-select list (delegates to [DeviceController]).
   List<SavedDevice> get savedDevices => _devices?.devices ?? const [];
+
+  // ---- product class / cosmetic pack label (design 0001 §3.1 / §3.4) ----
+
+  /// The DETERMINISTIC routing class from the device-type byte: power bank, or
+  /// [ProductClass.unknown] for any pack. This is the ONLY class allowed to pick
+  /// a layout (design 0001 §3.1), and the SINGLE source of truth shared by
+  /// routing ([DashboardRouter]), persistence ([_recomputePackLabel]) and
+  /// capability gating ([capabilities]) — no controller derives the class
+  /// independently.
+  ProductClass get resolvedClass => _packResolver.deviceClass;
+
+  /// True only for a confirmed power bank (device-type 0x22) — the sole
+  /// deterministic routing signal. Read straight off the resolver so routing can
+  /// never disagree with persistence.
+  bool get isPowerBank => _packResolver.deviceClass.isPowerBank;
+
+  /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
+  /// 解除斷電 / 防盜), design 0004 §3.2. This is GATING, never routing.
+  ///
+  /// - When the device-type is DETERMINISTIC ([resolvedClass] is a power bank
+  ///   0x22 or a smart battery 0x02) we gate straight off it — no label needed.
+  /// - When the device-type is unseen/unverified ([resolvedClass] == unknown,
+  ///   e.g. the unverified super-capacitor 0x17) we consult the COSMETIC
+  ///   [packLabel] for GATING ONLY, and ONLY to distinguish a settled
+  ///   super-capacitor from still-unknown (design 0004 §3.1). Anything else
+  ///   stays the bounded [DeviceCapabilities.unknown] fallback (union of pack
+  ///   controls except anti-theft). The label NEVER selects a layout.
+  DeviceCapabilities get capabilities {
+    final routed = resolvedClass;
+    if (routed != ProductClass.unknown) {
+      return DeviceCapabilities.fromClass(routed);
+    }
+    if (_packLabel == ProductClass.supercapacitor) {
+      return DeviceCapabilities.fromClass(ProductClass.supercapacitor);
+    }
+    return DeviceCapabilities.unknown;
+  }
+
+  /// COSMETIC pack label (super-capacitor / smart battery / unknown / power
+  /// bank), inferred over the settling window or set by the user. TEXT ONLY —
+  /// never used for routing.
+  ProductClass get packLabel => _packLabel;
+
+  /// User override for the cosmetic pack label. Pass null to return to
+  /// auto-detection. Recomputes + notifies immediately.
+  void setPackLabelOverride(ProductClass? label) {
+    _packResolver.setOverride(label);
+    _recomputePackLabel(DateTime.now());
+  }
 
   // ---- permissions / adapter -------------------------------------------
 
@@ -286,12 +344,13 @@ class ConnectionController extends ChangeNotifier {
   Future<void> sendAuth({required int cb, required int pwSum}) =>
       _ble.sendAuth(cb: cb, pwSum: pwSum);
 
-  /// Set warning thresholds in physical units.
+  /// Set warning thresholds in physical units. [trailing] null preserves the
+  /// device's last-read UT byte (see [BleService.setThresholds]).
   Future<void> setThresholds({
     required double ovVolts,
     required double uvVolts,
     required double otCelsius,
-    int trailing = 0x00,
+    int? trailing,
   }) =>
       _ble.setThresholds(
         ovVolts: ovVolts,
@@ -302,7 +361,7 @@ class ConnectionController extends ChangeNotifier {
 
   /// Set warning thresholds from raw register bytes.
   Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-          {int trailing = 0x00}) =>
+          {int? trailing}) =>
       _ble.setThresholdsRaw(ovByte, uvByte, otByte, trailing: trailing);
 
   /// Send one keep-alive byte on demand.
@@ -323,12 +382,27 @@ class ConnectionController extends ChangeNotifier {
     if (s == BleLinkState.ready) {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
+      // Start a fresh pack-label settling window for this connection.
+      _packResolver.markConnected(DateTime.now());
       // Stamp last-seen on the saved entry (if any).
       final id = _ble.connectedDeviceId;
       if (id != null) {
         unawaited(_devices?.touch(id, lastSeen: DateTime.now()));
+        // Seed the cosmetic label from a persisted choice so the chip is
+        // correct immediately on reconnect (design 0001 §5 Phase 5).
+        final saved = _devices?.deviceFor(id);
+        final savedLabel = saved?.productClass;
+        if (savedLabel != null &&
+            savedLabel != ProductClass.unknown &&
+            !savedLabel.isPowerBank) {
+          _packResolver.setOverride(savedLabel);
+        }
       }
+      _recomputePackLabel(DateTime.now());
     } else if (s == BleLinkState.disconnected) {
+      // Drop the settling window + label so the next unit starts clean.
+      _packResolver.reset();
+      _packLabel = ProductClass.unknown;
       // Unexpected drop while we still want this device → try to reconnect.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
@@ -395,6 +469,27 @@ class ConnectionController extends ChangeNotifier {
     });
   }
 
+  void _onTelemetrySample(TelemetrySample s) {
+    _packResolver.observe(s);
+    _recomputePackLabel(DateTime.now());
+  }
+
+  /// Recompute the cosmetic pack label; notify + persist only on a real change
+  /// (the settling window and fingerprint each flip at most once per session).
+  void _recomputePackLabel(DateTime now) {
+    final next = _packResolver.label(now);
+    if (next == _packLabel) return;
+    _packLabel = next;
+    // Persist a concrete label onto the saved record (design 0001 §5 Phase 5).
+    if (next != ProductClass.unknown) {
+      final id = _ble.connectedDeviceId;
+      if (id != null) {
+        unawaited(_devices?.setProductClass(id, next));
+      }
+    }
+    notifyListeners();
+  }
+
   void _onScanResults(List<DiscoveredDevice> results) {
     _scanResults = results;
     notifyListeners();
@@ -433,6 +528,7 @@ class ConnectionController extends ChangeNotifier {
     _scanSub?.cancel();
     _scanningSub?.cancel();
     _adapterSub?.cancel();
+    _telemetrySub?.cancel();
     super.dispose();
   }
 }
