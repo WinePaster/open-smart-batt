@@ -118,6 +118,27 @@ class TelemetrySample {
   /// Raw TWF status byte (b4) — selector 0x20. Bit semantics unverified.
   final int? twfRaw;
 
+  /// Bit the app treats as "the device is reporting a fault".
+  ///
+  /// **UNVERIFIED** (PROTOCOL.md §10 says the whole TWF bit→meaning mapping is
+  /// unreliable). Basis: across the field captures TWF only ever held 0x00,
+  /// 0x01 and 0x20, and 0x20 appeared exclusively while PVLT sat at ~4 V — a
+  /// state no healthy 12 V unit reaches. That log mixed several units (it
+  /// predates per-device attribution), so the correlation is suggestive, not
+  /// proven.
+  ///
+  /// Known counter-example: the 2026-07-19 capacitor that the vendor app
+  /// flagged as faulty reported TWF 0x00 throughout, so this bit does NOT cover
+  /// that failure mode. The UI therefore says "suspected" and shows the raw
+  /// byte, so a field report can pin the semantics down.
+  static const int twfFaultBit = 0x20;
+
+  /// True when [twfFaultBit] is set in the device's status byte.
+  bool get hasDeviceFaultFlag {
+    final t = twfRaw;
+    return t != null && (t & twfFaultBit) != 0;
+  }
+
   const TelemetrySample({
     required this.timestamp,
     this.pvlt,

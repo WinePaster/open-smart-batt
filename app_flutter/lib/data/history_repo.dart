@@ -233,11 +233,20 @@ class HistoryRepo {
   /// [labelFor] turns a stored `device_id` into the human-readable identity for
   /// the `device` column (design 0006 §3.5). Rows recorded before v5 have no
   /// device id, so they get an empty cell rather than a guess.
+  /// [classFor] resolves a stored `device_id` to its product class. It exists
+  /// for one reason: a super-capacitor streams the 0x2E current register pinned
+  /// at exactly 0.0 A even though it cannot measure current. The dashboard hides
+  /// that readout (design 0007), so exporting `0.0` would tell the recipient the
+  /// unit is drawing no current — a claim the device never made. Those cells get
+  /// this exporter's empty value instead (the same `null` the dvol columns
+  /// already use). Rows with no device id (pre-0006) keep whatever was recorded:
+  /// we do not know their class, so we do not edit their data.
   Future<String> exportCsv({
     DateTime? since,
     int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
+    ProductClass Function(String? deviceId)? classFor,
   }) async {
     final (where, args) = _scope(since: since, deviceId: deviceId);
     final raw = await _db.query(
@@ -251,10 +260,17 @@ class HistoryRepo {
     for (final m in raw) {
       final s = TelemetrySample.fromMap(m);
       final id = m['device_id'] as String?;
+      final isCapacitor =
+          id != null && classFor?.call(id) == ProductClass.supercapacitor;
       rows.add(<Object?>[
         s.timestamp.toIso8601String(),
         for (final c in csvColumns.skip(1))
-          if (c == 'device') (id == null ? null : labelFor?.call(id)) else m[c],
+          if (c == 'device')
+            (id == null ? null : labelFor?.call(id))
+          else if (c == 'ampere' && isCapacitor)
+            null // see [classFor]: the device cannot measure current
+          else
+            m[c],
       ]);
     }
     return const ListToCsvConverter().convert(rows);

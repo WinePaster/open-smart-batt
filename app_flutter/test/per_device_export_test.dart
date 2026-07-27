@@ -152,6 +152,57 @@ void main() {
       expect(lines[1].contains(',AA,'), isFalse);
     });
 
+    test('a capacitor exports no current — it cannot measure one', () async {
+      // The unit streams 0x2E pinned at 0.0 A (design 0007). The dashboard
+      // hides that readout; exporting "0.0" would tell the recipient the pack
+      // is drawing no current, which the device never claimed.
+      final repo = HistoryRepo(appDb.db);
+      await repo.insertSample(
+        TelemetrySample(
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1000),
+            pvlt: 13.7,
+            current: 0.0),
+        deviceId: 'CAP',
+      );
+      await repo.insertSample(
+        TelemetrySample(
+            timestamp: DateTime.fromMillisecondsSinceEpoch(2000),
+            pvlt: 12.6,
+            current: 1.5),
+        deviceId: 'BATT',
+      );
+
+      final csv = await repo.exportCsv(
+        classFor: (id) => id == 'CAP'
+            ? ProductClass.supercapacitor
+            : ProductClass.smartBattery,
+      );
+      final lines = csv.split(RegExp(r'\r?\n'));
+      // Rows are keyed by their timestamp, rendered in LOCAL time by the export.
+      final capRow = lines.firstWhere((l) => l.startsWith(
+          DateTime.fromMillisecondsSinceEpoch(1000).toIso8601String()));
+      final battRow = lines.firstWhere((l) => l.startsWith(
+          DateTime.fromMillisecondsSinceEpoch(2000).toIso8601String()));
+
+      expect(battRow.split(',')[3], '1.5', reason: 'battery keeps its reading');
+      // 'null' is this exporter's empty cell (same as the dvol columns).
+      expect(capRow.split(',')[3], 'null',
+          reason: 'capacitor current cell must be empty, not 0.0');
+      // Only that one cell changes — the rest of the row is untouched.
+      expect(capRow.split(',')[1], '13.7');
+    });
+
+    test('an unattributed row keeps its current (class unknown)', () async {
+      // Pre-0006 rows have no device id, so we cannot know the class — editing
+      // their data on a guess would be worse than leaving it.
+      final repo = HistoryRepo(appDb.db);
+      await repo.insertSample(TelemetrySample(
+          timestamp: DateTime.fromMillisecondsSinceEpoch(1000), current: 0.0));
+      final csv = await repo.exportCsv(
+          classFor: (_) => ProductClass.supercapacitor);
+      expect(csv.split(RegExp(r'\r?\n'))[1].split(',')[3], '0.0');
+    });
+
     test('unattributed rows get an empty device cell, never a guess', () async {
       final repo = HistoryRepo(appDb.db);
       await repo.insertSample(sampleAt(1000));

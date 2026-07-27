@@ -110,6 +110,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // already be gone.
     final devices = context.read<DeviceController>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
+    ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
@@ -118,6 +119,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         limit: _rowCap,
         deviceId: target.deviceId,
         labelFor: labelFor,
+        classFor: classFor,
       );
       if (csv.trim().isEmpty || !csv.contains('\n')) {
         messenger.showSnackBar(SnackBar(

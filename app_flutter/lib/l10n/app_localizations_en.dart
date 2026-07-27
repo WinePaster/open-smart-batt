@@ -766,6 +766,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.';
 
   @override
+  String get dashboardTelemetryStalled =>
+      'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.';
+
+  @override
+  String dashboardDeviceFaultSuspected(String code) {
+    return 'Suspected fault: the device set its status flag (code $code). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.';
+  }
+
+  @override
   String get packLabelUnclassified => 'Unclassified (tap to set)';
 
   @override

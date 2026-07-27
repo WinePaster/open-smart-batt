@@ -25,11 +25,15 @@ class TelemetryController extends ChangeNotifier {
     required HistoryRepo history,
     required LogRepo logs,
     SessionContext? session,
+    Duration? stallThreshold,
+    Duration? stallCheckInterval,
   }) {
     _settings = settings;
     _history = history;
     _logs = logs;
     _session = session ?? SessionContext();
+    _stallThreshold = stallThreshold ?? BleService.telemetryStallThreshold;
+    _stallCheckInterval = stallCheckInterval ?? const Duration(seconds: 2);
     _sample = TelemetrySample.empty();
     _telemetrySub = _ble.telemetry.listen(_onTelemetry);
     _packetSub = _ble.packets.listen(_onPacket);
@@ -171,12 +175,14 @@ class TelemetryController extends ChangeNotifier {
     int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
+    ProductClass Function(String? deviceId)? classFor,
   }) =>
       _history.exportCsv(
         since: since,
         limit: limit,
         deviceId: deviceId,
         labelFor: labelFor,
+        classFor: classFor,
       );
 
   /// Clear all history.
@@ -211,8 +217,45 @@ class TelemetryController extends ChangeNotifier {
 
   // ---- stream handlers --------------------------------------------------
 
+  // ---- stall detection ---------------------------------------------------
+  // A stall is NOT a disconnect: on Android the link stays ready while the OS
+  // suspends the app, so RX and TX both stop for minutes and then flush a
+  // backlog (evidenced twice in feedback_log/2026.07.27). During that window
+  // the dashboard kept showing the last values with no hint they were frozen.
+
+  DateTime? _lastSampleAt;
+  Timer? _stallTimer;
+  bool _stalled = false;
+
+  /// Injectable so tests can exercise the real transition in milliseconds
+  /// instead of waiting out the field threshold.
+  late final Duration _stallThreshold;
+  late final Duration _stallCheckInterval;
+
+  /// True when the link reports ready but no telemetry has arrived for
+  /// [BleService.telemetryStallThreshold] — the readouts on screen are stale.
+  bool get telemetryStalled => _stalled;
+
+  /// Age of the newest telemetry, or null before the first frame.
+  Duration? get telemetryAge {
+    final at = _lastSampleAt;
+    return at == null ? null : DateTime.now().difference(at);
+  }
+
+  void _evaluateStall() {
+    final age = telemetryAge;
+    final next = age != null && age > _stallThreshold;
+    if (next == _stalled) return;
+    _stalled = next;
+    notifyListeners();
+  }
+
   void _onTelemetry(TelemetrySample s) {
     _sample = s;
+    _lastSampleAt = DateTime.now();
+    if (_stalled) {
+      _stalled = false; // recovered
+    }
     notifyListeners();
     _maybeAutoLog(s);
   }
@@ -298,7 +341,16 @@ class TelemetryController extends ChangeNotifier {
   }
 
   void _onLinkState(BleLinkState s) {
+    if (s == BleLinkState.ready) {
+      _lastSampleAt = DateTime.now(); // grace period before the first frame
+      _stallTimer?.cancel();
+      _stallTimer = Timer.periodic(_stallCheckInterval, (_) => _evaluateStall());
+    }
     if (s == BleLinkState.disconnected) {
+      _stallTimer?.cancel();
+      _stallTimer = null;
+      _lastSampleAt = null;
+      _stalled = false;
       // Persist the final partial minute before clearing live state.
       _flushBucket();
       // Clear the live readouts so the dashboard doesn't show stale values.
@@ -311,6 +363,7 @@ class TelemetryController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stallTimer?.cancel();
     _telemetrySub?.cancel();
     _packetSub?.cancel();
     _linkSub?.cancel();
