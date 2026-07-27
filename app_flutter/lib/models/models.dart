@@ -7,4 +7,5 @@ export 'telemetry_sample.dart';
 export 'saved_device.dart';
 export 'app_settings.dart';
 export 'log_entry.dart';
+export 'product_class.dart';
 export 'device_capabilities.dart';

@@ -21,7 +21,9 @@ class Db {
   /// legacy `dark_theme` bool column is retained for migration.
   /// v3: saved_devices gained `name` (stable advertised name, the iOS NSUUID
   /// rebind key — D.3) and `stale` (failed-to-resolve flag).
-  static const int schemaVersion = 3;
+  /// v4: saved_devices gained `product_class` (resolved class + cosmetic pack
+  /// label — design 0001 §5 Phase 5); old rows default to 'unknown'.
+  static const int schemaVersion = 4;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -103,6 +105,13 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN stale INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (from < 4) {
+      // design 0001 §5 Phase 5: persist the resolved product class / cosmetic
+      // pack label. Additive; pre-v4 rows default to 'unknown'.
+      await db.execute(
+        "ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN product_class TEXT NOT NULL DEFAULT 'unknown'",
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -137,7 +146,8 @@ class AppDatabase {
       name TEXT NOT NULL DEFAULT '',
       last_seen INTEGER,
       last_value REAL,
-      stale INTEGER NOT NULL DEFAULT 0
+      stale INTEGER NOT NULL DEFAULT 0,
+      product_class TEXT NOT NULL DEFAULT 'unknown'
     )
     ''',
     '''

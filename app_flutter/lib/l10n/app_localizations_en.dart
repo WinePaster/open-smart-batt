@@ -181,7 +181,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardReadoutSohLabel => 'Health SOH';
 
   @override
+  String get dashboardSerialLabel => 'Serial No.';
+
+  @override
   String get dashboardDvolHeading => 'Per-Cell Voltage DVOL';
+
+  @override
+  String get dashboardDvolPendingNote =>
+      'Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.';
 
   @override
   String get dashboardProtectionHeading => 'Protection Status / Mode';
@@ -707,4 +714,55 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsAboutDialogWarning =>
       'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.';
+
+  @override
+  String get packLabelIdentifying => 'Identifying…';
+
+  @override
+  String get packLabelAuto => 'Auto-detect';
+
+  @override
+  String get packLabelChoose => 'Set device type';
+
+  @override
+  String get powerBankSocCaption => 'SOC · State of Charge';
+
+  @override
+  String get powerBankSocSubUnknown => 'Cell -- V';
+
+  @override
+  String powerBankCellSub(String volts) {
+    return 'Cell $volts V';
+  }
+
+  @override
+  String get powerBankSocReadoutLabel => 'Charge SOC';
+
+  @override
+  String get powerBankCellVoltageLabel => 'Cell Voltage';
+
+  @override
+  String get powerBankOutputVoltageLabel => 'Output Voltage';
+
+  @override
+  String get usbPortsHeading => 'USB Ports';
+
+  @override
+  String get usbPortTypeA => 'Type-A';
+
+  @override
+  String get usbPortTypeC => 'Type-C';
+
+  @override
+  String get usbPortStateUnknown => 'Unknown';
+
+  @override
+  String get usbPortStateSupplying => 'Supplying';
+
+  @override
+  String get usbPortStateIdle => 'Idle';
+
+  @override
+  String get usbPortPendingNote =>
+      'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.';
 }

@@ -1,9 +1,15 @@
-/// OpenSmartBatt — PVLT instrument gauge (mockup `buildGauge()` + `.ring`).
+/// OpenSmartBatt — instrument gauge (mockup `buildGauge()` + `.ring`).
 ///
 /// A 270° tick-ring dial with an amber value arc and pointer, faithfully
 /// reproducing the mockup's hand-built SVG gauge in a [CustomPainter]. The
-/// centre stack overlays the live PVLT value, the "PVLT · 主電壓" label, an
-/// SOH sub-line and the 8.0–16.0 V range caption.
+/// centre stack overlays a live value, an injectable caption and a sub-line.
+///
+/// Design 0001 §3.5 generalises the dial to TWO modes via named constructors:
+///   * [PvltGauge.voltage] — a voltage domain `[min,max]` (pack: 8–16 V), which
+///     preserves the original PVLT behaviour exactly; and
+///   * [PvltGauge.percent] — a 0–100 % domain (power-bank SOC).
+/// The dial itself is domain-agnostic: callers map their value to a 0..1
+/// [fraction] and supply the centre-stack strings + unit.
 library;
 
 import 'dart:math' as math;
@@ -12,36 +18,97 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Animated amber-tick gauge for the primary voltage (PVLT).
+/// Animated amber-tick gauge (generalised over voltage / percent domains).
 ///
-/// The gauge's localized centre-stack strings ([pvltLabel], [sohText]) are
-/// resolved by the host (see [DashboardPage]/`_LiveDashboard`) and passed in,
-/// since the dial itself is drawn by a context-free [CustomPainter].
+/// The gauge's localized centre-stack strings ([caption], [subText]) are
+/// resolved by the host and passed in, since the dial itself is drawn by a
+/// context-free [CustomPainter].
 class PvltGauge extends StatelessWidget {
   const PvltGauge({
     super.key,
-    required this.pvlt,
+    required this.value,
     required this.fraction,
-    required this.pvltLabel,
-    required this.sohText,
+    required this.caption,
+    required this.subText,
+    this.unit = 'V',
+    this.fractionDigits = 2,
     this.size = 206,
   });
 
-  /// Primary voltage in volts, or null when unknown (gauge reads `--`).
-  final double? pvlt;
+  /// Voltage-domain gauge (pack): fills [volts] across [min]..[max] volts. This
+  /// is the ORIGINAL PVLT behaviour (default 8–16 V, 2 decimals, unit "V").
+  factory PvltGauge.voltage({
+    Key? key,
+    required double? volts,
+    double min = 8.0,
+    double max = 16.0,
+    required String caption,
+    required String subText,
+    double size = 206,
+  }) =>
+      PvltGauge(
+        key: key,
+        value: volts,
+        fraction: voltageFraction(volts, min: min, max: max),
+        caption: caption,
+        subText: subText,
+        unit: 'V',
+        fractionDigits: 2,
+        size: size,
+      );
 
-  /// Gauge fill fraction 0..1 across the 8.0–16.0 V display range.
+  /// Percent-mode gauge (power-bank SOC): fills [percent] across 0..100 %.
+  factory PvltGauge.percent({
+    Key? key,
+    required num? percent,
+    required String caption,
+    required String subText,
+    double size = 206,
+  }) =>
+      PvltGauge(
+        key: key,
+        value: percent?.toDouble(),
+        fraction: percentFraction(percent),
+        caption: caption,
+        subText: subText,
+        unit: '%',
+        fractionDigits: 0,
+        size: size,
+      );
+
+  /// The value shown in the centre, or null when unknown (reads `--`).
+  final double? value;
+
+  /// Gauge fill fraction 0..1 (caller maps its domain onto this).
   final double fraction;
 
-  /// Localized "PVLT · Primary Voltage" caption (resolved in the host).
-  final String pvltLabel;
+  /// Centre caption line (e.g. "PVLT · Primary Voltage" or "SOC · Charge").
+  final String caption;
 
-  /// Localized SOH sub-line (e.g. "SOH 92% · Health Good" or "SOH --"),
-  /// resolved in the host where a [BuildContext] is available.
-  final String sohText;
+  /// Sub-line under the caption (e.g. SOH / health / cell-voltage text).
+  final String subText;
+
+  /// Unit suffix rendered beside the value ("V" or "%").
+  final String unit;
+
+  /// Decimal places for the centre value (2 for volts, 0 for percent).
+  final int fractionDigits;
 
   /// Dial diameter (mockup 206px).
   final double size;
+
+  /// Pure fraction for a voltage domain — clamped 0..1. Unit-testable.
+  static double voltageFraction(double? volts,
+      {double min = 8.0, double max = 16.0}) {
+    if (volts == null || max <= min) return 0;
+    return ((volts - min) / (max - min)).clamp(0.0, 1.0);
+  }
+
+  /// Pure fraction for a 0..100 percent value — clamped 0..1. Unit-testable.
+  static double percentFraction(num? percent) {
+    if (percent == null) return 0;
+    return (percent / 100.0).clamp(0.0, 1.0).toDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +131,11 @@ class PvltGauge extends StatelessWidget {
             ),
           ),
           _CenterReadout(
-            pvlt: pvlt,
-            pvltLabel: pvltLabel,
-            sohText: sohText,
+            value: value,
+            unit: unit,
+            fractionDigits: fractionDigits,
+            caption: caption,
+            subText: subText,
             maxWidth: size * 0.66,
           ),
         ],
@@ -78,15 +147,19 @@ class PvltGauge extends StatelessWidget {
 /// Centre value stack (mockup `.ring .val`).
 class _CenterReadout extends StatelessWidget {
   const _CenterReadout({
-    required this.pvlt,
-    required this.pvltLabel,
-    required this.sohText,
+    required this.value,
+    required this.unit,
+    required this.fractionDigits,
+    required this.caption,
+    required this.subText,
     required this.maxWidth,
   });
 
-  final double? pvlt;
-  final String pvltLabel;
-  final String sohText;
+  final double? value;
+  final String unit;
+  final int fractionDigits;
+  final String caption;
+  final String subText;
 
   /// Inner-ring width the centre stack must stay within (so the value never
   /// collides with the tick ring at large dial sizes / high text scale).
@@ -105,12 +178,14 @@ class _CenterReadout extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child: RichText(
               text: TextSpan(
-                text: pvlt == null ? '--' : pvlt!.toStringAsFixed(2),
+                text: value == null
+                    ? '--'
+                    : value!.toStringAsFixed(fractionDigits),
                 style: AppTextStyles.gaugeValue(context),
-                children: const [
+                children: [
                   TextSpan(
-                    text: ' V',
-                    style: TextStyle(
+                    text: ' $unit',
+                    style: const TextStyle(
                       fontSize: 16,
                       color: AppColors.amber,
                       fontWeight: FontWeight.w700,
@@ -122,7 +197,7 @@ class _CenterReadout extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           Text(
-            pvltLabel,
+            caption,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -134,7 +209,7 @@ class _CenterReadout extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            sohText,
+            subText,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

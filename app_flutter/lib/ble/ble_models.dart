@@ -66,6 +66,10 @@ class BlePacketEvent {
   /// App clock at the moment the event crossed the BLE layer.
   final DateTime at;
 
-  BlePacketEvent(this.direction, this.bytes, {DateTime? at})
+  /// Optional diagnostic note (e.g. source-characteristic UUID for a multi-notify
+  /// RX chunk, or a GATT-table dump line for an [LogDirection.event]).
+  final String? note;
+
+  BlePacketEvent(this.direction, this.bytes, {DateTime? at, this.note})
       : at = at ?? DateTime.now();
 }

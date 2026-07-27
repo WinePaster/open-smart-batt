@@ -4,6 +4,8 @@
 /// editable alias, for the device-list quick-reconnect flow (mockup screen 3).
 library;
 
+import 'product_class.dart';
+
 /// A user-saved battery + its alias and last-seen metadata.
 class SavedDevice {
   /// BLE device id (platform remote id).
@@ -38,6 +40,13 @@ class SavedDevice {
   /// prompt a re-pick instead of the controller retrying forever.
   final bool stale;
 
+  /// The unit's resolved product class + cosmetic pack label (design 0001 §5
+  /// Phase 5). For a power bank this is [ProductClass.powerBank]; for a pack it
+  /// is the inferred / user-chosen [ProductClass.supercapacitor] or
+  /// [ProductClass.smartBattery]. Defaults to [ProductClass.unknown] for
+  /// pre-migration rows.
+  final ProductClass productClass;
+
   const SavedDevice({
     required this.id,
     required this.alias,
@@ -45,6 +54,7 @@ class SavedDevice {
     this.lastSeen,
     this.lastValue,
     this.stale = false,
+    this.productClass = ProductClass.unknown,
   });
 
   SavedDevice copyWith({
@@ -54,6 +64,7 @@ class SavedDevice {
     DateTime? lastSeen,
     double? lastValue,
     bool? stale,
+    ProductClass? productClass,
   }) =>
       SavedDevice(
         id: id ?? this.id,
@@ -62,11 +73,13 @@ class SavedDevice {
         lastSeen: lastSeen ?? this.lastSeen,
         lastValue: lastValue ?? this.lastValue,
         stale: stale ?? this.stale,
+        productClass: productClass ?? this.productClass,
       );
 
-  // Mirrors the v3 `saved_devices` schema. `name`/`stale` were added by the
-  // schemaVersion 3 migration (D.3) so the stable advertised name persists and
-  // the iOS NSUUID rebind can actually fire on reinstall.
+  // Mirrors the v4 `saved_devices` schema. `name`/`stale` were added by the
+  // schemaVersion 3 migration (D.3); `product_class` by the schemaVersion 4
+  // migration (design 0001 §5 Phase 5) so the resolved class / cosmetic label
+  // persists across reconnects.
   Map<String, Object?> toMap() => {
         'id': id,
         'alias': alias,
@@ -74,6 +87,7 @@ class SavedDevice {
         'last_seen': lastSeen?.millisecondsSinceEpoch,
         'last_value': lastValue,
         'stale': stale ? 1 : 0,
+        'product_class': productClass.storageKey,
       };
 
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
@@ -88,6 +102,8 @@ class SavedDevice {
                 (m['last_seen'] as num).toInt()),
         lastValue: (m['last_value'] as num?)?.toDouble(),
         stale: ((m['stale'] as num?)?.toInt() ?? 0) == 1,
+        // Absent column / unknown key falls back to unknown (old rows).
+        productClass: ProductClass.fromStorageKey(m['product_class'] as String?),
       );
 }
 

@@ -10,6 +10,7 @@ library;
 
 import '../ble/ble.dart';
 import '../data/data.dart';
+import '../protocol/protocol.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
 import 'settings_controller.dart';
@@ -47,13 +48,17 @@ class AppServices {
   ///
   /// - [dbPath]/[dbFactory]: injection points for tests (sqflite_common_ffi).
   /// - [ble]: inject a fake/stub [BleService] in tests; defaults to the real one.
+  /// - [parser]: device-metadata parser forwarded to
+  ///   the default [BleService]. The open build passes [NoopMetadataParser];
+  ///   a closed composition root injects its own. Ignored when [ble] is provided.
   static Future<AppServices> create({
     String? dbPath,
     AppDatabase? appDatabase,
     BleService? ble,
+    MetadataParser parser = const NoopMetadataParser(),
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
-    final bleService = ble ?? BleService();
+    final bleService = ble ?? BleService(parser: parser);
 
     final historyRepo = HistoryRepo(db.db);
     final deviceRepo = DeviceRepo(db.db);

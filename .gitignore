@@ -26,7 +26,6 @@ key.properties
 *.aar
 *.class
 *.smali
-/out_blutter/
 
 # Captures / private data — NEVER commit raw logs or DB (may contain personal data)
 btsnoop*

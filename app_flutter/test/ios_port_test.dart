@@ -11,7 +11,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart' show BleService;
 import 'package:open_smart_batt/data/data.dart' show UpdateInfo, updateUrlFor;
-import 'package:open_smart_batt/models/models.dart' show SavedDevice;
+import 'package:open_smart_batt/models/models.dart'
+    show DeviceCapabilities, ProductClass, SavedDevice;
+import 'package:open_smart_batt/protocol/protocol.dart' show CommandBuilder;
 import 'package:open_smart_batt/models/saved_device.dart' show rebindSavedDeviceId;
 import 'package:open_smart_batt/state/state.dart' show reconnectBackoff;
 
@@ -110,6 +112,89 @@ void main() {
           android * BleService.connectAttemptsFor(isIOS: false);
       expect(iosWorst < androidWorst, isTrue);
       expect(iosWorst.inSeconds, lessThan(15));
+    });
+  });
+
+  group('keep-alive schedule (BleService.keepAliveTokenFor, PROTOCOL.md §2)', () {
+    const cb = CommandBuilder();
+    List<int> token(int tick, {required bool pb}) =>
+        BleService.keepAliveTokenFor(cb, tick: tick, isPowerBank: pb);
+
+    test('tick 1 sends !# for every device', () {
+      expect(token(1, pb: false), [0x21, 0x23]);
+      expect(token(1, pb: true), [0x21, 0x23]);
+    });
+
+    test('a non-power-bank sends # each tick, @ every 25th', () {
+      expect(token(2, pb: false), [0x23]);
+      expect(token(5, pb: false), [0x23]); // the %5 !# is power-bank-only
+      expect(token(24, pb: false), [0x23]);
+      expect(token(25, pb: false), [0x40]);
+      expect(token(50, pb: false), [0x40]);
+    });
+
+    test('a power bank additionally sends !# every 5th tick', () {
+      expect(token(5, pb: true), [0x21, 0x23]);
+      expect(token(10, pb: true), [0x21, 0x23]);
+      expect(token(15, pb: true), [0x21, 0x23]);
+      expect(token(20, pb: true), [0x21, 0x23]);
+      // Non-multiples of 5 still get the plain #.
+      expect(token(6, pb: true), [0x23]);
+      // 25 is a multiple of BOTH 5 and 25; per PROTOCOL.md §2 the `@` metadata
+      // poll is checked first, so a power bank still emits `@` at 25/50.
+      expect(token(25, pb: true), [0x40]);
+      expect(token(50, pb: true), [0x40]);
+    });
+  });
+
+  group('ProductClass + DeviceCapabilities (design 0004 §3.1/§3.2)', () {
+    test('device-type: 0x22 => powerBank, 0x02 => smartBattery, else unknown',
+        () {
+      expect(ProductClass.fromDeviceType(0x22), ProductClass.powerBank);
+      expect(ProductClass.fromDeviceType(0x22).isPowerBank, isTrue);
+      // 0x02 is the wire-verified smart battery (design 0004 §3.1).
+      expect(ProductClass.fromDeviceType(0x02), ProductClass.smartBattery);
+      expect(ProductClass.fromDeviceType(0x02).isPowerBank, isFalse);
+      // 0x44 (old Smi-tag bug) and the UNVERIFIED super-cap 0x17 stay unknown —
+      // 0x17 must NOT map to supercapacitor until wire-verified (§3.1).
+      expect(ProductClass.fromDeviceType(0x44), ProductClass.unknown);
+      expect(ProductClass.fromDeviceType(0x17), ProductClass.unknown);
+      expect(ProductClass.fromDeviceType(null), ProductClass.unknown);
+    });
+
+    test('capabilities are gated PER CLASS (design 0004 §3.2)', () {
+      // 0x17 is unverified => unknown => bounded fallback: union EXCEPT
+      // anti-theft (檢測電容 + 解除斷電, no 防盜) — the corrected matrix.
+      final unknownPack = DeviceCapabilities.fromDeviceType(0x17);
+      expect(unknownPack.isPowerBank, isFalse);
+      expect(unknownPack.isCapacitor, isTrue);
+      expect(unknownPack.hasCutOff, isTrue);
+      expect(unknownPack.hasAntiTheft, isFalse);
+      // Anti-theft is NEVER exposed for the unknown fallback, even with an
+      // override — it is smartBattery-only (§3.2).
+      expect(
+          unknownPack.copyWith(antiTheftOverride: true).hasAntiTheft, isFalse);
+
+      // Power bank (0x22): no pack controls at all.
+      final bank = DeviceCapabilities.fromDeviceType(0x22);
+      expect(bank.isPowerBank, isTrue);
+      expect(bank.isCapacitor, isFalse);
+      expect(bank.hasCutOff, isFalse);
+      expect(bank.hasAntiTheft, isFalse);
+
+      // Smart battery (0x02): 解除斷電 yes, 檢測電容 no; anti-theft is
+      // model-gated (off until an override enables it).
+      final smart = DeviceCapabilities.fromDeviceType(0x02);
+      expect(smart.isCapacitor, isFalse);
+      expect(smart.hasCutOff, isTrue);
+      expect(smart.hasAntiTheft, isFalse);
+      expect(smart.copyWith(antiTheftOverride: true).hasAntiTheft, isTrue);
+
+      // Super-capacitor label: 檢測電容 only.
+      final cap = DeviceCapabilities.fromClass(ProductClass.supercapacitor);
+      expect(cap.isCapacitor, isTrue);
+      expect(cap.hasCutOff, isFalse);
+      expect(cap.hasAntiTheft, isFalse);
     });
   });
 

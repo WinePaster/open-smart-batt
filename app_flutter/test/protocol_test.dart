@@ -1,7 +1,7 @@
 // Pure-Dart unit tests for the protocol layer. No Flutter binding needed.
 //
 // CLEAN-ROOM: every expected value below is hand-derived ONLY from
-// docs/PROTOCOL.md, docs/CAPTURE_VERIFIED.md, and mockup/index.html. No
+// docs/PROTOCOL.md and mockup/index.html. No
 // decompiled / original-app source was consulted.
 //
 // Coverage:
@@ -20,7 +20,7 @@ import 'package:open_smart_batt/protocol/protocol.dart';
 // ---------------------------------------------------------------------------
 
 /// Raw bytes of one inbound frame `[0xB8, selector, flag, LEN, payload..., XOR]`.
-/// [flag] defaults to 0x01 (the constant inbound flag per CAPTURE_VERIFIED §1).
+/// [flag] defaults to 0x01 (the constant inbound flag per PROTOCOL.md §8).
 /// Pass [badXor] to force a wrong checksum; pass [len] to override the LEN byte.
 List<int> inboundBytes(
   int selector,
@@ -44,7 +44,7 @@ void main() {
   // =========================================================================
   group('xorFold', () {
     test('folds a multi-byte list (mode sub-frame -> 0x9C)', () {
-      // B8 ^ 23 ^ 00 ^ 01 ^ 06 = 0x9C  (CAPTURE_VERIFIED §1 mode frame).
+      // B8 ^ 23 ^ 00 ^ 01 ^ 06 = 0x9C  (PROTOCOL.md §8 mode frame).
       expect(xorFold([0xB8, 0x23, 0x00, 0x01, 0x06]), 0x9C);
     });
 
@@ -132,6 +132,14 @@ void main() {
       expect(cb.keepAlive().length, 1);
     });
 
+    test('extendedPoll is the 2 bytes !# (0x21 0x23)', () {
+      expect(cb.extendedPoll(), [0x21, 0x23]);
+    });
+
+    test('slowMetadataPoll is the single byte @ (0x40)', () {
+      expect(cb.slowMetadataPoll(), [0x40]);
+    });
+
     test('modeSet -> [B8,23,flag,01,mode,XOR] with correct checksum', () {
       final f = cb.modeSet(0x06);
       expect(f, [0xB8, 0x23, 0x00, 0x01, 0x06, 0x9C]); // capture-verified
@@ -179,7 +187,7 @@ void main() {
     test('switchMode = modeSet(flag0) ++ auth(flag1), 15 bytes', () {
       const creds = AuthCredentials(cb: 0x0011, pwSum: 0x0022);
       final w = cb.switchMode(0x06, creds);
-      expect(w.length, 15); // CAPTURE_VERIFIED: 6 + 9, no trailing payload
+      expect(w.length, 15); // PROTOCOL.md §8: 6 + 9, no trailing payload
       // First sub-frame: mode (flag 0x00).
       expect(w.sublist(0, 6), [0xB8, 0x23, 0x00, 0x01, 0x06, 0x9C]);
       // Second sub-frame: auth (flag 0x01).
@@ -540,40 +548,65 @@ void main() {
       expect(d.dischargeV2, closeTo(1.231, 1e-9));
     });
 
-    test('0x96 -> capacityRaw + sohBucket', () {
+    test('0x96 -> capacityRaw + sohBucket + socPercent (b6 direct)', () {
       final s =
           TelemetryDecoder.apply(base, decodeOne(0x96, [0, 0, 0x05, 0]), at: at);
       expect(s.capacityRaw, 5);
       expect(s.sohBucket, 45);
+      expect(s.socPercent, 5); // b6 read directly as a percent
+      // A realistic SOC (e.g. 84%) is passed through 0..100.
+      final full =
+          TelemetryDecoder.apply(base, decodeOne(0x96, [0, 0, 84, 0]), at: at);
+      expect(full.socPercent, 84);
+      // Out-of-range b6 clamps to 100.
+      final over =
+          TelemetryDecoder.apply(base, decodeOne(0x96, [0, 0, 0xFF, 0]), at: at);
+      expect(over.socPercent, 100);
     });
 
-    test('0x10 device-type -> deviceType + isPowerBank', () {
+    test('0x10 device-type -> deviceType + isPowerBank (wire byte 0x22)', () {
+      // Power bank = 0x22 (34). 0x44 was the Dart Smi-tag, NOT the wire byte.
       final pb =
-          TelemetryDecoder.apply(base, decodeOne(0x10, [0x44]), at: at);
-      expect(pb.deviceType, 0x44);
+          TelemetryDecoder.apply(base, decodeOne(0x10, [0x22]), at: at);
+      expect(pb.deviceType, 0x22);
       expect(pb.isPowerBank, isTrue);
+      // The old (buggy) 0x44 value must NO LONGER be treated as a power bank.
+      final smiTag =
+          TelemetryDecoder.apply(base, decodeOne(0x10, [0x44]), at: at);
+      expect(smiTag.isPowerBank, isFalse);
       final notPb =
           TelemetryDecoder.apply(base, decodeOne(0x10, [0x17]), at: at);
       expect(notPb.deviceType, 0x17);
       expect(notPb.isPowerBank, isFalse);
     });
 
-    test('0x25/0x26 -> serial, 0x27 -> dealerCode', () {
-      expect(
-          TelemetryDecoder.apply(
-                  base, decodeOne(0x25, [0, 0, 0, 0, 0x12, 0x34]), at: at)
-              .serial,
-          '004660');
+    test('0x26 -> serial; 0x25 (year) does NOT fold into serial', () {
+      // 0x26 is the battery serial.
       expect(
           TelemetryDecoder.apply(
                   base, decodeOne(0x26, [0, 0, 0, 0, 0x12, 0x34]), at: at)
               .serial,
           '004660');
+      // 0x25 is 年份 (year), NOT serial — must not populate serial (§8.5).
+      expect(
+          TelemetryDecoder.apply(
+                  base, decodeOne(0x25, [0, 0, 0, 0, 0x12, 0x34]), at: at)
+              .serial,
+          isNull);
+    });
+
+    test('0x27 -> dealerCode', () {
       expect(
           TelemetryDecoder.apply(
                   base, decodeOne(0x27, [0x00, 0xA8, 0x01, 0x02]), at: at)
               .dealerCode,
           '01680102');
+    });
+
+    test('0x2B threshold read stores UT raw byte (b7)', () {
+      final s = TelemetryDecoder.apply(
+          base, decodeOne(0x2B, [0x10, 0x2C, 0x28, 0x14]), at: at);
+      expect(s.warnUtByte, 0x14);
     });
 
     test('0x23 -> mode, 0x20 -> twfRaw', () {
@@ -631,12 +664,21 @@ void main() {
       expect(d[3], closeTo(0.0275, 1e-9));
     });
 
-    test('DVOL before any VADJ falls back to scale 1.0', () {
+    test('DVOL before any VADJ stays pending (no bogus 1.0-scaled value)', () {
       final dec = TelemetryDecoder();
       dec.ingest(decodeOne(0x24, [0x0A, 0x14, 0x1E, 0x28]), at: at);
-      final d = dec.sample.dvol!;
-      expect(d[0], closeTo(0.010, 1e-9)); // 10/1000 * 1.0
-      expect(d[3], closeTo(0.040, 1e-9));
+      // Without VADJ the volts scaling is unknown: do NOT publish a value.
+      expect(dec.sample.dvol, isNull);
+      expect(dec.sample.dvolPending, isTrue);
+    });
+
+    test('DVOL clears pending once VADJ arrives and a new DVOL frame lands', () {
+      final dec = TelemetryDecoder();
+      dec.ingest(decodeOne(0x24, [0x0A, 0x14, 0x1E, 0x28]), at: at); // pending
+      dec.ingest(decodeOne(0x30, [0x00, 0x64]), at: at); // VADJ = 1.00
+      dec.ingest(decodeOne(0x24, [0x0A, 0x14, 0x1E, 0x28]), at: at); // now scaled
+      expect(dec.sample.dvolPending, isFalse);
+      expect(dec.sample.dvol![0], closeTo(0.010, 1e-9)); // 10/1000 * 1.0
     });
 
     test('ingest is a no-op on a bad-checksum frame', () {

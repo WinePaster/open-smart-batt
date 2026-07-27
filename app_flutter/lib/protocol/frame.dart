@@ -9,7 +9,7 @@
 ///
 ///   * 0xB8 (184) — sync / start byte.
 ///   * CMD       — command code (0x23 mode, 0x2A auth, 0x2B thresholds).
-///   * flag      — byte[2]. PROTOCOL.md calls it "reserved 0x00"; CAPTURE_VERIFIED
+///   * flag      — byte[2]. PROTOCOL.md calls it "reserved 0x00"; live HCI capture
 ///                 shows it is a role/flag bit: 0x00 on a standalone auth or a
 ///                 mode sub-frame, 0x01 on an auth sub-frame bundled with a mode
 ///                 change. NOT a length-high byte (LEN lives in byte[3]).
@@ -26,6 +26,17 @@ const int kSyncByte = 0xB8;
 /// The single-byte ASCII keep-alive token `#` (0x23). Written ~1 Hz / bursty to
 /// the write characteristic to make the battery stream telemetry.
 const int kKeepAliveByte = 0x23;
+
+/// The 2-byte ASCII extended-poll token `!#` (0x21 0x23) — PROTOCOL.md §2. Sent
+/// on tick 1 for every device (elicits the device-type 0x10 + capacity 0x96
+/// frames), and repeated every 5th tick for a power bank (continuous SOC / port
+/// refresh). A client that never sends `!#` never sees SOC or port state.
+const List<int> kExtendedPollBytes = [0x21, 0x23];
+
+/// The single-byte ASCII slow-metadata poll token `@` (0x40) — PROTOCOL.md §2.
+/// Sent every 25th tick to elicit slow-changing metadata (serial / dealer / FW /
+/// thresholds group).
+const int kMetadataPollByte = 0x40;
 
 /// XOR-fold checksum used by every binary frame (PROTOCOL.md §7).
 ///
@@ -64,7 +75,7 @@ Uint8List buildFrame(
 /// Concatenates several byte sequences into one outbound write payload.
 ///
 /// Used by `switchMode`, which writes the mode sub-frame immediately followed by
-/// the auth sub-frame in a single Write-Without-Response (CAPTURE_VERIFIED: the
+/// the auth sub-frame in a single Write-Without-Response (live HCI capture: the
 /// 15-byte mode++auth packet, no trailing context payload).
 Uint8List concatFrames(Iterable<List<int>> frames) {
   final out = <int>[];

@@ -1,5 +1,5 @@
 /// OpenSmartBatt — outbound command builders (PROTOCOL.md §5 / §6, plus
-/// CAPTURE_VERIFIED §6 replay).
+/// live HCI capture replay).
 ///
 /// PURE Dart. Every builder returns the exact bytes that go on the wire to the
 /// write characteristic (07b9ace3-…, Write-Without-Response). All deterministic
@@ -11,7 +11,7 @@ import 'dart:typed_data';
 import 'frame.dart';
 import 'selectors.dart';
 
-/// Battery-specific auth credentials (CAPTURE_VERIFIED §6).
+/// Battery-specific auth credentials (live HCI capture).
 ///
 /// `cb`    — 16-bit echo derived from the device's dealer code (selector 0x27),
 ///           broadcast in the clear by the device itself.
@@ -82,8 +82,19 @@ class CommandBuilder {
     return v & 0xFFFF;
   }
 
-  /// Keep-alive: the single byte 0x23 ('#'). Not a framed command.
+  /// Keep-alive: the single byte 0x23 ('#'). Not a framed command. The default
+  /// per-tick token (PROTOCOL.md §2 "otherwise").
   Uint8List keepAlive() => Uint8List.fromList(const [kKeepAliveByte]);
+
+  /// Extended-poll keep-alive: the 2 bytes 0x21 0x23 ('!#'). Not a framed
+  /// command. Sent on tick 1 for every device and every 5th tick for a power
+  /// bank — the ONLY token that makes a device stream device-type / SOC / port
+  /// state (PROTOCOL.md §2 / §12.1).
+  Uint8List extendedPoll() => Uint8List.fromList(kExtendedPollBytes);
+
+  /// Slow-metadata keep-alive: the single byte 0x40 ('@'). Not a framed command.
+  /// Sent every 25th tick to elicit slow-changing metadata (PROTOCOL.md §2).
+  Uint8List slowMetadataPoll() => Uint8List.fromList(const [kMetadataPollByte]);
 
   /// Mode-set sub-frame: `[B8, 23, flag, 01, mode, XOR]` (PROTOCOL.md §5.1).
   /// [flag] is byte[2]; 0x00 for a standalone mode write.
@@ -93,7 +104,7 @@ class CommandBuilder {
   /// Auth sub-frame: `[B8, 2A, flag, 04, cbHi, cbLo, pwHi, pwLo, XOR]`.
   ///
   /// [flag] is byte[2]: 0x00 standalone (verify-auth), 0x01 when bundled with a
-  /// mode change (CAPTURE_VERIFIED §1).
+  /// mode change (live HCI capture).
   Uint8List auth(AuthCredentials creds, {int flag = 0x00}) => buildFrame(
         Commands.auth,
         [creds.cbHi, creds.cbLo, creds.pwHi, creds.pwLo],
@@ -101,7 +112,7 @@ class CommandBuilder {
       );
 
   /// switchMode: mode sub-frame ++ auth sub-frame in ONE write (PROTOCOL.md §6.2,
-  /// CAPTURE_VERIFIED §6 — 15 bytes, no trailing context payload).
+  /// live HCI capture — 15 bytes, no trailing context payload).
   ///
   /// The bundled auth carries flag byte[2] = 0x01 (the captured bundled variant).
   Uint8List switchMode(int mode, AuthCredentials creds) => concatFrames([

@@ -50,11 +50,15 @@ Future<void> showDeviceListSheet(BuildContext context) async {
   final tele = host.read<TelemetryController>();
   // Capture the stable advertised name now (D.3): on iOS the saved id is a
   // volatile NSUUID, so the name is what rebinds the record after a reinstall.
-  final advName = host.read<ConnectionController>().connectedDeviceName;
+  final conn = host.read<ConnectionController>();
+  final advName = conn.connectedDeviceName;
+  // Seed the persisted product class with whatever has resolved so far (design
+  // 0001 §5 Phase 5); the connection controller keeps it current afterwards.
+  final initialClass = conn.isPowerBank ? conn.resolvedClass : conn.packLabel;
   final alias = await showAliasDialog(host);
   if (alias == null || !host.mounted) return;
   await devices.saveNew(connectedNewId, alias,
-      name: advName, lastValue: tele.pvlt);
+      name: advName, lastValue: tele.pvlt, productClass: initialClass);
 }
 
 /// The sheet body (mockup `.devpanel`). Starts a scan on open, stops on close.

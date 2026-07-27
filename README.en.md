@@ -45,13 +45,8 @@ open-smart-batt/
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
 │   ├── PROTOCOL.md               protocol spec (facts; clean-room analysis role)
-│   ├── CAPTURE_VERIFIED.md        live HCI capture verifying/correcting the spec
-│   │                             (device-specific secrets redacted)
-│   ├── HCI_CAPTURE_GUIDE.md       community guide to capture unlock packets
-│   ├── VERSIONING.md             version scheme
-│   └── UNVERIFIED.md             items still needing hardware confirmation
+│   └── VERSIONING.md             version scheme
 ├── app_flutter/                  ★ Android / iOS app (Flutter, written from the spec)
-├── app/                          reference Python (bleak) CLI client
 ├── tools/parse_btsnoop.py        btsnoop → GATT extractor (privacy-safe)
 ├── mockup/index.html             UI design preview
 └── .github/workflows/            CI (Android + iOS compile smoke test) + auto-versioned APK / IPA release
@@ -62,15 +57,14 @@ are written **only** from `docs/`, never touching the original app.
 
 ## Status (2026-06)
 
-- ✅ Android app implemented: BLE connect, live telemetry dashboard, device list +
+- ✅ Android / iOS app implemented: BLE connect, live telemetry dashboard, device list +
   aliases, history + CSV export, settings (incl. a default-OFF diagnostic log).
-  `flutter analyze` clean, 97 unit tests pass, release APK builds.
+  `flutter analyze` clean, 167 unit tests pass, release APK and iOS archive build.
 - ✅ **Monitoring needs no password**: once connected you see voltage / temp / SOH /
   capacitor check (telemetry streams without auth).
 - ⚠️ **Super-capacitor**: monitoring + capacitor-check focused. `cut-off / anti-theft`
   are battery-class features; clearing a capacitor "abnormal protection lock" is not
-  implemented yet (needs an HCI capture from a faulty unit — see
-  [`docs/UNVERIFIED.md`](./docs/UNVERIFIED.md)).
+  implemented yet (needs an HCI capture from a faulty unit).
 - 🧪 The release command supports three paths — enter the cut-off password, enter the
   validation values directly (cb/pwSum), or an experimental "send mode only, skip
   auth". Whether a release actually takes effect must be verified electrically.
@@ -130,8 +124,7 @@ subject to copyright.
 
 ## Protocol documentation
 
-Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md); live verification:
-[`docs/CAPTURE_VERIFIED.md`](./docs/CAPTURE_VERIFIED.md).
+Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md).
 
 ---
 

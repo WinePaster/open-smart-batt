@@ -4,14 +4,16 @@
 /// (the State controllers) consumes only its streams + methods; everything
 /// below it (wire encode/decode) is the pure-Dart `protocol/` layer.
 ///
-/// Responsibilities (CAPTURE_VERIFIED §1/§6, PROTOCOL.md §2/§3):
+/// Responsibilities (live HCI capture, PROTOCOL.md §2/§3):
 ///   * Scan filtered on the vendor service UUID 07b9fff0-… (no name filter).
 ///   * Connect, discover the write char 07b9ace3-… and notify char 07b9ace4-…
 ///   * Enable notifications (write 01 00 to the CCCD via `setNotifyValue`).
 ///   * Reassemble every notification chunk into ONE byte stream
 ///     ([FrameReassembler]) and decode telemetry ([TelemetryDecoder]).
-///   * Drive a ~1 Hz keep-alive writing the single byte 0x23 to make the
-///     battery stream telemetry.
+///   * Drive a ~1 Hz keep-alive on a tick-counted schedule (PROTOCOL.md §2):
+///     `!#` on tick 1 (+ every 5th tick for a power bank), `@` every 25th tick,
+///     `#` otherwise — this is what makes the battery stream telemetry (and a
+///     power bank stream SOC / port state).
 ///   * No MTU negotiation (connect with `mtu: null`); Write-Without-Response
 ///     only for every write/keep-alive.
 ///
@@ -36,8 +38,12 @@ import 'ble_models.dart';
 /// Single-connection model: connecting while already connected first tears the
 /// previous link down. Not safe to share across isolates.
 class BleService {
-  BleService({CommandBuilder commands = const CommandBuilder()}) {
+  BleService({
+    CommandBuilder commands = const CommandBuilder(),
+    MetadataParser parser = const NoopMetadataParser(),
+  }) {
     _commands = commands;
+    _decoder = TelemetryDecoder(parser: parser);
     // One persistent listener turns plugin scan results into [DiscoveredDevice].
     _scanSub = FlutterBluePlus.scanResults.listen(_onScanResults);
   }
@@ -46,7 +52,7 @@ class BleService {
 
   // ---- wire codec (pure Dart) ----
   final FrameReassembler _reassembler = FrameReassembler();
-  final TelemetryDecoder _decoder = TelemetryDecoder();
+  late final TelemetryDecoder _decoder;
 
   // ---- plugin handles for the live connection ----
   BluetoothDevice? _device;
@@ -56,6 +62,7 @@ class BleService {
   StreamSubscription<List<int>>? _notifySub;
   StreamSubscription<List<ScanResult>>? _scanSub;
   Timer? _keepAlive;
+  int _keepAliveTick = 0;
   bool _settingUp = false;
   bool _retryingConnect = false;
 
@@ -75,8 +82,30 @@ class BleService {
   static final Guid _notifyGuid = Guid(Gatt.notifyCharUuid);
 
   /// Keep-alive cadence (~1 Hz). The battery streams telemetry as long as it
-  /// keeps receiving the `#` byte; exact cadence is not protocol-critical.
+  /// keeps receiving a poll token; exact cadence is not protocol-critical.
   static const Duration keepAliveInterval = Duration(seconds: 1);
+
+  /// Pure keep-alive scheduler (PROTOCOL.md §2). Selects which poll token to
+  /// write for a given 1-based [tick] and whether the connected unit is a power
+  /// bank (device-type 0x22, from decoded telemetry). Extracted as a static pure
+  /// function so the schedule is unit-testable without a live connection.
+  ///
+  /// Order (per PROTOCOL.md §2 — the metadata poll is checked BEFORE the
+  /// power-bank extended poll, so a tick that is both %25 and %5 sends `@`):
+  ///   * tick == 1          -> `!#` (0x21 0x23) — every device, once.
+  ///   * %25 == 0            -> `@`  (0x40) — slow metadata (all devices).
+  ///   * power bank & %5==0  -> `!#` — continuous SOC / port refresh.
+  ///   * otherwise           -> `#`  (0x23).
+  static List<int> keepAliveTokenFor(
+    CommandBuilder commands, {
+    required int tick,
+    required bool isPowerBank,
+  }) {
+    if (tick <= 1) return commands.extendedPoll();
+    if (tick % 25 == 0) return commands.slowMetadataPoll();
+    if (isPowerBank && tick % 5 == 0) return commands.extendedPoll();
+    return commands.keepAlive();
+  }
 
   /// Per-platform connect tuning (D.4). Android's `connectGatt` fails fast on a
   /// stale handle and frequently bounces on the FIRST attempt, so a few retries
@@ -100,6 +129,8 @@ class BleService {
   // ---- outbound streams ----
   final StreamController<TelemetrySample> _telemetry =
       StreamController<TelemetrySample>.broadcast();
+  final StreamController<DeviceMetadata> _deviceMetadata =
+      StreamController<DeviceMetadata>.broadcast();
   final StreamController<BleLinkState> _link =
       StreamController<BleLinkState>.broadcast();
   final StreamController<List<DiscoveredDevice>> _scan =
@@ -112,6 +143,11 @@ class BleService {
 
   /// Decoded telemetry snapshots — one per inbound register update.
   Stream<TelemetrySample> get telemetry => _telemetry.stream;
+
+  /// Device-metadata snapshots. On the open build the
+  /// injected parser is [NoopMetadataParser], so this stream never emits and the
+  /// value stays [EmptyDeviceMetadata]. A closed build injects a real parser.
+  Stream<DeviceMetadata> get deviceMetadata => _deviceMetadata.stream;
 
   /// Connection lifecycle.
   Stream<BleLinkState> get linkState => _link.stream;
@@ -132,6 +168,9 @@ class BleService {
 
   /// Latest accumulated telemetry snapshot (folds prior frames).
   TelemetrySample get currentSample => _decoder.sample;
+
+  /// Latest accumulated engineering metadata (opaque; empty on the open build).
+  DeviceMetadata get currentDeviceInfo => _decoder.deviceMetadata;
 
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId => _device?.remoteId.str;
@@ -382,6 +421,12 @@ class BleService {
         }
       }
 
+      // Diagnostic: dump the full GATT table (svc/char UUID + properties) to the
+      // capture log. Confirmed the metadata burst (VADJ 0x30 / dealer 0x27) rides
+      // the single notify char ace4 — there is NO second notify channel
+      // (PROTOCOL.md §8.5), so we subscribe to ace4 only.
+      _dumpGatt(services);
+
       final notify = _notifyChar;
       if (_writeChar == null || notify == null) {
         throw StateError(
@@ -404,10 +449,12 @@ class BleService {
     }
   }
 
+  /// Handle a notification chunk from a characteristic.
   void _onNotify(List<int> chunk) {
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk)));
     final frames = _reassembler.addBytes(chunk);
     final now = DateTime.now();
+    final infoBefore = _decoder.deviceMetadata;
     var emitted = false;
     for (final f in frames) {
       if (!f.checksumOk) continue;
@@ -419,6 +466,35 @@ class BleService {
     }
     if (emitted) {
       _telemetry.add(_decoder.sample);
+    }
+    // Device-metadata side-channel. On the open build
+    // the Noop parser never changes it, so this never fires.
+    if (!identical(infoBefore, _decoder.deviceMetadata)) {
+      _deviceMetadata.add(_decoder.deviceMetadata);
+    }
+  }
+
+  /// Emit a diagnostic note line into the packet log (an EVT row).
+  void _emitEvent(String message) {
+    _packets.add(BlePacketEvent(LogDirection.event, const [], note: message));
+  }
+
+  /// Dump every service/characteristic (UUID + property flags) to the log, so a
+  /// second notify channel is visible. Diagnostic only.
+  void _dumpGatt(List<BluetoothService> services) {
+    _emitEvent('GATT dump: ${services.length} service(s)');
+    for (final svc in services) {
+      for (final c in svc.characteristics) {
+        final p = c.properties;
+        final flags = [
+          if (p.read) 'R',
+          if (p.write) 'W',
+          if (p.writeWithoutResponse) 'w',
+          if (p.notify) 'N',
+          if (p.indicate) 'I',
+        ].join();
+        _emitEvent('GATT svc=${svc.uuid.str} char=${c.uuid.str} [$flags]');
+      }
     }
   }
 
@@ -438,8 +514,10 @@ class BleService {
   Future<void> _teardown({required bool emitDisconnected}) async {
     _keepAlive?.cancel();
     _keepAlive = null;
+    _keepAliveTick = 0;
     await _notifySub?.cancel();
     _notifySub = null;
+    _keepAliveWriteFailed = false;
     await _connSub?.cancel();
     _connSub = null;
     _writeChar = null;
@@ -458,7 +536,9 @@ class BleService {
 
   void _startKeepAlive() {
     _keepAlive?.cancel();
-    // Tick immediately so telemetry starts without waiting a full second.
+    _keepAliveTick = 0;
+    // Tick immediately so telemetry starts without waiting a full second. The
+    // first tick sends `!#`, which every device answers with device-type/SOC.
     unawaited(_sendKeepAlive());
     _keepAlive = Timer.periodic(keepAliveInterval, (_) {
       unawaited(_sendKeepAlive());
@@ -467,26 +547,52 @@ class BleService {
 
   Future<void> _sendKeepAlive() async {
     if (_writeChar == null) return;
+    _keepAliveTick++;
+    // Whether the connected unit is a power bank is read from the LATEST decoded
+    // telemetry (device-type 0x22); it flips true once the tick-1 `!#` elicits
+    // the 0x10 frame, after which the every-5th `!#` schedule kicks in.
+    final token = keepAliveTokenFor(
+      _commands,
+      tick: _keepAliveTick,
+      isPowerBank: _decoder.sample.isPowerBank,
+    );
     try {
-      await writeCommand(_commands.keepAlive());
-    } catch (_) {
-      // A failed keep-alive usually means the link dropped; the
-      // connectionState callback handles teardown.
+      await writeCommand(token);
+    } catch (e) {
+      // A failed keep-alive usually means the link dropped; the connectionState
+      // callback handles teardown. Surface it once to the diagnostic log — a
+      // silent catch here previously hid a write-mode bug that suppressed the
+      // metadata burst.
+      if (!_keepAliveWriteFailed) {
+        _keepAliveWriteFailed = true;
+        _emitEvent('keep-alive write failed: $e');
+      }
     }
   }
+
+  bool _keepAliveWriteFailed = false;
 
   // ---------------------------------------------------------------------------
   // Outbound commands
   // ---------------------------------------------------------------------------
 
-  /// Write raw bytes to the write characteristic (Write-Without-Response).
-  /// Throws [StateError] if not connected.
+  /// Write raw bytes to the write characteristic. Throws [StateError] if not
+  /// connected.
+  ///
+  /// The write char (ace3) advertises **Write (with response, 0x08)** but NOT
+  /// Write-Without-Response (0x04). Forcing `withoutResponse: true` throws on
+  /// flutter_blue_plus, which silently killed every keep-alive `#` (so the
+  /// device never got the poke that triggers the connect metadata burst — VADJ /
+  /// serial). Pick the mode from the characteristic's actual properties.
   Future<void> writeCommand(List<int> bytes) async {
     final c = _writeChar;
     if (c == null) {
       throw StateError('writeCommand: not connected / write char unresolved');
     }
-    await c.write(bytes, withoutResponse: true);
+    // Use Write-Without-Response only when the char actually supports it;
+    // ace3 does not, so fall back to Write (with response).
+    final woResp = c.properties.writeWithoutResponse;
+    await c.write(bytes, withoutResponse: woResp);
     _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes)));
   }
 
@@ -503,7 +609,7 @@ class BleService {
     await writeCommand(_commands.switchMode(mode, creds));
   }
 
-  /// Verify-auth standalone (CAPTURE_VERIFIED §6 step 5): the 9-byte auth frame
+  /// Verify-auth standalone (live HCI capture): the 9-byte auth frame
   /// the reference app sends ~2 s before a bundled mode+auth.
   Future<void> sendAuth({required int cb, required int pwSum}) async {
     final creds = AuthCredentials(cb: cb, pwSum: pwSum);
@@ -511,28 +617,34 @@ class BleService {
   }
 
   /// Set warning thresholds in physical units (PROTOCOL.md §8.3 write inverse).
+  ///
+  /// [trailing] is the frame's 4th byte (observed UT / under-temp). When
+  /// null (the default) we **preserve the last-read UT byte** from telemetry
+  /// (selector 0x2B, §8.5) instead of forcing 0x00 — so a user editing OV/UV/OT
+  /// does not silently clobber the device's under-temp setting.
   Future<void> setThresholds({
     required double ovVolts,
     required double uvVolts,
     required double otCelsius,
-    int trailing = 0x00,
+    int? trailing,
   }) async {
     await writeCommand(_commands.thresholds(
       ovVolts: ovVolts,
       uvVolts: uvVolts,
       otCelsius: otCelsius,
-      trailing: trailing,
+      trailing: trailing ?? _decoder.sample.warnUtByte ?? 0x00,
     ));
   }
 
-  /// Set warning thresholds from raw register bytes.
+  /// Set warning thresholds from raw register bytes. [trailing] null preserves
+  /// the last-read UT byte (see [setThresholds]).
   Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-      {int trailing = 0x00}) async {
-    await writeCommand(
-        _commands.thresholdsRaw(ovByte, uvByte, otByte, trailing: trailing));
+      {int? trailing}) async {
+    await writeCommand(_commands.thresholdsRaw(ovByte, uvByte, otByte,
+        trailing: trailing ?? _decoder.sample.warnUtByte ?? 0x00));
   }
 
-  /// Send one keep-alive byte (0x23) on demand.
+  /// Send one scheduled keep-alive token on demand (advances the tick counter).
   Future<void> pokeKeepAlive() => _sendKeepAlive();
 
   // ---------------------------------------------------------------------------
@@ -549,6 +661,7 @@ class BleService {
     await _scanSub?.cancel();
     _scanSub = null;
     await _telemetry.close();
+    await _deviceMetadata.close();
     await _link.close();
     await _scan.close();
     await _packets.close();

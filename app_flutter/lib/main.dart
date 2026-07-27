@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'ble/ble.dart';
 import 'data/data.dart';
 import 'models/models.dart';
+import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
 import 'ui/dashboard/dashboard_page.dart';
@@ -23,7 +24,23 @@ import 'ui/util/update_check.dart';
 const String kProjectUrl = 'https://github.com/WinePaster/open-smart-batt';
 
 
-Future<void> main() async {
+/// Open-build entry point: boots with the default no-op metadata seam.
+Future<void> main() => bootstrap();
+
+/// Composition-root wrapper. The OPEN build calls this with defaults —
+/// [NoopMetadataParser] (decodes no closed selectors) and no device-info panel —
+/// so its behaviour is identical to before the seam existed. A CLOSED `main()`
+/// (private repo) calls `bootstrap(parser: …, deviceInfoPanelBuilder: …)` to
+/// inject its own parser + UI panel without forking this shell.
+///
+/// - [parser]: device-metadata parser threaded to [BleService] via
+///   [AppServices.create]. Open default = [NoopMetadataParser].
+/// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
+///   open build (no panel; the open app never reads [DeviceMetadata] content).
+Future<void> bootstrap({
+  MetadataParser parser = const NoopMetadataParser(),
+  WidgetBuilder? deviceInfoPanelBuilder,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Portrait-locked (mockup: 直式鎖定).
   await SystemChrome.setPreferredOrientations(const [
@@ -32,7 +49,7 @@ Future<void> main() async {
   ]);
 
   // Composition root: open DB, build repos + BLE service, wire controllers.
-  final services = await AppServices.create();
+  final services = await AppServices.create(parser: parser);
 
   // Capture runtime errors into the diagnostic log so users can export them
   // from the phone alone (Settings → 診斷 → 匯出診斷日誌), no PC needed.
@@ -47,15 +64,27 @@ Future<void> main() async {
     return true;
   };
 
-  runApp(OpenSmartBattApp(services: services));
+  runApp(OpenSmartBattApp(
+    services: services,
+    deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+  ));
 }
 
 /// Root app. Provides the state controllers via [MultiProvider] and owns the
 /// [AppServices] lifecycle (disposed when the app is torn down).
 class OpenSmartBattApp extends StatefulWidget {
-  const OpenSmartBattApp({super.key, required this.services});
+  const OpenSmartBattApp({
+    super.key,
+    required this.services,
+    this.deviceInfoPanelBuilder,
+  });
 
   final AppServices services;
+
+  /// Closed-side "device info" panel builder, or null on the open build (no
+  /// panel). Held here so a closed composition
+  /// root can surface it without forking the shell; the open build never sets it.
+  final WidgetBuilder? deviceInfoPanelBuilder;
 
   @override
   State<OpenSmartBattApp> createState() => _OpenSmartBattAppState();

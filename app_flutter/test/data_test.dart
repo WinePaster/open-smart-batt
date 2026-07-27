@@ -220,6 +220,33 @@ void main() {
       expect(rebound, 'new-nsuuid');
     });
 
+    // design 0001 §5 Phase 5: the v4 schema persists the resolved product class
+    // / cosmetic pack label. Old rows default to unknown.
+    test('persists product_class and setProductClass updates it', () async {
+      final repo = DeviceRepo(appDb.db);
+      // A device saved without a class defaults to unknown (pre-migration rows).
+      await repo.upsertSavedDevice(const SavedDevice(id: 'pack-1', alias: 'p'));
+      expect((await repo.getDevice('pack-1'))!.productClass,
+          ProductClass.unknown);
+
+      // Upsert with an explicit label round-trips.
+      await repo.upsertSavedDevice(const SavedDevice(
+        id: 'pb-1',
+        alias: 'bank',
+        productClass: ProductClass.powerBank,
+      ));
+      expect((await repo.getDevice('pb-1'))!.productClass,
+          ProductClass.powerBank);
+
+      // setProductClass updates just the class column.
+      final affected =
+          await repo.setProductClass('pack-1', ProductClass.smartBattery);
+      expect(affected, 1);
+      final d = await repo.getDevice('pack-1');
+      expect(d!.productClass, ProductClass.smartBattery);
+      expect(d.alias, 'p'); // untouched
+    });
+
     test('upsert replaces an existing device (same id)', () async {
       final repo = DeviceRepo(appDb.db);
       await repo.upsertSavedDevice(

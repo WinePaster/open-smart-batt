@@ -8,5 +8,6 @@ export 'frame.dart';
 export 'selectors.dart';
 export 'command_builder.dart';
 export 'inbound_frame.dart';
+export 'metadata_parser.dart';
 export 'telemetry_decoder.dart';
 export 'gatt.dart';
