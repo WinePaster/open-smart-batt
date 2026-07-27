@@ -2,7 +2,9 @@ name: Release APK
 
 # 兩種觸發：
 #   A. 一鍵自動推進 — Actions → Run workflow → 選 bump(patch/minor/major/prerelease)
-#   B. 明確版號     — 推 tag v*.*.*（例 git push origin v0.4.0）
+#      CI 算出下一版號、**回寫 pubspec.yaml 並 commit 回分支**、再建 tag 與 Release。
+#   B. 明確版號     — 先把 pubspec.yaml 的 version 改成目標版號並 commit，
+#      再推 tag v*.*.*（例 git push origin v0.4.0）。版號不符會**直接失敗**。
 on:
   push:
     tags: ['v*.*.*']
@@ -15,7 +17,7 @@ on:
         options: [patch, minor, major, prerelease]
 
 permissions:
-  contents: write   # 建立 tag / 發佈 Release
+  contents: write   # 建立 tag / 發佈 Release / 回寫 pubspec
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,26 +28,43 @@ env:
   APP_DIR: app_flutter
 
 jobs:
-  build-release:
+  # ---------------------------------------------------------------------------
+  # 版號單一來源。Android 與 iOS 都消費這個 job 的 output，
+  # 兩平台在結構上不可能算出不同的 build number。
+  # ---------------------------------------------------------------------------
+  version:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      version:    ${{ steps.ver.outputs.VERSION }}
+      numeric:    ${{ steps.ver.outputs.NUMERIC }}
+      tag:        ${{ steps.ver.outputs.TAG }}
+      build:      ${{ steps.ver.outputs.BUILD }}
+      prerelease: ${{ steps.ver.outputs.PRERELEASE }}
+      sha:        ${{ steps.pubspec.outputs.SHA }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # 需要完整 tag 歷史來算下一版
 
-      - name: 計算版號 (versionName) 與 build number (versionCode)
+      - name: 計算 versionName / build number
         id: ver
         run: |
           set -e
-          BUILD="${{ github.run_number }}"      # 單調遞增 → Android versionCode
+
+          # build number：日期推導、無狀態、兩平台共用。
+          # 取代舊的 github.run_number（綁在單一 workflow 檔案上，改名即歸零）。
+          BUILD="$(tool/build_number.sh)"
+
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             VER="${TAG#v}"
           else
             # base ONLY from stable tags (exclude -rc/-* prereleases) so prereleases
             # never out-sort or consume the next stable patch
-            LATEST="$(git tag -l 'v*.*.*' | grep -vE -- '-' | sort -V | tail -n1)"
+            # pattern is written '\-' (not '-') so it can never be parsed as an
+            # option; the older '-vE -- -' form breaks under non-GNU greps.
+            LATEST="$(git tag -l 'v*.*.*' | grep -vE '\-' | sort -V | tail -n1)"
             LATEST="${LATEST:-v0.0.0}"
             BASE="${LATEST#v}"
             IFS='.' read -r MA MI PA <<< "$BASE"
@@ -57,12 +76,66 @@ jobs:
             esac
             TAG="v${VER}"
           fi
+
+          # CFBundleShortVersionString 只吃純數字 x.y.z，須剝除 -rc.N 後綴
+          NUMERIC="${VER%%-*}"
+          [ -z "$NUMERIC" ] && NUMERIC="0.0.0"
+
           PRE=false; [[ "$VER" == *-* ]] && PRE=true
-          echo "VERSION=$VER" >> "$GITHUB_OUTPUT"
-          echo "TAG=$TAG"     >> "$GITHUB_OUTPUT"
-          echo "BUILD=$BUILD" >> "$GITHUB_OUTPUT"
-          echo "PRERELEASE=$PRE" >> "$GITHUB_OUTPUT"
-          echo "→ versionName=$VER  versionCode=$BUILD  tag=$TAG  prerelease=$PRE"
+          {
+            echo "VERSION=$VER"
+            echo "NUMERIC=$NUMERIC"
+            echo "TAG=$TAG"
+            echo "BUILD=$BUILD"
+            echo "PRERELEASE=$PRE"
+          } >> "$GITHUB_OUTPUT"
+          echo "→ versionName=$VER  numeric=$NUMERIC  build=$BUILD  tag=$TAG  prerelease=$PRE"
+
+      - name: 對齊 pubspec.yaml（單一真實來源）
+        id: pubspec
+        env:
+          VER: ${{ steps.ver.outputs.VERSION }}
+          TAG: ${{ steps.ver.outputs.TAG }}
+        run: |
+          set -e
+          PUBSPEC="${APP_DIR}/pubspec.yaml"
+          CURRENT="$(grep -m1 '^version:' "$PUBSPEC" | sed 's/^version:[[:space:]]*//' | cut -d+ -f1)"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # 模式 B：tag 是權威，但 pubspec 必須先被更新過。
+            # 不符就失敗 —— 這正是 0.6.7+109 與 run_number 13 長期漂移的成因。
+            if [ "$CURRENT" != "$VER" ]; then
+              echo "::error::pubspec.yaml 版號 ($CURRENT) 與 tag ($TAG) 不符。"
+              echo "::error::請先把 ${PUBSPEC} 改成 'version: ${VER}+0' 並 commit，再重推 tag。"
+              exit 1
+            fi
+            echo "SHA=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            # 模式 A：CI 算出版號後回寫 pubspec 並 commit，確保 pubspec / tag / 產物三者一致。
+            # build number 一律由建置時的 --build-number 帶入，故此處固定寫 +0，
+            # 見 docs/VERSIONING.md「為什麼是 +0」。
+            sed -i "s/^version:.*/version: ${VER}+0/" "$PUBSPEC"
+            if git diff --quiet -- "$PUBSPEC"; then
+              echo "pubspec 已是 ${VER}，無須回寫"
+              echo "SHA=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            else
+              git config user.name  'github-actions[bot]'
+              git config user.email 'github-actions[bot]@users.noreply.github.com'
+              git add "$PUBSPEC"
+              git commit -m "chore(release): bump pubspec to ${VER}+0 [skip ci]"
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+              echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  build-release:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
 
       - uses: actions/setup-java@v5
         with:
@@ -83,13 +156,13 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: |
           flutter build apk --release \
-            --build-name="${{ steps.ver.outputs.VERSION }}" \
-            --build-number="${{ steps.ver.outputs.BUILD }}"
+            --build-name="${{ needs.version.outputs.version }}" \
+            --build-number="${{ needs.version.outputs.build }}"
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         run: |
           SRC="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
-          OUT="open-smart-batt-${{ steps.ver.outputs.TAG }}-${{ steps.ver.outputs.BUILD }}.apk"
+          OUT="open-smart-batt-${{ needs.version.outputs.tag }}-${{ needs.version.outputs.build }}.apk"
           cp "$SRC" "$OUT"
           sha256sum "$OUT" | tee "${OUT}.sha256"
           echo "APK=$OUT" >> "$GITHUB_ENV"
@@ -105,14 +178,15 @@ jobs:
       - name: 發佈 GitHub Release（含 APK）
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.ver.outputs.TAG }}
-          name: OpenSmartBatt ${{ steps.ver.outputs.TAG }}
-          prerelease: ${{ steps.ver.outputs.PRERELEASE }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ needs.version.outputs.sha }}
+          name: OpenSmartBatt ${{ needs.version.outputs.tag }}
+          prerelease: ${{ needs.version.outputs.prerelease }}
           generate_release_notes: true
           body: |
             社群自救版 · 非官方 · 非商業。
             ⚠️ 此 APK 目前為 **debug 簽章**（尚未設定正式簽章金鑰）；**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
-            versionName `${{ steps.ver.outputs.VERSION }}` · versionCode `${{ steps.ver.outputs.BUILD }}`
+            versionName `${{ needs.version.outputs.version }}` · versionCode `${{ needs.version.outputs.build }}`
           files: |
             ${{ env.APK }}
             ${{ env.APK }}.sha256
@@ -120,65 +194,62 @@ jobs:
             ${{ env.LATEST_APK }}.sha256
 
   # ---------------------------------------------------------------------------
-  # iOS IPA → TestFlight (added by the iOS port; independent of build-release).
+  # iOS IPA → TestFlight。與 build-release 平行，互不阻擋。
   #
-  # GATED ON SIGNING SECRETS that are NOT in this repo. Without them the job
-  # exits early (green no-op) so it never blocks an Android release. To enable,
-  # the maintainer adds these repo secrets in GitHub Actions:
+  # 這個 job 用 repo variable IOS_RELEASE_ENABLED 當開關（Settings → Variables）。
+  # 未開啟時整個 job 顯示為 **skipped（灰色）**，而不是舊版的綠色 no-op ——
+  # 綠燈正是 2026-07-28「以為 CI 推了 TestFlight、實際是本機手動上傳」的成因。
+  # 開關打開但 secret 缺漏時，改為**大聲失敗**。
+  #
+  # 開啟前需在 GitHub Actions secrets 補齊：
   #   APPLE_TEAM_ID, IOS_P12_BASE64, IOS_P12_PASSWORD,
   #   IOS_MOBILEPROVISION_BASE64, ASC_KEY_ID, ASC_ISSUER_ID, ASC_API_KEY_BASE64
-  # NONE of these are stored here — they live only in GitHub Actions secrets.
+  # 這些一律只存在於 GitHub Actions secrets，絕不進 repo。
   # ---------------------------------------------------------------------------
   ios-ipa:
     name: iOS IPA (TestFlight)
+    needs: version
+    if: vars.IOS_RELEASE_ENABLED == 'true'
     runs-on: macos-15
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ needs.version.outputs.sha }}
 
-      - name: Check signing prerequisites
-        id: signing
+      - name: Verify signing secrets are complete
         env:
-          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
-          IOS_MOBILEPROVISION_BASE64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          IOS_MOBILEPROVISION_BASE64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
         run: |
-          READY=true
-          if [ -z "$IOS_P12_BASE64" ] || [ -z "$IOS_MOBILEPROVISION_BASE64" ] || [ -z "$APPLE_TEAM_ID" ]; then
-            echo "::notice::iOS signing secrets not set — skipping IPA build & TestFlight upload."
-            READY=false
+          MISSING=""
+          for k in APPLE_TEAM_ID IOS_P12_BASE64 IOS_P12_PASSWORD \
+                   IOS_MOBILEPROVISION_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY_BASE64; do
+            [ -z "${!k}" ] && MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::IOS_RELEASE_ENABLED=true 但缺少 secrets:$MISSING"
+            echo "::error::補齊後重跑，或把 IOS_RELEASE_ENABLED 設回 false 讓此 job 顯示為 skipped。"
+            exit 1
           fi
-          echo "ready=$READY" >> "$GITHUB_OUTPUT"
-
-      - name: Derive numeric version (strip -rc.N for iOS)
-        if: steps.signing.outputs.ready == 'true'
-        id: ver
-        run: |
-          # CFBundleShortVersionString must be strictly numeric x.y.z. Strip any
-          # prerelease suffix; CFBundleVersion stays the monotonic run_number.
-          RAW="${GITHUB_REF_NAME#v}"
-          NUMERIC="${RAW%%-*}"
-          [ -z "$NUMERIC" ] && NUMERIC="0.0.0"
-          echo "numeric=$NUMERIC" >> "$GITHUB_OUTPUT"
-          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Pin Xcode
-        if: steps.signing.outputs.ready == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable   # TODO(maintainer): pin to match Flutter 3.44.4
 
       - uses: subosito/flutter-action@v2
-        if: steps.signing.outputs.ready == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Import signing assets into a temporary keychain
-        if: steps.signing.outputs.ready == 'true'
         env:
           IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
           IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
@@ -197,7 +268,6 @@ jobs:
           echo "$IOS_MOBILEPROVISION_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/dist.mobileprovision"
 
       - name: Inject Team ID into ExportOptions.plist
-        if: steps.signing.outputs.ready == 'true'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         working-directory: ${{ env.APP_DIR }}
@@ -207,17 +277,15 @@ jobs:
           /usr/bin/sed -i '' "s/__APPLE_TEAM_ID__/${APPLE_TEAM_ID}/" ios/ExportOptions.plist
 
       - name: flutter build ipa
-        if: steps.signing.outputs.ready == 'true'
         working-directory: ${{ env.APP_DIR }}
         run: |
           flutter pub get
           flutter build ipa --release \
-            --build-name="${{ steps.ver.outputs.numeric }}" \
-            --build-number="${{ steps.ver.outputs.build }}" \
+            --build-name="${{ needs.version.outputs.numeric }}" \
+            --build-number="${{ needs.version.outputs.build }}" \
             --export-options-plist ios/ExportOptions.plist
 
       - name: Upload to TestFlight (App Store Connect API key)
-        if: steps.signing.outputs.ready == 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
