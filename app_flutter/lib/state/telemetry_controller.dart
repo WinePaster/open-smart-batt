@@ -175,12 +175,14 @@ class TelemetryController extends ChangeNotifier {
     int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
+    ProductClass Function(String? deviceId)? classFor,
   }) =>
       _history.exportCsv(
         since: since,
         limit: limit,
         deviceId: deviceId,
         labelFor: labelFor,
+        classFor: classFor,
       );
 
   /// Clear all history.

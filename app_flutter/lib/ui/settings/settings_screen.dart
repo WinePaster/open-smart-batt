@@ -175,12 +175,14 @@ class _DataCardState extends State<_DataCard> {
     // already be gone.
     final devices = context.read<DeviceController>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
+    ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
         labelFor: labelFor,
+        classFor: classFor,
       );
       if (!csv.contains('\n')) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.commonNoRecordsToExport)));

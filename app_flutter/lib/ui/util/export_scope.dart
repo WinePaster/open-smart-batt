@@ -88,6 +88,15 @@ ExportTarget? currentDeviceTarget(
 /// Takes the controller rather than a [BuildContext] on purpose: this runs
 /// inside the repo AFTER an await, by which time the screen may be gone and a
 /// `context.read` would throw mid-export.
+/// The stored product class for one `device_id`, or [ProductClass.unknown].
+///
+/// Used by the CSV export to blank the current column for a super-capacitor,
+/// which reports a permanent 0.0 A it cannot actually measure (design 0007).
+ProductClass deviceClassFor(DeviceController devices, String? deviceId) {
+  if (deviceId == null) return ProductClass.unknown;
+  return devices.deviceFor(deviceId)?.productClass ?? ProductClass.unknown;
+}
+
 String deviceLabelFor(DeviceController devices, String? deviceId) {
   if (deviceId == null) return '';
   final saved = devices.deviceFor(deviceId);
