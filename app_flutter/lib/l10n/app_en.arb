@@ -270,6 +270,14 @@
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
   "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
+
+  "exportScopeTitle": "Export scope",
+  "exportScopeThisDevice": "This device only ({label})",
+  "@exportScopeThisDevice": {
+    "placeholders": { "label": { "type": "String" } }
+  },
+  "exportScopeThisSession": "This connection only",
+  "exportScopeAllDevices": "All devices",
   "settingsClearLogTitle": "Clear diagnostic log",
   "settingsClearLogBody": "This will delete all raw TX/RX packet records on this device.",
   "settingsLogCleared": "Diagnostic log cleared",

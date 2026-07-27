@@ -1190,6 +1190,30 @@ abstract class AppLocalizations {
   /// **'OpenSmartBatt diagnostic log'**
   String get settingsExportSubjectDiagLog;
 
+  /// No description provided for @exportScopeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Export scope'**
+  String get exportScopeTitle;
+
+  /// No description provided for @exportScopeThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device only ({label})'**
+  String exportScopeThisDevice(String label);
+
+  /// No description provided for @exportScopeThisSession.
+  ///
+  /// In en, this message translates to:
+  /// **'This connection only'**
+  String get exportScopeThisSession;
+
+  /// No description provided for @exportScopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All devices'**
+  String get exportScopeAllDevices;
+
   /// No description provided for @settingsClearLogTitle.
   ///
   /// In en, this message translates to:

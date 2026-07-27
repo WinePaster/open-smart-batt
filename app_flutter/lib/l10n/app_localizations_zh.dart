@@ -641,6 +641,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsExportSubjectDiagLog => 'OpenSmartBatt 診斷日誌';
 
   @override
+  String get exportScopeTitle => '匯出範圍';
+
+  @override
+  String exportScopeThisDevice(String label) {
+    return '只匯出目前裝置（$label）';
+  }
+
+  @override
+  String get exportScopeThisSession => '只匯出本次連線';
+
+  @override
+  String get exportScopeAllDevices => '全部裝置';
+
+  @override
   String get settingsClearLogTitle => '清除診斷日誌';
 
   @override

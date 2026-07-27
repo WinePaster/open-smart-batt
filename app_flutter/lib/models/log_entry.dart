@@ -24,12 +24,25 @@ class LogEntry {
   /// Optional human note (e.g. "keep-alive", "switchMode(6)", decoded selector).
   final String? note;
 
+  /// Which unit this row belongs to (BLE remote id), or null when it was
+  /// recorded outside a connection (scan events) or predates design 0006.
+  ///
+  /// NEVER put this in an exported filename — on Android it is the MAC address.
+  /// Use the human-readable identity (serial / alias / short hash) instead.
+  final String? deviceId;
+
+  /// Monotonic connection counter, so one export can be sliced per connection.
+  /// Null for rows recorded outside a connection or predating design 0006.
+  final int? sessionId;
+
   const LogEntry({
     this.id,
     required this.timestamp,
     required this.direction,
     required this.hex,
     this.note,
+    this.deviceId,
+    this.sessionId,
   });
 
   /// Build from raw bytes.
@@ -39,6 +52,8 @@ class LogEntry {
     DateTime? at,
     String? note,
     int? id,
+    String? deviceId,
+    int? sessionId,
   }) =>
       LogEntry(
         id: id,
@@ -48,14 +63,24 @@ class LogEntry {
             .map((b) => (b & 0xFF).toRadixString(16).padLeft(2, '0'))
             .join(),
         note: note,
+        deviceId: deviceId,
+        sessionId: sessionId,
       );
 
   /// A connection/error event (no raw bytes). Always safe to record.
-  factory LogEntry.event(String message, {DateTime? at}) => LogEntry(
+  factory LogEntry.event(
+    String message, {
+    DateTime? at,
+    String? deviceId,
+    int? sessionId,
+  }) =>
+      LogEntry(
         timestamp: at ?? DateTime.now(),
         direction: LogDirection.event,
         hex: '',
         note: message,
+        deviceId: deviceId,
+        sessionId: sessionId,
       );
 
   /// One-line `.log` rendering: `2026-06-29T13:09:12.000 TX b823... # note`.
@@ -75,6 +100,8 @@ class LogEntry {
         'direction': direction.name,
         'hex': hex,
         'note': note,
+        'device_id': deviceId,
+        'session_id': sessionId,
       };
 
   static LogEntry fromMap(Map<String, Object?> m) => LogEntry(
@@ -87,5 +114,7 @@ class LogEntry {
         ),
         hex: m['hex'] as String,
         note: m['note'] as String?,
+        deviceId: m['device_id'] as String?,
+        sessionId: (m['session_id'] as num?)?.toInt(),
       );
 }

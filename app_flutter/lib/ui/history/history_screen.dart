@@ -21,6 +21,8 @@ import '../../models/models.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/export_naming.dart';
+import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../widgets/industrial.dart';
 
@@ -97,14 +99,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _exportCsv() async {
     if (_exporting) return;
+    // design 0006: the device scope intersects with the time range already
+    // chosen on this screen.
+    final target = await chooseExportScope(context, offerSession: false);
+    if (target == null || !mounted) return;
     setState(() => _exporting = true);
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    // Captured now: the label lookup runs after an await, when this screen may
+    // already be gone.
+    final devices = context.read<DeviceController>();
+    String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final csv =
-          await _tele.exportHistoryCsv(since: _sinceFor(_range), limit: _rowCap);
+      final csv = await _tele.exportHistoryCsv(
+        since: _sinceFor(_range),
+        limit: _rowCap,
+        deviceId: target.deviceId,
+        labelFor: labelFor,
+      );
       if (csv.trim().isEmpty || !csv.contains('\n')) {
         messenger.showSnackBar(SnackBar(
           duration: const Duration(milliseconds: 1600),
@@ -114,7 +128,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       await shareTextAsFile(
         content: csv,
-        filename: 'opensmartbatt-history-${exportStamp()}.csv',
+        filename: exportFileName(
+          base: 'opensmartbatt-history',
+          classSlug: target.classSlug,
+          ident: target.ident,
+          stamp: exportStamp(),
+          extension: 'csv',
+        ),
         mimeType: 'text/csv',
         subject: l10n.historyExportSubject,
         sharePositionOrigin: origin,

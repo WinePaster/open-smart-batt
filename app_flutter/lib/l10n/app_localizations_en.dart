@@ -674,6 +674,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsExportSubjectDiagLog => 'OpenSmartBatt diagnostic log';
 
   @override
+  String get exportScopeTitle => 'Export scope';
+
+  @override
+  String exportScopeThisDevice(String label) {
+    return 'This device only ($label)';
+  }
+
+  @override
+  String get exportScopeThisSession => 'This connection only';
+
+  @override
+  String get exportScopeAllDevices => 'All devices';
+
+  @override
   String get settingsClearLogTitle => 'Clear diagnostic log';
 
   @override

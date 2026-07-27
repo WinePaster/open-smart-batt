@@ -23,7 +23,11 @@ class Db {
   /// rebind key — D.3) and `stale` (failed-to-resolve flag).
   /// v4: saved_devices gained `product_class` (resolved class + cosmetic pack
   /// label — design 0001 §5 Phase 5); old rows default to 'unknown'.
-  static const int schemaVersion = 4;
+  /// v5: history + diag_log gained `device_id` (which unit the row belongs to),
+  /// history gained `soc` and diag_log gained `session_id` — design 0006. All
+  /// nullable with NO default: pre-v5 rows keep NULL, meaning "unknown device",
+  /// because attributing them to the current unit would be a lie.
+  static const int schemaVersion = 5;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -112,6 +116,29 @@ class AppDatabase {
         "ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN product_class TEXT NOT NULL DEFAULT 'unknown'",
       );
     }
+    if (from < 5) {
+      // design 0006: attribute every recorded row to a device (and each log row
+      // to one connection). Nullable with NO default — pre-v5 rows stay NULL
+      // ("unknown device") rather than being mis-attributed to the current unit.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN device_id TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN soc INTEGER',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableDiagLog} ADD COLUMN device_id TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableDiagLog} ADD COLUMN session_id INTEGER',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_history_device ON ${Db.tableHistory} (device_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -135,10 +162,13 @@ class AppDatabase {
       soh INTEGER,
       mode INTEGER,
       twf INTEGER,
-      serial TEXT
+      serial TEXT,
+      soc INTEGER,
+      device_id TEXT
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',
+    'CREATE INDEX idx_history_device ON ${Db.tableHistory} (device_id)',
     '''
     CREATE TABLE ${Db.tableSavedDevices} (
       id TEXT PRIMARY KEY,
@@ -171,9 +201,12 @@ class AppDatabase {
       timestamp INTEGER NOT NULL,
       direction TEXT NOT NULL,
       hex TEXT NOT NULL,
-      note TEXT
+      note TEXT,
+      device_id TEXT,
+      session_id INTEGER
     )
     ''',
     'CREATE INDEX idx_diag_log_ts ON ${Db.tableDiagLog} (timestamp)',
+    'CREATE INDEX idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
   ];
 }
