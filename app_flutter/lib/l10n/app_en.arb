@@ -271,6 +271,21 @@
   "settingsLogEmpty": "Diagnostic log is empty",
   "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
 
+  "startupFailedTitle": "Couldn't start",
+  "startupFailedBody": "The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).",
+  "startupDowngradeTitle": "App is older than your data",
+  "startupDowngradeBody": "Your data was written by a newer version (schema v{stored}); this build only supports v{app}, so it was left untouched rather than risk damaging it. Please reinstall the newer app — your records are intact.",
+  "@startupDowngradeBody": {
+    "placeholders": {
+      "stored": { "type": "int" },
+      "app": { "type": "int" }
+    }
+  },
+  "startupRetry": "Try again",
+  "startupResetDb": "Reset database (deletes all records)",
+  "startupResetTitle": "Reset the database?",
+  "startupResetBody": "This permanently deletes all history, saved devices and settings.",
+
   "exportScopeTitle": "Export scope",
   "exportScopeThisDevice": "This device only ({label})",
   "@exportScopeThisDevice": {

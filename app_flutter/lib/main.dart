@@ -18,6 +18,7 @@ import 'ui/dashboard/dashboard_page.dart';
 import 'ui/devices/device_list_sheet.dart';
 import 'ui/history/history_screen.dart';
 import 'ui/settings/settings_screen.dart';
+import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
 
 /// Public project page (shown in the community disclaimer + Settings → About).
@@ -49,7 +50,24 @@ Future<void> bootstrap({
   ]);
 
   // Composition root: open DB, build repos + BLE service, wire controllers.
-  final services = await AppServices.create(parser: parser);
+  //
+  // This runs BEFORE runApp(), so a failure here (failed migration, corrupt
+  // file, downgraded install) would otherwise be a blank screen with no message
+  // and no way to export the diagnostic log — it lives in the DB that will not
+  // open. Fall back to a screen that says what happened instead.
+  final AppServices services;
+  try {
+    services = await AppServices.create(parser: parser);
+  } catch (e) {
+    runApp(StartupFailureApp(
+      error: e,
+      onRetry: () => bootstrap(
+        parser: parser,
+        deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+      ),
+    ));
+    return;
+  }
 
   // Capture runtime errors into the diagnostic log so users can export them
   // from the phone alone (Settings → 診斷 → 匯出診斷日誌), no PC needed.
