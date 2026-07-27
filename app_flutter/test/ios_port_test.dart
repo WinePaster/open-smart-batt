@@ -155,17 +155,26 @@ void main() {
       // 0x02 is the wire-verified smart battery (design 0004 §3.1).
       expect(ProductClass.fromDeviceType(0x02), ProductClass.smartBattery);
       expect(ProductClass.fromDeviceType(0x02).isPowerBank, isFalse);
-      // 0x44 (old Smi-tag bug) and the UNVERIFIED super-cap 0x17 stay unknown —
-      // 0x17 must NOT map to supercapacitor until wire-verified (§3.1).
+      // 0x17 is the wire-verified super-capacitor since 2026-07-27 (design 0007,
+      // which lands the mapping 0004 §3.1 deferred until a capture existed).
+      expect(ProductClass.fromDeviceType(0x17), ProductClass.supercapacitor);
+      // 0x44 (old Smi-tag bug) and an absent byte stay unknown.
       expect(ProductClass.fromDeviceType(0x44), ProductClass.unknown);
-      expect(ProductClass.fromDeviceType(0x17), ProductClass.unknown);
       expect(ProductClass.fromDeviceType(null), ProductClass.unknown);
     });
 
     test('capabilities are gated PER CLASS (design 0004 §3.2)', () {
-      // 0x17 is unverified => unknown => bounded fallback: union EXCEPT
-      // anti-theft (檢測電容 + 解除斷電, no 防盜) — the corrected matrix.
-      final unknownPack = DeviceCapabilities.fromDeviceType(0x17);
+      // 0x17 => supercapacitor (design 0007): 檢測電容 only. The owner confirmed
+      // 2026-07-27 that a capacitor has no 解除斷電, so it must NOT be offered.
+      final cap = DeviceCapabilities.fromDeviceType(0x17);
+      expect(cap.productClass, ProductClass.supercapacitor);
+      expect(cap.isCapacitor, isTrue);
+      expect(cap.hasCutOff, isFalse);
+      expect(cap.hasAntiTheft, isFalse);
+
+      // An UNRECOGNISED byte still gets the bounded fallback: union EXCEPT
+      // anti-theft (檢測電容 + 解除斷電, no 防盜).
+      final unknownPack = DeviceCapabilities.fromDeviceType(0x99);
       expect(unknownPack.isPowerBank, isFalse);
       expect(unknownPack.isCapacitor, isTrue);
       expect(unknownPack.hasCutOff, isTrue);
@@ -190,11 +199,10 @@ void main() {
       expect(smart.hasAntiTheft, isFalse);
       expect(smart.copyWith(antiTheftOverride: true).hasAntiTheft, isTrue);
 
-      // Super-capacitor label: 檢測電容 only.
-      final cap = DeviceCapabilities.fromClass(ProductClass.supercapacitor);
-      expect(cap.isCapacitor, isTrue);
-      expect(cap.hasCutOff, isFalse);
-      expect(cap.hasAntiTheft, isFalse);
+      // Same capacitor gating whether it comes from the class or the wire byte.
+      final capByClass =
+          DeviceCapabilities.fromClass(ProductClass.supercapacitor);
+      expect(capByClass, cap);
     });
   });
 

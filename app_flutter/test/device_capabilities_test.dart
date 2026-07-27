@@ -68,10 +68,13 @@ void main() {
           ProductClass.powerBank);
       expect(DeviceCapabilities.fromDeviceType(0x02).productClass,
           ProductClass.smartBattery);
-      // 0x17 unverified → unknown (bounded fallback), NOT supercapacitor.
+      // 0x17 → supercapacitor since the 2026-07-27 wire capture (design 0007).
       expect(DeviceCapabilities.fromDeviceType(0x17).productClass,
-          ProductClass.unknown);
+          ProductClass.supercapacitor);
+      // Only an absent / unrecognised byte falls back to unknown.
       expect(DeviceCapabilities.fromDeviceType(null).productClass,
+          ProductClass.unknown);
+      expect(DeviceCapabilities.fromDeviceType(0x99).productClass,
           ProductClass.unknown);
     });
   });

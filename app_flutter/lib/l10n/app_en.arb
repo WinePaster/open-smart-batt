@@ -108,7 +108,9 @@
   "statusBadgeCutOffOn": "On",
   "statusBadgeCutOffOff": "Off",
   "controlDetectCapacitor": "Check Capacitor",
-  "statusAdvisoryNote": "This unit is detected as a Supercapacitor; only supported features are shown (anti-theft appears only on battery models that support it). After releasing the cut-off, avoid re-locking; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
+  "statusAdvisoryNoteCapacitor": "This unit is a super-capacitor (from the device type it reports); only the features it supports are shown. Its own over-voltage / under-voltage / over-temperature protection stays active.",
+  "statusAdvisoryNoteBattery": "This unit is a smart battery (from the device type it reports). Anti-theft appears only on models that support it; after releasing the cut-off, avoid re-locking.",
+  "statusAdvisoryNoteUnclassified": "The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.",
   "capacitorCheckNoData": "No capacitor readings yet; please wait for live data to update.",
   "capacitorCheckReadout": "SOH {soh}% · Secondary Voltage {svlt} V · Primary Voltage {pvlt} V",
   "@capacitorCheckReadout": {
@@ -307,8 +309,7 @@
   "settingsAboutDialogBody": "This app is an independent, community-developed open-source tool based on public reverse-engineering research, communicating via Bluetooth with the RCE smart capacitor/battery you have purchased.\n\nThis project is not an official RCE product and has no affiliation with the manufacturer; it is intended solely for personal, non-commercial use by owners of the hardware.",
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
 
-  "packLabelIdentifying": "Identifying…",
-  "packLabelAuto": "Auto-detect",
+  "packLabelUnclassified": "Unclassified (tap to set)",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",
   "powerBankSocSubUnknown": "Cell -- V",

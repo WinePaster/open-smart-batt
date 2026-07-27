@@ -1,95 +1,70 @@
-/// OpenSmartBatt — pack-class label resolver (design 0001 §3.4).
+/// OpenSmartBatt — product-class resolver (design 0007).
 ///
-/// PURE Dart (no Flutter imports) so it is trivially unit-testable. Watches the
-/// telemetry stream over a short settling window after connect and produces a
-/// COSMETIC pack label (super-capacitor vs smart battery). This label is TEXT
-/// ONLY — routing is decided elsewhere purely by the deterministic power-bank
-/// device-type (design 0001 §3.1); the label NEVER selects a layout.
+/// PURE Dart (no Flutter imports) so it is trivially unit-testable.
+///
+/// It used to GUESS: watch telemetry over a settling window and label a
+/// non-power-bank pack capacitor-vs-battery by fingerprint ("a current 0x2E or
+/// DVOL 0x24 frame means battery"). The 2026-07-27 capture falsified that — an
+/// owner-confirmed super-capacitor streams 0x2E every second, with a constant
+/// payload decoding to 0.0 A, so it was branded a battery and handed the
+/// battery controls. The fingerprint's premise came from earlier capacitor logs
+/// recorded while the write-mode bug suppressed the metadata burst entirely.
+///
+/// Since all three device-type bytes are now wire-verified (0x22 / 0x02 / 0x17),
+/// the guessing is gone. This class only:
+///   * remembers the last device-type byte seen, and
+///   * holds a user's explicit choice for units whose byte we do not recognise.
 library;
 
 import '../models/product_class.dart';
 import '../models/telemetry_sample.dart';
 
-/// Accumulates the telemetry fingerprint needed to label a non-power-bank pack.
-///
-/// A capacitor streams only PVLT/SVLT/Temp; a smart battery additionally streams
-/// current (0x2E) and per-cell DVOL (0x24). We therefore label a pack
-/// [ProductClass.smartBattery] as soon as either of those registers arrives, and
-/// [ProductClass.supercapacitor] once the settling window elapses without them
-/// (PROTOCOL.md §12.1). The user may override the guess at any time.
+/// Resolves the product class of the connected unit.
 class PackClassResolver {
-  PackClassResolver({this.settlingWindow = const Duration(seconds: 6)});
+  PackClassResolver();
 
-  /// How long to wait after connect before defaulting a fingerprint-less pack
-  /// to super-capacitor. Design 0001 §7 Q4 leaves this tunable.
-  final Duration settlingWindow;
-
-  DateTime? _connectedAt;
-  bool _batteryFingerprint = false;
   int? _deviceType;
   ProductClass? _override;
 
-  /// Begin a fresh settling window for a new connection.
+  /// Begin a new connection. Kept as an explicit call site so the resolver's
+  /// lifecycle still mirrors the link's.
   void markConnected(DateTime at) {
-    _connectedAt = at;
-    _batteryFingerprint = false;
     _deviceType = null;
     _override = null;
   }
 
   /// Drop all state (on disconnect).
   void reset() {
-    _connectedAt = null;
-    _batteryFingerprint = false;
     _deviceType = null;
     _override = null;
   }
 
-  /// Fold one telemetry snapshot into the fingerprint. Seeing a main-current or
-  /// DVOL reading marks the unit as a battery.
+  /// Record the device-type byte from a telemetry snapshot, when present.
   void observe(TelemetrySample sample) {
     final dt = sample.deviceType;
     if (dt != null) _deviceType = dt;
-    if (sample.current != null ||
-        (sample.dvol != null && sample.dvol!.isNotEmpty) ||
-        // A DVOL frame that is only "pending" (arrived before VADJ) is still a
-        // battery-only register — fingerprint on it regardless of scaling.
-        sample.dvolPending ||
-        // Explicit device-type byte 0x02 = car smart battery (§8.5).
-        sample.isSmartBattery) {
-      _batteryFingerprint = true;
-    }
   }
 
-  /// Apply (or clear, with null) an explicit user choice of pack label.
+  /// Apply (or clear, with null) an explicit user choice. Only consulted for a
+  /// unit whose device-type byte is unrecognised — a verified byte always wins,
+  /// so a stale or mistaken choice can never re-hide a known class.
   void setOverride(ProductClass? label) => _override = label;
 
   /// The current user override, if any.
   ProductClass? get override => _override;
 
-  /// True once a battery-only register (current / DVOL) has been observed.
-  bool get batteryFingerprintSeen => _batteryFingerprint;
-
-  /// The DETERMINISTIC routing class from the device-type byte: power bank, or
-  /// [ProductClass.unknown] for any pack (design 0001 §3.1).
+  /// The DETERMINISTIC class from the device-type byte, or
+  /// [ProductClass.unknown] when the byte is absent/unrecognised.
   ProductClass get deviceClass => ProductClass.fromDeviceType(_deviceType);
 
-  /// Whether the post-connect settling window has elapsed as of [now].
-  bool settlingElapsed(DateTime now) {
-    final at = _connectedAt;
-    if (at == null) return false;
-    return now.difference(at) >= settlingWindow;
-  }
+  /// True only for a confirmed power bank — the routing signal.
+  bool get isPowerBank => deviceClass.isPowerBank;
 
-  /// The cosmetic label to show for this unit as of [now]. A power bank always
-  /// reports [ProductClass.powerBank]; a pack reports the inferred / overridden
-  /// label (design 0001 §3.4). TEXT ONLY.
-  ProductClass label(DateTime now) {
-    if (deviceClass.isPowerBank) return ProductClass.powerBank;
-    return ProductClass.inferPackLabel(
-      batteryFingerprintSeen: _batteryFingerprint,
-      settlingElapsed: settlingElapsed(now),
-      userOverride: _override,
-    );
+  /// The class to show and gate on: the wire byte when we recognise it, else
+  /// the user's choice, else [ProductClass.unknown] ("unclassified").
+  ProductClass get label {
+    final fromWire = deviceClass;
+    if (fromWire != ProductClass.unknown) return fromWire;
+    return _override ?? ProductClass.unknown;
   }
 }

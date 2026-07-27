@@ -9,10 +9,14 @@
 /// routing — the same layout ([PackScaffold]) is used either way, so a mid-session
 /// label flip never jumps the layout.
 ///
-/// The shared chrome ([PackScaffold]: PVLT gauge + SVLT + temperature; the
-/// current readout + DVOL card gated DATA-DRIVEN on `!= null`) is a backstop
-/// against a mislabel — a mislabelled capacitor still shows no current/DVOL
-/// because it never streams them (design 0004 §3.4/§6).
+/// The shared chrome is [PackScaffold]: PVLT gauge + SVLT + temperature, plus a
+/// DVOL card gated DATA-DRIVEN on `!= null`.
+///
+/// The CURRENT readout is gated by CLASS, not by data (design 0007). The old
+/// data-driven gate rested on "a capacitor never streams current", which the
+/// 2026-07-27 capture falsified: an owner-confirmed capacitor sends 0x2E every
+/// second with a constant payload decoding to 0.0 A. Showing a permanent 0.0 A
+/// on a unit that cannot measure current is worse than showing nothing.
 library;
 
 import 'package:flutter/material.dart';
@@ -172,9 +176,11 @@ class PackScaffold extends StatelessWidget {
                     value: _fmt1(tele.svlt),
                     unit: 'V',
                   ),
-                  // Data-driven: a capacitor never streams these (backstop against
-                  // a mislabel — design 0004 §3.4/§6).
-                  if (tele.current != null)
+                  // Class-gated (design 0007): a capacitor DOES stream 0x2E, but
+                  // it is a constant 0.0 A — it cannot measure current, so the
+                  // readout is hidden rather than shown as a real zero.
+                  if (packLabel != ProductClass.supercapacitor &&
+                      tele.current != null)
                     Readout(
                       icon: Icons.electric_bolt,
                       label: l10n.dashboardReadoutCurrentLabel,
@@ -231,7 +237,9 @@ class PackScaffold extends StatelessWidget {
   static String _fmt1(double? v) => v == null ? '--' : v.toStringAsFixed(1);
 }
 
-/// Cosmetic pack-class chip + override menu (design 0001 §3.4). TEXT ONLY.
+/// Product-class chip. The picker appears ONLY when the unit is unclassified
+/// (design 0007): when the device-type byte is recognised the class comes off
+/// the wire and a picker that silently could not change it would be a lie.
 class _PackLabelChip extends StatelessWidget {
   const _PackLabelChip({required this.label});
 
@@ -242,6 +250,7 @@ class _PackLabelChip extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final conn = context.read<ConnectionController>();
     final text = _labelText(l10n, label);
+    final pickable = label == ProductClass.unknown;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -255,32 +264,25 @@ class _PackLabelChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 4),
-        PopupMenuButton<ProductClass?>(
-          tooltip: l10n.packLabelChoose,
-          padding: EdgeInsets.zero,
-          icon: Icon(Icons.expand_more, size: 16, color: context.colors.muted),
-          onSelected: (choice) => conn.setPackLabelOverride(
-            // Sentinel: powerBank means "auto" here (a pack can never really be
-            // a power bank, so we reuse it as the clear-override signal).
-            choice == ProductClass.powerBank ? null : choice,
+        if (pickable) ...[
+          const SizedBox(width: 4),
+          PopupMenuButton<ProductClass?>(
+            tooltip: l10n.packLabelChoose,
+            padding: EdgeInsets.zero,
+            icon: Icon(Icons.expand_more, size: 16, color: context.colors.muted),
+            onSelected: conn.setPackLabelOverride,
+            itemBuilder: (_) => [
+              PopupMenuItem<ProductClass?>(
+                value: ProductClass.supercapacitor,
+                child: Text(l10n.dashboardDeviceTypeSupercapacitor),
+              ),
+              PopupMenuItem<ProductClass?>(
+                value: ProductClass.smartBattery,
+                child: Text(l10n.dashboardDeviceTypeSmartBattery),
+              ),
+            ],
           ),
-          itemBuilder: (_) => [
-            PopupMenuItem<ProductClass?>(
-              value: ProductClass.supercapacitor,
-              child: Text(l10n.dashboardDeviceTypeSupercapacitor),
-            ),
-            PopupMenuItem<ProductClass?>(
-              value: ProductClass.smartBattery,
-              child: Text(l10n.dashboardDeviceTypeSmartBattery),
-            ),
-            const PopupMenuDivider(),
-            PopupMenuItem<ProductClass?>(
-              value: ProductClass.powerBank, // = auto (see onSelected)
-              child: Text(l10n.packLabelAuto),
-            ),
-          ],
-        ),
+        ],
       ],
     );
   }
@@ -293,7 +295,9 @@ class _PackLabelChip extends StatelessWidget {
         return l10n.dashboardDeviceTypeSmartBattery;
       case ProductClass.powerBank:
       case ProductClass.unknown:
-        return l10n.packLabelIdentifying;
+        // No guessing left (design 0007): say it is unclassified and invite the
+        // user to pick, instead of implying detection is still in progress.
+        return l10n.packLabelUnclassified;
     }
   }
 }

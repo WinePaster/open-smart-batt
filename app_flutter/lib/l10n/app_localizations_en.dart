@@ -247,8 +247,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get controlDetectCapacitor => 'Check Capacitor';
 
   @override
-  String get statusAdvisoryNote =>
-      'This unit is detected as a Supercapacitor; only supported features are shown (anti-theft appears only on battery models that support it). After releasing the cut-off, avoid re-locking; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.';
+  String get statusAdvisoryNoteCapacitor =>
+      'This unit is a super-capacitor (from the device type it reports); only the features it supports are shown. Its own over-voltage / under-voltage / over-temperature protection stays active.';
+
+  @override
+  String get statusAdvisoryNoteBattery =>
+      'This unit is a smart battery (from the device type it reports). Anti-theft appears only on models that support it; after releasing the cut-off, avoid re-locking.';
+
+  @override
+  String get statusAdvisoryNoteUnclassified =>
+      'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.';
 
   @override
   String get capacitorCheckNoData =>
@@ -758,10 +766,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.';
 
   @override
-  String get packLabelIdentifying => 'Identifying…';
-
-  @override
-  String get packLabelAuto => 'Auto-detect';
+  String get packLabelUnclassified => 'Unclassified (tap to set)';
 
   @override
   String get packLabelChoose => 'Set device type';
