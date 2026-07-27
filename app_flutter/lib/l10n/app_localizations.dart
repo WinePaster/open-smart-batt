@@ -476,11 +476,23 @@ abstract class AppLocalizations {
   /// **'Check Capacitor'**
   String get controlDetectCapacitor;
 
-  /// No description provided for @statusAdvisoryNote.
+  /// No description provided for @statusAdvisoryNoteCapacitor.
   ///
   /// In en, this message translates to:
-  /// **'This unit is detected as a Supercapacitor; only supported features are shown (anti-theft appears only on battery models that support it). After releasing the cut-off, avoid re-locking; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.'**
-  String get statusAdvisoryNote;
+  /// **'This unit is a super-capacitor (from the device type it reports); only the features it supports are shown. Its own over-voltage / under-voltage / over-temperature protection stays active.'**
+  String get statusAdvisoryNoteCapacitor;
+
+  /// No description provided for @statusAdvisoryNoteBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit is a smart battery (from the device type it reports). Anti-theft appears only on models that support it; after releasing the cut-off, avoid re-locking.'**
+  String get statusAdvisoryNoteBattery;
+
+  /// No description provided for @statusAdvisoryNoteUnclassified.
+  ///
+  /// In en, this message translates to:
+  /// **'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.'**
+  String get statusAdvisoryNoteUnclassified;
 
   /// No description provided for @capacitorCheckNoData.
   ///
@@ -1340,17 +1352,11 @@ abstract class AppLocalizations {
   /// **'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.'**
   String get settingsAboutDialogWarning;
 
-  /// No description provided for @packLabelIdentifying.
+  /// No description provided for @packLabelUnclassified.
   ///
   /// In en, this message translates to:
-  /// **'Identifying…'**
-  String get packLabelIdentifying;
-
-  /// No description provided for @packLabelAuto.
-  ///
-  /// In en, this message translates to:
-  /// **'Auto-detect'**
-  String get packLabelAuto;
+  /// **'Unclassified (tap to set)'**
+  String get packLabelUnclassified;
 
   /// No description provided for @packLabelChoose.
   ///

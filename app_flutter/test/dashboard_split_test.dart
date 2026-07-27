@@ -9,6 +9,8 @@
 //
 // Controllers are assembled via AppServices over an in-memory sqflite (ffi) DB
 // with an inert BleService (mirrors widget_test.dart), so this runs headless.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
@@ -26,7 +28,17 @@ import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Inert BleService: never reaches the (unsupported) flutter_blue_plus platform.
+///
+/// [emit] pushes a telemetry snapshot through the same stream the real service
+/// uses, so a test can drive the readouts without a device.
 class _FakeBleService extends BleService {
+  final _telemetryOut = StreamController<TelemetrySample>.broadcast();
+
+  @override
+  Stream<TelemetrySample> get telemetry => _telemetryOut.stream;
+
+  void emit(TelemetrySample s) => _telemetryOut.add(s);
+
   @override
   Stream<BluetoothAdapterState> get adapterState =>
       const Stream<BluetoothAdapterState>.empty();
@@ -36,6 +48,12 @@ class _FakeBleService extends BleService {
 
   @override
   bool get isScanning => false;
+
+  @override
+  Future<void> dispose() async {
+    await _telemetryOut.close();
+    await super.dispose();
+  }
 }
 
 void main() {
@@ -46,6 +64,8 @@ void main() {
   });
 
   /// Build the full controller graph over an in-memory DB (real IO → runAsync).
+  late _FakeBleService fakeBle;
+
   Future<AppServices> makeServices(WidgetTester tester) async {
     late final AppServices services;
     await tester.runAsync(() async {
@@ -53,9 +73,10 @@ void main() {
         path: inMemoryDatabasePath,
         factory: databaseFactoryFfi,
       );
+      fakeBle = _FakeBleService();
       services = await AppServices.create(
         appDatabase: appDb,
-        ble: _FakeBleService(),
+        ble: fakeBle,
       );
     });
     return services;
@@ -169,6 +190,96 @@ void main() {
       expect(find.text('Check Capacitor'), findsOneWidget);
       expect(find.text('Release Cut-off'), findsOneWidget);
       expect(find.text('Anti-theft'), findsNothing);
+    });
+  });
+
+  group('advisory note is class-specific (design 0007)', () {
+    // It used to be ONE string saying "this unit is detected as a
+    // Supercapacitor", rendered under all three control sets — so a battery
+    // owner was told their battery was a capacitor.
+    testWidgets('a battery is never told it is a capacitor', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const BatteryControls());
+
+      expect(find.textContaining('smart battery'), findsOneWidget);
+      expect(find.textContaining('super-capacitor'), findsNothing);
+    });
+
+    testWidgets('a capacitor says capacitor', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const CapacitorControls());
+
+      expect(find.textContaining('super-capacitor'), findsOneWidget);
+    });
+
+    testWidgets('an unclassified pack says so instead of naming a class',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const PackControls());
+
+      expect(find.textContaining('not recognised yet'), findsOneWidget);
+      expect(find.textContaining('super-capacitor'), findsNothing);
+      expect(find.textContaining('smart battery'), findsNothing);
+    });
+  });
+
+  group('capacitor current readout (design 0007)', () {
+    testWidgets('hidden on a capacitor even when a 0.0 A register arrives',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      // The field unit: device-type 0x17 plus the 0x2E register pinned at 0.0 A.
+      s.connection.setPackLabelOverride(ProductClass.supercapacitor);
+      await pumpUnder(tester, s, const PackView());
+      await tester.runAsync(() async {
+        fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 0.0));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+
+      expect(find.byType(CapacitorView), findsOneWidget);
+      // A capacitor cannot measure current; a permanent 0.0 A would be a lie.
+      expect(find.text('MAIN CURRENT'), findsNothing);
+    });
+
+    testWidgets('still shown for a battery streaming the same register',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await pumpUnder(tester, s, const PackView());
+      await tester.runAsync(() async {
+        fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 1.5));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+
+      expect(find.byType(BatteryView), findsOneWidget);
+      // Same register, different class → shown here, hidden on the capacitor.
+      expect(find.text('MAIN CURRENT'), findsOneWidget);
     });
   });
 }

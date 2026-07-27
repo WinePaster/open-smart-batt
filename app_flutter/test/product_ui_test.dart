@@ -35,53 +35,19 @@ void main() {
       expect(ProductClass.fromDeviceType(0x22).isPowerBank, isTrue);
       // The old buggy 0x44 (Smi-tag of 34) must NOT map to power bank.
       expect(ProductClass.fromDeviceType(0x44), ProductClass.unknown);
-      // Captured super-cap code 0x17 and null map to unknown (a pack).
-      expect(ProductClass.fromDeviceType(0x17), ProductClass.unknown);
       expect(ProductClass.fromDeviceType(null), ProductClass.unknown);
       expect(ProductClass.unknown.isPowerBank, isFalse);
     });
-  });
 
-  group('ProductClass.inferPackLabel', () {
-    test('battery fingerprint (current/DVOL seen) → smart battery', () {
-      expect(
-        ProductClass.inferPackLabel(
-            batteryFingerprintSeen: true, settlingElapsed: false),
-        ProductClass.smartBattery,
-      );
-      // Fingerprint wins even after the window elapses.
-      expect(
-        ProductClass.inferPackLabel(
-            batteryFingerprintSeen: true, settlingElapsed: true),
-        ProductClass.smartBattery,
-      );
-    });
-
-    test('no fingerprint but window elapsed → super-capacitor', () {
-      expect(
-        ProductClass.inferPackLabel(
-            batteryFingerprintSeen: false, settlingElapsed: true),
-        ProductClass.supercapacitor,
-      );
-    });
-
-    test('still settling with no fingerprint → unknown (identifying)', () {
-      expect(
-        ProductClass.inferPackLabel(
-            batteryFingerprintSeen: false, settlingElapsed: false),
-        ProductClass.unknown,
-      );
-    });
-
-    test('user override always wins', () {
-      expect(
-        ProductClass.inferPackLabel(
-          batteryFingerprintSeen: true,
-          settlingElapsed: true,
-          userOverride: ProductClass.supercapacitor,
-        ),
-        ProductClass.supercapacitor,
-      );
+    test('0x17 is the super-capacitor (wire-verified 2026-07-27, design 0007)',
+        () {
+      expect(ProductClass.fromDeviceType(kSuperCapacitorDeviceType),
+          ProductClass.supercapacitor);
+      expect(ProductClass.fromDeviceType(0x17), ProductClass.supercapacitor);
+      expect(ProductClass.fromDeviceType(0x02), ProductClass.smartBattery);
+      // An unrecognised byte stays unknown — the user resolves it; we do not
+      // fall back to guessing from telemetry any more.
+      expect(ProductClass.fromDeviceType(0x99), ProductClass.unknown);
     });
   });
 
@@ -100,66 +66,80 @@ void main() {
   });
 
   // =========================================================================
-  // PackClassResolver — settling window (cosmetic label only)
+  // PackClassResolver — deterministic, no guessing (design 0007)
   // =========================================================================
   group('PackClassResolver', () {
-    final t0 = DateTime.utc(2026, 7, 3, 12);
+    final t0 = DateTime.utc(2026, 7, 27, 20, 18);
 
-    TelemetrySample packSample() => TelemetrySample(timestamp: t0, pvlt: 12.3);
-    TelemetrySample batterySample() =>
-        TelemetrySample(timestamp: t0, pvlt: 12.3, current: 1.5);
-
-    test('power-bank device-type labels powerBank regardless of window', () {
-      final r = PackClassResolver();
-      r.markConnected(t0);
+    test('reads the class straight off the device-type byte', () {
+      final r = PackClassResolver()..markConnected(t0);
       r.observe(TelemetrySample(timestamp: t0, deviceType: 0x22));
-      expect(r.deviceClass.isPowerBank, isTrue);
-      expect(r.label(t0), ProductClass.powerBank);
+      expect(r.isPowerBank, isTrue);
+      expect(r.label, ProductClass.powerBank);
+
+      final b = PackClassResolver()..markConnected(t0);
+      b.observe(TelemetrySample(timestamp: t0, deviceType: 0x02));
+      expect(b.label, ProductClass.smartBattery);
     });
 
-    test('pack: unknown while settling, super-cap once elapsed', () {
-      final r = PackClassResolver(settlingWindow: const Duration(seconds: 6));
-      r.markConnected(t0);
-      r.observe(packSample());
-      expect(r.label(t0), ProductClass.unknown); // still identifying
-      expect(r.label(t0.add(const Duration(seconds: 3))), ProductClass.unknown);
-      expect(r.label(t0.add(const Duration(seconds: 6))),
-          ProductClass.supercapacitor);
+    test('0x17 is a capacitor even though it streams current (the 07-27 bug)',
+        () {
+      // The regression in one test: this is exactly what the field unit sends —
+      // device-type 0x17 AND a 0x2E current register pinned at 0.0 A. The old
+      // fingerprint called it a battery and handed it the battery controls.
+      final r = PackClassResolver()..markConnected(t0);
+      r.observe(TelemetrySample(
+        timestamp: t0,
+        deviceType: kSuperCapacitorDeviceType,
+        current: 0.0,
+      ));
+      expect(r.label, ProductClass.supercapacitor);
     });
 
-    test('pack: current/DVOL fingerprint → smart battery immediately', () {
-      final r = PackClassResolver();
-      r.markConnected(t0);
-      r.observe(batterySample());
-      expect(r.batteryFingerprintSeen, isTrue);
-      expect(r.label(t0), ProductClass.smartBattery);
+    test('no telemetry fingerprint remains: current/DVOL never imply a class',
+        () {
+      final r = PackClassResolver()..markConnected(t0);
+      r.observe(TelemetrySample(
+        timestamp: t0,
+        current: 1.5,
+        dvol: const [3.3, 3.3, 3.3, 3.3],
+        dvolPending: true,
+      ));
+      // Registers alone say nothing without a device-type byte.
+      expect(r.label, ProductClass.unknown);
     });
 
-    test('DVOL alone also counts as a battery fingerprint', () {
-      final r = PackClassResolver();
-      r.markConnected(t0);
-      r.observe(TelemetrySample(timestamp: t0, dvol: const [3.3, 3.3, 3.3, 3.3]));
-      expect(r.label(t0), ProductClass.smartBattery);
+    test('a recognised byte overrides the user choice (self-heal)', () {
+      // A record saved as smartBattery while the old fingerprint was guessing
+      // is seeded as an override on reconnect; the wire byte must win, or the
+      // unit stays mislabelled forever.
+      final r = PackClassResolver()..markConnected(t0);
+      r.setOverride(ProductClass.smartBattery);
+      expect(r.label, ProductClass.smartBattery); // before any frame
+      r.observe(TelemetrySample(
+          timestamp: t0, deviceType: kSuperCapacitorDeviceType));
+      expect(r.label, ProductClass.supercapacitor);
     });
 
-    test('pending DVOL (arrived before VADJ) still fingerprints as battery', () {
-      final r = PackClassResolver();
-      r.markConnected(t0);
-      // No scaled dvol yet (VADJ unseen), but a DVOL frame did arrive.
-      r.observe(TelemetrySample(timestamp: t0, dvolPending: true));
-      expect(r.batteryFingerprintSeen, isTrue);
-      expect(r.label(t0), ProductClass.smartBattery);
-    });
-
-    test('user override wins and clears on reset', () {
-      final r = PackClassResolver();
-      r.markConnected(t0);
-      r.observe(batterySample()); // would be smartBattery
+    test('the user choice only applies to an unrecognised byte', () {
+      final r = PackClassResolver()..markConnected(t0);
+      r.observe(TelemetrySample(timestamp: t0, deviceType: 0x99));
+      expect(r.label, ProductClass.unknown);
       r.setOverride(ProductClass.supercapacitor);
-      expect(r.label(t0), ProductClass.supercapacitor);
+      expect(r.label, ProductClass.supercapacitor);
+    });
+
+    test('reset and reconnect drop both the byte and the choice', () {
+      final r = PackClassResolver()..markConnected(t0);
+      r.observe(TelemetrySample(timestamp: t0, deviceType: 0x02));
+      r.setOverride(ProductClass.supercapacitor);
       r.reset();
       expect(r.override, isNull);
-      expect(r.label(t0), ProductClass.unknown); // no connection window
+      expect(r.label, ProductClass.unknown);
+
+      r.observe(TelemetrySample(timestamp: t0, deviceType: 0x02));
+      r.markConnected(t0);
+      expect(r.label, ProductClass.unknown, reason: 'new connection starts clean');
     });
   });
 

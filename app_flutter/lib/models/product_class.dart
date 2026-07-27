@@ -4,15 +4,20 @@
 /// invariant is refined from "label never picks a layout" to **gating (soft:
 /// show/hide buttons) ≠ routing (hard: pick a layout)**.
 ///
-/// Two device-type bytes are wire-verified and therefore DETERMINISTIC:
-///   * `0x22` → [powerBank] (verified, PROTOCOL.md §8.2/§12.1);
-///   * `0x02` → [smartBattery] (verified via the connect burst HCI snoop
-///     2026-07-06, docs/devices.md §智慧電池).
-/// The super-capacitor device-type `0x17` is NOT yet wire-verified, so it stays
-/// [unknown] (it must NOT be mapped to
-/// [supercapacitor] until a capacitor `0x10` capture confirms it). Until then a
-/// [supercapacitor] classification is an inferred/user-set COSMETIC label that
-/// may gate controls (design 0004 §3.1/§3.2) but must NEVER pick a layout.
+/// Design 0007: ALL THREE device-type bytes are now wire-verified, so the class
+/// is read off the wire and never inferred:
+///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§12.1);
+///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
+///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27).
+///
+/// The telemetry fingerprint that used to guess capacitor-vs-battery is GONE.
+/// It keyed on "a current 0x2E frame means battery", which the 2026-07-27
+/// capture falsified: that capacitor streams 0x2E every second with a constant
+/// payload decoding to 0.0 A. The old premise came from capacitor logs recorded
+/// while the write-mode bug suppressed the metadata burst entirely.
+///
+/// An unrecognised byte yields [unknown]; the UI says "unclassified" and lets
+/// the user pick. Not guessing cannot guess wrong.
 library;
 
 /// Device-type byte (selector 0x10 b4) that identifies a power bank —
@@ -25,15 +30,25 @@ const int kPowerBankDeviceType = 0x22;
 /// (docs/devices.md §智慧電池; observed "device id = 02", §8.5).
 const int kSmartBatteryDeviceType = 0x02;
 
+/// Device-type byte (selector 0x10 b4) that identifies a super-capacitor —
+/// wire-verified 2026-07-27 on a 旗艦電容 the owner confirmed by hand
+/// (`feedback_log/2026.07.27`: 488 `0x10` frames, payload `17`, no other value).
+///
+/// Design 0004 §3.1 withheld this mapping "until a capacitor 0x10 capture
+/// confirms it"; design 0007 lands it because that capture now exists. Other
+/// capacitor models are ASSUMED to share the byte (owner's call) — an unverified
+/// model reporting something else falls to [unknown], never to a wrong class.
+const int kSuperCapacitorDeviceType = 0x17;
+
 /// The product class a connected RCE unit belongs to.
 enum ProductClass {
   /// Portable power bank (RSPB) — device-type 0x22 (verified). Routes to its own
   /// view via the deterministic [isPowerBank] signal.
   powerBank,
 
-  /// Super-capacitor pack. The device-type `0x17` is NOT yet wire-verified, so
-  /// this remains an inferred/user-set COSMETIC label — it may gate controls
-  /// (design 0004 §3.2) but must NEVER pick a layout (routing).
+  /// Super-capacitor pack — device-type 0x17 (verified 2026-07-27, design 0007).
+  /// A DETERMINISTIC class: it gates controls (檢測電容 only) straight from the
+  /// wire byte. Shares the pack shell with [smartBattery].
   supercapacitor,
 
   /// Smart battery pack — device-type 0x02 (verified for the car battery). A
@@ -41,8 +56,9 @@ enum ProductClass {
   /// gates controls directly and may route without consulting a label.
   smartBattery,
 
-  /// Not yet determined (no device-type frame seen, or a non-power-bank unit
-  /// whose pack label has not been inferred).
+  /// Not yet determined: no device-type frame seen yet, or a byte this build
+  /// does not recognise. The user resolves it (design 0007) — nothing is
+  /// inferred from telemetry.
   unknown;
 
   /// True only for [powerBank] — the sole deterministic *routing* signal that
@@ -53,45 +69,21 @@ enum ProductClass {
   /// Maps a device-type byte (selector 0x10 b4) to a class. Deterministic:
   ///   * 0x22 => [powerBank] (verified);
   ///   * 0x02 => [smartBattery] (verified — docs/devices.md §智慧電池);
-  ///   * every other value (including the UNVERIFIED super-capacitor 0x17) =>
-  ///     [unknown]. We do NOT map 0x17 to [supercapacitor] here until it is
-  ///     wire-verified (design 0004 §3.1); the cosmetic label handles that case.
+  ///   * 0x17 => [supercapacitor] (verified 2026-07-27 — design 0007);
+  ///   * every other value => [unknown], which the UI presents as "unclassified"
+  ///     and lets the user resolve. All three classes now have a wire-verified
+  ///     byte, so nothing is inferred from telemetry any more (design 0007).
   static ProductClass fromDeviceType(int? deviceType) {
     switch (deviceType) {
       case kPowerBankDeviceType:
         return ProductClass.powerBank;
       case kSmartBatteryDeviceType:
         return ProductClass.smartBattery;
+      case kSuperCapacitorDeviceType:
+        return ProductClass.supercapacitor;
       default:
         return ProductClass.unknown;
     }
-  }
-
-  /// Infers the COSMETIC pack label (super-capacitor vs smart battery) from a
-  /// telemetry fingerprint — design 0001 §3.4. This is TEXT ONLY: it must NEVER
-  /// select a layout (the protocol cannot deterministically tell a capacitor
-  /// from a battery; only [isPowerBank] routes).
-  ///
-  /// Rules, in priority order:
-  ///   1. a [userOverride] always wins;
-  ///   2. once a battery-only register has been seen ([batteryFingerprintSeen]
-  ///      — a current 0x2E or DVOL 0x24 frame) the unit is labelled
-  ///      [smartBattery];
-  ///   3. otherwise, once the post-connect settling window has elapsed
-  ///      ([settlingElapsed]) with no such register, it is labelled
-  ///      [supercapacitor];
-  ///   4. before the window elapses (and with no fingerprint yet) the label is
-  ///      still [unknown] — the UI shows an "identifying…" chip rather than
-  ///      guessing.
-  static ProductClass inferPackLabel({
-    required bool batteryFingerprintSeen,
-    required bool settlingElapsed,
-    ProductClass? userOverride,
-  }) {
-    if (userOverride != null) return userOverride;
-    if (batteryFingerprintSeen) return ProductClass.smartBattery;
-    if (settlingElapsed) return ProductClass.supercapacitor;
-    return ProductClass.unknown;
   }
 
   /// Stable key for persistence (SavedDevice / SQLite). Uses the enum [name]

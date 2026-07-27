@@ -91,9 +91,8 @@ class ConnectionController extends ChangeNotifier {
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
   StreamSubscription<TelemetrySample>? _telemetrySub;
 
-  /// Cosmetic pack-label resolver (design 0001 §3.4). Watches telemetry over a
-  /// short settling window to label a non-power-bank pack as super-capacitor vs
-  /// smart battery. TEXT ONLY — it never influences routing.
+  /// Product-class resolver (design 0007). Reads the class off the wire
+  /// device-type byte; holds the user's choice only for unrecognised bytes.
   final PackClassResolver _packResolver = PackClassResolver();
   ProductClass _packLabel = ProductClass.unknown;
 
@@ -180,35 +179,32 @@ class ConnectionController extends ChangeNotifier {
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
   /// 解除斷電 / 防盜), design 0004 §3.2. This is GATING, never routing.
   ///
-  /// - When the device-type is DETERMINISTIC ([resolvedClass] is a power bank
-  ///   0x22 or a smart battery 0x02) we gate straight off it — no label needed.
-  /// - When the device-type is unseen/unverified ([resolvedClass] == unknown,
-  ///   e.g. the unverified super-capacitor 0x17) we consult the COSMETIC
-  ///   [packLabel] for GATING ONLY, and ONLY to distinguish a settled
-  ///   super-capacitor from still-unknown (design 0004 §3.1). Anything else
-  ///   stays the bounded [DeviceCapabilities.unknown] fallback (union of pack
-  ///   controls except anti-theft). The label NEVER selects a layout.
+  /// All three classes now come off the wire (design 0007), so [packLabel] is
+  /// the single input: a recognised byte gates directly, a user's choice gates
+  /// an unrecognised unit, and a still-unclassified unit keeps the bounded
+  /// [DeviceCapabilities.unknown] fallback (union of pack controls except
+  /// anti-theft).
   DeviceCapabilities get capabilities {
-    final routed = resolvedClass;
-    if (routed != ProductClass.unknown) {
-      return DeviceCapabilities.fromClass(routed);
-    }
-    if (_packLabel == ProductClass.supercapacitor) {
-      return DeviceCapabilities.fromClass(ProductClass.supercapacitor);
-    }
-    return DeviceCapabilities.unknown;
+    final cls = _packLabel;
+    if (cls == ProductClass.unknown) return DeviceCapabilities.unknown;
+    return DeviceCapabilities.fromClass(cls);
   }
 
-  /// COSMETIC pack label (super-capacitor / smart battery / unknown / power
-  /// bank), inferred over the settling window or set by the user. TEXT ONLY —
-  /// never used for routing.
+  /// The unit's class: wire device-type when recognised, else the user's choice,
+  /// else [ProductClass.unknown] ("unclassified").
   ProductClass get packLabel => _packLabel;
 
-  /// User override for the cosmetic pack label. Pass null to return to
-  /// auto-detection. Recomputes + notifies immediately.
+  /// True when we have no class at all and the UI should ask the user.
+  /// A unit whose device-type byte we recognise is NEVER unclassified.
+  bool get isUnclassified =>
+      isOnline && _packLabel == ProductClass.unknown;
+
+  /// The user's explicit class choice for a unit whose device-type byte we do
+  /// not recognise. Pass null to clear it. Ignored (harmlessly) when the wire
+  /// byte is recognised — that always wins.
   void setPackLabelOverride(ProductClass? label) {
     _packResolver.setOverride(label);
-    _recomputePackLabel(DateTime.now());
+    _recomputePackLabel();
   }
 
   // ---- permissions / adapter -------------------------------------------
@@ -406,23 +402,21 @@ class ConnectionController extends ChangeNotifier {
     if (s == BleLinkState.ready) {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
-      // Start a fresh pack-label settling window for this connection.
       _packResolver.markConnected(DateTime.now());
       // Stamp last-seen on the saved entry (if any).
       final id = _ble.connectedDeviceId;
       if (id != null) {
         unawaited(_devices?.touch(id, lastSeen: DateTime.now()));
-        // Seed the cosmetic label from a persisted choice so the chip is
-        // correct immediately on reconnect (design 0001 §5 Phase 5).
-        final saved = _devices?.deviceFor(id);
-        final savedLabel = saved?.productClass;
-        if (savedLabel != null &&
-            savedLabel != ProductClass.unknown &&
-            !savedLabel.isPowerBank) {
+        // Seed from the saved record so the chip is right immediately, before
+        // the first device-type frame lands. It is only a SEED: the wire byte
+        // overrides it a moment later (design 0007 §3.3), which is what heals a
+        // record saved wrong while the old fingerprint was guessing.
+        final savedLabel = _devices?.deviceFor(id)?.productClass;
+        if (savedLabel != null && savedLabel != ProductClass.unknown) {
           _packResolver.setOverride(savedLabel);
         }
       }
-      _recomputePackLabel(DateTime.now());
+      _recomputePackLabel();
     } else if (s == BleLinkState.disconnected) {
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
@@ -498,16 +492,19 @@ class ConnectionController extends ChangeNotifier {
 
   void _onTelemetrySample(TelemetrySample s) {
     _packResolver.observe(s);
-    _recomputePackLabel(DateTime.now());
+    _recomputePackLabel();
   }
 
   /// Recompute the cosmetic pack label; notify + persist only on a real change
   /// (the settling window and fingerprint each flip at most once per session).
-  void _recomputePackLabel(DateTime now) {
-    final next = _packResolver.label(now);
+  void _recomputePackLabel() {
+    final next = _packResolver.label;
     if (next == _packLabel) return;
     _packLabel = next;
-    // Persist a concrete label onto the saved record (design 0001 §5 Phase 5).
+    // Persist the class onto the saved record (design 0001 §5 Phase 5). This is
+    // also the SELF-HEAL for design 0007: a unit stored as the wrong class while
+    // the fingerprint was guessing gets corrected the moment its wire byte
+    // arrives — the user does not have to fix it by hand.
     if (next != ProductClass.unknown) {
       final id = _ble.connectedDeviceId;
       if (id != null) {

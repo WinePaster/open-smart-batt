@@ -240,8 +240,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get controlDetectCapacitor => '檢測電容';
 
   @override
-  String get statusAdvisoryNote =>
-      '本機已偵測為「超級電容」，僅顯示支援的功能（防盜模式僅在支援的電池型號出現）。解除斷電後建議勿再上鎖；電容本身過壓／低壓／過溫保護仍有效。';
+  String get statusAdvisoryNoteCapacitor =>
+      '本機為「超級電容」（依裝置回報的型別判定），僅顯示其支援的功能。電容本身的過壓／低壓／過溫保護仍持續作用。';
+
+  @override
+  String get statusAdvisoryNoteBattery =>
+      '本機為「智慧電池」（依裝置回報的型別判定）。防盜模式僅在支援的型號出現；解除斷電後建議勿再上鎖。';
+
+  @override
+  String get statusAdvisoryNoteUnclassified =>
+      '尚未辨識出裝置型別，因此暫時顯示較寬鬆的功能集（不含防盜）。可於上方自行指定型別。';
 
   @override
   String get capacitorCheckNoData => '尚未取得電容讀數，請稍候即時資料更新。';
@@ -721,10 +729,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAboutDialogWarning => '解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。';
 
   @override
-  String get packLabelIdentifying => '辨識中…';
-
-  @override
-  String get packLabelAuto => '自動辨識';
+  String get packLabelUnclassified => '未分類（請指定）';
 
   @override
   String get packLabelChoose => '設定裝置類型';

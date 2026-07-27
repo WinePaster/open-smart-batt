@@ -74,7 +74,7 @@ class CapacitorControls extends StatelessWidget {
           onPressed: online ? () => detectCapacitor(context, tele) : null,
         ),
         const SizedBox(height: 11),
-        AdvisoryNote(text: l10n.statusAdvisoryNote),
+        AdvisoryNote(text: l10n.statusAdvisoryNoteCapacitor),
       ],
     );
   }
@@ -152,7 +152,7 @@ class BatteryControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
-        AdvisoryNote(text: l10n.statusAdvisoryNote),
+        AdvisoryNote(text: l10n.statusAdvisoryNoteBattery),
       ],
     );
   }
@@ -242,7 +242,7 @@ class PackControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
-        AdvisoryNote(text: l10n.statusAdvisoryNote),
+        AdvisoryNote(text: l10n.statusAdvisoryNoteUnclassified),
       ],
     );
   }
