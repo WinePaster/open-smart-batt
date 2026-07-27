@@ -188,6 +188,11 @@
   "settingsClearLogLabel": "清除診斷日誌",
   "settingsLogEmpty": "診斷日誌為空",
   "settingsExportSubjectDiagLog": "OpenSmartBatt 診斷日誌",
+
+  "exportScopeTitle": "匯出範圍",
+  "exportScopeThisDevice": "只匯出目前裝置（{label}）",
+  "exportScopeThisSession": "只匯出本次連線",
+  "exportScopeAllDevices": "全部裝置",
   "settingsClearLogTitle": "清除診斷日誌",
   "settingsClearLogBody": "將刪除本機所有原始 TX/RX 封包紀錄。",
   "settingsLogCleared": "已清除診斷日誌",

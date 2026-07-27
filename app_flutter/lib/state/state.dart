@@ -8,5 +8,6 @@ library;
 export 'app_services.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';
+export 'session_context.dart';
 export 'settings_controller.dart';
 export 'telemetry_controller.dart';

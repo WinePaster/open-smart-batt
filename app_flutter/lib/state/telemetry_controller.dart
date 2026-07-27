@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../models/models.dart';
+import 'session_context.dart';
 import 'settings_controller.dart';
 
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
@@ -23,10 +24,12 @@ class TelemetryController extends ChangeNotifier {
     required SettingsController settings,
     required HistoryRepo history,
     required LogRepo logs,
+    SessionContext? session,
   }) {
     _settings = settings;
     _history = history;
     _logs = logs;
+    _session = session ?? SessionContext();
     _sample = TelemetrySample.empty();
     _telemetrySub = _ble.telemetry.listen(_onTelemetry);
     _packetSub = _ble.packets.listen(_onPacket);
@@ -37,6 +40,10 @@ class TelemetryController extends ChangeNotifier {
   late final SettingsController _settings;
   late final HistoryRepo _history;
   late final LogRepo _logs;
+
+  /// Which unit/connection recorded rows belong to (design 0006). Shared with
+  /// [ConnectionController]; see [SessionContext].
+  late final SessionContext _session;
 
   StreamSubscription<TelemetrySample>? _telemetrySub;
   StreamSubscription<BlePacketEvent>? _packetSub;
@@ -127,9 +134,21 @@ class TelemetryController extends ChangeNotifier {
 
   // ---- history / log I/O (History + Settings screens) -------------------
 
-  /// Telemetry history, newest-first.
-  Future<List<TelemetrySample>> history({DateTime? since, int? limit}) =>
-      _history.querySamples(since: since, limit: limit);
+  /// Unit currently being recorded (null when disconnected) — the default
+  /// scope for a "this device only" export.
+  String? get recordingDeviceId => _session.deviceId;
+
+  /// Current connection counter (null when disconnected).
+  int? get recordingSessionId => _session.sessionId;
+
+  /// Telemetry history, newest-first. [deviceId] scopes to one unit; null means
+  /// every unit (including rows recorded before device attribution existed).
+  Future<List<TelemetrySample>> history({
+    DateTime? since,
+    int? limit,
+    String? deviceId,
+  }) =>
+      _history.querySamples(since: since, limit: limit, deviceId: deviceId);
 
   /// Stored sample count.
   Future<int> historyCount() => _history.count();
@@ -144,17 +163,45 @@ class TelemetryController extends ChangeNotifier {
       _history.aggregate(since: since);
 
   /// CSV export of matching history rows (for share_plus / file write).
-  Future<String> exportHistoryCsv({DateTime? since, int? limit}) =>
-      _history.exportCsv(since: since, limit: limit);
+  ///
+  /// [labelFor] renders the human-readable `device` column; the caller supplies
+  /// it because the alias/serial lookup lives in the device layer.
+  Future<String> exportHistoryCsv({
+    DateTime? since,
+    int? limit,
+    String? deviceId,
+    String Function(String? deviceId)? labelFor,
+  }) =>
+      _history.exportCsv(
+        since: since,
+        limit: limit,
+        deviceId: deviceId,
+        labelFor: labelFor,
+      );
 
   /// Clear all history.
   Future<void> clearHistory() => _history.clearHistory();
 
   /// Diagnostic log entries, newest-first.
-  Future<List<LogEntry>> logEntries({int? limit}) => _logs.queryLog(limit: limit);
+  Future<List<LogEntry>> logEntries({int? limit, String? deviceId}) =>
+      _logs.queryLog(limit: limit, deviceId: deviceId);
 
-  /// Whole diagnostic log as a `.log` text blob.
-  Future<String> exportLog() => _logs.exportLog();
+  /// Diagnostic log as a `.log` text blob, optionally scoped to one unit and/or
+  /// one connection, with an optional `#`-prefixed header (design 0006 §3.6).
+  Future<String> exportLog({
+    String? deviceId,
+    int? sessionId,
+    List<String> header = const [],
+  }) =>
+      _logs.exportLog(
+        deviceId: deviceId,
+        sessionId: sessionId,
+        header: header,
+      );
+
+  /// How many distinct connections the log holds for a scope (header line).
+  Future<int> logSessionCount({String? deviceId}) =>
+      _logs.sessionCount(deviceId: deviceId);
 
   /// Approximate diagnostic-log size (bytes).
   Future<int> logApproxBytes() => _logs.approxBytes();
@@ -175,6 +222,12 @@ class TelemetryController extends ChangeNotifier {
   // each minute's samples, then flush the average on minute-rollover/disconnect.
   DateTime? _bucketMinute;
   TelemetrySample? _bucketLast;
+
+  /// Unit that owns the minute currently being accumulated. Captured when the
+  /// bucket opens, NOT when it flushes: a flush triggered by a disconnect (or
+  /// after the next unit connects) would otherwise file the minute under the
+  /// wrong device — or under none at all.
+  String? _bucketDeviceId;
   double _sPvlt = 0, _sSvlt = 0, _sTemp = 0, _sCur = 0;
   int _nPvlt = 0, _nSvlt = 0, _nTemp = 0, _nCur = 0;
 
@@ -182,10 +235,15 @@ class TelemetryController extends ChangeNotifier {
     if (!_settings.autoLog) return;
     final t = s.timestamp;
     final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
-    if (_bucketMinute != null && minute.isAfter(_bucketMinute!)) {
+    // A new unit mid-minute also closes the bucket, so one row never mixes two
+    // devices' readings.
+    final deviceId = _session.deviceId;
+    if (_bucketMinute != null &&
+        (minute.isAfter(_bucketMinute!) || deviceId != _bucketDeviceId)) {
       _flushBucket();
     }
     _bucketMinute = minute;
+    _bucketDeviceId = deviceId;
     _bucketLast = s;
     if (s.pvlt != null) {
       _sPvlt += s.pvlt!;
@@ -217,9 +275,10 @@ class TelemetryController extends ChangeNotifier {
         temperatureC: _nTemp > 0 ? (_sTemp / _nTemp).round() : null,
         current: _nCur > 0 ? _sCur / _nCur : null,
       );
-      unawaited(_history.insertSample(avg));
+      unawaited(_history.insertSample(avg, deviceId: _bucketDeviceId));
     }
     _bucketMinute = null;
+    _bucketDeviceId = null;
     _bucketLast = null;
     _sPvlt = _sSvlt = _sTemp = _sCur = 0;
     _nPvlt = _nSvlt = _nTemp = _nCur = 0;
@@ -227,8 +286,14 @@ class TelemetryController extends ChangeNotifier {
 
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;
-    final entry = LogEntry.fromBytes(e.direction, e.bytes,
-        at: e.at, note: e.note);
+    final entry = LogEntry.fromBytes(
+      e.direction,
+      e.bytes,
+      at: e.at,
+      note: e.note,
+      deviceId: _session.deviceId,
+      sessionId: _session.sessionId,
+    );
     unawaited(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
   }
 

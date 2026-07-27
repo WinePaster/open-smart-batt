@@ -31,14 +31,57 @@ class LogRepo {
     return id;
   }
 
-  /// Query log entries newest-first.
-  Future<List<LogEntry>> queryLog({int? limit}) async {
+  /// Query log entries newest-first, optionally scoped to one unit and/or one
+  /// connection (design 0006).
+  Future<List<LogEntry>> queryLog({
+    int? limit,
+    String? deviceId,
+    int? sessionId,
+  }) async {
+    final (where, args) = _scope(deviceId: deviceId, sessionId: sessionId);
     final rows = await _db.query(
       Db.tableDiagLog,
+      where: where,
+      whereArgs: args,
       orderBy: 'id DESC',
       limit: limit,
     );
     return rows.map(LogEntry.fromMap).toList(growable: false);
+  }
+
+  /// Highest `session_id` seen so far, or null when the log holds no session-
+  /// tagged rows. Used at startup to keep the counter monotonic across restarts.
+  Future<int?> lastSessionId() async {
+    final r = await _db.rawQuery(
+      'SELECT MAX(session_id) AS n FROM ${Db.tableDiagLog}',
+    );
+    return (r.first['n'] as num?)?.toInt();
+  }
+
+  /// Distinct device ids present in the log (NULL rows excluded).
+  Future<List<String>> distinctDeviceIds() async {
+    final rows = await _db.rawQuery(
+      'SELECT DISTINCT device_id FROM ${Db.tableDiagLog} '
+      'WHERE device_id IS NOT NULL ORDER BY device_id',
+    );
+    return rows.map((r) => r['device_id'] as String).toList(growable: false);
+  }
+
+  /// Builds the WHERE clause for a device/session scope. A null [deviceId]
+  /// means "every device" — it never matches only the NULL rows.
+  (String?, List<Object?>?) _scope({String? deviceId, int? sessionId}) {
+    final clauses = <String>[];
+    final args = <Object?>[];
+    if (deviceId != null) {
+      clauses.add('device_id = ?');
+      args.add(deviceId);
+    }
+    if (sessionId != null) {
+      clauses.add('session_id = ?');
+      args.add(sessionId);
+    }
+    if (clauses.isEmpty) return (null, null);
+    return (clauses.join(' AND '), args);
   }
 
   /// Stored row count.
@@ -58,11 +101,38 @@ class LogRepo {
     return (r.first['bytes'] as num?)?.toInt() ?? 0;
   }
 
-  /// Render the whole log oldest-first as a `.log` text blob (one line each).
-  Future<String> exportLog() async {
-    final rows = await _db.query(Db.tableDiagLog, orderBy: 'id ASC');
-    final entries = rows.map(LogEntry.fromMap);
-    return entries.map((e) => e.toLogLine()).join('\n');
+  /// Render the log oldest-first as a `.log` text blob (one line each),
+  /// optionally scoped to one unit and/or one connection (design 0006).
+  ///
+  /// [header] lines are emitted first, each prefixed with `# ` — they tell
+  /// whoever receives the file which unit, which app version and how many
+  /// connections it covers. The per-line format below is unchanged.
+  Future<String> exportLog({
+    String? deviceId,
+    int? sessionId,
+    List<String> header = const [],
+  }) async {
+    final (where, args) = _scope(deviceId: deviceId, sessionId: sessionId);
+    final rows = await _db.query(
+      Db.tableDiagLog,
+      where: where,
+      whereArgs: args,
+      orderBy: 'id ASC',
+    );
+    final body = rows.map(LogEntry.fromMap).map((e) => e.toLogLine());
+    if (header.isEmpty) return body.join('\n');
+    return [...header.map((h) => '# $h'), ...body].join('\n');
+  }
+
+  /// Number of distinct connections covered by a scope (for the export header).
+  Future<int> sessionCount({String? deviceId}) async {
+    final (where, args) = _scope(deviceId: deviceId);
+    final r = await _db.rawQuery(
+      'SELECT COUNT(DISTINCT session_id) AS n FROM ${Db.tableDiagLog}'
+      '${where == null ? '' : ' WHERE $where'}',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
   /// Delete every log row.

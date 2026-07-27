@@ -13,6 +13,7 @@ import '../data/data.dart';
 import '../protocol/protocol.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
+import 'session_context.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
 
@@ -67,17 +68,23 @@ class AppServices {
 
     final settings = SettingsController(settingsRepo);
     final devices = DeviceController(deviceRepo);
+    // design 0006: ONE session context shared by both controllers, so the log
+    // events and the packet/history rows are attributed to the same unit. Seed
+    // the counter from storage to keep session ids monotonic across restarts.
+    final session = SessionContext()..seed(await logRepo.lastSessionId());
     final connection = ConnectionController(
       bleService,
       settings: settings,
       devices: devices,
       logs: logRepo,
+      session: session,
     );
     final telemetry = TelemetryController(
       bleService,
       settings: settings,
       history: historyRepo,
       logs: logRepo,
+      session: session,
     );
 
     // Prime the persisted controllers before the first frame.

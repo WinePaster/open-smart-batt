@@ -18,6 +18,8 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/export_naming.dart';
+import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
@@ -161,21 +163,38 @@ class _DataCardState extends State<_DataCard> {
 
   Future<void> _exportAll() async {
     if (_busy) return;
+    // design 0006: pick the unit BEFORE showing the spinner — the sheet is the
+    // user's decision point, not work.
+    final target = await chooseExportScope(context, offerSession: false);
+    if (target == null || !mounted) return;
     setState(() => _busy = true);
     final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
+    // Captured now: the label lookup runs after an await, when this screen may
+    // already be gone.
+    final devices = context.read<DeviceController>();
+    String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final csv = await tele.exportHistoryCsv();
+      final csv = await tele.exportHistoryCsv(
+        deviceId: target.deviceId,
+        labelFor: labelFor,
+      );
       if (!csv.contains('\n')) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.commonNoRecordsToExport)));
         return;
       }
       await shareTextAsFile(
         content: csv,
-        filename: 'opensmartbatt-history-${exportStamp()}.csv',
+        filename: exportFileName(
+          base: 'opensmartbatt-history',
+          classSlug: target.classSlug,
+          ident: target.ident,
+          stamp: exportStamp(),
+          extension: 'csv',
+        ),
         mimeType: 'text/csv',
         subject: l10n.settingsExportSubjectAllData,
         sharePositionOrigin: origin,
@@ -251,6 +270,10 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
 
   Future<void> _exportLog() async {
     if (_busy) return;
+    // The diagnostic log is the one export where "this connection only" is
+    // useful — that is the slice we ask a reporter for (design 0006 §3.4).
+    final target = await chooseExportScope(context, offerSession: true);
+    if (target == null || !mounted) return;
     setState(() => _busy = true);
     final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);
@@ -258,14 +281,25 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final log = await tele.exportLog();
+      final header = await _logHeader(tele, target);
+      final log = await tele.exportLog(
+        deviceId: target.deviceId,
+        sessionId: target.sessionId,
+        header: header,
+      );
       if (log.trim().isEmpty) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.settingsLogEmpty)));
         return;
       }
       await shareTextAsFile(
         content: log,
-        filename: 'opensmartbatt-${exportStamp()}.log',
+        filename: exportFileName(
+          base: 'opensmartbatt',
+          classSlug: target.classSlug,
+          ident: target.ident,
+          stamp: exportStamp(),
+          extension: 'log',
+        ),
         mimeType: 'text/plain',
         subject: l10n.settingsExportSubjectDiagLog,
         sharePositionOrigin: origin,
@@ -275,6 +309,40 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// `#`-prefixed preamble telling whoever receives the file which unit, which
+  /// app build and how many connections it covers (design 0006 §3.6).
+  Future<List<String>> _logHeader(
+    TelemetryController tele,
+    ExportTarget target,
+  ) async {
+    final scope = switch (target.scope) {
+      ExportScope.allDevices => 'all devices',
+      ExportScope.currentDevice =>
+        'device=${target.classSlug}/${target.ident ?? '-'}',
+      ExportScope.currentSession =>
+        'device=${target.classSlug}/${target.ident ?? '-'} '
+            'session=${target.sessionId}',
+    };
+    final sessions = target.scope == ExportScope.currentSession
+        ? 1
+        : await tele.logSessionCount(deviceId: target.deviceId);
+    var build = 'unknown';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      build = '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // Plugin channel unavailable (tests / unsupported host) — the header is
+      // diagnostic garnish, never a reason to fail an export.
+    }
+    return <String>[
+      'OpenSmartBatt diagnostic log',
+      'exported: ${DateTime.now().toIso8601String()}',
+      'scope: $scope  connections=$sessions',
+      'app: $build  platform: ${Platform.operatingSystem} '
+          '${Platform.operatingSystemVersion}',
+    ];
   }
 
   Future<void> _clearLog() async {

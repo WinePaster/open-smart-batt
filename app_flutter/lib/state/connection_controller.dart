@@ -23,6 +23,7 @@ import '../models/models.dart';
 import '../protocol/protocol.dart';
 import 'device_controller.dart';
 import 'pack_class_resolver.dart';
+import 'session_context.dart';
 import 'settings_controller.dart';
 
 /// Live BLE connection + scan state for the UI.
@@ -32,10 +33,12 @@ class ConnectionController extends ChangeNotifier {
     required SettingsController settings,
     DeviceController? devices,
     LogRepo? logs,
+    SessionContext? session,
   }) {
     _settings = settings;
     _devices = devices;
     _logs = logs;
+    _session = session ?? SessionContext();
     _linkSub = _ble.linkState.listen(_onLinkState);
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
@@ -58,14 +61,28 @@ class ConnectionController extends ChangeNotifier {
   late final SettingsController _settings;
   late final DeviceController? _devices;
   LogRepo? _logs;
+  late final SessionContext _session;
+
+  /// Which unit/connection recorded rows are attributed to (design 0006).
+  /// Shared with [TelemetryController] so both stamp the same identity.
+  SessionContext get session => _session;
 
   /// Record a connection/scan/error event to the diagnostic log (always on —
   /// these are cheap and are what users export when something fails).
+  ///
+  /// Scan-time events legitimately carry a null device id (no connection yet);
+  /// they stay unattributed rather than being filed under the previous unit.
   void _event(String message) {
     final logs = _logs;
     if (logs == null) return;
-    unawaited(
-        logs.insertLog(LogEntry.event(message), maxBytes: _settings.logMaxBytes));
+    unawaited(logs.insertLog(
+      LogEntry.event(
+        message,
+        deviceId: _session.deviceId,
+        sessionId: _session.sessionId,
+      ),
+      maxBytes: _settings.logMaxBytes,
+    ));
   }
 
   StreamSubscription<BleLinkState>? _linkSub;
@@ -372,6 +389,13 @@ class ConnectionController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
+    // design 0006: open the recording session BEFORE logging this transition, so
+    // the `link: ready` line itself is already attributed to the unit. The
+    // session is closed further down, AFTER the disconnect line is written.
+    if (s == BleLinkState.ready) {
+      final id = _ble.connectedDeviceId ?? _desiredDeviceId;
+      if (id != null) _session.begin(id);
+    }
     // A: log WHY on a drop (flutter_blue_plus disconnect reason), cross-platform.
     if (s == BleLinkState.disconnected && _ble.lastDisconnect != null) {
       _event('link: disconnected (${_ble.lastDisconnect})');
@@ -403,6 +427,9 @@ class ConnectionController extends ChangeNotifier {
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
       _packLabel = ProductClass.unknown;
+      // Stop attributing rows to this unit (the disconnect line above is still
+      // attributed — it belongs to the connection that just ended).
+      _session.end();
       // Unexpected drop while we still want this device → try to reconnect.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&

@@ -267,6 +267,10 @@ class TelemetrySample {
         'mode': mode,
         'twf': twfRaw,
         'serial': serial,
+        // design 0006: SOC was decoded and shown on the power-bank view but never
+        // persisted, so it could not be exported. `device_id` is NOT here — that
+        // is a storage concern the repo stamps on, not sample data.
+        'soc': socPercent,
       };
 
   static TelemetrySample fromMap(Map<String, Object?> m) => TelemetrySample(
@@ -286,6 +290,7 @@ class TelemetrySample {
         mode: (m['mode'] as num?)?.toInt(),
         twfRaw: (m['twf'] as num?)?.toInt(),
         serial: m['serial'] as String?,
+        socPercent: (m['soc'] as num?)?.toInt(),
       );
 }
 

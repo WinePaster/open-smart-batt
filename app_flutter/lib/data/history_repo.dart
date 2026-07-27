@@ -61,6 +61,11 @@ class HistoryRepo {
 
   /// Ordered CSV/column header. Matches [TelemetrySample.toMap] keys, with
   /// `timestamp` rendered as ISO-8601 in CSV (epoch-ms in the DB).
+  ///
+  /// design 0006 appended `soc` and `device` AT THE END on purpose: recipients
+  /// already have spreadsheets built on the original column order, so existing
+  /// columns must never move. `device` is the HUMAN-readable identity (serial /
+  /// alias / short hash) — never the raw `device_id` (a MAC address on Android).
   static const List<String> csvColumns = <String>[
     'timestamp',
     'pvlt',
@@ -75,21 +80,29 @@ class HistoryRepo {
     'mode',
     'twf',
     'serial',
+    'soc',
+    'device',
   ];
 
-  /// Insert one telemetry sample. Returns the new row id.
-  Future<int> insertSample(TelemetrySample sample) {
-    return _db.insert(Db.tableHistory, sample.toMap());
+  /// Insert one telemetry sample, attributed to [deviceId] when known.
+  Future<int> insertSample(TelemetrySample sample, {String? deviceId}) {
+    return _db.insert(Db.tableHistory, _row(sample, deviceId));
   }
 
   /// Batch-insert many samples in a single transaction.
-  Future<void> insertSamples(Iterable<TelemetrySample> samples) async {
+  Future<void> insertSamples(
+    Iterable<TelemetrySample> samples, {
+    String? deviceId,
+  }) async {
     final batch = _db.batch();
     for (final s in samples) {
-      batch.insert(Db.tableHistory, s.toMap());
+      batch.insert(Db.tableHistory, _row(s, deviceId));
     }
     await batch.commit(noResult: true);
   }
+
+  static Map<String, Object?> _row(TelemetrySample s, String? deviceId) =>
+      Map<String, Object?>.from(s.toMap())..['device_id'] = deviceId;
 
   /// Query history newest-first.
   ///
@@ -98,15 +111,34 @@ class HistoryRepo {
   Future<List<TelemetrySample>> querySamples({
     DateTime? since,
     int? limit,
+    String? deviceId,
   }) async {
+    final (where, args) = _scope(since: since, deviceId: deviceId);
     final rows = await _db.query(
       Db.tableHistory,
-      where: since == null ? null : 'timestamp >= ?',
-      whereArgs: since == null ? null : [since.millisecondsSinceEpoch],
+      where: where,
+      whereArgs: args,
       orderBy: 'timestamp DESC, id DESC',
       limit: limit,
     );
     return rows.map(TelemetrySample.fromMap).toList(growable: false);
+  }
+
+  /// WHERE clause for a time/device scope. A null [deviceId] means "every
+  /// device" — it never matches only the NULL (unattributed) rows.
+  (String?, List<Object?>?) _scope({DateTime? since, String? deviceId}) {
+    final clauses = <String>[];
+    final args = <Object?>[];
+    if (since != null) {
+      clauses.add('timestamp >= ?');
+      args.add(since.millisecondsSinceEpoch);
+    }
+    if (deviceId != null) {
+      clauses.add('device_id = ?');
+      args.add(deviceId);
+    }
+    if (clauses.isEmpty) return (null, null);
+    return (clauses.join(' AND '), args);
   }
 
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
@@ -197,16 +229,43 @@ class HistoryRepo {
   ///
   /// `timestamp` is emitted as ISO-8601; remaining columns are the raw values
   /// (empty cell for nulls). Safe for `share_plus` / file export.
-  Future<String> exportCsv({DateTime? since, int? limit}) async {
-    final samples = await querySamples(since: since, limit: limit);
+  ///
+  /// [labelFor] turns a stored `device_id` into the human-readable identity for
+  /// the `device` column (design 0006 §3.5). Rows recorded before v5 have no
+  /// device id, so they get an empty cell rather than a guess.
+  Future<String> exportCsv({
+    DateTime? since,
+    int? limit,
+    String? deviceId,
+    String Function(String? deviceId)? labelFor,
+  }) async {
+    final (where, args) = _scope(since: since, deviceId: deviceId);
+    final raw = await _db.query(
+      Db.tableHistory,
+      where: where,
+      whereArgs: args,
+      orderBy: 'timestamp DESC, id DESC',
+      limit: limit,
+    );
     final rows = <List<Object?>>[csvColumns];
-    for (final s in samples) {
-      final m = s.toMap();
+    for (final m in raw) {
+      final s = TelemetrySample.fromMap(m);
+      final id = m['device_id'] as String?;
       rows.add(<Object?>[
         s.timestamp.toIso8601String(),
-        for (final c in csvColumns.skip(1)) m[c],
+        for (final c in csvColumns.skip(1))
+          if (c == 'device') (id == null ? null : labelFor?.call(id)) else m[c],
       ]);
     }
     return const ListToCsvConverter().convert(rows);
+  }
+
+  /// Distinct device ids present in history (NULL rows excluded).
+  Future<List<String>> distinctDeviceIds() async {
+    final rows = await _db.rawQuery(
+      'SELECT DISTINCT device_id FROM ${Db.tableHistory} '
+      'WHERE device_id IS NOT NULL ORDER BY device_id',
+    );
+    return rows.map((r) => r['device_id'] as String).toList(growable: false);
   }
 }
