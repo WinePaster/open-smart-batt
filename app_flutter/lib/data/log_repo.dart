@@ -107,10 +107,18 @@ class LogRepo {
   /// [header] lines are emitted first, each prefixed with `# ` — they tell
   /// whoever receives the file which unit, which app version and how many
   /// connections it covers. The per-line format below is unchanged.
+  /// [labelFor] renders a device id as the human identity used in the section
+  /// separators. Without separators an all-devices export is ambiguous line by
+  /// line: the rows carry the device internally, but the text format does not
+  /// (and tagging all ~10k of them would bloat the file for no extra meaning).
+  /// A separator every time the device or the connection changes says the same
+  /// thing once, and keeps the per-line format byte-identical for any tooling
+  /// that already parses it.
   Future<String> exportLog({
     String? deviceId,
     int? sessionId,
     List<String> header = const [],
+    String Function(String? deviceId)? labelFor,
   }) async {
     final (where, args) = _scope(deviceId: deviceId, sessionId: sessionId);
     final rows = await _db.query(
@@ -119,9 +127,40 @@ class LogRepo {
       whereArgs: args,
       orderBy: 'id ASC',
     );
-    final body = rows.map(LogEntry.fromMap).map((e) => e.toLogLine());
-    if (header.isEmpty) return body.join('\n');
-    return [...header.map((h) => '# $h'), ...body].join('\n');
+    final out = <String>[...header.map((h) => '# $h')];
+    String? lastKey;
+    var first = true;
+    for (final row in rows) {
+      final e = LogEntry.fromMap(row);
+      final key = '${e.deviceId}/${e.sessionId}';
+      if (key != lastKey) {
+        lastKey = key;
+        // No separator before the very first block when there is no header —
+        // it would just be a stray line at the top of the file.
+        if (!first || header.isNotEmpty) out.add('');
+        out.add('# ---- ${_sectionLabel(e, labelFor)} ----');
+      }
+      out.add(e.toLogLine());
+      first = false;
+    }
+    return out.join('\n');
+  }
+
+  static String _sectionLabel(
+    LogEntry e,
+    String Function(String? deviceId)? labelFor,
+  ) {
+    final id = e.deviceId;
+    if (id == null) {
+      // Recorded outside a connection (scan events) or before design 0006.
+      return 'device=unattributed';
+    }
+    final label = labelFor?.call(id) ?? '';
+    // NEVER the raw id: on Android that is the MAC address, and this text ends
+    // up in a file the user shares. Fall back to the non-reversible digest.
+    final device = 'device=${label.isEmpty ? shortDeviceHash(id) : label}';
+    final session = e.sessionId == null ? '' : ' session=${e.sessionId}';
+    return '$device$session';
   }
 
   /// Number of distinct connections covered by a scope (for the export header).

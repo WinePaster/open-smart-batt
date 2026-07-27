@@ -14,7 +14,10 @@
 /// so an unnamed unit falls back to a short non-reversible hash instead.
 library;
 
+import '../../models/device_ident.dart';
 import '../../models/product_class.dart';
+
+export '../../models/device_ident.dart' show shortDeviceHash;
 
 /// Stable, locale-independent slug for a product class.
 ///
@@ -45,20 +48,8 @@ String sanitizeIdent(String raw) {
       : cleaned.substring(0, kMaxIdentLength).replaceAll(RegExp(r'-+$'), '');
 }
 
-/// 8-hex-char FNV-1a digest of [deviceId] — a stable, non-reversible stand-in
-/// used when the unit has neither a serial nor a usable alias.
-///
-/// FNV-1a is chosen over a crypto hash on purpose: no new dependency, and the
-/// goal is only "same unit → same fragment", not collision resistance.
-String shortDeviceHash(String deviceId) {
-  var hash = 0x811c9dc5;
-  for (final unit in deviceId.codeUnits) {
-    hash ^= unit;
-    hash = (hash * 0x01000193) & 0xFFFFFFFF;
-  }
-  return hash.toRadixString(16).padLeft(8, '0');
-}
-
+/// Re-exported from `models/device_ident.dart`: the diagnostic-log exporter in
+/// the data layer needs the same digest, and a UI file cannot be its home.
 /// The human identity fragment for a unit, in priority order:
 /// serial → sanitized alias → short hash of the device id.
 ///

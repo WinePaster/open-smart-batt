@@ -199,6 +199,14 @@ class ConnectionController extends ChangeNotifier {
   bool get isUnclassified =>
       isOnline && _packLabel == ProductClass.unknown;
 
+  /// Record an app foreground/background transition (`resumed`, `paused`, …).
+  ///
+  /// Written through the same attributed path as link events, so a stall reads
+  /// straight off the log: `app paused` … gap … `app resumed`. Diagnosing the
+  /// 2026-07-27 reports otherwise meant reconstructing that from a hole in the
+  /// per-minute frame counts and the 2× backlog burst on resume.
+  void logAppLifecycle(String state) => _event('app $state');
+
   /// The user's explicit class choice for a unit whose device-type byte we do
   /// not recognise. Pass null to clear it. Ignored (harmlessly) when the wire
   /// byte is recognised — that always wins.

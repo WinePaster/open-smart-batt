@@ -198,11 +198,13 @@ class TelemetryController extends ChangeNotifier {
     String? deviceId,
     int? sessionId,
     List<String> header = const [],
+    String Function(String? deviceId)? labelFor,
   }) =>
       _logs.exportLog(
         deviceId: deviceId,
         sessionId: sessionId,
         header: header,
+        labelFor: labelFor,
       );
 
   /// How many distinct connections the log holds for a scope (header line).

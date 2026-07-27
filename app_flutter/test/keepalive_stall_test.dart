@@ -48,6 +48,11 @@ class _StubBle extends BleService {
   @override
   bool get isScanning => false;
 
+  /// A connected unit is what starts a recording session, so the stub must
+  /// report one for attribution to be exercised at all.
+  @override
+  String? get connectedDeviceId => 'STUB-DEV';
+
   void emitTelemetry(TelemetrySample s) => _telemetryOut.add(s);
   void emitLink(BleLinkState s) => _linkOut.add(s);
 
@@ -92,6 +97,38 @@ void main() {
     test('the stall threshold is several poll periods so it cannot flap', () {
       expect(BleService.telemetryStallThreshold,
           greaterThan(BleService.keepAliveInterval * 3));
+    });
+  });
+
+  group('diagnostic context in the log', () {
+    test('app foreground/background transitions are recorded, attributed',
+        () async {
+      // Diagnosing the 2026-07-27 stalls meant inferring "the OS suspended the
+      // app" from a hole in the frame counts plus the 2x backlog on resume.
+      // These lines state it outright.
+      final ble = _StubBle();
+      final s = await makeServices(ble);
+      addTearDown(s.dispose);
+
+      ble.emitLink(BleLinkState.ready);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      s.connection.logAppLifecycle('paused');
+      s.connection.logAppLifecycle('resumed');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final notes = (await s.logRepo.queryLog())
+          .map((e) => e.note)
+          .whereType<String>()
+          .toList();
+      expect(notes, contains('app paused'));
+      expect(notes, contains('app resumed'));
+
+      // They ride the same attributed path as link events, so an export scoped
+      // to one unit still contains them.
+      final entries = await s.logRepo.queryLog();
+      final lifecycle = entries.firstWhere((e) => e.note == 'app paused');
+      expect(lifecycle.sessionId, isNotNull,
+          reason: 'a lifecycle event during a connection belongs to it');
     });
   });
 

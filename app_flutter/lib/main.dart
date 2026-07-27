@@ -108,9 +108,30 @@ class OpenSmartBattApp extends StatefulWidget {
   State<OpenSmartBattApp> createState() => _OpenSmartBattAppState();
 }
 
-class _OpenSmartBattAppState extends State<OpenSmartBattApp> {
+class _OpenSmartBattAppState extends State<OpenSmartBattApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Record foreground/background transitions into the diagnostic log.
+  ///
+  /// Diagnosing the 2026-07-27 reports took reconstructing "the OS suspended
+  /// the app" from a hole in the per-minute frame counts plus the 2× backlog
+  /// burst on resume. One line here turns that inference into a fact the log
+  /// states outright — and it is the difference between a stall the user can
+  /// explain and a "the app randomly stopped updating" report.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.services.connection.logAppLifecycle(state.name);
+    super.didChangeAppLifecycleState(state);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Fire-and-forget teardown of streams / BLE link / DB on app exit.
     widget.services.dispose();
     super.dispose();
