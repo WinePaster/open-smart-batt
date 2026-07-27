@@ -34,7 +34,18 @@ class Db {
   /// as opposed to which build exported it (design 0010). Per row rather than
   /// per session because diag_log is trimmed oldest-first: a build recorded
   /// once at the start of a connection would be the first thing deleted.
-  static const int schemaVersion = 7;
+  /// v8: settings gained `background_monitoring` (Android foreground service —
+  /// design 0008), defaulting ON. The pre-existing `background_keep_alive`
+  /// column keeps its name but now maps to `keepScreenAwake`, which is all it
+  /// ever did; renaming it would need SQLite 3.25+ (API 30) and minSdk is 24.
+  ///
+  /// CLAIMING A NUMBER: rebase onto main FIRST and take the next free one. This
+  /// list is the only registry, so two branches developed in parallel will
+  /// happily claim the same version and merge without a textual conflict in the
+  /// migration body — after which whoever already upgraded never runs the
+  /// loser's branch. Design 0008 was originally written as v6 while designs
+  /// 0009/0010 took v6 and v7 on main; it was renumbered to v8 on merge.
+  static const int schemaVersion = 8;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -212,6 +223,15 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableDiagLog} ADD COLUMN app_build TEXT',
       );
     }
+    if (from < 8) {
+      // design 0008: background monitoring via the Android foreground service.
+      // DEFAULT 1 — existing users are exactly the ones hitting the stall, so
+      // they get it on. Their `background_keep_alive` value is untouched and
+      // now reads as `keepScreenAwake`, preserving that choice separately.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN background_monitoring INTEGER NOT NULL DEFAULT 1',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -261,6 +281,7 @@ class AppDatabase {
       auto_reconnect INTEGER NOT NULL DEFAULT 1,
       poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
       background_keep_alive INTEGER NOT NULL DEFAULT 0,
+      background_monitoring INTEGER NOT NULL DEFAULT 1,
       dark_theme INTEGER NOT NULL DEFAULT 1,
       theme_mode TEXT,
       lang TEXT NOT NULL DEFAULT 'zhHant',

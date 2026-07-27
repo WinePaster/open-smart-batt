@@ -17,6 +17,22 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="30" />
 
+    <!-- Foreground service that keeps the process alive while a pack is
+         connected, so the screen going off does not freeze the BLE loop
+         (design 0008). connectedDevice is the correct type for BLE telemetry
+         AND it is the one with no time limit: Android's 6-hours-per-24 cap
+         applies only to dataSync and mediaProcessing, so using either of those
+         would cut a long ride or an overnight parked watch short.
+         Starting the type requires FOREGROUND_SERVICE_CONNECTED_DEVICE plus one
+         of BLUETOOTH_CONNECT/SCAN (declared above); missing either throws
+         SecurityException at startForeground(). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 13+: the ongoing notification. NOT a prerequisite for the
+         service; if the user denies it the watch still runs and only the
+         notification is hidden (design 0008 §3.4). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- BLE is required hardware for this app. -->
     <uses-feature android:name="android.hardware.bluetooth_le"
         android:required="true" />
@@ -47,6 +63,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Keeps the process at foreground importance while connected. Does
+             not touch Bluetooth itself; see MonitorService.kt. -->
+        <service
+            android:name=".MonitorService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

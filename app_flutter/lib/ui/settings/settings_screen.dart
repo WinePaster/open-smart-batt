@@ -73,13 +73,24 @@ class _ConnectionCard extends StatelessWidget {
               onChanged: s.setAutoReconnect,
             ),
           ),
+          // design 0008: background execution and keeping the screen on are
+          // two different things. They shared one setting while the wakelock
+          // was the only mitigation available; now they are separate.
+          SettingsRow(
+            label: l10n.settingsBackgroundMonitorLabel,
+            sub: l10n.settingsBackgroundMonitorSub,
+            trailing: _Toggle(
+              value: s.backgroundMonitoring,
+              onChanged: s.setBackgroundMonitoring,
+            ),
+          ),
           SettingsRow(
             label: l10n.settingsKeepAwakeLabel,
             sub: l10n.settingsKeepAwakeSub,
             last: true,
             trailing: _Toggle(
-              value: s.backgroundKeepAlive,
-              onChanged: s.setBackgroundKeepAlive,
+              value: s.keepScreenAwake,
+              onChanged: s.setKeepScreenAwake,
             ),
           ),
         ],

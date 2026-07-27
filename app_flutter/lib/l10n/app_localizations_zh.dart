@@ -550,10 +550,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAutoReconnectSub => '連線中斷時自動嘗試重連';
 
   @override
+  String get settingsBackgroundMonitorLabel => '背景持續監看';
+
+  @override
+  String get settingsBackgroundMonitorSub =>
+      '螢幕關閉或切到其他 App 時仍持續記錄，連線期間會顯示一則常駐通知（僅 Android）';
+
+  @override
   String get settingsKeepAwakeLabel => '連線時保持螢幕喚醒';
 
   @override
   String get settingsKeepAwakeSub => '螢幕不自動關閉，方便邊騎邊看（連線時生效）';
+
+  @override
+  String get monitorNotificationTitle => 'OpenSmartBatt · 監看中';
+
+  @override
+  String get monitorNotificationStop => '停止監看';
+
+  @override
+  String get monitorChannelName => '背景監看';
+
+  @override
+  String get monitorChannelDescription => '連線期間顯示即時電壓與電量的常駐通知';
 
   @override
   String get settingsDisplayHeading => '顯示';
@@ -730,7 +749,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dashboardTelemetryStalled =>
-      '資料已停止更新（連線仍在）。App 被系統暫停時會這樣，開啟「連線時保持螢幕喚醒」可避免。';
+      '資料已停止更新（連線仍在）。App 被系統暫停時會這樣，開啟「背景持續監看」可避免。';
+
+  @override
+  String get dashboardTelemetryStalledDespiteMonitor =>
+      '資料已停止更新（連線仍在）。「背景持續監看」已開啟，代表系統仍然凍結了 App —— 部分機型需要另外把本 App 排除在電池最佳化之外。';
 
   @override
   String dashboardDeviceFaultSuspected(String code) {

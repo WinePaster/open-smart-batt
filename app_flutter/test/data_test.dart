@@ -331,7 +331,10 @@ void main() {
       // And the rest of the documented defaults.
       expect(s.autoReconnect, isTrue);
       expect(s.pollIntervalMs, 1000);
-      expect(s.backgroundKeepAlive, isFalse);
+      expect(s.keepScreenAwake, isFalse);
+      // design 0008: background monitoring defaults ON — the stall it prevents
+      // is the default experience without it.
+      expect(s.backgroundMonitoring, isTrue);
       // Theme defaults to light (tri-state {light, dark, auto}).
       expect(s.themeMode, AppThemeMode.light);
       expect(s.lang, AppLang.zhHant);
@@ -345,7 +348,8 @@ void main() {
       const custom = AppSettings(
         autoReconnect: false,
         pollIntervalMs: 500,
-        backgroundKeepAlive: true,
+        backgroundMonitoring: false,
+        keepScreenAwake: true,
         themeMode: AppThemeMode.auto,
         lang: AppLang.en,
         tempUnit: TempUnit.fahrenheit,
@@ -358,7 +362,8 @@ void main() {
       final s = await repo.loadSettings();
       expect(s.autoReconnect, isFalse);
       expect(s.pollIntervalMs, 500);
-      expect(s.backgroundKeepAlive, isTrue);
+      expect(s.keepScreenAwake, isTrue);
+      expect(s.backgroundMonitoring, isFalse);
       expect(s.themeMode, AppThemeMode.auto);
       expect(s.lang, AppLang.en);
       expect(s.tempUnit, TempUnit.fahrenheit);
