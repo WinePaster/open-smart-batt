@@ -20,6 +20,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../models/models.dart';
+import '../platform/platform.dart';
 import '../protocol/protocol.dart';
 import 'device_controller.dart';
 import 'pack_class_resolver.dart';
@@ -34,30 +35,141 @@ class ConnectionController extends ChangeNotifier {
     DeviceController? devices,
     LogRepo? logs,
     SessionContext? session,
+    MonitorService? monitor,
   }) {
     _settings = settings;
     _devices = devices;
     _logs = logs;
     _session = session ?? SessionContext();
+    _monitor = monitor ?? NoopMonitorService();
     _linkSub = _ble.linkState.listen(_onLinkState);
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
     _adapterSub = _ble.adapterState.listen(_onAdapterState);
     _telemetrySub = _ble.telemetry.listen(_onTelemetrySample);
-    _settings.addListener(_updateWakelock);
+    _monitorStopSub = _monitor.onStopRequested.listen((_) => _onMonitorStop());
+    _settings.addListener(_onSettingsChanged);
   }
 
-  /// Keep the screen awake while connected, when the user enabled the option
-  /// (consumes SettingsController.backgroundKeepAlive). Re-evaluated on link
-  /// state changes and whenever the setting toggles.
+  void _onSettingsChanged() {
+    _updateWakelock();
+    _updateMonitor();
+  }
+
+  /// Keep the screen awake while connected, when the user enabled the option.
+  /// Re-evaluated on link state changes and whenever the setting toggles.
+  ///
+  /// Note this is only about the *display*. Background execution is
+  /// [_updateMonitor]'s job; the two were conflated under one setting until
+  /// design 0008 split them.
   void _updateWakelock() {
-    final shouldKeep = isOnline && _settings.backgroundKeepAlive;
+    final shouldKeep = isOnline && _settings.keepScreenAwake;
     // Fire-and-forget; ignore platform errors (e.g. in unit tests / unsupported
     // platforms where the plugin channel is absent).
     WakelockPlus.toggle(enable: shouldKeep).catchError((_) {});
   }
 
+  /// Start/stop the foreground service that keeps this process at foreground
+  /// importance while connected (design 0008). Without it the OS freezes the
+  /// process once the screen goes off and the 1 Hz keep-alive stops firing.
+  void _updateMonitor() {
+    final shouldRun = isOnline && _settings.backgroundMonitoring;
+    if (shouldRun == _monitorRunning) return;
+    _monitorRunning = shouldRun;
+    if (shouldRun) {
+      _lastNotifyAt = null;
+      unawaited(_startMonitor());
+    } else {
+      unawaited(_monitor.stop());
+    }
+  }
+
+  Future<void> _startMonitor() async {
+    // Ask for POST_NOTIFICATIONS (Android 13+) but do NOT gate on the answer.
+    // A denied prompt hides the notification; the service — and therefore the
+    // BLE loop — still runs. Treating it as a prerequisite would hand us a
+    // "user declined notifications, background monitoring silently dead" bug.
+    await _ble.ensureNotificationPermission();
+    if (!_monitorRunning) return; // toggled off while the prompt was up
+    await _monitor.start(_buildNotification());
+  }
+
+  /// User tapped "stop" on the ongoing notification (or the system reclaimed
+  /// the service). Drop the link rather than leaving it running invisibly.
+  void _onMonitorStop() {
+    if (!_monitorRunning) return;
+    _monitorRunning = false;
+    if (isOnline) unawaited(disconnect());
+  }
+
+  MonitorNotification _buildNotification() => MonitorNotification(
+        title: _notifyTitle,
+        body: _notifyBody,
+        stopLabel: _notifyStopLabel,
+        channelName: _notifyChannelName,
+        channelDescription: _notifyChannelDescription,
+      );
+
+  /// Hand the localized, non-numeric notification strings to the controller.
+  ///
+  /// Called once when the locale resolves (and again if the user switches
+  /// language) — NOT per telemetry sample. The live reading is formatted from
+  /// the samples this controller already receives, so the UI never has to push
+  /// a notification update from a build method.
+  void setNotificationStrings({
+    required String title,
+    required String stopLabel,
+    required String channelName,
+    required String channelDescription,
+  }) {
+    if (title == _notifyTitle &&
+        stopLabel == _notifyStopLabel &&
+        channelName == _notifyChannelName &&
+        channelDescription == _notifyChannelDescription) {
+      return;
+    }
+    _notifyTitle = title;
+    _notifyStopLabel = stopLabel;
+    _notifyChannelName = channelName;
+    _notifyChannelDescription = channelDescription;
+    // Push straight through (bypassing the throttle): a language change is
+    // rare and the user is looking at the result right now.
+    if (_monitorRunning) unawaited(_monitor.update(_buildNotification()));
+  }
+
+  /// Refresh the ongoing notification's reading line.
+  ///
+  /// THROTTLED to [notificationInterval]: telemetry is 1 Hz, but posting a
+  /// notification that often is a measurable battery cost and the system
+  /// rate-limits it anyway, so the extra posts would be dropped regardless.
+  void _updateNotificationBody(TelemetrySample s) {
+    if (!_monitorRunning) return;
+    final body = formatMonitorBody(s);
+    if (body == _notifyBody && _lastNotifyAt != null) return;
+    final now = DateTime.now();
+    final last = _lastNotifyAt;
+    if (last != null && now.difference(last) < notificationInterval) return;
+    _notifyBody = body;
+    _lastNotifyAt = now;
+    unawaited(_monitor.update(_buildNotification()));
+  }
+
+  /// Minimum gap between ongoing-notification updates.
+  static const Duration notificationInterval = Duration(seconds: 5);
+
   final BleService _ble;
+  late final MonitorService _monitor;
+  bool _monitorRunning = false;
+  DateTime? _lastNotifyAt;
+  String _notifyTitle = 'OpenSmartBatt';
+  String _notifyBody = '';
+  String _notifyStopLabel = '';
+  String _notifyChannelName = '';
+  String _notifyChannelDescription = '';
+
+  /// True while the foreground service is up (design 0008). Exposed so the UI
+  /// can explain a stall differently depending on whether it was even enabled.
+  bool get monitorRunning => _monitorRunning;
   late final SettingsController _settings;
   late final DeviceController? _devices;
   LogRepo? _logs;
@@ -90,6 +202,7 @@ class ConnectionController extends ChangeNotifier {
   StreamSubscription<bool>? _scanningSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
   StreamSubscription<TelemetrySample>? _telemetrySub;
+  StreamSubscription<void>? _monitorStopSub;
 
   /// Product-class resolver (design 0007). Reads the class off the wire
   /// device-type byte; holds the user's choice only for unrecognised bytes.
@@ -448,6 +561,7 @@ class ConnectionController extends ChangeNotifier {
       }
     }
     _updateWakelock();
+    _updateMonitor();
     notifyListeners();
   }
 
@@ -501,6 +615,7 @@ class ConnectionController extends ChangeNotifier {
   void _onTelemetrySample(TelemetrySample s) {
     _packResolver.observe(s);
     _recomputePackLabel();
+    _updateNotificationBody(s);
   }
 
   /// Recompute the cosmetic pack label; notify + persist only on a real change
@@ -553,16 +668,37 @@ class ConnectionController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _settings.removeListener(_updateWakelock);
+    _settings.removeListener(_onSettingsChanged);
     WakelockPlus.toggle(enable: false).catchError((_) {});
+    // Never leave an ongoing notification behind claiming we are monitoring.
+    if (_monitorRunning) {
+      _monitorRunning = false;
+      unawaited(_monitor.stop());
+    }
     _reconnectTimer?.cancel();
     _linkSub?.cancel();
     _scanSub?.cancel();
     _scanningSub?.cancel();
     _adapterSub?.cancel();
     _telemetrySub?.cancel();
+    _monitorStopSub?.cancel();
+    _monitor.dispose();
     super.dispose();
   }
+}
+
+/// Reading line for the ongoing monitor notification. Pure + unit-testable.
+///
+/// Units only (V / % / °C), no translated words, so it needs no l10n and stays
+/// correct in any language. Absent fields are dropped rather than shown as a
+/// placeholder — a capacitor sends no SOC, and "—%" reads as a fault.
+String formatMonitorBody(TelemetrySample s) {
+  final parts = <String>[
+    if (s.pvlt != null) '${s.pvlt!.toStringAsFixed(1)} V',
+    if (s.socPercent != null) '${s.socPercent}%',
+    if (s.temperatureC != null) '${s.temperatureC}°C',
+  ];
+  return parts.join(' · ');
 }
 
 /// Exponential auto-reconnect backoff (D.4). Pure + unit-testable.

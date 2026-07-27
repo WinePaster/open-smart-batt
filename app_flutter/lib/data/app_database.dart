@@ -27,7 +27,11 @@ class Db {
   /// history gained `soc` and diag_log gained `session_id` — design 0006. All
   /// nullable with NO default: pre-v5 rows keep NULL, meaning "unknown device",
   /// because attributing them to the current unit would be a lie.
-  static const int schemaVersion = 5;
+  /// v6: settings gained `background_monitoring` (Android foreground service —
+  /// design 0008), defaulting ON. The pre-existing `background_keep_alive`
+  /// column keeps its name but now maps to `keepScreenAwake`, which is all it
+  /// ever did; renaming it would need SQLite 3.25+ (API 30) and minSdk is 24.
+  static const int schemaVersion = 6;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -185,6 +189,15 @@ class AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
       );
     }
+    if (from < 6) {
+      // design 0008: background monitoring via the Android foreground service.
+      // DEFAULT 1 — existing users are exactly the ones hitting the stall, so
+      // they get it on. Their `background_keep_alive` value is untouched and
+      // now reads as `keepScreenAwake`, preserving that choice separately.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN background_monitoring INTEGER NOT NULL DEFAULT 1',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -232,6 +245,7 @@ class AppDatabase {
       auto_reconnect INTEGER NOT NULL DEFAULT 1,
       poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
       background_keep_alive INTEGER NOT NULL DEFAULT 0,
+      background_monitoring INTEGER NOT NULL DEFAULT 1,
       dark_theme INTEGER NOT NULL DEFAULT 1,
       theme_mode TEXT,
       lang TEXT NOT NULL DEFAULT 'zhHant',

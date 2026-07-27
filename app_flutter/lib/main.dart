@@ -245,6 +245,22 @@ class _RootShellState extends State<RootShell> {
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Hand the monitor notification its localized, non-numeric strings. Here
+    // rather than in build(): this is the first place l10n is resolved, and it
+    // re-fires when the user switches language. The live reading is formatted
+    // by the controller from telemetry, so this runs rarely.
+    final l10n = AppLocalizations.of(context);
+    context.read<ConnectionController>().setNotificationStrings(
+          title: l10n.monitorNotificationTitle,
+          stopLabel: l10n.monitorNotificationStop,
+          channelName: l10n.monitorChannelName,
+          channelDescription: l10n.monitorChannelDescription,
+        );
+  }
+
   Future<void> _maybeShowDisclaimer() async {
     if (await Disclaimer.acknowledged()) return;
     if (!mounted) return;

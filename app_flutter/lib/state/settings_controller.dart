@@ -29,7 +29,8 @@ class SettingsController extends ChangeNotifier {
   // Convenience pass-throughs the other controllers / UI read frequently.
   bool get autoReconnect => _settings.autoReconnect;
   int get pollIntervalMs => _settings.pollIntervalMs;
-  bool get backgroundKeepAlive => _settings.backgroundKeepAlive;
+  bool get backgroundMonitoring => _settings.backgroundMonitoring;
+  bool get keepScreenAwake => _settings.keepScreenAwake;
   AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
@@ -57,8 +58,10 @@ class SettingsController extends ChangeNotifier {
       update(_settings.copyWith(autoReconnect: v));
   Future<void> setPollIntervalMs(int v) =>
       update(_settings.copyWith(pollIntervalMs: v));
-  Future<void> setBackgroundKeepAlive(bool v) =>
-      update(_settings.copyWith(backgroundKeepAlive: v));
+  Future<void> setBackgroundMonitoring(bool v) =>
+      update(_settings.copyWith(backgroundMonitoring: v));
+  Future<void> setKeepScreenAwake(bool v) =>
+      update(_settings.copyWith(keepScreenAwake: v));
   Future<void> setThemeMode(AppThemeMode v) =>
       update(_settings.copyWith(themeMode: v));
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));
