@@ -1358,6 +1358,12 @@ abstract class AppLocalizations {
   /// **'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.'**
   String get dashboardTelemetryStalled;
 
+  /// No description provided for @dashboardDeviceFaultSuspected.
+  ///
+  /// In en, this message translates to:
+  /// **'Suspected fault: the device set its status flag (code {code}). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.'**
+  String dashboardDeviceFaultSuspected(String code);
+
   /// No description provided for @packLabelUnclassified.
   ///
   /// In en, this message translates to:
