@@ -309,6 +309,7 @@
   "settingsAboutDialogBody": "This app is an independent, community-developed open-source tool based on public reverse-engineering research, communicating via Bluetooth with the RCE smart capacitor/battery you have purchased.\n\nThis project is not an official RCE product and has no affiliation with the manufacturer; it is intended solely for personal, non-commercial use by owners of the hardware.",
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
 
+  "dashboardTelemetryStalled": "Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.",
   "packLabelUnclassified": "Unclassified (tap to set)",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",

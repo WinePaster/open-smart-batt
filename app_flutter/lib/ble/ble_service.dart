@@ -85,6 +85,22 @@ class BleService {
   /// keeps receiving a poll token; exact cadence is not protocol-critical.
   static const Duration keepAliveInterval = Duration(seconds: 1);
 
+  /// Write timeout for a keep-alive poke.
+  ///
+  /// flutter_blue_plus defaults to 15 s, which is 15 poll periods — a stalled
+  /// write sat there long past the point the tick was useful, and the error
+  /// only surfaced once the app resumed. A few periods is enough to tell
+  /// "this write is not coming back" without being trigger-happy.
+  static const Duration keepAliveWriteTimeout = Duration(seconds: 5);
+
+  /// No inbound frame for this long, while the link still reports ready, means
+  /// telemetry has stalled — the readouts on screen are stale even though the
+  /// connection looks healthy. Observed cause: Android suspending the app
+  /// (screen off / background), where RX and TX stop together for minutes and
+  /// then flush a backlog. Deliberately several poll periods so a momentary gap
+  /// does not flap the indicator.
+  static const Duration telemetryStallThreshold = Duration(seconds: 8);
+
   /// Pure keep-alive scheduler (PROTOCOL.md §2). Selects which poll token to
   /// write for a given 1-based [tick] and whether the connected unit is a power
   /// bank (device-type 0x22, from decoded telemetry). Extracted as a static pure
@@ -547,6 +563,13 @@ class BleService {
 
   Future<void> _sendKeepAlive() async {
     if (_writeChar == null) return;
+    // Re-entrancy guard. The timer fires every second but a write can hang far
+    // longer — when Android suspends the app (screen off / background) BOTH
+    // directions stall for minutes, then everything resumes at once. Without
+    // this guard each stalled second queued another write, so a 2.5-minute
+    // freeze piled up ~150 of them and they all landed on resume.
+    if (_keepAliveInFlight) return;
+    _keepAliveInFlight = true;
     _keepAliveTick++;
     // Whether the connected unit is a power bank is read from the LATEST decoded
     // telemetry (device-type 0x22); it flips true once the tick-1 `!#` elicits
@@ -557,7 +580,7 @@ class BleService {
       isPowerBank: _decoder.sample.isPowerBank,
     );
     try {
-      await writeCommand(token);
+      await writeCommand(token, timeout: keepAliveWriteTimeout);
     } catch (e) {
       // A failed keep-alive usually means the link dropped; the connectionState
       // callback handles teardown. Surface it once to the diagnostic log — a
@@ -567,10 +590,13 @@ class BleService {
         _keepAliveWriteFailed = true;
         _emitEvent('keep-alive write failed: $e');
       }
+    } finally {
+      _keepAliveInFlight = false;
     }
   }
 
   bool _keepAliveWriteFailed = false;
+  bool _keepAliveInFlight = false;
 
   // ---------------------------------------------------------------------------
   // Outbound commands
@@ -584,7 +610,7 @@ class BleService {
   /// flutter_blue_plus, which silently killed every keep-alive `#` (so the
   /// device never got the poke that triggers the connect metadata burst — VADJ /
   /// serial). Pick the mode from the characteristic's actual properties.
-  Future<void> writeCommand(List<int> bytes) async {
+  Future<void> writeCommand(List<int> bytes, {Duration? timeout}) async {
     final c = _writeChar;
     if (c == null) {
       throw StateError('writeCommand: not connected / write char unresolved');
@@ -592,7 +618,11 @@ class BleService {
     // Use Write-Without-Response only when the char actually supports it;
     // ace3 does not, so fall back to Write (with response).
     final woResp = c.properties.writeWithoutResponse;
-    await c.write(bytes, withoutResponse: woResp);
+    await c.write(
+      bytes,
+      withoutResponse: woResp,
+      timeout: (timeout ?? const Duration(seconds: 15)).inSeconds,
+    );
     _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes)));
   }
 

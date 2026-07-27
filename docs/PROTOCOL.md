@@ -458,6 +458,23 @@ high-temp warning `field_ef`/`field_fb`, `field_ff`) and a status message
   version code `0x37` group, rectifier-gear, a "PowerBank Command 7" branch, etc.)
   whose byte offsets were not all mapped.
 
+### 10.1 Observed on the wire but NOT decoded (2026-07-28)
+
+Streamed by real units and reassembled from live captures, but with no
+established meaning. They are dropped by the decoder's `default:` branch. **Do
+not guess a layout** — each needs a controlled experiment before it is decoded.
+
+| Selector | Seen on | Payload | Notes |
+|---|---|---|---|
+| `0x40` | smart battery (813 frames in one session; a separate 2026-07-05 capture streamed it 564 times) | 2 bytes, `222b` (8747) / `2229` (8745) | Barely moves. Candidates: cycle count, capacity (mAh), accumulated charge — **none evidenced**. To decode: capture the same unit before and after a charge/discharge cycle and see how it tracks. |
+| `0x42` | super-capacitor (488 frames) | 4 bytes, `07c87805`, **constant for the whole session** | A constant is most likely a static setting or a model code. Low value, low risk; recorded for completeness. |
+
+Method note: both were confirmed by **reassembling the byte stream and walking
+frames**, not by substring-matching hex text. An earlier pass using `grep` over
+the log text also reported `0x1F` and `0x22`; strict framing shows **no such
+frames** — those hits were payload bytes that happened to follow a `b8`. Any
+future selector claim should come from the framing walk.
+
 ---
 
 ## 11. Glossary

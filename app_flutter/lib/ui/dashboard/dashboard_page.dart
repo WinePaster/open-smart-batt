@@ -11,6 +11,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../devices/device_list_sheet.dart';
 import 'disconnected_state.dart';
@@ -32,7 +33,47 @@ class DashboardPage extends StatelessWidget {
         onScanRequested: onScanRequested ?? () => showDeviceListSheet(context),
       );
     }
-    return const DashboardRouter();
+    // A stall is not a disconnect: the link stays ready while Android suspends
+    // the app, so the readouts below would otherwise sit frozen with no hint.
+    final stalled =
+        context.select<TelemetryController, bool>((c) => c.telemetryStalled);
+    return Column(
+      children: [
+        if (stalled) const _StaleBanner(),
+        const Expanded(child: DashboardRouter()),
+      ],
+    );
+  }
+}
+
+/// Shown when the link is up but telemetry has stopped arriving.
+class _StaleBanner extends StatelessWidget {
+  const _StaleBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        child: Row(
+          children: [
+            Icon(Icons.pause_circle_outline,
+                size: 18, color: theme.colorScheme.onErrorContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l10n.dashboardTelemetryStalled,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onErrorContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

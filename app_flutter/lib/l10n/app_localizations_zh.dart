@@ -729,6 +729,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAboutDialogWarning => '解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。';
 
   @override
+  String get dashboardTelemetryStalled =>
+      '資料已停止更新（連線仍在）。App 被系統暫停時會這樣，開啟「連線時保持螢幕喚醒」可避免。';
+
+  @override
   String get packLabelUnclassified => '未分類（請指定）';
 
   @override

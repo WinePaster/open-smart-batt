@@ -1352,6 +1352,12 @@ abstract class AppLocalizations {
   /// **'Do not re-lock after releasing the power cut-off; the capacitor\'s own over-voltage / under-voltage / over-temperature protection remains active.'**
   String get settingsAboutDialogWarning;
 
+  /// No description provided for @dashboardTelemetryStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.'**
+  String get dashboardTelemetryStalled;
+
   /// No description provided for @packLabelUnclassified.
   ///
   /// In en, this message translates to:
