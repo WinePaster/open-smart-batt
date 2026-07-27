@@ -1,9 +1,9 @@
-/// OpenSmartBatt — GATT transport constants (CAPTURE_VERIFIED §1 / PROTOCOL.md §3).
+/// OpenSmartBatt — GATT transport constants (live HCI capture / PROTOCOL.md §3).
 ///
 /// PURE Dart. UUID strings only; the BLE layer wraps them in plugin types.
 library;
 
-/// Vendor BLE GATT identifiers (all byte-proven in CAPTURE_VERIFIED §1 unless
+/// Vendor BLE GATT identifiers (all byte-proven in live HCI capture unless
 /// noted). The base `…-d55f-5e82-ba44-81c0da86c46c` is shared; only the 16-bit
 /// slot differs.
 class Gatt {

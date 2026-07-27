@@ -1,5 +1,5 @@
 /// OpenSmartBatt — outbound command builders (PROTOCOL.md §5 / §6, plus
-/// CAPTURE_VERIFIED §6 replay).
+/// live HCI capture replay).
 ///
 /// PURE Dart. Every builder returns the exact bytes that go on the wire to the
 /// write characteristic (07b9ace3-…, Write-Without-Response). All deterministic
@@ -11,7 +11,7 @@ import 'dart:typed_data';
 import 'frame.dart';
 import 'selectors.dart';
 
-/// Battery-specific auth credentials (CAPTURE_VERIFIED §6).
+/// Battery-specific auth credentials (live HCI capture).
 ///
 /// `cb`    — 16-bit echo derived from the device's dealer code (selector 0x27),
 ///           broadcast in the clear by the device itself.
@@ -104,7 +104,7 @@ class CommandBuilder {
   /// Auth sub-frame: `[B8, 2A, flag, 04, cbHi, cbLo, pwHi, pwLo, XOR]`.
   ///
   /// [flag] is byte[2]: 0x00 standalone (verify-auth), 0x01 when bundled with a
-  /// mode change (CAPTURE_VERIFIED §1).
+  /// mode change (live HCI capture).
   Uint8List auth(AuthCredentials creds, {int flag = 0x00}) => buildFrame(
         Commands.auth,
         [creds.cbHi, creds.cbLo, creds.pwHi, creds.pwLo],
@@ -112,7 +112,7 @@ class CommandBuilder {
       );
 
   /// switchMode: mode sub-frame ++ auth sub-frame in ONE write (PROTOCOL.md §6.2,
-  /// CAPTURE_VERIFIED §6 — 15 bytes, no trailing context payload).
+  /// live HCI capture — 15 bytes, no trailing context payload).
   ///
   /// The bundled auth carries flag byte[2] = 0x01 (the captured bundled variant).
   Uint8List switchMode(int mode, AuthCredentials creds) => concatFrames([

@@ -2,10 +2,10 @@
 ///
 /// PURE Dart, no IO. The BLE layer feeds raw notification chunks into
 /// [FrameReassembler.addBytes]; sub-frames fragment across ATT packets, so the
-/// receiver MUST reassemble one byte stream and frame by LEN (CAPTURE_VERIFIED
+/// receiver MUST reassemble one byte stream and frame by LEN (live HCI capture
 /// §1). Per-packet `byte[1]=selector` parsing is invalid.
 ///
-/// Inbound frame (CAPTURE_VERIFIED §1):
+/// Inbound frame (live HCI capture):
 ///     [0xB8, selector, 0x01, LEN, payload(LEN bytes), XOR]
 ///   * byte[0] = 0xB8 sync
 ///   * byte[1] = selector (dispatch key)

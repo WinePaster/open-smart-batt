@@ -9,7 +9,7 @@
 ///
 ///   * 0xB8 (184) — sync / start byte.
 ///   * CMD       — command code (0x23 mode, 0x2A auth, 0x2B thresholds).
-///   * flag      — byte[2]. PROTOCOL.md calls it "reserved 0x00"; CAPTURE_VERIFIED
+///   * flag      — byte[2]. PROTOCOL.md calls it "reserved 0x00"; live HCI capture
 ///                 shows it is a role/flag bit: 0x00 on a standalone auth or a
 ///                 mode sub-frame, 0x01 on an auth sub-frame bundled with a mode
 ///                 change. NOT a length-high byte (LEN lives in byte[3]).
@@ -75,7 +75,7 @@ Uint8List buildFrame(
 /// Concatenates several byte sequences into one outbound write payload.
 ///
 /// Used by `switchMode`, which writes the mode sub-frame immediately followed by
-/// the auth sub-frame in a single Write-Without-Response (CAPTURE_VERIFIED: the
+/// the auth sub-frame in a single Write-Without-Response (live HCI capture: the
 /// 15-byte mode++auth packet, no trailing context payload).
 Uint8List concatFrames(Iterable<List<int>> frames) {
   final out = <int>[];

@@ -13,7 +13,7 @@
 //   device farms cannot reach a local BLE peripheral. So this skeleton injects
 //   an inert fake BleService and asserts only that the UI shell + sheet mount.
 //   Real BLE behaviour MUST be verified by manual on-device QA against a real
-//   battery (see docs/ios-port-plan.md section 5, the acceptance checklist).
+//   battery (see docs/ios-qa-checklist.md, the acceptance checklist).
 //
 // HOW TO RUN (needs a real device, NOT run in CI here):
 //   flutter test integration_test/app_test.dart -d <device-id>

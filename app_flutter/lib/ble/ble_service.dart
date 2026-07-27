@@ -4,7 +4,7 @@
 /// (the State controllers) consumes only its streams + methods; everything
 /// below it (wire encode/decode) is the pure-Dart `protocol/` layer.
 ///
-/// Responsibilities (CAPTURE_VERIFIED §1/§6, PROTOCOL.md §2/§3):
+/// Responsibilities (live HCI capture, PROTOCOL.md §2/§3):
 ///   * Scan filtered on the vendor service UUID 07b9fff0-… (no name filter).
 ///   * Connect, discover the write char 07b9ace3-… and notify char 07b9ace4-…
 ///   * Enable notifications (write 01 00 to the CCCD via `setNotifyValue`).
@@ -609,7 +609,7 @@ class BleService {
     await writeCommand(_commands.switchMode(mode, creds));
   }
 
-  /// Verify-auth standalone (CAPTURE_VERIFIED §6 step 5): the 9-byte auth frame
+  /// Verify-auth standalone (live HCI capture): the 9-byte auth frame
   /// the reference app sends ~2 s before a bundled mode+auth.
   Future<void> sendAuth({required int cb, required int pwSum}) async {
     final creds = AuthCredentials(cb: cb, pwSum: pwSum);

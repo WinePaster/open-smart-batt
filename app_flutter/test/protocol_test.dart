@@ -1,7 +1,7 @@
 // Pure-Dart unit tests for the protocol layer. No Flutter binding needed.
 //
 // CLEAN-ROOM: every expected value below is hand-derived ONLY from
-// docs/PROTOCOL.md, docs/CAPTURE_VERIFIED.md, and mockup/index.html. No
+// docs/PROTOCOL.md and mockup/index.html. No
 // decompiled / original-app source was consulted.
 //
 // Coverage:
@@ -20,7 +20,7 @@ import 'package:open_smart_batt/protocol/protocol.dart';
 // ---------------------------------------------------------------------------
 
 /// Raw bytes of one inbound frame `[0xB8, selector, flag, LEN, payload..., XOR]`.
-/// [flag] defaults to 0x01 (the constant inbound flag per CAPTURE_VERIFIED §1).
+/// [flag] defaults to 0x01 (the constant inbound flag per PROTOCOL.md §8).
 /// Pass [badXor] to force a wrong checksum; pass [len] to override the LEN byte.
 List<int> inboundBytes(
   int selector,
@@ -44,7 +44,7 @@ void main() {
   // =========================================================================
   group('xorFold', () {
     test('folds a multi-byte list (mode sub-frame -> 0x9C)', () {
-      // B8 ^ 23 ^ 00 ^ 01 ^ 06 = 0x9C  (CAPTURE_VERIFIED §1 mode frame).
+      // B8 ^ 23 ^ 00 ^ 01 ^ 06 = 0x9C  (PROTOCOL.md §8 mode frame).
       expect(xorFold([0xB8, 0x23, 0x00, 0x01, 0x06]), 0x9C);
     });
 
@@ -187,7 +187,7 @@ void main() {
     test('switchMode = modeSet(flag0) ++ auth(flag1), 15 bytes', () {
       const creds = AuthCredentials(cb: 0x0011, pwSum: 0x0022);
       final w = cb.switchMode(0x06, creds);
-      expect(w.length, 15); // CAPTURE_VERIFIED: 6 + 9, no trailing payload
+      expect(w.length, 15); // PROTOCOL.md §8: 6 + 9, no trailing payload
       // First sub-frame: mode (flag 0x00).
       expect(w.sublist(0, 6), [0xB8, 0x23, 0x00, 0x01, 0x06, 0x9C]);
       // Second sub-frame: auth (flag 0x01).

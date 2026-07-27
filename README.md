@@ -33,10 +33,7 @@ open-smart-batt/
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
 │   ├── PROTOCOL.md               通訊協定規格（事實，淨室分析角色整理）
-│   ├── CAPTURE_VERIFIED.md       以實機 HCI 擷取驗證／修正協定（裝置祕密值已去識別化）
-│   ├── HCI_CAPTURE_GUIDE.md      社群擷取解鎖封包指南
-│   ├── VERSIONING.md             版號規則
-│   └── UNVERIFIED.md             仍需硬體確認的項目
+│   └── VERSIONING.md             版號規則
 ├── app_flutter/                  ★ Android／iOS App（Flutter，依規格全新撰寫）
 ├── app/                          參考用 Python(bleak) CLI 客戶端
 ├── tools/parse_btsnoop.py        btsnoop → GATT 萃取器（去識別化）
@@ -50,7 +47,7 @@ open-smart-batt/
 
 - ✅ Android App 已實作：BLE 連線、即時遙測儀表板、裝置清單＋別名、歷史＋CSV 匯出、設定（含預設關閉的診斷日誌）。`flutter analyze` 乾淨、單元測試 97 項通過、release APK 可編。
 - ✅ **監看不需任何密碼**：連線後即可看電壓／溫度／SOH／檢測電容（遙測串流不需認證）。
-- ⚠️ **超級電容**：主打監看＋檢測電容。`斷電／防盜`屬電池型功能；電容的「異常鎖定保護」解除尚未實作（需故障單位的 HCI 擷取，見 [`docs/UNVERIFIED.md`](./docs/UNVERIFIED.md)）。
+- ⚠️ **超級電容**：主打監看＋檢測電容。`斷電／防盜`屬電池型功能；電容的「異常鎖定保護」解除尚未實作（需故障單位的 HCI 擷取）。
 - 🧪 解除指令支援「輸入斷電密碼」「直接輸入驗證值（cb／pwSum）」與實驗性「只送 mode、跳過驗證」三種路徑；實際是否解除請以硬體電氣行為驗證。
 
 ## 安裝
@@ -88,7 +85,7 @@ open-smart-batt/
 
 ## 協定文件
 
-完整規格見 [`docs/PROTOCOL.md`](./docs/PROTOCOL.md)，實機驗證見 [`docs/CAPTURE_VERIFIED.md`](./docs/CAPTURE_VERIFIED.md)。
+完整規格見 [`docs/PROTOCOL.md`](./docs/PROTOCOL.md)。
 
 ---
 

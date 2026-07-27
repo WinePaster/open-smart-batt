@@ -1,6 +1,6 @@
 # OpenSmartBatt — iOS 實機 QA 驗收清單
 
-> 來源：`docs/ios-port-plan.md` 第 5 節。**模擬器無藍牙、雲端裝置農場連不到實體電池**——以下每一項都須在**真 iPhone（有瀏海機型）+ 鄰近一顆實體 RCE 電池**上實測；UI/版面項另在 **iPad** 各跑一遍（Impeller 渲染）。
+> **模擬器無藍牙、雲端裝置農場連不到實體電池**——以下每一項都須在**真 iPhone（有瀏海機型）+ 鄰近一顆實體 RCE 電池**上實測；UI/版面項另在 **iPad** 各跑一遍（Impeller 渲染）。
 >
 > 安裝方式：TestFlight → 安裝 OpenSmartBatt（build 0.6.0 (101)）。
 > 標 ⭐ 者為本次移植新修、最該優先確認的項目。

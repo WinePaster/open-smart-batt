@@ -124,7 +124,7 @@ jobs:
   #
   # GATED ON SIGNING SECRETS that are NOT in this repo. Without them the job
   # exits early (green no-op) so it never blocks an Android release. To enable,
-  # the maintainer adds repo secrets (see docs/ios-port-plan.md G.1 / H.2):
+  # the maintainer adds these repo secrets in GitHub Actions:
   #   APPLE_TEAM_ID, IOS_P12_BASE64, IOS_P12_PASSWORD,
   #   IOS_MOBILEPROVISION_BASE64, ASC_KEY_ID, ASC_ISSUER_ID, ASC_API_KEY_BASE64
   # NONE of these are stored here — they live only in GitHub Actions secrets.

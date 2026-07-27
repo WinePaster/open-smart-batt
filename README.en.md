@@ -45,11 +45,7 @@ open-smart-batt/
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
 │   ├── PROTOCOL.md               protocol spec (facts; clean-room analysis role)
-│   ├── CAPTURE_VERIFIED.md        live HCI capture verifying/correcting the spec
-│   │                             (device-specific secrets redacted)
-│   ├── HCI_CAPTURE_GUIDE.md       community guide to capture unlock packets
-│   ├── VERSIONING.md             version scheme
-│   └── UNVERIFIED.md             items still needing hardware confirmation
+│   └── VERSIONING.md             version scheme
 ├── app_flutter/                  ★ Android / iOS app (Flutter, written from the spec)
 ├── app/                          reference Python (bleak) CLI client
 ├── tools/parse_btsnoop.py        btsnoop → GATT extractor (privacy-safe)
@@ -69,8 +65,7 @@ are written **only** from `docs/`, never touching the original app.
   capacitor check (telemetry streams without auth).
 - ⚠️ **Super-capacitor**: monitoring + capacitor-check focused. `cut-off / anti-theft`
   are battery-class features; clearing a capacitor "abnormal protection lock" is not
-  implemented yet (needs an HCI capture from a faulty unit — see
-  [`docs/UNVERIFIED.md`](./docs/UNVERIFIED.md)).
+  implemented yet (needs an HCI capture from a faulty unit).
 - 🧪 The release command supports three paths — enter the cut-off password, enter the
   validation values directly (cb/pwSum), or an experimental "send mode only, skip
   auth". Whether a release actually takes effect must be verified electrically.
@@ -130,8 +125,7 @@ subject to copyright.
 
 ## Protocol documentation
 
-Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md); live verification:
-[`docs/CAPTURE_VERIFIED.md`](./docs/CAPTURE_VERIFIED.md).
+Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md).
 
 ---
 

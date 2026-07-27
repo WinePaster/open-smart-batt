@@ -97,7 +97,7 @@ class ModeArg {
   static const int cutOff = 2;
 
   /// Release / detect special: triggers a 10 s detect keep-alive poller after
-  /// the write. CAPTURE_VERIFIED uses this value (0x06) as the cut-off release.
+  /// the write. live HCI capture uses this value (0x06) as the cut-off release.
   static const int release = 6;
 }
 
