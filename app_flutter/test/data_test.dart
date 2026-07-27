@@ -413,9 +413,13 @@ void main() {
       expect(newest.first.hex, 'b8190102 04d4'.replaceAll(' ', ''));
 
       final exported = await repo.exportLog().then((s) => s.split('\n'));
-      expect(exported.first, contains('TX'));
-      expect(exported.first, contains('keep-alive'));
-      expect(exported.last, contains('RX'));
+      // Rows are grouped under a `# ---- … ----` separator that names the unit
+      // and connection they belong to; these predate attribution.
+      expect(exported.first, '# ---- device=unattributed ----');
+      final entries = exported.where((l) => !l.startsWith('#')).toList();
+      expect(entries.first, contains('TX'));
+      expect(entries.first, contains('keep-alive'));
+      expect(entries.last, contains('RX'));
     });
 
     test('clearLog empties the table', () async {

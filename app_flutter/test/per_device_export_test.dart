@@ -236,6 +236,42 @@ void main() {
       expect(lines.first, '# scope: device=AA');
       expect(lines.last, endsWith('EVT  # hello'));
     });
+
+    test('a mixed export is separated per device and per connection', () async {
+      // Without this, an all-devices export is ambiguous line by line: the rows
+      // know their unit, the text did not. Exactly the problem that made the
+      // TWF correlation in the pre-0006 logs unusable.
+      final repo = LogRepo(appDb.db);
+      await repo.insertLog(LogEntry.event('scan start')); // no connection yet
+      await repo.insertLog(LogEntry.event('a1', deviceId: 'AA', sessionId: 1));
+      await repo.insertLog(LogEntry.event('a2', deviceId: 'AA', sessionId: 1));
+      await repo.insertLog(LogEntry.event('a3', deviceId: 'AA', sessionId: 2));
+      await repo.insertLog(LogEntry.event('b1', deviceId: 'BB', sessionId: 3));
+
+      final out = await repo.exportLog(
+        labelFor: (id) => id == 'AA' ? 'front-cap' : 'rear-batt',
+      );
+      final separators =
+          out.split('\n').where((l) => l.startsWith('# ----')).toList();
+      expect(separators, [
+        '# ---- device=unattributed ----',
+        '# ---- device=front-cap session=1 ----',
+        '# ---- device=front-cap session=2 ----',
+        '# ---- device=rear-batt session=3 ----',
+      ]);
+      // Consecutive rows of the same unit+session share one separator.
+      expect(out.split('\n').where((l) => l.endsWith('# a2')), hasLength(1));
+    });
+
+    test('an unlabelled device is hashed, never printed raw', () async {
+      // The id is a MAC address on Android and this text gets shared.
+      final repo = LogRepo(appDb.db);
+      await repo
+          .insertLog(LogEntry.event('x', deviceId: 'AA:BB:CC:DD:EE:FF', sessionId: 1));
+      final out = await repo.exportLog();
+      expect(out, isNot(contains('AA:BB:CC')));
+      expect(out, contains(shortDeviceHash('AA:BB:CC:DD:EE:FF')));
+    });
   });
 
   group('SessionContext', () {

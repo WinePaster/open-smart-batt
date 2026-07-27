@@ -280,6 +280,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
+    // Captured now: the lookup runs after an await, when this screen may be gone.
+    final devices = context.read<DeviceController>();
+    String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
@@ -288,6 +291,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
         deviceId: target.deviceId,
         sessionId: target.sessionId,
         header: header,
+        labelFor: labelFor,
       );
       if (log.trim().isEmpty) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.settingsLogEmpty)));

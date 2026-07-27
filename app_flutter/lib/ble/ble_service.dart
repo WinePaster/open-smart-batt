@@ -579,16 +579,30 @@ class BleService {
       tick: _keepAliveTick,
       isPowerBank: _decoder.sample.isPowerBank,
     );
+    final sw = Stopwatch()..start();
     try {
       await writeCommand(token, timeout: keepAliveWriteTimeout);
+      // Recovery is as diagnostic as the failure: it bounds how long the app
+      // was actually unable to poll, which a lone failure line cannot.
+      if (_keepAliveWriteFailed) {
+        _emitEvent('keep-alive write recovered after '
+            '$_keepAliveFailures consecutive failure(s)');
+        _keepAliveWriteFailed = false;
+        _keepAliveFailures = 0;
+      }
     } catch (e) {
       // A failed keep-alive usually means the link dropped; the connectionState
       // callback handles teardown. Surface it once to the diagnostic log — a
       // silent catch here previously hid a write-mode bug that suppressed the
       // metadata burst.
+      _keepAliveFailures++;
       if (!_keepAliveWriteFailed) {
         _keepAliveWriteFailed = true;
-        _emitEvent('keep-alive write failed: $e');
+        // The elapsed time separates "the device rejected it" (fails fast) from
+        // "nothing came back" (runs to the timeout) — the 2026-07-27 stalls were
+        // the latter, and only the duration says so.
+        _emitEvent(
+            'keep-alive write failed after ${sw.elapsedMilliseconds}ms: $e');
       }
     } finally {
       _keepAliveInFlight = false;
@@ -597,6 +611,7 @@ class BleService {
 
   bool _keepAliveWriteFailed = false;
   bool _keepAliveInFlight = false;
+  int _keepAliveFailures = 0;
 
   // ---------------------------------------------------------------------------
   // Outbound commands
