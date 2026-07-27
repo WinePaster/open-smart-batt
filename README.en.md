@@ -47,7 +47,6 @@ open-smart-batt/
 │   ├── PROTOCOL.md               protocol spec (facts; clean-room analysis role)
 │   └── VERSIONING.md             version scheme
 ├── app_flutter/                  ★ Android / iOS app (Flutter, written from the spec)
-├── app/                          reference Python (bleak) CLI client
 ├── tools/parse_btsnoop.py        btsnoop → GATT extractor (privacy-safe)
 ├── mockup/index.html             UI design preview
 └── .github/workflows/            CI (Android + iOS compile smoke test) + auto-versioned APK / IPA release
@@ -58,9 +57,9 @@ are written **only** from `docs/`, never touching the original app.
 
 ## Status (2026-06)
 
-- ✅ Android app implemented: BLE connect, live telemetry dashboard, device list +
+- ✅ Android / iOS app implemented: BLE connect, live telemetry dashboard, device list +
   aliases, history + CSV export, settings (incl. a default-OFF diagnostic log).
-  `flutter analyze` clean, 97 unit tests pass, release APK builds.
+  `flutter analyze` clean, 167 unit tests pass, release APK and iOS archive build.
 - ✅ **Monitoring needs no password**: once connected you see voltage / temp / SOH /
   capacitor check (telemetry streams without auth).
 - ⚠️ **Super-capacitor**: monitoring + capacitor-check focused. `cut-off / anti-theft`
