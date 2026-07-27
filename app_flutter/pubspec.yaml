@@ -16,7 +16,14 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.6.7+109
+#
+# 版號規則見 docs/VERSIONING.md。兩件事必須知道：
+#   * x.y.z 是最近一次「已發布」的版號，由 release 流程維護，請勿手改後不發版。
+#   * `+0` 是刻意的。真正的 build number 一律由建置時的
+#     `--build-number="$(tool/build_number.sh)"` 帶入；`+0` 只是「沒帶旗標」
+#     時的後備值，會產生 versionCode 0 的 APK —— 它裝不到任何已發布版本之上，
+#     等於明確標示「這是開發建置，不可散佈」。
+version: 0.6.7+0
 
 environment:
   sdk: ^3.12.2
