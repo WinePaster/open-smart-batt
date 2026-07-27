@@ -42,6 +42,30 @@ class Db {
   static const int settingsRowId = 1;
 }
 
+/// Thrown when the stored schema is NEWER than this build understands — i.e.
+/// the user downgraded the app after having run a later version.
+///
+/// We deliberately do NOT wipe the database in that case: the rows are intact
+/// and the fix (install the newer build again) is in the user's hands, whereas
+/// a silent delete would destroy months of history to work around a reversible
+/// mistake. The startup screen surfaces this and tells them what to do.
+class DatabaseDowngradeException implements Exception {
+  const DatabaseDowngradeException({
+    required this.storedVersion,
+    required this.appVersion,
+  });
+
+  /// Schema version found on disk (written by the newer build).
+  final int storedVersion;
+
+  /// Schema version this build supports.
+  final int appVersion;
+
+  @override
+  String toString() =>
+      'DatabaseDowngradeException(stored=$storedVersion, app=$appVersion)';
+}
+
 /// Thin wrapper around an opened sqflite [Database].
 ///
 /// Open once at app start (or inject a custom [databaseFactory] + [path] in
@@ -61,7 +85,7 @@ class AppDatabase {
     DatabaseFactory? factory,
   }) async {
     final fac = factory ?? databaseFactory;
-    final dbPath = path ?? p.join(await fac.getDatabasesPath(), Db.fileName);
+    final dbPath = path ?? await defaultPath(factory: fac);
     final db = await fac.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
@@ -69,9 +93,31 @@ class AppDatabase {
         onConfigure: _onConfigure,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
+        onDowngrade: _onDowngrade,
       ),
     );
     return AppDatabase._(db);
+  }
+
+  /// Where the database lives when no explicit path is given.
+  static Future<String> defaultPath({DatabaseFactory? factory}) async {
+    final fac = factory ?? databaseFactory;
+    return p.join(await fac.getDatabasesPath(), Db.fileName);
+  }
+
+  /// Delete the database file — the user-initiated last resort offered by the
+  /// startup failure screen. DESTROYS history, saved devices and settings, so
+  /// it must never be triggered automatically.
+  static Future<void> reset({String? path, DatabaseFactory? factory}) async {
+    final fac = factory ?? databaseFactory;
+    await fac.deleteDatabase(path ?? await defaultPath(factory: fac));
+  }
+
+  /// Refuse to open a database written by a NEWER build (see
+  /// [DatabaseDowngradeException]). sqflite's default here is to delete or to
+  /// throw an opaque error; both are worse than saying exactly what happened.
+  static Future<void> _onDowngrade(Database db, int from, int to) async {
+    throw DatabaseDowngradeException(storedVersion: from, appVersion: to);
   }
 
   /// Close the underlying connection.

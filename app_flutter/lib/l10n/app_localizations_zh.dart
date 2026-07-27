@@ -641,6 +641,32 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsExportSubjectDiagLog => 'OpenSmartBatt 診斷日誌';
 
   @override
+  String get startupFailedTitle => '無法啟動';
+
+  @override
+  String get startupFailedBody => '資料庫開啟失敗。請先試「重試」；若一直失敗，最後手段是重設資料庫（會刪除所有紀錄）。';
+
+  @override
+  String get startupDowngradeTitle => 'App 版本比資料舊';
+
+  @override
+  String startupDowngradeBody(int stored, int app) {
+    return '你的資料是由較新版本建立的（資料格式 v$stored），這個版本只支援到 v$app，因此不予開啟以免損毀資料。請重新安裝較新版本的 App；你的紀錄完整保留。';
+  }
+
+  @override
+  String get startupRetry => '重試';
+
+  @override
+  String get startupResetDb => '重設資料庫（刪除所有紀錄）';
+
+  @override
+  String get startupResetTitle => '確定要重設資料庫？';
+
+  @override
+  String get startupResetBody => '這會刪除全部歷史紀錄、已儲存裝置與設定，且無法復原。';
+
+  @override
   String get exportScopeTitle => '匯出範圍';
 
   @override

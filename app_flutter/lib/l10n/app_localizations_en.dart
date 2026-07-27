@@ -674,6 +674,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsExportSubjectDiagLog => 'OpenSmartBatt diagnostic log';
 
   @override
+  String get startupFailedTitle => 'Couldn\'t start';
+
+  @override
+  String get startupFailedBody =>
+      'The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).';
+
+  @override
+  String get startupDowngradeTitle => 'App is older than your data';
+
+  @override
+  String startupDowngradeBody(int stored, int app) {
+    return 'Your data was written by a newer version (schema v$stored); this build only supports v$app, so it was left untouched rather than risk damaging it. Please reinstall the newer app — your records are intact.';
+  }
+
+  @override
+  String get startupRetry => 'Try again';
+
+  @override
+  String get startupResetDb => 'Reset database (deletes all records)';
+
+  @override
+  String get startupResetTitle => 'Reset the database?';
+
+  @override
+  String get startupResetBody =>
+      'This permanently deletes all history, saved devices and settings.';
+
+  @override
   String get exportScopeTitle => 'Export scope';
 
   @override

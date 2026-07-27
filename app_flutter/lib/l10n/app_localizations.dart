@@ -1190,6 +1190,54 @@ abstract class AppLocalizations {
   /// **'OpenSmartBatt diagnostic log'**
   String get settingsExportSubjectDiagLog;
 
+  /// No description provided for @startupFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start'**
+  String get startupFailedTitle;
+
+  /// No description provided for @startupFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).'**
+  String get startupFailedBody;
+
+  /// No description provided for @startupDowngradeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'App is older than your data'**
+  String get startupDowngradeTitle;
+
+  /// No description provided for @startupDowngradeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your data was written by a newer version (schema v{stored}); this build only supports v{app}, so it was left untouched rather than risk damaging it. Please reinstall the newer app — your records are intact.'**
+  String startupDowngradeBody(int stored, int app);
+
+  /// No description provided for @startupRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get startupRetry;
+
+  /// No description provided for @startupResetDb.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset database (deletes all records)'**
+  String get startupResetDb;
+
+  /// No description provided for @startupResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset the database?'**
+  String get startupResetTitle;
+
+  /// No description provided for @startupResetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently deletes all history, saved devices and settings.'**
+  String get startupResetBody;
+
   /// No description provided for @exportScopeTitle.
   ///
   /// In en, this message translates to:
