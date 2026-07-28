@@ -6,21 +6,13 @@
 /// two columns — a coincidence, and one that nearly led to reading an app bug
 /// (no keep-alive write ⇒ no metadata burst) as a hardware limitation.
 ///
-/// [exportHeaderLines] is PURE (no Flutter, no plugins) so the formatting is
-/// unit-testable; the plugin/platform lookup lives in [exportEnvironment].
-/// Same split as `export_naming.dart`.
+/// PURE formatting only. The build/platform lookup lives in
+/// `state/build_info.dart` and is resolved once at startup by `AppServices`
+/// (design 0010), so an export never waits on a plugin channel — and the
+/// preamble names the same build the rows were stamped with.
 library;
 
-import 'dart:io' show Platform;
-
-import 'package:package_info_plus/package_info_plus.dart';
-
 import 'export_scope.dart';
-
-/// Value used wherever the environment cannot be determined. Never an empty
-/// string: a blank field reads as "nobody filled this in", `unknown` reads as
-/// "we asked and could not find out".
-const String kUnknownEnv = 'unknown';
 
 /// The `#`-preamble lines for an export, WITHOUT the `# ` prefix (the writer
 /// adds it, since the log and the CSV emit them at different points).
@@ -57,26 +49,3 @@ String exportScopeLabel(ExportTarget target) => switch (target.scope) {
         'device=${target.classSlug}/${target.ident ?? '-'} '
             'session=${target.sessionId}',
     };
-
-/// App build (`version+buildNumber`) and OS description for the preamble.
-///
-/// Never throws: on a host without the plugin channel (unit tests, unsupported
-/// platforms) it degrades to [kUnknownEnv]. A missing preamble field must never
-/// be a reason an export fails — the data matters more than its label.
-Future<({String build, String platform})> exportEnvironment() async {
-  var build = kUnknownEnv;
-  try {
-    final info = await PackageInfo.fromPlatform();
-    build = '${info.version}+${info.buildNumber}';
-  } catch (_) {
-    // Plugin channel unavailable — keep kUnknownEnv.
-  }
-  var platform = kUnknownEnv;
-  try {
-    platform =
-        '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
-  } catch (_) {
-    // Unsupported host — keep kUnknownEnv.
-  }
-  return (build: build, platform: platform);
-}

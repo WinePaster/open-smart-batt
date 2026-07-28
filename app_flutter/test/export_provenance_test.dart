@@ -111,11 +111,13 @@ void main() {
     });
   });
 
-  group('exportEnvironment', () {
+  group('resolveBuildInfo', () {
     test('degrades to "unknown" instead of throwing', () async {
-      // No plugin channel in a unit test. An export must never fail because a
-      // label could not be resolved.
-      final env = await exportEnvironment();
+      // No plugin channel in a unit test. Neither an export nor recording may
+      // fail because a version label could not be resolved. (Lives in
+      // state/build_info.dart since design 0010 — it is resolved once at
+      // startup and stamped on rows, not looked up per export.)
+      final env = await resolveBuildInfo();
       expect(env.build, kUnknownEnv);
       expect(env.platform, isNotEmpty);
     });
@@ -199,13 +201,17 @@ void main() {
       expect(out.text.startsWith(HistoryRepo.csvColumns.join(',')), isTrue);
     });
 
-    test('samples is the LAST column and round-trips', () async {
+    test('samples is appended after the 0006 columns and round-trips', () async {
+      // Pinned by POSITION RELATIVE to what came before, not by "is last" —
+      // later designs append further columns (0010 added app_build), and this
+      // test should only fail if an existing column actually moved.
       final repo = HistoryRepo(appDb.db);
       await repo.insertSample(sampleAt(60000), deviceId: 'AA', samples: 237);
-      expect(HistoryRepo.csvColumns.last, 'samples');
+      final cols = HistoryRepo.csvColumns;
+      expect(cols.indexOf('samples'), cols.indexOf('device') + 1);
       final out = await repo.exportCsv();
       final lines = out.text.split(RegExp(r'\r?\n'));
-      expect(lines[1].split(',').last, '237');
+      expect(lines[1].split(',')[cols.indexOf('samples')], '237');
     });
   });
 

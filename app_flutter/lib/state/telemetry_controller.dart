@@ -27,11 +27,13 @@ class TelemetryController extends ChangeNotifier {
     SessionContext? session,
     Duration? stallThreshold,
     Duration? stallCheckInterval,
+    String? appBuild,
   }) {
     _settings = settings;
     _history = history;
     _logs = logs;
     _session = session ?? SessionContext();
+    _appBuild = appBuild;
     _stallThreshold = stallThreshold ?? BleService.telemetryStallThreshold;
     _stallCheckInterval = stallCheckInterval ?? const Duration(seconds: 2);
     _sample = TelemetrySample.empty();
@@ -41,6 +43,11 @@ class TelemetryController extends ChangeNotifier {
   }
 
   final BleService _ble;
+
+  /// Build that is recording, stamped on every row (design 0010). Null in
+  /// tests and on hosts where the plugin channel is unavailable.
+  String? _appBuild;
+
   late final SettingsController _settings;
   late final HistoryRepo _history;
   late final LogRepo _logs;
@@ -353,6 +360,7 @@ class TelemetryController extends ChangeNotifier {
         avg,
         deviceId: _bucketDeviceId,
         samples: _nSamples,
+        appBuild: _appBuild,
       ));
     }
     _bucketMinute = null;
@@ -372,6 +380,7 @@ class TelemetryController extends ChangeNotifier {
       note: e.note,
       deviceId: _session.deviceId,
       sessionId: _session.sessionId,
+      appBuild: _appBuild,
     );
     unawaited(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
   }

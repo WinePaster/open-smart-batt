@@ -35,6 +35,14 @@ class LogEntry {
   /// Null for rows recorded outside a connection or predating design 0006.
   final int? sessionId;
 
+  /// The app build that WROTE this row, e.g. `0.6.8+26072812` (design 0010).
+  ///
+  /// Distinct from the build named in an export preamble, which is merely
+  /// whoever pressed export: this table accumulates across upgrades, so one
+  /// file can hold rows from several versions. Null for rows predating
+  /// design 0010 — unknown, and not worth guessing.
+  final String? appBuild;
+
   const LogEntry({
     this.id,
     required this.timestamp,
@@ -43,6 +51,7 @@ class LogEntry {
     this.note,
     this.deviceId,
     this.sessionId,
+    this.appBuild,
   });
 
   /// Build from raw bytes.
@@ -54,6 +63,7 @@ class LogEntry {
     int? id,
     String? deviceId,
     int? sessionId,
+    String? appBuild,
   }) =>
       LogEntry(
         id: id,
@@ -65,6 +75,7 @@ class LogEntry {
         note: note,
         deviceId: deviceId,
         sessionId: sessionId,
+        appBuild: appBuild,
       );
 
   /// A connection/error event (no raw bytes). Always safe to record.
@@ -73,6 +84,7 @@ class LogEntry {
     DateTime? at,
     String? deviceId,
     int? sessionId,
+    String? appBuild,
   }) =>
       LogEntry(
         timestamp: at ?? DateTime.now(),
@@ -81,6 +93,7 @@ class LogEntry {
         note: message,
         deviceId: deviceId,
         sessionId: sessionId,
+        appBuild: appBuild,
       );
 
   /// One-line `.log` rendering: `2026-06-29T13:09:12.000 TX b823... # note`.
@@ -102,6 +115,7 @@ class LogEntry {
         'note': note,
         'device_id': deviceId,
         'session_id': sessionId,
+        'app_build': appBuild,
       };
 
   static LogEntry fromMap(Map<String, Object?> m) => LogEntry(
@@ -116,5 +130,6 @@ class LogEntry {
         note: m['note'] as String?,
         deviceId: m['device_id'] as String?,
         sessionId: (m['session_id'] as num?)?.toInt(),
+        appBuild: m['app_build'] as String?,
       );
 }

@@ -83,6 +83,7 @@ class HistoryRepo {
     'soc',
     'device',
     'samples',
+    'app_build',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
@@ -92,12 +93,18 @@ class HistoryRepo {
   /// artefact of our own per-minute aggregation, and mixing the two would blur
   /// where a number came from. Null means "unknown" — never 0, which would
   /// claim the row averaged nothing.
+  ///
+  /// [appBuild] is the build that RECORDED the row (design 0010) — not the one
+  /// that exports it. This table accumulates across upgrades, so the two can
+  /// differ by months.
   Future<int> insertSample(
     TelemetrySample sample, {
     String? deviceId,
     int? samples,
+    String? appBuild,
   }) {
-    return _db.insert(Db.tableHistory, _row(sample, deviceId, samples));
+    return _db.insert(
+        Db.tableHistory, _row(sample, deviceId, samples, appBuild));
   }
 
   /// Batch-insert many samples in a single transaction.
@@ -107,7 +114,7 @@ class HistoryRepo {
   }) async {
     final batch = _db.batch();
     for (final s in samples) {
-      batch.insert(Db.tableHistory, _row(s, deviceId, null));
+      batch.insert(Db.tableHistory, _row(s, deviceId, null, null));
     }
     await batch.commit(noResult: true);
   }
@@ -116,10 +123,12 @@ class HistoryRepo {
     TelemetrySample s,
     String? deviceId,
     int? samples,
+    String? appBuild,
   ) =>
       Map<String, Object?>.from(s.toMap())
         ..['device_id'] = deviceId
-        ..['samples'] = samples;
+        ..['samples'] = samples
+        ..['app_build'] = appBuild;
 
   /// Query history newest-first.
   ///
@@ -322,9 +331,19 @@ class HistoryRepo {
     final devices =
         raw.map((m) => m['device_id'] as String?).whereType<String>().toSet();
     final unattributed = raw.any((m) => m['device_id'] == null);
+    // Which build(s) RECORDED these rows (design 0010). Listed because it is
+    // routinely different from the exporting build named in the preamble, and
+    // a reader who conflates the two draws wrong conclusions from missing data.
+    final builds = raw
+        .map((m) => m['app_build'] as String?)
+        .whereType<String>()
+        .toSet()
+        .toList()
+      ..sort();
     return 'rows: ${raw.length}  '
         'range: ${at(raw.last)} .. ${at(raw.first)}  '
-        'devices: ${devices.length}${unattributed ? ' (+unattributed)' : ''}';
+        'devices: ${devices.length}${unattributed ? ' (+unattributed)' : ''}'
+        '${builds.isEmpty ? '' : '  builds: ${builds.join(', ')}'}';
   }
 
   /// Distinct device ids present in history (NULL rows excluded).

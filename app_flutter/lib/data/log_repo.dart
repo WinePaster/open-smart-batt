@@ -132,7 +132,10 @@ class LogRepo {
     var first = true;
     for (final row in rows) {
       final e = LogEntry.fromMap(row);
-      final key = '${e.deviceId}/${e.sessionId}';
+      // The build is part of the key: an app update between two connections
+      // that happen to share a device must start a new section, or the label
+      // would claim rows for a build that did not write them (design 0010).
+      final key = '${e.deviceId}/${e.sessionId}/${e.appBuild}';
       if (key != lastKey) {
         lastKey = key;
         // No separator before the very first block when there is no header —
@@ -160,7 +163,10 @@ class LogRepo {
     // up in a file the user shares. Fall back to the non-reversible digest.
     final device = 'device=${label.isEmpty ? shortDeviceHash(id) : label}';
     final session = e.sessionId == null ? '' : ' session=${e.sessionId}';
-    return '$device$session';
+    // Omitted entirely when unknown (pre-0010 rows), which keeps their section
+    // labels byte-identical to what they were before this field existed.
+    final build = e.appBuild == null ? '' : ' app=${e.appBuild}';
+    return '$device$session$build';
   }
 
   /// Number of distinct connections covered by a scope (for the export header).

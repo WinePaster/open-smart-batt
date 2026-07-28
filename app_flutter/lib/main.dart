@@ -158,6 +158,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
     return MultiProvider(
       providers: [
         // Services the UI may read directly (history/log/CSV export, raw BLE).
+        Provider<AppServices>.value(value: s),
         Provider<BleService>.value(value: s.ble),
         Provider<HistoryRepo>.value(value: s.historyRepo),
         Provider<DeviceRepo>.value(value: s.deviceRepo),

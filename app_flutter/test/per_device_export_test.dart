@@ -146,8 +146,13 @@ void main() {
         isTrue,
       );
       // …and every later column is appended after it, never inserted:
-      // `soc`/`device` (0006) then `samples` (0009).
-      expect(lines.first.endsWith('serial,soc,device,samples'), isTrue);
+      // `soc`/`device` (0006), `samples` (0009), `app_build` (0010).
+      expect(lines.first, contains('serial,soc,device'));
+      expect(HistoryRepo.csvColumns.sublist(0, 15), <String>[
+        'timestamp', 'pvlt', 'svlt', 'ampere', 'temperature',
+        'dvol1', 'dvol2', 'dvol3', 'dvol4',
+        'soh', 'mode', 'twf', 'serial', 'soc', 'device',
+      ]);
       expect(lines[1], contains('87'));
       expect(lines[1], contains('pack-AA'));
       // The raw id must not leak into the CSV when a label was supplied.

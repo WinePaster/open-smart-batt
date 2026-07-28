@@ -30,7 +30,11 @@ class Db {
   /// v6: history gained `samples` (how many telemetry snapshots that minute's
   /// row averaged) — design 0009. Nullable with NO default, same reasoning as
   /// v5: pre-v6 rows genuinely do not know their sample count.
-  static const int schemaVersion = 6;
+  /// v7: history + diag_log gained `app_build` — which build WROTE the row,
+  /// as opposed to which build exported it (design 0010). Per row rather than
+  /// per session because diag_log is trimmed oldest-first: a build recorded
+  /// once at the start of a connection would be the first thing deleted.
+  static const int schemaVersion = 7;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -197,6 +201,17 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableHistory} ADD COLUMN samples INTEGER',
       );
     }
+    if (from < 7) {
+      // design 0010: the build that RECORDED each row. Nullable with NO
+      // default — pre-v7 rows were written by a build we cannot name, and
+      // guessing one would read as fact.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN app_build TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableDiagLog} ADD COLUMN app_build TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -223,7 +238,8 @@ class AppDatabase {
       serial TEXT,
       soc INTEGER,
       device_id TEXT,
-      samples INTEGER
+      samples INTEGER,
+      app_build TEXT
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',
@@ -262,7 +278,8 @@ class AppDatabase {
       hex TEXT NOT NULL,
       note TEXT,
       device_id TEXT,
-      session_id INTEGER
+      session_id INTEGER,
+      app_build TEXT
     )
     ''',
     'CREATE INDEX idx_diag_log_ts ON ${Db.tableDiagLog} (timestamp)',

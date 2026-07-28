@@ -110,12 +110,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Captured now: the label lookup runs after an await, when this screen may
     // already be gone.
     final devices = context.read<DeviceController>();
+    final services = context.read<AppServices>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
     ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final env = await exportEnvironment();
       final csv = await _tele.exportHistoryCsv(
         since: _sinceFor(_range),
         limit: _rowCap,
@@ -125,8 +125,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         header: exportHeaderLines(
           title: 'OpenSmartBatt history export',
           exportedAt: DateTime.now(),
-          appBuild: env.build,
-          platform: env.platform,
+          appBuild: services.appBuild,
+          platform: services.platform,
           scope: exportScopeLabel(target),
         ),
       );

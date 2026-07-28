@@ -11,6 +11,7 @@ library;
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../protocol/protocol.dart';
+import 'build_info.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
 import 'session_context.dart';
@@ -30,6 +31,8 @@ class AppServices {
     required this.devices,
     required this.connection,
     required this.telemetry,
+    required this.appBuild,
+    required this.platform,
   });
 
   final AppDatabase appDb;
@@ -44,6 +47,13 @@ class AppServices {
   final DeviceController devices;
   final ConnectionController connection;
   final TelemetryController telemetry;
+
+  /// This build (`version+buildNumber`) and OS description, resolved ONCE at
+  /// startup (design 0010). Stamped on every recorded row and reused by the
+  /// export preamble, so no export path waits on a plugin channel. Falls back
+  /// to [kUnknownEnv] where the channel is unavailable.
+  final String appBuild;
+  final String platform;
 
   /// Open the DB and assemble the full graph.
   ///
@@ -60,6 +70,9 @@ class AppServices {
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
     final bleService = ble ?? BleService(parser: parser);
+    // Resolved before any controller exists, so the very first recorded row
+    // already carries it.
+    final env = await resolveBuildInfo();
 
     final historyRepo = HistoryRepo(db.db);
     final deviceRepo = DeviceRepo(db.db);
@@ -78,6 +91,7 @@ class AppServices {
       devices: devices,
       logs: logRepo,
       session: session,
+      appBuild: env.build,
     );
     final telemetry = TelemetryController(
       bleService,
@@ -85,6 +99,7 @@ class AppServices {
       history: historyRepo,
       logs: logRepo,
       session: session,
+      appBuild: env.build,
     );
 
     // Prime the persisted controllers before the first frame.
@@ -101,6 +116,8 @@ class AppServices {
       devices: devices,
       connection: connection,
       telemetry: telemetry,
+      appBuild: env.build,
+      platform: env.platform,
     );
   }
 

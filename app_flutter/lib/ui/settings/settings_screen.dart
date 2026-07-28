@@ -175,12 +175,12 @@ class _DataCardState extends State<_DataCard> {
     // Captured now: the label lookup runs after an await, when this screen may
     // already be gone.
     final devices = context.read<DeviceController>();
+    final services = context.read<AppServices>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
     ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final env = await exportEnvironment();
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
         labelFor: labelFor,
@@ -188,8 +188,8 @@ class _DataCardState extends State<_DataCard> {
         header: exportHeaderLines(
           title: 'OpenSmartBatt history export',
           exportedAt: DateTime.now(),
-          appBuild: env.build,
-          platform: env.platform,
+          appBuild: services.appBuild,
+          platform: services.platform,
           scope: exportScopeLabel(target),
         ),
       );
@@ -293,11 +293,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final l10n = AppLocalizations.of(context);
     // Captured now: the lookup runs after an await, when this screen may be gone.
     final devices = context.read<DeviceController>();
+    final services = context.read<AppServices>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final header = await _logHeader(tele, target);
+      final header = await _logHeader(tele, services, target);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -332,17 +333,17 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
   /// app build and how many connections it covers (design 0006 §3.6).
   Future<List<String>> _logHeader(
     TelemetryController tele,
+    AppServices services,
     ExportTarget target,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
         : await tele.logSessionCount(deviceId: target.deviceId);
-    final env = await exportEnvironment();
     return exportHeaderLines(
       title: 'OpenSmartBatt diagnostic log',
       exportedAt: DateTime.now(),
-      appBuild: env.build,
-      platform: env.platform,
+      appBuild: services.appBuild,
+      platform: services.platform,
       scope: exportScopeLabel(target),
       connections: sessions,
     );
