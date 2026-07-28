@@ -215,6 +215,11 @@ jobs:
             echo "::error::APK 仍是 debug 簽章（$SUBJECT）。不可發佈。"
             exit 1
           fi
+          # Published in the release notes: for a sideloaded APK the signing
+          # certificate is a stronger authenticity check than a file hash,
+          # because it is stable across releases while the hash is not.
+          CERT_SHA="$(echo "$CERTS" | grep -m1 'Signer #1 certificate SHA-256 digest' | awk '{print $NF}')"
+          echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         run: |
@@ -243,12 +248,17 @@ jobs:
           body: |
             社群自救版 · 非官方 · 非商業。
 
-            ⚠️ **安裝前請先移除舊版。** 此 APK 尚未設定正式簽章金鑰，每次發版的
-            簽章憑證都不同，Android 因此**不允許直接覆蓋更新**。移除舊版會一併
-            清除歷史紀錄與已存裝置 —— 如需保留，請先到「歷史 → 匯出」備份。
-            （詳見 docs/VERSIONING.md「簽章」一節）
+            本版起 APK 以專案的**固定金鑰**簽章，**可直接覆蓋更新**，歷史紀錄與
+            已存裝置都會保留。
 
-            ⚠️ 由於是 debug 簽章，**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
+            ⚠️ **從 v0.6.8 或更早的版本升上來，這一次仍須先移除舊版。** 那些版本
+            是 debug 簽章、每次發版憑證都不同，Android 不允許覆蓋。移除會清除
+            歷史紀錄與已存裝置 —— 請先到「歷史 → 匯出」備份。**這是最後一次**，
+            之後就能直接更新。（詳見 docs/VERSIONING.md「Android release 簽章」）
+
+            驗證來源：簽章憑證 SHA-256 `${{ env.CERT_SHA }}`（**每一版都應相同**，
+            可用 `apksigner verify --print-certs` 核對），檔案完整性則見下方 SHA256。
+            或自行從原始碼編譯。
 
             versionName `${{ needs.version.outputs.version }}` · versionCode `${{ needs.version.outputs.build }}`
           files: |
