@@ -155,6 +155,25 @@ debug 簽章），解碼 keystore 到 runner 暫存目錄並寫出 `key.properti
 `Signer #1 certificate DN: CN=OpenSmartBatt Test, …`；移除後重建 →
 `CN=Android Debug`。兩條路徑都確認可建置。
 
+### 專案的簽章憑證（可釘住）
+
+首次以固定金鑰簽章的產物（2026-07-28，v0.6.9 建置）：
+
+```
+DN:      CN=OpenSmartBatt, O=WinePaster, C=TW
+SHA-256: eabe10efb4512cef6debdd171e2bb07ff95e54eccc2702ffaa6d6b94302b8063
+```
+
+**之後每一版都應該是這一組。** 對商店之外散佈的 APK，憑證比檔案雜湊是更強的
+來源驗證：檔案雜湊每版都變，憑證不變。使用者可以核對：
+
+```bash
+apksigner verify --print-certs opensmartbatt-*.apk
+```
+
+> 註：`apksigner` 的輸出前綴會隨 build-tools 版本不同（`Signer #1 certificate DN:`
+> 或 `V2 Signer: certificate DN:`），比對時看冒號後面的值即可。
+
 ### ⚠️ 這個修正救不了既有的安裝
 
 固定金鑰只能讓**從此之後**的更新可以覆蓋安裝。目前手上裝著 debug 簽章版本的

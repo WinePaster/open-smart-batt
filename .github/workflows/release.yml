@@ -210,15 +210,26 @@ jobs:
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
           CERTS="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK")"
           echo "$CERTS"
-          SUBJECT="$(echo "$CERTS" | grep -m1 'Signer #1 certificate DN')"
-          if echo "$SUBJECT" | grep -qi 'CN=Android Debug'; then
-            echo "::error::APK 仍是 debug 簽章（$SUBJECT）。不可發佈。"
+          # apksigner's line PREFIX varies by build-tools version:
+          #   "Signer #1 certificate DN: ..."     (seen locally, build-tools 36)
+          #   "V2 Signer: certificate DN: ..."    (seen on the ubuntu runner)
+          # Match only the part both share, and never let a failed grep decide
+          # the outcome by way of `set -e` — say what went wrong instead.
+          DN="$(echo "$CERTS" | grep -m1 'certificate DN' || true)"
+          if [ -z "$DN" ]; then
+            echo "::error::apksigner 未輸出任何憑證資訊，無法確認簽章。"
+            echo "$CERTS"
             exit 1
           fi
+          if echo "$DN" | grep -qi 'CN=Android Debug'; then
+            echo "::error::APK 仍是 debug 簽章（$DN）。不可發佈。"
+            exit 1
+          fi
+          echo "✅ 簽章憑證：$DN"
           # Published in the release notes: for a sideloaded APK the signing
           # certificate is a stronger authenticity check than a file hash,
           # because it is stable across releases while the hash is not.
-          CERT_SHA="$(echo "$CERTS" | grep -m1 'Signer #1 certificate SHA-256 digest' | awk '{print $NF}')"
+          CERT_SHA="$(echo "$CERTS" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}' || true)"
           echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
