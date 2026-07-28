@@ -27,7 +27,14 @@ class Db {
   /// history gained `soc` and diag_log gained `session_id` — design 0006. All
   /// nullable with NO default: pre-v5 rows keep NULL, meaning "unknown device",
   /// because attributing them to the current unit would be a lie.
-  static const int schemaVersion = 5;
+  /// v6: history gained `samples` (how many telemetry snapshots that minute's
+  /// row averaged) — design 0009. Nullable with NO default, same reasoning as
+  /// v5: pre-v6 rows genuinely do not know their sample count.
+  /// v7: history + diag_log gained `app_build` — which build WROTE the row,
+  /// as opposed to which build exported it (design 0010). Per row rather than
+  /// per session because diag_log is trimmed oldest-first: a build recorded
+  /// once at the start of a connection would be the first thing deleted.
+  static const int schemaVersion = 7;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -185,6 +192,26 @@ class AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
       );
     }
+    if (from < 6) {
+      // design 0009: how many telemetry snapshots each minute-row averaged, so
+      // a full minute and a truncated one are distinguishable in an export.
+      // Nullable with NO default — pre-v6 rows do not know their count, and a
+      // fabricated one would read as fact.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN samples INTEGER',
+      );
+    }
+    if (from < 7) {
+      // design 0010: the build that RECORDED each row. Nullable with NO
+      // default — pre-v7 rows were written by a build we cannot name, and
+      // guessing one would read as fact.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN app_build TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableDiagLog} ADD COLUMN app_build TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -210,7 +237,9 @@ class AppDatabase {
       twf INTEGER,
       serial TEXT,
       soc INTEGER,
-      device_id TEXT
+      device_id TEXT,
+      samples INTEGER,
+      app_build TEXT
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',
@@ -249,7 +278,8 @@ class AppDatabase {
       hex TEXT NOT NULL,
       note TEXT,
       device_id TEXT,
-      session_id INTEGER
+      session_id INTEGER,
+      app_build TEXT
     )
     ''',
     'CREATE INDEX idx_diag_log_ts ON ${Db.tableDiagLog} (timestamp)',

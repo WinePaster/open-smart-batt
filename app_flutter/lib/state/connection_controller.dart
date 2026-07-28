@@ -34,11 +34,13 @@ class ConnectionController extends ChangeNotifier {
     DeviceController? devices,
     LogRepo? logs,
     SessionContext? session,
+    String? appBuild,
   }) {
     _settings = settings;
     _devices = devices;
     _logs = logs;
     _session = session ?? SessionContext();
+    _appBuild = appBuild;
     _linkSub = _ble.linkState.listen(_onLinkState);
     _scanSub = _ble.scanResults.listen(_onScanResults);
     _scanningSub = _ble.scanning.listen(_onScanning);
@@ -80,10 +82,15 @@ class ConnectionController extends ChangeNotifier {
         message,
         deviceId: _session.deviceId,
         sessionId: _session.sessionId,
+        appBuild: _appBuild,
       ),
       maxBytes: _settings.logMaxBytes,
     ));
   }
+
+  /// Build that is recording, stamped on every row (design 0010). Null in
+  /// tests and on hosts where the plugin channel is unavailable.
+  String? _appBuild;
 
   StreamSubscription<BleLinkState>? _linkSub;
   StreamSubscription<List<DiscoveredDevice>>? _scanSub;

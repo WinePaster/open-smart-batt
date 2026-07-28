@@ -6,6 +6,7 @@
 library;
 
 export 'app_services.dart';
+export 'build_info.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';
 export 'session_context.dart';
