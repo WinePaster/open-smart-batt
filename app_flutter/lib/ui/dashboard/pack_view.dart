@@ -100,10 +100,18 @@ class PackScaffold extends StatelessWidget {
             (c) => c.connectedDeviceId);
 
     // Centre SOH sub-line for the gauge (resolved here where l10n is available).
+    //
+    // Class-gated the same way the current readout below is (design 0007): a
+    // super-capacitor never sends 0x96, so this line could only ever render as
+    // "SOH --". A permanent placeholder reads as "we failed to fetch it", not
+    // as "this device has no such thing" — so on a capacitor it is omitted.
     final soh = tele.sohBucket;
-    final sohText = soh == null
-        ? l10n.gaugeSohUnknown
-        : l10n.gaugeSohValue(soh, _sohLabel(l10n, soh));
+    final showSoh = packLabel != ProductClass.supercapacitor;
+    final sohText = !showSoh
+        ? null
+        : soh == null
+            ? l10n.gaugeSohUnknown
+            : l10n.gaugeSohValue(soh, _sohLabel(l10n, soh));
 
     return Center(
       child: ConstrainedBox(
@@ -187,7 +195,7 @@ class PackScaffold extends StatelessWidget {
                       value: _fmt1(tele.current),
                       unit: 'A',
                     ),
-                  if (tele.sohBucket != null)
+                  if (showSoh && tele.sohBucket != null)
                     Readout(
                       icon: Icons.monitor_heart_outlined,
                       label: l10n.dashboardReadoutSohLabel,

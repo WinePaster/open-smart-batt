@@ -256,7 +256,7 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
                       color: context.colors.line2,
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                     ),
                   ),
                 ),
@@ -396,13 +396,13 @@ class _Header extends StatelessWidget {
           // rescan pill (mockup `.rescan`).
           InkWell(
             onTap: scanning ? null : onRescan,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
               decoration: BoxDecoration(
                 color: context.colors.panel2,
                 border: Border.all(color: context.colors.line),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -588,7 +588,7 @@ class _DeviceRow extends StatelessWidget {
         border: Border.all(
           color: isConnected ? AppColors.good : context.colors.line,
         ),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -606,7 +606,7 @@ class _DeviceRow extends StatelessWidget {
             decoration: BoxDecoration(
               color: context.colors.bg,
               border: Border.all(color: context.colors.line),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: const Icon(Icons.battery_full, size: 19, color: AppColors.amber),
           ),
@@ -641,7 +641,7 @@ class _DeviceRow extends StatelessWidget {
                             horizontal: 5, vertical: 1),
                         decoration: BoxDecoration(
                           color: AppColors.amber,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                         ),
                         child: const Text('RCE',
                             style: TextStyle(
@@ -717,13 +717,13 @@ class _ConnectButton extends StatelessWidget {
     if (connected) {
       return InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.transparent,
             border: Border.all(color: AppColors.danger),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           ),
           child: Text(
             l10n.devicesDisconnect,
@@ -739,12 +739,12 @@ class _ConnectButton extends StatelessWidget {
     }
     return InkWell(
       onTap: connecting ? null : onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.amber,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: connecting
             ? const SizedBox(
@@ -792,7 +792,7 @@ class _AdapterOffNote extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x12F6A821),
         border: Border.all(color: const Color(0x47F6A821)),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         children: [
@@ -813,14 +813,14 @@ class _AdapterOffNote extends StatelessWidget {
             const SizedBox(width: 8),
             InkWell(
               onTap: () => unawaited(onOpenSettings!.call()),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 decoration: BoxDecoration(
                   color: context.colors.panel2,
                   border: Border.all(color: const Color(0x47F6A821)),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

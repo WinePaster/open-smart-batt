@@ -241,7 +241,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                   _skipAuth = !_skipAuth;
                   _error = null;
                 }),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 child: Row(
                   children: [
                     Switch(
@@ -309,7 +309,7 @@ class _WarnBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.amber.withValues(alpha: 0.07),
         border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,7 +345,7 @@ class _Btn extends StatelessWidget {
     final enabled = onTap != null;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11),
         alignment: Alignment.center,
@@ -358,7 +358,7 @@ class _Btn extends StatelessWidget {
           border: Border.all(
             color: filled ? Colors.transparent : context.colors.line,
           ),
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: Text(
           label,

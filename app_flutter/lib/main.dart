@@ -379,7 +379,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             height: 30,
             decoration: BoxDecoration(
               color: context.colors.panel,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               border: Border.all(color: AppColors.amber, width: 1.4),
             ),
             child: const Icon(Icons.bolt, size: 18, color: AppColors.amber),
@@ -396,14 +396,6 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.6,
                   color: context.colors.text,
-                ),
-              ),
-              Text(
-                'CAPACITOR MONITOR',
-                style: TextStyle(
-                  fontSize: 8.5,
-                  letterSpacing: 2,
-                  color: context.colors.muted,
                 ),
               ),
             ],
@@ -438,12 +430,12 @@ class _ConnectionPill extends StatelessWidget {
     };
     return InkWell(
       onTap: () => showDeviceListSheet(context),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: context.colors.panel,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: context.colors.line),
         ),
         child: Row(
@@ -539,7 +531,7 @@ class _DisclaimerDialog extends StatelessWidget {
                 height: 56,
                 decoration: BoxDecoration(
                   color: context.colors.panel2,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
                   border: Border.all(color: AppColors.amber, width: 1.4),
                 ),
                 child: const Icon(Icons.bolt, size: 30, color: AppColors.amber),
@@ -629,7 +621,7 @@ class _DoNotRelockWarning extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.amber.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
       ),
       child: Row(

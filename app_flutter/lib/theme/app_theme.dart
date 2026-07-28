@@ -189,8 +189,29 @@ class AppTheme {
   /// Standard card padding (mockup `.card { padding: 15px }`).
   static const EdgeInsets cardPadding = EdgeInsets.all(15);
 
-  /// Standard corner radius for panels/cards (mockup 12px).
-  static const double radius = 12;
+  /// Corner radius scale — THREE tiers, and only three.
+  ///
+  /// The app had drifted to twelve distinct radii (1, 3, 4, 5, 7, 8, 9, 10, 11,
+  /// 14, 16, 24). Neighbouring blocks a pixel apart do not read as "designed",
+  /// they read as square-ish corners next to round ones. Pick the tier by the
+  /// element's role, never by eye:
+  ///
+  /// * [radiusLg] — cards and panels (the mockup's 12px)
+  /// * [radiusMd] — blocks inside a card: buttons, inputs, tiles, list rows
+  /// * [radiusSm] — small chips, badges, tags
+  ///
+  /// DELIBERATE EXCEPTIONS, which are shapes rather than blocks and must NOT be
+  /// folded into the scale:
+  /// * hairline indicator bars (signal bars, DVOL bars) use 1–3 px purely to
+  ///   soften a 3 px-wide sliver;
+  /// * the 96×96 Bluetooth badge on the disconnected screen uses 24 px, a
+  ///   squircle whose radius is proportional to its own size.
+  static const double radiusLg = 12;
+  static const double radiusMd = 8;
+  static const double radiusSm = 4;
+
+  /// Back-compat alias for [radiusLg]; prefer the named tier at new call sites.
+  static const double radius = radiusLg;
 
   /// Industrial dark theme (the original mockup look).
   static ThemeData dark() => _build(Brightness.dark, AppPalette.dark);
@@ -248,7 +269,7 @@ class AppTheme {
           foregroundColor: AppColors.onAmber,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(radiusMd),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
@@ -259,7 +280,7 @@ class AppTheme {
           backgroundColor: p.panel2,
           side: BorderSide(color: p.line),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(radiusMd),
           ),
         ),
       ),
@@ -278,7 +299,7 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: p.panel,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radiusLg),
           side: BorderSide(color: p.line),
         ),
       ),
@@ -286,11 +307,11 @@ class AppTheme {
         filled: true,
         fillColor: p.bg,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(radiusMd),
           borderSide: BorderSide(color: p.line2),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(radiusMd),
           borderSide: const BorderSide(color: AppColors.amber),
         ),
       ),

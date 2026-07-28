@@ -117,7 +117,7 @@ class _PortTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.panel2,
         border: Border.all(color: colors.line),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

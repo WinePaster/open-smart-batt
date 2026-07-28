@@ -136,13 +136,13 @@ class _QuickPick extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 10),
         child: InkWell(
           onTap: busy ? null : onTap,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: context.colors.panel,
               border: Border.all(color: context.colors.line),
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: Row(
               children: [
@@ -215,7 +215,7 @@ class _DeviceGlyph extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.bg,
         border: Border.all(color: context.colors.line),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: const Icon(Icons.battery_charging_full,
           size: 19, color: AppColors.amber),

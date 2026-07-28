@@ -211,7 +211,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disconnectedTitle => '尚未連線裝置';
 
   @override
-  String get disconnectedBody => '選擇已儲存的裝置快速重連，或掃描附近的 RCE 電容。';
+  String get disconnectedBody => '選擇已儲存的裝置快速重連，或掃描附近的 RCE 裝置。';
 
   @override
   String get disconnectedQuickSelectHeading => '快速選擇';

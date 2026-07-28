@@ -145,7 +145,7 @@ class _StartupFailureScreenState extends State<_StartupFailureScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   ),
                   child: SelectableText(
                     '${widget.error}',

@@ -525,7 +525,7 @@ void _showAbout(BuildContext context) {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: AppColors.amber.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
               ),
               child: Row(

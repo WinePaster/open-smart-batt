@@ -531,10 +531,12 @@ class ConnectionController extends ChangeNotifier {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
       _packResolver.markConnected(DateTime.now());
-      // Stamp last-seen on the saved entry (if any).
+      // Stamp last-seen on the saved entry (if any). This is only the OPENING
+      // stamp; [_onTelemetrySample] keeps it moving while the link lives and
+      // the disconnect branch below closes it out — see [_touchLastSeen].
       final id = _ble.connectedDeviceId;
       if (id != null) {
-        unawaited(_devices?.touch(id, lastSeen: DateTime.now()));
+        _touchLastSeen(id, force: true);
         // Seed from the saved record so the chip is right immediately, before
         // the first device-type frame lands. It is only a SEED: the wire byte
         // overrides it a moment later (design 0007 §3.3), which is what heals a
@@ -546,6 +548,13 @@ class ConnectionController extends ChangeNotifier {
       }
       _recomputePackLabel();
     } else if (s == BleLinkState.disconnected) {
+      // Close out last-seen at the moment the unit stopped being reachable.
+      // Without this the stored value would be the moment we CONNECTED, so a
+      // device monitored for six hours would report "last seen 6 hours ago"
+      // the instant it dropped.
+      final gone = _lastSeenDeviceId;
+      if (gone != null) _touchLastSeen(gone, force: true);
+      _lastSeenDeviceId = null;
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
       _packLabel = ProductClass.unknown;
@@ -623,6 +632,37 @@ class ConnectionController extends ChangeNotifier {
     _packResolver.observe(s);
     _recomputePackLabel();
     _updateNotificationBody(s);
+    // Every frame proves the unit is still alive, so last-seen advances with
+    // the data rather than sitting at the connect time.
+    final id = _ble.connectedDeviceId;
+    if (id != null) _touchLastSeen(id);
+  }
+
+  /// How often a live connection rewrites `last_seen`.
+  ///
+  /// Telemetry arrives at ~5 Hz; writing every frame would be ~18,000 DB
+  /// updates an hour for a field that is only ever rendered as "x minutes ago".
+  /// One minute is finer than the coarsest bucket that display uses.
+  static const Duration lastSeenInterval = Duration(minutes: 1);
+
+  DateTime? _lastSeenWrittenAt;
+  String? _lastSeenDeviceId;
+
+  /// Advance the saved unit's `last_seen`, at most once per
+  /// [lastSeenInterval] unless [force]. The forced calls are the two that must
+  /// not be dropped: the opening stamp, and the final one at disconnect.
+  void _touchLastSeen(String id, {bool force = false}) {
+    final now = DateTime.now();
+    final last = _lastSeenWrittenAt;
+    if (!force &&
+        id == _lastSeenDeviceId &&
+        last != null &&
+        now.difference(last) < lastSeenInterval) {
+      return;
+    }
+    _lastSeenWrittenAt = now;
+    _lastSeenDeviceId = id;
+    unawaited(_devices?.touch(id, lastSeen: now));
   }
 
   /// Recompute the cosmetic pack label; notify + persist only on a real change

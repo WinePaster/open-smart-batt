@@ -218,7 +218,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get disconnectedBody =>
-      'Pick a saved device to reconnect quickly, or scan for nearby RCE capacitors.';
+      'Reconnect to a saved device, or scan for nearby RCE devices.';
 
   @override
   String get disconnectedQuickSelectHeading => 'Quick Select';

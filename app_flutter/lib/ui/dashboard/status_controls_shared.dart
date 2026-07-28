@@ -218,7 +218,7 @@ class StatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.panel2,
         border: Border.all(color: borderColor),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -290,13 +290,13 @@ class ControlButton extends StatelessWidget {
       opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             color: bg,
             border: Border.all(color: border),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

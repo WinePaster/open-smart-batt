@@ -21,6 +21,9 @@ import '../../theme/app_theme.dart';
 /// Animated amber-tick gauge (generalised over voltage / percent domains).
 ///
 /// The gauge's localized centre-stack strings ([caption], [subText]) are
+/// A null [subText] omits that line entirely — used when the connected class
+/// has no such metric at all (e.g. a capacitor has no SOH), where a permanent
+/// placeholder would read as a failed fetch rather than "not applicable".
 /// resolved by the host and passed in, since the dial itself is drawn by a
 /// context-free [CustomPainter].
 class PvltGauge extends StatelessWidget {
@@ -43,7 +46,7 @@ class PvltGauge extends StatelessWidget {
     double min = 8.0,
     double max = 16.0,
     required String caption,
-    required String subText,
+    required String? subText,
     double size = 206,
   }) =>
       PvltGauge(
@@ -62,7 +65,7 @@ class PvltGauge extends StatelessWidget {
     Key? key,
     required num? percent,
     required String caption,
-    required String subText,
+    required String? subText,
     double size = 206,
   }) =>
       PvltGauge(
@@ -86,7 +89,7 @@ class PvltGauge extends StatelessWidget {
   final String caption;
 
   /// Sub-line under the caption (e.g. SOH / health / cell-voltage text).
-  final String subText;
+  final String? subText;
 
   /// Unit suffix rendered beside the value ("V" or "%").
   final String unit;
@@ -159,7 +162,7 @@ class _CenterReadout extends StatelessWidget {
   final String unit;
   final int fractionDigits;
   final String caption;
-  final String subText;
+  final String? subText;
 
   /// Inner-ring width the centre stack must stay within (so the value never
   /// collides with the tick ring at large dial sizes / high text scale).
@@ -207,18 +210,20 @@ class _CenterReadout extends StatelessWidget {
               color: context.colors.muted,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            subText,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11,
-              letterSpacing: 1,
-              color: AppColors.cyan,
+          if (subText != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              subText!,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                letterSpacing: 1,
+                color: AppColors.cyan,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
