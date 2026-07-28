@@ -123,9 +123,24 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   /// burst on resume. One line here turns that inference into a fact the log
   /// states outright — and it is the difference between a stall the user can
   /// explain and a "the app randomly stopped updating" report.
+  ///
+  /// Leaving the foreground also PERSISTS the minute currently being averaged
+  /// (design 0009 §3.2). The app may not get another turn: a suspension that
+  /// ends in the OS reclaiming the process produces no disconnect event, and
+  /// the partial minute used to die with it — a 2026-07-28 capture lost its
+  /// last 37 seconds exactly this way.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     widget.services.connection.logAppLifecycle(state.name);
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        widget.services.telemetry.flushPendingHistory();
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.inactive:
+        break;
+    }
     super.didChangeAppLifecycleState(state);
   }
 

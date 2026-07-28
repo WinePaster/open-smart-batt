@@ -21,6 +21,7 @@ import '../../models/models.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/export_header.dart';
 import '../util/export_naming.dart';
 import '../util/export_scope.dart';
 import '../util/export_share.dart';
@@ -114,14 +115,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
+      final env = await exportEnvironment();
       final csv = await _tele.exportHistoryCsv(
         since: _sinceFor(_range),
         limit: _rowCap,
         deviceId: target.deviceId,
         labelFor: labelFor,
         classFor: classFor,
+        header: exportHeaderLines(
+          title: 'OpenSmartBatt history export',
+          exportedAt: DateTime.now(),
+          appBuild: env.build,
+          platform: env.platform,
+          scope: exportScopeLabel(target),
+        ),
       );
-      if (csv.trim().isEmpty || !csv.contains('\n')) {
+      // Row count, not text emptiness: the preamble means the file is never
+      // empty (design 0009).
+      if (csv.rows == 0) {
         messenger.showSnackBar(SnackBar(
           duration: const Duration(milliseconds: 1600),
           content: Text(l10n.commonNoRecordsToExport),
@@ -129,7 +140,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return;
       }
       await shareTextAsFile(
-        content: csv,
+        content: csv.text,
         filename: exportFileName(
           base: 'opensmartbatt-history',
           classSlug: target.classSlug,

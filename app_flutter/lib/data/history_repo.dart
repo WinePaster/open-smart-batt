@@ -82,11 +82,22 @@ class HistoryRepo {
     'serial',
     'soc',
     'device',
+    'samples',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
-  Future<int> insertSample(TelemetrySample sample, {String? deviceId}) {
-    return _db.insert(Db.tableHistory, _row(sample, deviceId));
+  ///
+  /// [samples] is how many telemetry snapshots this row averaged (design 0009).
+  /// It is NOT part of [TelemetrySample]: the device never reports it, it is an
+  /// artefact of our own per-minute aggregation, and mixing the two would blur
+  /// where a number came from. Null means "unknown" — never 0, which would
+  /// claim the row averaged nothing.
+  Future<int> insertSample(
+    TelemetrySample sample, {
+    String? deviceId,
+    int? samples,
+  }) {
+    return _db.insert(Db.tableHistory, _row(sample, deviceId, samples));
   }
 
   /// Batch-insert many samples in a single transaction.
@@ -96,13 +107,19 @@ class HistoryRepo {
   }) async {
     final batch = _db.batch();
     for (final s in samples) {
-      batch.insert(Db.tableHistory, _row(s, deviceId));
+      batch.insert(Db.tableHistory, _row(s, deviceId, null));
     }
     await batch.commit(noResult: true);
   }
 
-  static Map<String, Object?> _row(TelemetrySample s, String? deviceId) =>
-      Map<String, Object?>.from(s.toMap())..['device_id'] = deviceId;
+  static Map<String, Object?> _row(
+    TelemetrySample s,
+    String? deviceId,
+    int? samples,
+  ) =>
+      Map<String, Object?>.from(s.toMap())
+        ..['device_id'] = deviceId
+        ..['samples'] = samples;
 
   /// Query history newest-first.
   ///
@@ -241,12 +258,24 @@ class HistoryRepo {
   /// this exporter's empty value instead (the same `null` the dvol columns
   /// already use). Rows with no device id (pre-0006) keep whatever was recorded:
   /// we do not know their class, so we do not edit their data.
-  Future<String> exportCsv({
+  ///
+  /// [header] lines (design 0009) are emitted first, each prefixed with `# `,
+  /// followed by a repo-computed `rows / range / devices` summary line and then
+  /// the column header. The split of duties is deliberate: the caller knows the
+  /// PROVENANCE (app build, platform, which scope the user picked) and only it
+  /// can reach `PackageInfo`; this repo knows the CONTENT and already holds the
+  /// query result, so it counts without a second trip to the database.
+  ///
+  /// Returns the text together with the number of DATA rows. Callers must test
+  /// `rows == 0` for "nothing to export" — with a preamble present the file is
+  /// never empty, so the old `!csv.contains('\n')` check would always pass.
+  Future<({String text, int rows})> exportCsv({
     DateTime? since,
     int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
+    List<String> header = const [],
   }) async {
     final (where, args) = _scope(since: since, deviceId: deviceId);
     final raw = await _db.query(
@@ -273,7 +302,29 @@ class HistoryRepo {
             m[c],
       ]);
     }
-    return const ListToCsvConverter().convert(rows);
+    final body = const ListToCsvConverter().convert(rows);
+    final lines = <String>[
+      for (final h in header) '# $h',
+      if (header.isNotEmpty) '# ${_contentSummary(raw)}',
+      body,
+    ];
+    return (text: lines.join('\n'), rows: raw.length);
+  }
+
+  /// `rows: N  range: A .. B  devices: N` — what the file actually contains, so
+  /// a recipient can see the size and span of the data instead of guessing.
+  /// Rows are ordered newest-first, hence `last`/`first` for the range ends.
+  static String _contentSummary(List<Map<String, Object?>> raw) {
+    if (raw.isEmpty) return 'rows: 0';
+    String at(Map<String, Object?> m) =>
+        DateTime.fromMillisecondsSinceEpoch((m['timestamp'] as num).toInt())
+            .toIso8601String();
+    final devices =
+        raw.map((m) => m['device_id'] as String?).whereType<String>().toSet();
+    final unattributed = raw.any((m) => m['device_id'] == null);
+    return 'rows: ${raw.length}  '
+        'range: ${at(raw.last)} .. ${at(raw.first)}  '
+        'devices: ${devices.length}${unattributed ? ' (+unattributed)' : ''}';
   }
 
   /// Distinct device ids present in history (NULL rows excluded).

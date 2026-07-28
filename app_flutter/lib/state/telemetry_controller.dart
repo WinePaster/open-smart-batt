@@ -169,13 +169,17 @@ class TelemetryController extends ChangeNotifier {
   /// CSV export of matching history rows (for share_plus / file write).
   ///
   /// [labelFor] renders the human-readable `device` column; the caller supplies
-  /// it because the alias/serial lookup lives in the device layer.
-  Future<String> exportHistoryCsv({
+  /// it because the alias/serial lookup lives in the device layer. [header]
+  /// carries the provenance preamble (design 0009); see [HistoryRepo.exportCsv]
+  /// for why the returned row count — not the text — decides "nothing to
+  /// export".
+  Future<({String text, int rows})> exportHistoryCsv({
     DateTime? since,
     int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
+    List<String> header = const [],
   }) =>
       _history.exportCsv(
         since: since,
@@ -183,6 +187,7 @@ class TelemetryController extends ChangeNotifier {
         deviceId: deviceId,
         labelFor: labelFor,
         classFor: classFor,
+        header: header,
       );
 
   /// Clear all history.
@@ -276,6 +281,13 @@ class TelemetryController extends ChangeNotifier {
   double _sPvlt = 0, _sSvlt = 0, _sTemp = 0, _sCur = 0;
   int _nPvlt = 0, _nSvlt = 0, _nTemp = 0, _nCur = 0;
 
+  /// How many telemetry snapshots this minute has folded in (design 0009).
+  /// Counted per snapshot, not per field, so it answers one question honestly:
+  /// how much data is behind this row. A full minute lands near 900; a row
+  /// flushed seconds after the bucket opened lands in the tens, and the export
+  /// makes that visible instead of passing both off as "one minute".
+  int _nSamples = 0;
+
   void _maybeAutoLog(TelemetrySample s) {
     if (!_settings.autoLog) return;
     final t = s.timestamp;
@@ -290,6 +302,7 @@ class TelemetryController extends ChangeNotifier {
     _bucketMinute = minute;
     _bucketDeviceId = deviceId;
     _bucketLast = s;
+    _nSamples++;
     if (s.pvlt != null) {
       _sPvlt += s.pvlt!;
       _nPvlt++;
@@ -308,6 +321,22 @@ class TelemetryController extends ChangeNotifier {
     }
   }
 
+  /// Persist the minute currently being accumulated, if any.
+  ///
+  /// Called when the app may be about to lose control of its own execution —
+  /// backgrounded, hidden, or being torn down (design 0009 §3.2). A minute
+  /// rollover and a disconnect are the *orderly* ways a bucket closes; a
+  /// silent suspension is not, and until this existed the partial minute was
+  /// simply lost. A 2026-07-28 field capture ended that way: the diagnostic log
+  /// held 37 more seconds of packets than the CSV did, with no disconnect event
+  /// to explain the gap.
+  ///
+  /// Flushing resets the bucket, so pausing and resuming inside one minute
+  /// yields TWO rows for that minute. That is deliberate: each row reports its
+  /// own [_nSamples], which is more honest than silently merging them or
+  /// rewriting a row already on disk.
+  void flushPendingHistory() => _flushBucket();
+
   /// Write the current minute's averaged sample to history, then reset.
   void _flushBucket() {
     final m = _bucketMinute;
@@ -320,13 +349,18 @@ class TelemetryController extends ChangeNotifier {
         temperatureC: _nTemp > 0 ? (_sTemp / _nTemp).round() : null,
         current: _nCur > 0 ? _sCur / _nCur : null,
       );
-      unawaited(_history.insertSample(avg, deviceId: _bucketDeviceId));
+      unawaited(_history.insertSample(
+        avg,
+        deviceId: _bucketDeviceId,
+        samples: _nSamples,
+      ));
     }
     _bucketMinute = null;
     _bucketDeviceId = null;
     _bucketLast = null;
     _sPvlt = _sSvlt = _sTemp = _sCur = 0;
     _nPvlt = _nSvlt = _nTemp = _nCur = 0;
+    _nSamples = 0;
   }
 
   void _onPacket(BlePacketEvent e) {

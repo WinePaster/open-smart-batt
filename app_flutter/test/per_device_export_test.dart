@@ -135,7 +135,7 @@ void main() {
     test('CSV appends soc + device without moving existing columns', () async {
       final repo = HistoryRepo(appDb.db);
       await repo.insertSample(sampleAt(1000, soc: 87), deviceId: 'AA');
-      final csv = await repo.exportCsv(labelFor: (id) => 'pack-$id');
+      final csv = (await repo.exportCsv(labelFor: (id) => 'pack-$id')).text;
       // The csv package emits CRLF; compare on logical lines.
       final lines = csv.split(RegExp(r'\r?\n'));
       // The pre-0006 header must be a prefix of the new one.
@@ -145,7 +145,9 @@ void main() {
             'soh,mode,twf,serial'),
         isTrue,
       );
-      expect(lines.first.endsWith('serial,soc,device'), isTrue);
+      // …and every later column is appended after it, never inserted:
+      // `soc`/`device` (0006) then `samples` (0009).
+      expect(lines.first.endsWith('serial,soc,device,samples'), isTrue);
       expect(lines[1], contains('87'));
       expect(lines[1], contains('pack-AA'));
       // The raw id must not leak into the CSV when a label was supplied.
@@ -172,11 +174,11 @@ void main() {
         deviceId: 'BATT',
       );
 
-      final csv = await repo.exportCsv(
+      final csv = (await repo.exportCsv(
         classFor: (id) => id == 'CAP'
             ? ProductClass.supercapacitor
             : ProductClass.smartBattery,
-      );
+      )).text;
       final lines = csv.split(RegExp(r'\r?\n'));
       // Rows are keyed by their timestamp, rendered in LOCAL time by the export.
       final capRow = lines.firstWhere((l) => l.startsWith(
@@ -198,15 +200,15 @@ void main() {
       final repo = HistoryRepo(appDb.db);
       await repo.insertSample(TelemetrySample(
           timestamp: DateTime.fromMillisecondsSinceEpoch(1000), current: 0.0));
-      final csv = await repo.exportCsv(
-          classFor: (_) => ProductClass.supercapacitor);
+      final csv = (await repo.exportCsv(
+          classFor: (_) => ProductClass.supercapacitor)).text;
       expect(csv.split(RegExp(r'\r?\n'))[1].split(',')[3], '0.0');
     });
 
     test('unattributed rows get an empty device cell, never a guess', () async {
       final repo = HistoryRepo(appDb.db);
       await repo.insertSample(sampleAt(1000));
-      final csv = await repo.exportCsv(labelFor: (id) => 'pack-$id');
+      final csv = (await repo.exportCsv(labelFor: (id) => 'pack-$id')).text;
       expect(csv.split(RegExp(r'\r?\n'))[1], isNot(contains('pack-')));
     });
   });

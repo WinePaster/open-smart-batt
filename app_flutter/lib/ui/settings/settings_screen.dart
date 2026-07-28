@@ -18,6 +18,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/export_header.dart';
 import '../util/export_naming.dart';
 import '../util/export_scope.dart';
 import '../util/export_share.dart';
@@ -179,17 +180,27 @@ class _DataCardState extends State<_DataCard> {
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
+      final env = await exportEnvironment();
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
         labelFor: labelFor,
         classFor: classFor,
+        header: exportHeaderLines(
+          title: 'OpenSmartBatt history export',
+          exportedAt: DateTime.now(),
+          appBuild: env.build,
+          platform: env.platform,
+          scope: exportScopeLabel(target),
+        ),
       );
-      if (!csv.contains('\n')) {
+      // Row count, not text emptiness: the preamble means the file is never
+      // empty (design 0009).
+      if (csv.rows == 0) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.commonNoRecordsToExport)));
         return;
       }
       await shareTextAsFile(
-        content: csv,
+        content: csv.text,
         filename: exportFileName(
           base: 'opensmartbatt-history',
           classSlug: target.classSlug,
@@ -323,32 +334,18 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     TelemetryController tele,
     ExportTarget target,
   ) async {
-    final scope = switch (target.scope) {
-      ExportScope.allDevices => 'all devices',
-      ExportScope.currentDevice =>
-        'device=${target.classSlug}/${target.ident ?? '-'}',
-      ExportScope.currentSession =>
-        'device=${target.classSlug}/${target.ident ?? '-'} '
-            'session=${target.sessionId}',
-    };
     final sessions = target.scope == ExportScope.currentSession
         ? 1
         : await tele.logSessionCount(deviceId: target.deviceId);
-    var build = 'unknown';
-    try {
-      final info = await PackageInfo.fromPlatform();
-      build = '${info.version}+${info.buildNumber}';
-    } catch (_) {
-      // Plugin channel unavailable (tests / unsupported host) — the header is
-      // diagnostic garnish, never a reason to fail an export.
-    }
-    return <String>[
-      'OpenSmartBatt diagnostic log',
-      'exported: ${DateTime.now().toIso8601String()}',
-      'scope: $scope  connections=$sessions',
-      'app: $build  platform: ${Platform.operatingSystem} '
-          '${Platform.operatingSystemVersion}',
-    ];
+    final env = await exportEnvironment();
+    return exportHeaderLines(
+      title: 'OpenSmartBatt diagnostic log',
+      exportedAt: DateTime.now(),
+      appBuild: env.build,
+      platform: env.platform,
+      scope: exportScopeLabel(target),
+      connections: sessions,
+    );
   }
 
   Future<void> _clearLog() async {

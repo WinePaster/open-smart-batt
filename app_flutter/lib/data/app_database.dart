@@ -27,7 +27,10 @@ class Db {
   /// history gained `soc` and diag_log gained `session_id` — design 0006. All
   /// nullable with NO default: pre-v5 rows keep NULL, meaning "unknown device",
   /// because attributing them to the current unit would be a lie.
-  static const int schemaVersion = 5;
+  /// v6: history gained `samples` (how many telemetry snapshots that minute's
+  /// row averaged) — design 0009. Nullable with NO default, same reasoning as
+  /// v5: pre-v6 rows genuinely do not know their sample count.
+  static const int schemaVersion = 6;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -185,6 +188,15 @@ class AppDatabase {
         'CREATE INDEX IF NOT EXISTS idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
       );
     }
+    if (from < 6) {
+      // design 0009: how many telemetry snapshots each minute-row averaged, so
+      // a full minute and a truncated one are distinguishable in an export.
+      // Nullable with NO default — pre-v6 rows do not know their count, and a
+      // fabricated one would read as fact.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN samples INTEGER',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -210,7 +222,8 @@ class AppDatabase {
       twf INTEGER,
       serial TEXT,
       soc INTEGER,
-      device_id TEXT
+      device_id TEXT,
+      samples INTEGER
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',

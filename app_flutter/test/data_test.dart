@@ -137,7 +137,7 @@ void main() {
         ),
       );
 
-      final csv = await repo.exportCsv();
+      final csv = (await repo.exportCsv()).text;
       final lines = csv.split('\r\n');
       // Header row matches the documented column order.
       expect(lines.first, HistoryRepo.csvColumns.join(','));
@@ -150,7 +150,7 @@ void main() {
 
     test('exportCsv on empty history is header-only', () async {
       final repo = HistoryRepo(appDb.db);
-      final csv = await repo.exportCsv();
+      final csv = (await repo.exportCsv()).text;
       expect(csv, HistoryRepo.csvColumns.join(','));
     });
 
