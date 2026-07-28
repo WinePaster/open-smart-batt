@@ -1,6 +1,5 @@
 {
   "@@locale": "zh",
-
   "commonCancel": "取消",
   "commonConfirm": "確定",
   "commonContinue": "繼續",
@@ -18,7 +17,6 @@
   "relativeMinutesAgo": "{count, plural, other{{count} 分鐘前}}",
   "relativeHoursAgo": "{count, plural, other{{count} 小時前}}",
   "relativeDaysAgo": "{count, plural, other{{count} 天前}}",
-
   "navDashboard": "裝置",
   "navHistory": "歷史",
   "navSettings": "設定",
@@ -34,7 +32,6 @@
   "updateAvailableBodyIos": "目前版本 v{version}。前往 GitHub release 頁面查看最新版本與安裝說明。",
   "updateLaterButton": "稍後",
   "updateDownloadButton": "前往下載",
-
   "dashboardDeviceTypeDetected": "偵測到：{type}",
   "dashboardDeviceTypeSupercapacitor": "超級電容",
   "dashboardDeviceTypeSmartBattery": "智慧電池",
@@ -57,7 +54,7 @@
   "gaugeSohLabelFair": "普通",
   "gaugeSohLabelDegraded": "衰退",
   "disconnectedTitle": "尚未連線裝置",
-  "disconnectedBody": "選擇已儲存的裝置快速重連，或掃描附近的 RCE 電容。",
+  "disconnectedBody": "選擇已儲存的裝置快速重連，或掃描附近的 RCE 裝置。",
   "disconnectedQuickSelectHeading": "快速選擇",
   "disconnectedScanButton": "掃描其他裝置",
   "quickPickLastValue": "上次 {value} V",
@@ -91,7 +88,6 @@
   "releaseDialogSkipAuthToggle": "實驗：只送 mode、跳過驗證（未證實，備案）",
   "releaseDialogWarnBox": "解除後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。",
   "releaseDialogConfirm": "確認解除",
-
   "devicesConnectFailed": "連線失敗，請再試一次",
   "devicesRemoveTitle": "移除裝置",
   "devicesRemoveBody": "將「{alias}」從已儲存清單移除？（不影響裝置本身）",
@@ -124,7 +120,6 @@
   "devicesAliasSaveAlias": "儲存別名",
   "devicesAliasSkip": "略過",
   "devicesAliasHint": "例如：電容 #1（前車）",
-
   "historyFilterAll": "全部",
   "historyFilterToday": "今天",
   "historyFilterWarning": "警告",
@@ -153,7 +148,6 @@
   "historyRowThresholdWarning": "保護門檻警告",
   "historyStatusEvent": "事件",
   "historyChartInsufficientData": "資料不足以繪圖（需至少 2 筆）",
-
   "settingsConnectionHeading": "連線",
   "settingsAutoReconnectLabel": "自動重連",
   "settingsAutoReconnectSub": "連線中斷時自動嘗試重連",
@@ -196,7 +190,6 @@
   "settingsClearLogLabel": "清除診斷日誌",
   "settingsLogEmpty": "診斷日誌為空",
   "settingsExportSubjectDiagLog": "OpenSmartBatt 診斷日誌",
-
   "startupFailedTitle": "無法啟動",
   "startupFailedBody": "資料庫開啟失敗。請先試「重試」；若一直失敗，最後手段是重設資料庫（會刪除所有紀錄）。",
   "startupDowngradeTitle": "App 版本比資料舊",
@@ -205,7 +198,6 @@
   "startupResetDb": "重設資料庫（刪除所有紀錄）",
   "startupResetTitle": "確定要重設資料庫？",
   "startupResetBody": "這會刪除全部歷史紀錄、已儲存裝置與設定，且無法復原。",
-
   "exportScopeTitle": "匯出範圍",
   "exportScopeThisDevice": "只匯出目前裝置（{label}）",
   "exportScopeThisSession": "只匯出本次連線",
@@ -223,7 +215,6 @@
   "settingsAboutDialogTitle": "版權與免責聲明",
   "settingsAboutDialogBody": "本 App 為社群獨立開發的開源工具，基於公開逆向研究，透過藍牙與您已購買的 RCE 智慧電容／電池通訊。\n\n本專案非 RCE 官方產品、與原廠無任何關係，僅供已購買硬體之車主個人、非商業用途。",
   "settingsAboutDialogWarning": "解除斷電後請勿重新上鎖；電容本身過壓／低壓／過溫保護仍持續有效。",
-
   "dashboardTelemetryStalled": "資料已停止更新（連線仍在）。App 被系統暫停時會這樣，開啟「背景持續監看」可避免。",
   "dashboardTelemetryStalledDespiteMonitor": "資料已停止更新（連線仍在）。「背景持續監看」已開啟，代表系統仍然凍結了 App —— 部分機型需要另外把本 App 排除在電池最佳化之外。",
   "dashboardDeviceFaultSuspected": "疑似異常：裝置回報了異常狀態旗標（狀態碼 {code}）。此旗標的確切意義尚未證實，請以實際電氣狀況判斷，並把此畫面回報給我們。",

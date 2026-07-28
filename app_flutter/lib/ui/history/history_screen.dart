@@ -82,7 +82,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         : DateTime.now().millisecondsSinceEpoch - from.millisecondsSinceEpoch;
     final bucketMs = (spanMs ~/ _targetBucketPoints).clamp(60000, 24 * 3600000);
     final buckets = await tele.historyBuckets(since: since, bucketMs: bucketMs);
-    final rows = await tele.history(since: since, limit: _rowCap);
+    final rows = await tele.historyWithDevice(since: since, limit: _rowCap);
     return _HistoryData(rows: rows, buckets: buckets, stats: stats, total: total);
   }
 
@@ -166,6 +166,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final l10n = AppLocalizations.of(context);
     final tempUnit = context.watch<SettingsController>().tempUnit;
     final tele = context.watch<TelemetryController>();
+    final devices = context.watch<DeviceController>();
     final ov = tele.warnOv, uv = tele.warnUv, ot = tele.warnOt;
 
     return Column(
@@ -226,11 +227,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         padding: const EdgeInsets.all(11),
                         child: Column(
                           children: [
-                            for (final s in listRows)
+                            for (final r in listRows)
                               _HistoryRow(
-                                sample: s,
+                                sample: r.sample,
                                 tempUnit: tempUnit,
-                                status: _classify(s, ov: ov, uv: uv, ot: ot),
+                                status: _classify(r.sample,
+                                    ov: ov, uv: uv, ot: ot),
+                                // design 0007: a capacitor streams 0x2E pinned
+                                // at 0.0 A but cannot measure current. The CSV
+                                // already blanks it; showing it here would have
+                                // the two disagree about the same row.
+                                showCurrent: deviceClassFor(
+                                        devices, r.deviceId) !=
+                                    ProductClass.supercapacitor,
                               ),
                           ],
                         ),
@@ -334,15 +343,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ---- filtering / classification --------------------------------------
 
-  List<TelemetrySample> _applyWarning(
-    List<TelemetrySample> rows, {
+  List<({TelemetrySample sample, String? deviceId})> _applyWarning(
+    List<({TelemetrySample sample, String? deviceId})> rows, {
     double? ov,
     double? uv,
     double? ot,
   }) {
     if (!_warningOnly) return rows;
     return rows
-        .where((s) => _classify(s, ov: ov, uv: uv, ot: ot) != _RowStatus.normal)
+        .where((r) =>
+            _classify(r.sample, ov: ov, uv: uv, ot: ot) != _RowStatus.normal)
         .toList(growable: false);
   }
 
@@ -375,7 +385,7 @@ class _HistoryData {
     required this.stats,
     required this.total,
   });
-  final List<TelemetrySample> rows;
+  final List<({TelemetrySample sample, String? deviceId})> rows;
   final List<HistoryBucket> buckets;
   final HistoryStats stats;
   final int total;
@@ -512,7 +522,7 @@ class _TrendCardState extends State<_TrendCard> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: context.colors.panel2,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: context.colors.line),
       ),
       child: Row(
@@ -845,7 +855,13 @@ class _HistoryRow extends StatelessWidget {
     required this.sample,
     required this.tempUnit,
     required this.status,
+    required this.showCurrent,
   });
+
+  /// False when the row's unit cannot measure current (design 0007). Rows with
+  /// no device id (recorded before design 0006) keep whatever was stored — we
+  /// do not know their class, so we do not edit their reading.
+  final bool showCurrent;
 
   final TelemetrySample sample;
   final TempUnit tempUnit;
@@ -859,7 +875,7 @@ class _HistoryRow extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: context.colors.panel2,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: context.colors.line),
       ),
       child: Row(
@@ -927,7 +943,7 @@ class _HistoryRow extends StatelessWidget {
         if (sample.sohBucket != null) {
           bits.add(l10n.historyRowSoh(sample.sohBucket!));
         }
-        if (sample.current != null) {
+        if (showCurrent && sample.current != null) {
           bits.add(l10n.historyRowCurrent(sample.current!.toStringAsFixed(1)));
         }
         return bits.isEmpty ? l10n.commonNormal : bits.join(' · ');
@@ -969,7 +985,7 @@ class _StatusTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: fg.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(color: fg.withValues(alpha: 0.32)),
       ),
       child: Text(

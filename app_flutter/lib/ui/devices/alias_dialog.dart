@@ -160,13 +160,13 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(7),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: context.colors.panel2,
           border: Border.all(color: context.colors.line),
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: Text(
           label,
@@ -193,7 +193,7 @@ class _DialogButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11),
         alignment: Alignment.center,
@@ -202,7 +202,7 @@ class _DialogButton extends StatelessWidget {
           border: Border.all(
             color: filled ? Colors.transparent : context.colors.line,
           ),
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: Text(
           label,

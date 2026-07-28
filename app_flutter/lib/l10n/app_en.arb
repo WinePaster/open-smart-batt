@@ -1,6 +1,5 @@
 {
   "@@locale": "en",
-
   "commonCancel": "Cancel",
   "commonConfirm": "OK",
   "commonContinue": "Continue",
@@ -13,27 +12,46 @@
   "commonNoRecordsToExport": "No records to export",
   "commonExportFailed": "Export failed: {error}",
   "@commonExportFailed": {
-    "placeholders": { "error": { "type": "String" } }
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
   "commonOpenBrowserFailed": "Could not open browser; link copied: {url}",
   "@commonOpenBrowserFailed": {
-    "placeholders": { "url": { "type": "String" } }
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
   },
   "relativeNever": "Never connected",
   "relativeJustNow": "Just now",
   "relativeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
   "@relativeMinutesAgo": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "relativeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
   "@relativeHoursAgo": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "relativeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
   "@relativeDaysAgo": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-
   "navDashboard": "Devices",
   "navHistory": "History",
   "navSettings": "Settings",
@@ -46,22 +64,37 @@
   "updateAlreadyLatest": "Already up to date (or temporarily offline)",
   "updateAvailableTitle": "New version available {tag}",
   "@updateAvailableTitle": {
-    "placeholders": { "tag": { "type": "String" } }
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
   },
   "updateAvailableBody": "Current version v{version}. Go to GitHub to download the latest APK; uninstall the old version first before installing (a different signature prevents overwriting).",
   "@updateAvailableBody": {
-    "placeholders": { "version": { "type": "String" } }
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
   },
   "updateAvailableBodyIos": "Current version v{version}. Open the GitHub release page to view the latest version and installation notes.",
   "@updateAvailableBodyIos": {
-    "placeholders": { "version": { "type": "String" } }
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
   },
   "updateLaterButton": "Later",
   "updateDownloadButton": "Download",
-
   "dashboardDeviceTypeDetected": "Detected: {type}",
   "@dashboardDeviceTypeDetected": {
-    "placeholders": { "type": { "type": "String" } }
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
   },
   "dashboardDeviceTypeSupercapacitor": "Supercapacitor",
   "dashboardDeviceTypeSmartBattery": "Smart Battery",
@@ -70,8 +103,12 @@
   "dashboardDeviceTypeWithName": "{type} ({name})",
   "@dashboardDeviceTypeWithName": {
     "placeholders": {
-      "type": { "type": "String" },
-      "name": { "type": "String" }
+      "type": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
     }
   },
   "dashboardReadoutsHeading": "Live Readings",
@@ -88,20 +125,28 @@
   "gaugeSohValue": "SOH {soh}% · Health {label}",
   "@gaugeSohValue": {
     "placeholders": {
-      "soh": { "type": "int" },
-      "label": { "type": "String" }
+      "soh": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
     }
   },
   "gaugeSohLabelGood": "Good",
   "gaugeSohLabelFair": "Fair",
   "gaugeSohLabelDegraded": "Degraded",
   "disconnectedTitle": "No device connected",
-  "disconnectedBody": "Pick a saved device to reconnect quickly, or scan for nearby RCE capacitors.",
+  "disconnectedBody": "Reconnect to a saved device, or scan for nearby RCE devices.",
   "disconnectedQuickSelectHeading": "Quick Select",
   "disconnectedScanButton": "Scan other devices",
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
-    "placeholders": { "value": { "type": "String" } }
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
   },
   "statusBadgeRunModeLabel": "Run Mode",
   "statusBadgeCapacitorLabel": "Capacitor Status",
@@ -115,27 +160,45 @@
   "capacitorCheckReadout": "SOH {soh}% · Secondary Voltage {svlt} V · Primary Voltage {pvlt} V",
   "@capacitorCheckReadout": {
     "placeholders": {
-      "soh": { "type": "String" },
-      "svlt": { "type": "String" },
-      "pvlt": { "type": "String" }
+      "soh": {
+        "type": "String"
+      },
+      "svlt": {
+        "type": "String"
+      },
+      "pvlt": {
+        "type": "String"
+      }
     }
   },
   "capacitorCheckSnack": "Capacitor check: {msg}",
   "@capacitorCheckSnack": {
-    "placeholders": { "msg": { "type": "String" } }
+    "placeholders": {
+      "msg": {
+        "type": "String"
+      }
+    }
   },
   "releaseSentNoAuthSnack": "Release command sent (experimental: no auth)",
   "releaseSentSnack": "Release cut-off command sent",
   "releaseFailedSnack": "Release failed: {error}",
   "@releaseFailedSnack": {
-    "placeholders": { "error": { "type": "String" } }
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
   "antiTheftDialogTitle": "Enable Anti-theft Mode",
   "antiTheftDialogBody": "Anti-theft mode is not fully verified and appears only on supported models. Are you sure you want to send the anti-theft command?",
   "antiTheftSentSnack": "Anti-theft command sent",
   "antiTheftFailedSnack": "Command failed: {error}",
   "@antiTheftFailedSnack": {
-    "placeholders": { "error": { "type": "String" } }
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
   "releaseDialogErrorAuthFormat": "Invalid auth value format (use decimal or 0x hexadecimal)",
   "releaseDialogErrorDealerLength": "Dealer code must be at least 8 digits",
@@ -149,12 +212,15 @@
   "releaseDialogSkipAuthToggle": "Experimental: send mode only, skip auth (unproven, fallback)",
   "releaseDialogWarnBox": "After releasing, do not re-lock; the capacitor's own over-voltage / under-voltage / over-temperature protection stays active.",
   "releaseDialogConfirm": "Confirm Release",
-
   "devicesConnectFailed": "Connection failed, please try again",
   "devicesRemoveTitle": "Remove device",
   "devicesRemoveBody": "Remove \"{alias}\" from your saved list? (The device itself is unaffected.)",
   "@devicesRemoveBody": {
-    "placeholders": { "alias": { "type": "String" } }
+    "placeholders": {
+      "alias": {
+        "type": "String"
+      }
+    }
   },
   "devicesRemove": "Remove",
   "devicesSavedSection": "Saved devices",
@@ -166,12 +232,20 @@
   "devicesShowRceOnly": "Show RCE devices only",
   "devicesShowAllWithHidden": "{count, plural, =1{Show all BLE devices (1 non-RCE hidden)} other{Show all BLE devices ({count} non-RCE hidden)}}",
   "@devicesShowAllWithHidden": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "devicesShowAll": "Show all BLE devices",
   "devicesMetaLastSeen": "Last {time}",
   "@devicesMetaLastSeen": {
-    "placeholders": { "time": { "type": "String" } }
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
   },
   "devicesSheetTitle": "Select device",
   "devicesRescan": "Rescan",
@@ -191,7 +265,6 @@
   "devicesAliasSaveAlias": "Save alias",
   "devicesAliasSkip": "Skip",
   "devicesAliasHint": "e.g. Capacitor #1 (front car)",
-
   "historyFilterAll": "All",
   "historyFilterToday": "Today",
   "historyFilterWarning": "Warnings",
@@ -209,33 +282,53 @@
   "historyStatMax": "MAX",
   "historyDetailSamples": "{count, plural, =1{1 sample} other{{count} samples}}",
   "@historyDetailSamples": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "historyLoadFailed": "Failed to load history: {error}",
   "@historyLoadFailed": {
-    "placeholders": { "error": { "type": "String" } }
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
   "historyEmptyToday": "No records today.\nHistory is written automatically once a device is connected.",
   "historyEmptyWarning": "No warning or event records.",
   "historyEmptyAll": "No history yet.\nConnect a device and enable \"Auto-logging\" to start accumulating.",
   "historyFooter": "{count, plural, =1{1 record · Local SQLite · Export CSV / Share} other{{count} records · Local SQLite · Export CSV / Share}}",
   "@historyFooter": {
-    "placeholders": { "count": { "type": "int", "format": "decimalPattern" } }
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimalPattern"
+      }
+    }
   },
   "historyRowEventCutOff": "Cut-off mode activated",
   "historyRowEventAntiTheft": "Anti-theft mode activated",
   "historyRowSoh": "SOH {percent}%",
   "@historyRowSoh": {
-    "placeholders": { "percent": { "type": "int" } }
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
   },
   "historyRowCurrent": "Current {amps}A",
   "@historyRowCurrent": {
-    "placeholders": { "amps": { "type": "String" } }
+    "placeholders": {
+      "amps": {
+        "type": "String"
+      }
+    }
   },
   "historyRowThresholdWarning": "Protection threshold warning",
   "historyStatusEvent": "Event",
   "historyChartInsufficientData": "Not enough data to chart (need at least 2 records)",
-
   "settingsConnectionHeading": "Connection",
   "settingsAutoReconnectLabel": "Auto-reconnect",
   "settingsAutoReconnectSub": "Automatically attempt to reconnect when the connection drops",
@@ -278,26 +371,32 @@
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
   "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
-
   "startupFailedTitle": "Couldn't start",
   "startupFailedBody": "The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).",
   "startupDowngradeTitle": "App is older than your data",
   "startupDowngradeBody": "Your data was written by a newer version (schema v{stored}); this build only supports v{app}, so it was left untouched rather than risk damaging it. Please reinstall the newer app — your records are intact.",
   "@startupDowngradeBody": {
     "placeholders": {
-      "stored": { "type": "int" },
-      "app": { "type": "int" }
+      "stored": {
+        "type": "int"
+      },
+      "app": {
+        "type": "int"
+      }
     }
   },
   "startupRetry": "Try again",
   "startupResetDb": "Reset database (deletes all records)",
   "startupResetTitle": "Reset the database?",
   "startupResetBody": "This permanently deletes all history, saved devices and settings.",
-
   "exportScopeTitle": "Export scope",
   "exportScopeThisDevice": "This device only ({label})",
   "@exportScopeThisDevice": {
-    "placeholders": { "label": { "type": "String" } }
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
   },
   "exportScopeThisSession": "This connection only",
   "exportScopeAllDevices": "All devices",
@@ -314,12 +413,15 @@
   "settingsAboutDialogTitle": "Copyright & disclaimer",
   "settingsAboutDialogBody": "This app is an independent, community-developed open-source tool based on public reverse-engineering research, communicating via Bluetooth with the RCE smart capacitor/battery you have purchased.\n\nThis project is not an official RCE product and has no affiliation with the manufacturer; it is intended solely for personal, non-commercial use by owners of the hardware.",
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
-
   "dashboardTelemetryStalled": "Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.",
   "dashboardTelemetryStalledDespiteMonitor": "Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.",
   "dashboardDeviceFaultSuspected": "Suspected fault: the device set its status flag (code {code}). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.",
   "@dashboardDeviceFaultSuspected": {
-    "placeholders": { "code": { "type": "String" } }
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
   },
   "packLabelUnclassified": "Unclassified (tap to set)",
   "packLabelChoose": "Set device type",
@@ -327,7 +429,11 @@
   "powerBankSocSubUnknown": "Cell -- V",
   "powerBankCellSub": "Cell {volts} V",
   "@powerBankCellSub": {
-    "placeholders": { "volts": { "type": "String" } }
+    "placeholders": {
+      "volts": {
+        "type": "String"
+      }
+    }
   },
   "powerBankSocReadoutLabel": "Charge SOC",
   "powerBankCellVoltageLabel": "Cell Voltage",

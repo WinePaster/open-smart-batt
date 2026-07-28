@@ -39,11 +39,11 @@ class ReadoutGrid extends StatelessWidget {
     // Hairline grid: 1px line background showing through 1px gaps.
     final line = context.colors.line;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         decoration: BoxDecoration(
           color: line,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: line),
         ),
         child: Column(

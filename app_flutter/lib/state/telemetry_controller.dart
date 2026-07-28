@@ -161,6 +161,16 @@ class TelemetryController extends ChangeNotifier {
   }) =>
       _history.querySamples(since: since, limit: limit, deviceId: deviceId);
 
+  /// History rows paired with the unit each was recorded against, so the UI can
+  /// resolve a row's product class (see [HistoryRepo.querySamplesWithDevice]).
+  Future<List<({TelemetrySample sample, String? deviceId})>> historyWithDevice({
+    DateTime? since,
+    int? limit,
+    String? deviceId,
+  }) =>
+      _history.querySamplesWithDevice(
+          since: since, limit: limit, deviceId: deviceId);
+
   /// Stored sample count.
   Future<int> historyCount() => _history.count();
 

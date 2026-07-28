@@ -33,7 +33,7 @@ class SegmentedControl<T> extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: context.colors.panel2,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: context.colors.line),
       ),
       clipBehavior: Clip.antiAlias,
@@ -106,13 +106,13 @@ class FilterChip2 extends StatelessWidget {
   Widget build(BuildContext context) {
     final on = selected || filled;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: on ? AppColors.amber : context.colors.panel2,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border:
               Border.all(color: on ? Colors.transparent : context.colors.line),
         ),

@@ -150,6 +150,37 @@ class HistoryRepo {
     return rows.map(TelemetrySample.fromMap).toList(growable: false);
   }
 
+  /// Same as [querySamples], but each row keeps the device it was recorded
+  /// against.
+  ///
+  /// [TelemetrySample] deliberately carries no device id (it models what the
+  /// DEVICE reported, not our attribution of it), yet the History screen has to
+  /// know a row's product class to decide whether a reading is meaningful — a
+  /// super-capacitor's 0.0 A is not a measurement (design 0007). The CSV
+  /// exporter already solves this by reading the raw row; this gives the UI the
+  /// same footing instead of tempting anyone to widen the model.
+  Future<List<({TelemetrySample sample, String? deviceId})>>
+      querySamplesWithDevice({
+    DateTime? since,
+    int? limit,
+    String? deviceId,
+  }) async {
+    final (where, args) = _scope(since: since, deviceId: deviceId);
+    final rows = await _db.query(
+      Db.tableHistory,
+      where: where,
+      whereArgs: args,
+      orderBy: 'timestamp DESC, id DESC',
+      limit: limit,
+    );
+    return rows
+        .map((m) => (
+              sample: TelemetrySample.fromMap(m),
+              deviceId: m['device_id'] as String?,
+            ))
+        .toList(growable: false);
+  }
+
   /// WHERE clause for a time/device scope. A null [deviceId] means "every
   /// device" — it never matches only the NULL (unattributed) rows.
   (String?, List<Object?>?) _scope({DateTime? since, String? deviceId}) {

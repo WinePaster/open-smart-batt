@@ -425,7 +425,7 @@ abstract class AppLocalizations {
   /// No description provided for @disconnectedBody.
   ///
   /// In en, this message translates to:
-  /// **'Pick a saved device to reconnect quickly, or scan for nearby RCE capacitors.'**
+  /// **'Reconnect to a saved device, or scan for nearby RCE devices.'**
   String get disconnectedBody;
 
   /// No description provided for @disconnectedQuickSelectHeading.
