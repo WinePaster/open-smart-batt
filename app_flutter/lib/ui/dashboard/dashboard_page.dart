@@ -43,9 +43,15 @@ class DashboardPage extends StatelessWidget {
     final fault = context
         .select<TelemetryController, bool>((c) => c.sample.hasDeviceFaultFlag);
     final twf = context.select<TelemetryController, int?>((c) => c.twfRaw);
+    // A stall WITH the foreground service running means something else froze
+    // us — almost always an OEM battery optimiser — so the advice differs
+    // (design 0008 §3.6). Telling that user to enable a setting they already
+    // enabled is the fastest way to lose their trust.
+    final monitoring =
+        context.select<ConnectionController, bool>((c) => c.monitorRunning);
     return Column(
       children: [
-        if (stalled) const _StaleBanner(),
+        if (stalled) _StaleBanner(monitoring: monitoring),
         if (fault) _FaultBanner(twfRaw: twf),
         const Expanded(child: DashboardRouter()),
       ],
@@ -94,7 +100,10 @@ class _FaultBanner extends StatelessWidget {
 
 /// Shown when the link is up but telemetry has stopped arriving.
 class _StaleBanner extends StatelessWidget {
-  const _StaleBanner();
+  const _StaleBanner({required this.monitoring});
+
+  /// Whether the foreground service was running when the stall happened.
+  final bool monitoring;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +120,9 @@ class _StaleBanner extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                l10n.dashboardTelemetryStalled,
+                monitoring
+                    ? l10n.dashboardTelemetryStalledDespiteMonitor
+                    : l10n.dashboardTelemetryStalled,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.onErrorContainer),
               ),

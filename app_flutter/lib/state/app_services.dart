@@ -10,6 +10,7 @@ library;
 
 import '../ble/ble.dart';
 import '../data/data.dart';
+import '../platform/platform.dart';
 import '../protocol/protocol.dart';
 import 'build_info.dart';
 import 'connection_controller.dart';
@@ -62,10 +63,13 @@ class AppServices {
   /// - [parser]: device-metadata parser forwarded to
   ///   the default [BleService]. The open build passes [NoopMetadataParser];
   ///   a closed composition root injects its own. Ignored when [ble] is provided.
+  /// - [monitor]: inject a fake background-monitor handle in tests; defaults to
+  ///   the platform's implementation (Android foreground service, else no-op).
   static Future<AppServices> create({
     String? dbPath,
     AppDatabase? appDatabase,
     BleService? ble,
+    MonitorService? monitor,
     MetadataParser parser = const NoopMetadataParser(),
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
@@ -73,6 +77,7 @@ class AppServices {
     // Resolved before any controller exists, so the very first recorded row
     // already carries it.
     final env = await resolveBuildInfo();
+    final monitorService = monitor ?? MonitorService.forPlatform();
 
     final historyRepo = HistoryRepo(db.db);
     final deviceRepo = DeviceRepo(db.db);
@@ -92,6 +97,7 @@ class AppServices {
       logs: logRepo,
       session: session,
       appBuild: env.build,
+      monitor: monitorService,
     );
     final telemetry = TelemetryController(
       bleService,

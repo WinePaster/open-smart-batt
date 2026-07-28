@@ -577,11 +577,32 @@ class AppLocalizationsEn extends AppLocalizations {
       'Automatically attempt to reconnect when the connection drops';
 
   @override
+  String get settingsBackgroundMonitorLabel =>
+      'Keep monitoring in the background';
+
+  @override
+  String get settingsBackgroundMonitorSub =>
+      'Keeps recording while the screen is off or you switch apps; shows an ongoing notification while connected (Android only)';
+
+  @override
   String get settingsKeepAwakeLabel => 'Keep screen awake while connected';
 
   @override
   String get settingsKeepAwakeSub =>
       'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)';
+
+  @override
+  String get monitorNotificationTitle => 'OpenSmartBatt · monitoring';
+
+  @override
+  String get monitorNotificationStop => 'Stop';
+
+  @override
+  String get monitorChannelName => 'Background monitoring';
+
+  @override
+  String get monitorChannelDescription =>
+      'Ongoing notification showing live voltage and charge while connected';
 
   @override
   String get settingsDisplayHeading => 'Display';
@@ -767,7 +788,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dashboardTelemetryStalled =>
-      'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.';
+      'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.';
+
+  @override
+  String get dashboardTelemetryStalledDespiteMonitor =>
+      'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.';
 
   @override
   String dashboardDeviceFaultSuspected(String code) {

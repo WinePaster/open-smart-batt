@@ -227,6 +227,21 @@ class BleService {
     return (scanOk && connectOk) || locationOk;
   }
 
+  /// Request POST_NOTIFICATIONS (Android 13+) for the background-monitor
+  /// notification (design 0008).
+  ///
+  /// Deliberately returns void and never throws: the caller must not gate the
+  /// foreground service on the outcome. Denying it hides the notification but
+  /// leaves monitoring — and the BLE link — running.
+  Future<void> ensureNotificationPermission() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await Permission.notification.request();
+    } catch (_) {
+      // No plugin channel (tests) or an OEM that rejects the request.
+    }
+  }
+
   /// True if the Bluetooth adapter is currently on.
   Future<bool> isAdapterOn() async {
     if (await FlutterBluePlus.isSupported == false) return false;

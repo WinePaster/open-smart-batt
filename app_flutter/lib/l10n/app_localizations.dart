@@ -1004,6 +1004,18 @@ abstract class AppLocalizations {
   /// **'Automatically attempt to reconnect when the connection drops'**
   String get settingsAutoReconnectSub;
 
+  /// No description provided for @settingsBackgroundMonitorLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep monitoring in the background'**
+  String get settingsBackgroundMonitorLabel;
+
+  /// No description provided for @settingsBackgroundMonitorSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps recording while the screen is off or you switch apps; shows an ongoing notification while connected (Android only)'**
+  String get settingsBackgroundMonitorSub;
+
   /// No description provided for @settingsKeepAwakeLabel.
   ///
   /// In en, this message translates to:
@@ -1015,6 +1027,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)'**
   String get settingsKeepAwakeSub;
+
+  /// No description provided for @monitorNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenSmartBatt · monitoring'**
+  String get monitorNotificationTitle;
+
+  /// No description provided for @monitorNotificationStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get monitorNotificationStop;
+
+  /// No description provided for @monitorChannelName.
+  ///
+  /// In en, this message translates to:
+  /// **'Background monitoring'**
+  String get monitorChannelName;
+
+  /// No description provided for @monitorChannelDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Ongoing notification showing live voltage and charge while connected'**
+  String get monitorChannelDescription;
 
   /// No description provided for @settingsDisplayHeading.
   ///
@@ -1355,8 +1391,14 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardTelemetryStalled.
   ///
   /// In en, this message translates to:
-  /// **'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep screen awake while connected\" avoids it.'**
+  /// **'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.'**
   String get dashboardTelemetryStalled;
+
+  /// No description provided for @dashboardTelemetryStalledDespiteMonitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.'**
+  String get dashboardTelemetryStalledDespiteMonitor;
 
   /// No description provided for @dashboardDeviceFaultSuspected.
   ///
