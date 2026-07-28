@@ -250,6 +250,11 @@ field `field_13`; it is the array element at index 1.)
 | `0x41` | Charge info | §8 |
 | `0x4A` | Discharge info | §8 |
 | `0x96` | Capacity / SOH info | §8 |
+| `0x25` | Manufacture year | §8.2.3 |
+| `0x29` | Firmware version | §8.2.3 |
+| `0x38` | Device MAC, as an ASCII string | §8.2.3 |
+| `0x3B` | Device real-time clock | §8.2.3 |
+| `0x2C` / `0x34` / `0x3A` / `0x42` | Streamed but undecoded | §10.1 |
 
 ### 5.3 `field_cb` string-compare codes (used in `setCurrentMode`)
 
@@ -449,6 +454,37 @@ Source: live captures (531 and 445 identical frames respectively). The 4th byte 
 write path, and its read-path meaning (a UT / under-temperature threshold is the
 working hypothesis) is **unverified** — scaling unknown, do not decode it.
 
+### 8.2.3 Identity / housekeeping registers (decoded 2026-07-28)
+
+These arrive in the connect burst, so they only appear once the keep-alive write
+path works (§10.2). All values below come from one super-capacitor
+(device-type `0x17`, serial 7809) captured on **both** Android (2026-07-27) and
+iOS (2026-07-28) — the two captures agree byte for byte, which is what raises
+them above single-observation guesses.
+
+| Selector | LEN | Layout | Example | Reading |
+|---|---|---|---|---|
+| `0x25` | 2 | big-endian u16 | `07e4` | **2020** — manufacture year |
+| `0x29` | 2 | `[major, minor]`, **not** a u16 | `0106` | **firmware 1.06** |
+| `0x38` | 17 | **ASCII text**, not packed bytes | `36433a…3946` | `"6C:79:B8:33:76:9F"` — the device MAC |
+| `0x3B` | 7 | `[year_hi, year_lo, MM, DD, hh, mm, ss]` | `07d0 07 10 10 04 35` | 2000-07-16 16:04:53 — device RTC |
+
+**`0x29` is a byte pair, not a number.** `0x0106` read as a u16 would be 262;
+the unit's firmware is 1.06, independently recorded from the vendor tooling.
+
+**`0x38` is text.** Decoding it as packed bytes yields nonsense; as ASCII it is
+the MAC, and it matches the address the Android BLE stack reported for the same
+unit. (iOS never exposes a MAC to the app, so on that platform this register is
+the *only* way to obtain a stable cross-platform device identity.)
+
+**`0x3B` is a clock, and it ticks.** Over a 22-minute capture the field advanced
+16:04:53 → 16:27:16 — 22 m 23 s against 22 m 25 s of wall clock — and was
+monotonic across **1112 of 1112** consecutive frames, with the seconds field
+bounded 0–59. The *rate* is therefore verified; the *absolute value* is not
+meaningful here (year 2000, and a time-of-day unrelated to the phone's), because
+this unit's RTC was evidently never set. Do not present it to a user as a
+timestamp; it is useful for ordering and for detecting a device reset.
+
 ### 8.3 Write-path inverse (`changeWarningParameters`)
 
 Confirms the read scaling (exact inverse):
@@ -621,7 +657,11 @@ not guess a layout** — each needs a controlled experiment before it is decoded
 | Selector | Seen on | Payload | Notes |
 |---|---|---|---|
 | `0x40` | smart battery (813 frames in one session; a separate 2026-07-05 capture streamed it 564 times) | 2 bytes, `222b` (8747) / `2229` (8745) | Barely moves. Candidates: cycle count, capacity (mAh), accumulated charge — **none evidenced**. To decode: capture the same unit before and after a charge/discharge cycle and see how it tracks. |
-| `0x42` | super-capacitor (488 frames) | 4 bytes, `07c87805`, **constant for the whole session** | A constant is most likely a static setting or a model code. Low value, low risk; recorded for completeness. |
+| `0x42` | super-capacitor (488 frames Android; 1113 more on iOS) | 4 bytes, `07c87805`, **constant** | Same value on both platforms and every session of the same unit — consistent with a static setting or model code. Still unproven. |
+| `0x2C` | super-capacitor | 2 bytes, `3b82`, constant per session | No hypothesis. |
+| `0x34` | super-capacitor | 9 bytes, `000a5d00006b0000007d19`-shaped, constant per session | No hypothesis. |
+| `0x3A` | super-capacitor | 2 bytes, `5100`, constant per session | No hypothesis. |
+| `0x41` | super-capacitor | 9 bytes, `304d303c0100272d12`-shaped | §5.2 labels this "charge info", but the observed length does not match the 2×u16 layout §8.2 describes. **Do not decode it with that formula** until a capture settles the discrepancy. |
 
 Method note: both were confirmed by **reassembling the byte stream and walking
 frames**, not by substring-matching hex text. An earlier pass using `grep` over
