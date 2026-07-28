@@ -85,13 +85,15 @@ iOS `2110 → 26072xxx`。**兩邊都是往上跳**，所以既有安裝與 Test
 
 ---
 
-## ⚠️ 簽章：目前每一次發版的金鑰都不同（更新必然失敗）
+## 🔑 Android release 簽章
 
 版號遞增是「能不能更新」的**必要條件，但不是充分條件**：Android 還要求新舊
-APK 的簽章憑證一致。目前不成立。
+APK 的簽章憑證一致。
 
-`android/app/build.gradle.kts` 的 release buildType 仍指向 debug 簽章設定，而
-CI runner 上**沒有**既存的 `~/.android/debug.keystore`，Gradle 會當場產生一把
+### 曾經的問題（2026-07-28 發現並修正）
+
+`android/app/build.gradle.kts` 的 release buildType 原本指向 **debug** 簽章設定，
+而 CI runner 上**沒有**既存的 `~/.android/debug.keystore`，Gradle 會當場產生一把
 新的。結果是每一次 CI 執行都用**不同的金鑰**簽章。
 
 實測（2026-07-28，`apksigner verify --print-certs`）：
@@ -102,15 +104,65 @@ CI runner 上**沒有**既存的 `~/.android/debug.keystore`，Gradle 會當場�
 | v0.6.8（CI，26072812） | `3d39f562…a765` |
 | 本機建置 | `a242bb49…62ae` |
 
-**三顆互不相同，包含兩顆都是 CI 產出的。** 因此現況是：
+**三顆互不相同，包含兩顆都是 CI 產出的。** 造成的後果是：
 
 - 使用者**無法原地更新**，每次都必須先移除舊版；
 - 移除會**清空歷史紀錄、已存裝置與設定**；
 - 這與版號無關，改版號救不了。
 
-修法：產生一組固定的 release keystore，以 base64 存進 GitHub Secrets，建置時
-注入（與 iOS 的 `IOS_P12_BASE64` 同一個模式），並把 `build.gradle.kts` 的
-release 簽章指向它。**在那之前，發佈說明必須明確告知使用者需先移除舊版。**
+### 修法（已實作）
+
+固定一把 release keystore，以 base64 存進 GitHub Secrets、建置時注入 —— 與 iOS
+的 `IOS_P12_BASE64` 同一個模式。
+
+**一、產生 keystore（只做一次，由專案擁有者在本機執行）**
+
+```bash
+keytool -genkeypair -v -keystore opensmartbatt-release.jks \
+  -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 \
+  -alias opensmartbatt \
+  -dname "CN=OpenSmartBatt, O=WinePaster, C=TW"
+```
+
+> 🚨 **這個檔案與密碼一旦遺失就無法復原。** 遺失等於再也無法對現有安裝發布更新
+> ——所有人都得再移除重裝一次。請離線備份（至少兩份，且**不要**放進 repo）。
+> `android/.gitignore` 已排除 `key.properties` 與 `**/*.keystore`。
+
+**二、設定四個 GitHub Secrets**
+
+```bash
+base64 -i opensmartbatt-release.jks | pbcopy   # 貼進 ANDROID_KEYSTORE_BASE64
+```
+
+| Secret | 內容 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | keystore 檔案的 base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | `-storepass` |
+| `ANDROID_KEY_ALIAS` | `opensmartbatt` |
+| `ANDROID_KEY_PASSWORD` | `-keypass`（上面指令未分開設定時同 storepass） |
+
+**三、CI 與 Gradle（已完成，無須手動）**
+
+`release.yml` 會在建置前檢查四個 secret 是否齊全（缺就**直接失敗**，不會默默退回
+debug 簽章），解碼 keystore 到 runner 暫存目錄並寫出 `key.properties`；建置後以
+`apksigner verify --print-certs` **斷言憑證不是 `CN=Android Debug`**。
+
+`build.gradle.kts` 在 `key.properties` 存在時使用它，不存在時退回 debug 簽章 ——
+所以本機 `flutter run --release` 與 PR CI（無 secrets）仍然建得起來。**但用 debug
+簽章產出的 APK 不可對外發佈**，這正是上面那個 CI 斷言要擋的東西。
+
+實測（2026-07-28，本機）：帶 `key.properties` 建置 →
+`Signer #1 certificate DN: CN=OpenSmartBatt Test, …`；移除後重建 →
+`CN=Android Debug`。兩條路徑都確認可建置。
+
+### ⚠️ 這個修正救不了既有的安裝
+
+固定金鑰只能讓**從此之後**的更新可以覆蓋安裝。目前手上裝著 debug 簽章版本的
+使用者，**第一次**升級到固定金鑰的版本時**仍然必須移除舊版**（歷史會清空）。
+
+因此：**愈早導入，被迫清空的次數愈少。** 若下一版 Android 無論如何都要發，
+就應該把本修正一起帶上去 —— 否則就是先清一次、之後再清一次。
+發佈說明在那一版仍須明確告知需先移除舊版並先匯出歷史備份。
 
 ---
 
