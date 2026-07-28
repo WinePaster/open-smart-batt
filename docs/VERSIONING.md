@@ -357,36 +357,78 @@ grep -E 'FLUTTER_BUILD_(NAME|NUMBER)' ios/Flutter/Generated.xcconfig
 # FLUTTER_BUILD_NUMBER=26072881
 ```
 
-#### 3. Xcode → Archive → Distribute App
+#### 3. 產生 archive
 
 ```bash
-open app_flutter/ios/Runner.xcworkspace
+cd app_flutter/ios
+xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+  -sdk iphoneos -destination generic/platform=iOS \
+  -archivePath ../build/ios/archive/Runner archive \
+  -allowProvisioningUpdates \
+  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=CF3KF2RD3U
 ```
 
-Product → Destination 選 **Any iOS Device (arm64)** → Product → **Archive** →
-Organizer 開啟後 → **Distribute App** → App Store Connect → Upload。
+簽章設定是**命令列覆寫**，`project.pbxproj` 不會被改動（repo 保持乾淨）。
+產物固定在 `app_flutter/build/ios/archive/Runner.xcarchive`。
 
-#### ⚠️ 為什麼不能用命令列的 `flutter build ipa`
+也可以直接在 Xcode 開 `ios/Runner.xcworkspace` → Product → Destination 選
+**Any iOS Device (arm64)** → Product → **Archive**；差別是 Xcode 會把 archive
+放進 **Organizer**（`~/Library/Developer/Xcode/Archives/`）而不是上面那個路徑。
 
-公開 repo 的 `Runner` target 是 **`CODE_SIGN_STYLE = Manual`**（保留給 CI 注入
-憑證與 profile 用），命令列沒有東西可挑，會直接失敗：
+#### 4. Distribute App
+
+```bash
+open app_flutter/build/ios/archive/Runner.xcarchive
+```
+
+→ **Distribute App** → App Store Connect → Upload。
+
+archive 本身是用 **Apple Development** 憑證簽的；Distribute 時 Xcode 會**重新以
+Distribution 憑證簽章**，所以這是正常的、不必先改成 Distribution。
+
+開啟前先確認版號對：
+
+```bash
+plutil -extract ApplicationProperties.CFBundleShortVersionString raw \
+  app_flutter/build/ios/archive/Runner.xcarchive/Info.plist   # 0.6.9
+plutil -extract ApplicationProperties.CFBundleVersion raw \
+  app_flutter/build/ios/archive/Runner.xcarchive/Info.plist   # 26072881
+```
+
+> 🚨 **這個路徑只有在 archive 成功時才會被覆蓋。** 若 archive 失敗，舊的
+> `Runner.xcarchive` 會原封不動留在那裡 —— 開起來就是**上一版**。2026-07-28 就
+>發生過：archive 失敗但沒注意，打開看到的是前一天的 0.6.7 / 2110。
+> **先用上面的 `plutil` 確認版號再 Distribute。**
+
+#### ⚠️ 為什麼 `flutter build ipa` 會失敗
+
+公開 repo 的 `Runner` target 是 `CODE_SIGN_STYLE = Manual`（保留給 CI 注入用）。
+Flutter 其實有傳 `DEVELOPMENT_TEAM=CF3KF2RD3U -allowProvisioningUpdates`，但
+**Manual 模式會忽略它**，必須明確指定 profile，於是：
 
 ```
-No Provisioning Profile was found for your project's Bundle Identifier…
-Encountered error while archiving for device.
+error: "Runner" requires a provisioning profile.
+       Select a provisioning profile in the Signing & Capabilities editor.
 ```
 
-即使補上 `--export-options-plist` 也一樣 —— 那隻影響 export 階段，**archive
-階段就先失敗了**。Xcode GUI 之所以可行，是因為它會互動式地讓你挑團隊與 profile。
+畫面上 Flutter 印的那段「請到 Xcode 選 Development Team」是**誤導**——團隊本來
+就傳了。真正的原因要加 `-v` 才看得到上面那行。
 
-要走命令列就得改 `project.pbxproj` 的簽章設定，但那是刻意保持給 CI 用的，
-**不要為了本機方便去改它**（pro repo 則是 `Automatic` + `DEVELOPMENT_TEAM`）。
+**不要試著用 `PROVISIONING_PROFILE_SPECIFIER=…` 補救**，會踩到兩件事：
+
+1. 命令列的 build setting 會套用到**所有 target**，而 Pods 的各套件不支援
+   profile → `permission_handler_apple does not support provisioning profiles`
+   之類的錯誤一串；
+2. `iOS Team Store Provisioning Profile: com.winepaster.openSmartBatt` 是
+   **Xcode managed** 的，manual 模式會直接拒絕：
+   `is Xcode managed, but signing settings require a manually managed profile`。
+
+所以正解就是上面那條 `CODE_SIGN_STYLE=Automatic` + `-allowProvisioningUpdates`。
 
 #### 需要的本機條件
 
-- 憑證：`Apple Distribution: MOOOORE CO., LTD. (CF3KF2RD3U)`
-- Profile：`iOS Team Store Provisioning Profile: com.winepaster.openSmartBatt`
-  （裝在 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`）
+- 憑證：`Apple Distribution: MOOOORE CO., LTD. (CF3KF2RD3U)`（Distribute 時用）
+- Team：`CF3KF2RD3U`
 
 檢查：
 
