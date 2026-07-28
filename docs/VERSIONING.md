@@ -201,6 +201,24 @@ apksigner verify --print-certs opensmartbatt-*.apk
 
 ## 如何發布
 
+### 完整流程速查（兩平台，實跑過的順序）
+
+一次發版 = **CI 出 Android + 本機出 iOS**，兩者共用同一個 build number。
+
+| # | 步驟 | 做法 |
+|---|---|---|
+| 1 | 把該進的 PR 都合進 `main` | CI 綠燈後合併 |
+| 2 | 本機確認 `main` 沒問題 | `flutter analyze && flutter test`（各 PR 分開過 CI，合起來沒人測過） |
+| 3 | **觸發 Android 發版** | Actions →「Release APK」→ Run workflow → `bump=patch` |
+| 4 | 等 workflow 綠燈 | 它會回寫 pubspec、打 tag、編 APK、發 Release |
+| 5 | **抄下 build number** | 看 Release 的 APK 檔名 `…-v0.6.9-26072881.apk` |
+| 6 | **本機出 iOS** | 見「手動上傳 TestFlight」——**務必用同一個 build number** |
+
+> 步驟 3 的 workflow 若在中途失敗（例如簽章斷言），`pubspec.yaml` 可能**已經被
+> 回寫成新版號、但沒有 tag 也沒有 Release**。修好之後**直接重跑同一個
+> workflow** 即可，不需要手動改 pubspec —— 版號相同時它會識別並跳過回寫。
+> 實例：2026-07-28 的 v0.6.9 第一次跑就是這樣（version 成功、build 失敗）。
+
 ### A. 自動推進（推薦，一鍵）
 
 GitHub → Actions → 「Release APK」→ Run workflow → 選 `bump = patch / minor / major`。
@@ -293,6 +311,88 @@ release workflow 的 `version` job 會輸出剝除後的 `numeric`，iOS job 用
 
 rc 建置在 iOS 端應導向 TestFlight 內部測試群組（以遞增的 `CFBundleVersion`
 區分），而非照搬 Android 的 prerelease 版本字串。
+
+### 手動上傳 TestFlight（目前的實際做法）
+
+CI 的 iOS job 現況是 skipped（見下一節），所以 TestFlight 一律是**本機用 Xcode
+的 Distribute App** 上傳。以下步驟每一條都經實測，照做即可，不必再重新摸索。
+
+#### 1. 先確認 Android 那一版的 build number
+
+兩平台**必須用同一個 build number** —— 這正是本文件開頭那套 `YYMMDDNN` 方案的
+目的。到 Release 頁看 APK 檔名即可：
+
+```
+open-smart-batt-v0.6.9-26072881.apk
+                       ^^^^^^^^ 就是它
+```
+
+> ⚠️ **不要重跑 `tool/build_number.sh`。** 它是從時鐘推導的，晚幾分鐘跑就會落在
+> 不同的 15 分鐘區間，兩平台版號就對不起來了。
+
+#### 2. 把版號寫進 `Generated.xcconfig`
+
+Xcode archive 時的版號來自 `ios/Flutter/Generated.xcconfig` 的
+`FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER`（`Info.plist` 裡是
+`$(FLUTTER_BUILD_NAME)` / `$(FLUTTER_BUILD_NUMBER)`）。
+
+```bash
+cd app_flutter
+flutter build ios --release --no-codesign \
+  --build-name=0.6.9 --build-number=26072881
+```
+
+> 🚨 **一定要帶 `--build-number`。** `pubspec.yaml` 的版號固定寫成 `x.y.z+0`
+> （見「為什麼是 +0」），所以**不帶參數**建置會把 `FLUTTER_BUILD_NUMBER` 設成
+> **0**，archive 出來的就是 build 0，App Store Connect 會拒收或收到錯的版本。
+>
+> 實測（2026-07-28）：不帶參數 → `FLUTTER_BUILD_NUMBER=0`；帶參數 →
+> `26072881`。另外 `flutter pub get` **不會**動到這個檔案，不必擔心它覆寫。
+
+建完確認一下：
+
+```bash
+grep -E 'FLUTTER_BUILD_(NAME|NUMBER)' ios/Flutter/Generated.xcconfig
+# FLUTTER_BUILD_NAME=0.6.9
+# FLUTTER_BUILD_NUMBER=26072881
+```
+
+#### 3. Xcode → Archive → Distribute App
+
+```bash
+open app_flutter/ios/Runner.xcworkspace
+```
+
+Product → Destination 選 **Any iOS Device (arm64)** → Product → **Archive** →
+Organizer 開啟後 → **Distribute App** → App Store Connect → Upload。
+
+#### ⚠️ 為什麼不能用命令列的 `flutter build ipa`
+
+公開 repo 的 `Runner` target 是 **`CODE_SIGN_STYLE = Manual`**（保留給 CI 注入
+憑證與 profile 用），命令列沒有東西可挑，會直接失敗：
+
+```
+No Provisioning Profile was found for your project's Bundle Identifier…
+Encountered error while archiving for device.
+```
+
+即使補上 `--export-options-plist` 也一樣 —— 那隻影響 export 階段，**archive
+階段就先失敗了**。Xcode GUI 之所以可行，是因為它會互動式地讓你挑團隊與 profile。
+
+要走命令列就得改 `project.pbxproj` 的簽章設定，但那是刻意保持給 CI 用的，
+**不要為了本機方便去改它**（pro repo 則是 `Automatic` + `DEVELOPMENT_TEAM`）。
+
+#### 需要的本機條件
+
+- 憑證：`Apple Distribution: MOOOORE CO., LTD. (CF3KF2RD3U)`
+- Profile：`iOS Team Store Provisioning Profile: com.winepaster.openSmartBatt`
+  （裝在 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`）
+
+檢查：
+
+```bash
+security find-identity -v -p codesigning | grep Distribution
+```
 
 ### TestFlight 上傳的開關
 
