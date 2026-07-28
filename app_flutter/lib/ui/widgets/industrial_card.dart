@@ -37,7 +37,8 @@ class IndustrialCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       child: CustomPaint(
-        foregroundPainter: _CornerTicksPainter(colors.line2),
+        foregroundPainter:
+            CornerTicksPainter(colors.line2, AppTheme.radiusLg),
         child: Container(
           decoration: BoxDecoration(
             color: colors.panel,
@@ -104,13 +105,47 @@ class _FadeRule extends StatelessWidget {
 }
 
 /// Draws the two L-shaped corner ticks (mockup `.card::before/::after`).
-class _CornerTicksPainter extends CustomPainter {
-  const _CornerTicksPainter(this.tickColor);
+///
+/// Public only so [tickSegments] can be tested; treat it as internal to
+/// [IndustrialCard].
+class CornerTicksPainter extends CustomPainter {
+  const CornerTicksPainter(this.tickColor, this.cornerRadius);
 
   /// Corner-tick stroke color (neutral `line2`).
   final Color tickColor;
 
+  /// The card's corner radius. The ticks start where the curve ENDS.
+  ///
+  /// These came from the CSS mockup's `.card::before/::after`, which drew them
+  /// at the raw rect corners. Ported literally they landed at (0,0) and
+  /// (w,h) — outside a 12px rounded edge — so every card showed a stray square
+  /// bracket floating past its own curve. That is the "some blocks still have
+  /// square corners" reported after v0.6.9: the card was round, the decoration
+  /// on top of it was not.
+  final double cornerRadius;
+
   static const double _len = 8;
+
+  /// The four tick segments, as `(from, to)` pairs.
+  ///
+  /// Pulled out of [paint] so the geometry is testable: the bug this fixes was
+  /// invisible to both grep (the ticks are drawn, not styled) and to the test
+  /// suite (nothing asserted where they land). A pure function can be pinned.
+  @visibleForTesting
+  static List<(Offset, Offset)> tickSegments(Size size, double radius) {
+    final r = radius;
+    return [
+      // Top-left: each tick starts tangent to the corner arc and runs along
+      // the straight edge, so it reads as part of the outline, not an overhang.
+      (Offset(r, 0), Offset(r + _len, 0)),
+      (Offset(0, r), Offset(0, r + _len)),
+      // Bottom-right: mirrored.
+      (Offset(size.width - r, size.height),
+          Offset(size.width - r - _len, size.height)),
+      (Offset(size.width, size.height - r),
+          Offset(size.width, size.height - r - _len)),
+    ];
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -118,18 +153,13 @@ class _CornerTicksPainter extends CustomPainter {
       ..color = tickColor.withValues(alpha: 0.7)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
-
-    // Top-left: top + left edges.
-    canvas.drawLine(Offset.zero, const Offset(_len, 0), p);
-    canvas.drawLine(Offset.zero, const Offset(0, _len), p);
-
-    // Bottom-right: bottom + right edges.
-    final br = Offset(size.width, size.height);
-    canvas.drawLine(br, Offset(size.width - _len, size.height), p);
-    canvas.drawLine(br, Offset(size.width, size.height - _len), p);
+    for (final (from, to) in tickSegments(size, cornerRadius)) {
+      canvas.drawLine(from, to, p);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _CornerTicksPainter oldDelegate) =>
-      oldDelegate.tickColor != tickColor;
+  bool shouldRepaint(covariant CornerTicksPainter oldDelegate) =>
+      oldDelegate.tickColor != tickColor ||
+      oldDelegate.cornerRadius != cornerRadius;
 }
