@@ -12,10 +12,12 @@
 // the notification is throttled, and that a denied permission cannot silently
 // kill monitoring.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -290,15 +292,86 @@ void main() {
       expect(d.keepScreenAwake, isFalse);
     });
 
-    test('a pre-v6 row keeps its wakelock choice and gains monitoring', () {
+    test('a pre-v8 row keeps its wakelock choice and gains monitoring', () {
       // The old column is reused for keepScreenAwake, so an upgrading user's
       // existing choice survives rather than being silently reset.
       final migrated = AppSettings.fromMap(const {
         'background_keep_alive': 1,
-        // no 'background_monitoring' key: that is what a pre-v6 row looks like
+        // no 'background_monitoring' key: that is what a pre-v8 row looks like
       });
       expect(migrated.keepScreenAwake, isTrue);
       expect(migrated.backgroundMonitoring, isTrue);
+    });
+  });
+
+  group('schema v8 migration (v7 → v8)', () {
+    // This design was written against schema v6, but designs 0009/0010 took v6
+    // and v7 on main first, so it was renumbered to v8 on merge. That makes
+    // THIS the migration most worth testing: v0.6.9 shipped v7 to real users,
+    // so `from < 8` is the branch that has to fire for them. The sibling test
+    // above only exercises AppSettings.fromMap — it never touches ALTER TABLE.
+    test('a v7 database gains background_monitoring, defaulting on', () async {
+      // A real file: an in-memory DB is discarded on close, so the upgrade path
+      // would never see the v7 data.
+      final dir = await Directory.systemTemp.createTemp('osb_v8');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = p.join(dir.path, 'v7.db');
+      final legacy = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 7,
+          onCreate: (db, _) async {
+            await db.execute('''
+              CREATE TABLE settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                auto_reconnect INTEGER NOT NULL DEFAULT 1,
+                poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
+                background_keep_alive INTEGER NOT NULL DEFAULT 0,
+                dark_theme INTEGER NOT NULL DEFAULT 1, theme_mode TEXT,
+                lang TEXT NOT NULL DEFAULT 'zhHant',
+                temp_unit TEXT NOT NULL DEFAULT 'celsius',
+                auto_log INTEGER NOT NULL DEFAULT 1,
+                raw_packet_log INTEGER NOT NULL DEFAULT 0,
+                log_max_bytes INTEGER NOT NULL DEFAULT ${5 * 1024 * 1024}
+              )''');
+            await db.execute('''
+              CREATE TABLE history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL, pvlt REAL, svlt REAL, ampere REAL,
+                temperature INTEGER, dvol1 REAL, dvol2 REAL, dvol3 REAL,
+                dvol4 REAL, soh INTEGER, mode INTEGER, twf INTEGER,
+                serial TEXT, soc INTEGER, device_id TEXT, samples INTEGER,
+                app_build TEXT
+              )''');
+            await db.execute('''
+              CREATE TABLE diag_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL, direction TEXT NOT NULL,
+                hex TEXT NOT NULL, note TEXT, device_id TEXT,
+                session_id INTEGER, app_build TEXT
+              )''');
+            await db.execute('''
+              CREATE TABLE saved_devices (
+                id TEXT PRIMARY KEY, alias TEXT, name TEXT NOT NULL DEFAULT '',
+                stale INTEGER NOT NULL DEFAULT 0,
+                product_class TEXT NOT NULL DEFAULT 'unknown'
+              )''');
+          },
+        ),
+      );
+      // A user who had deliberately turned the wakelock OFF.
+      await legacy.insert('settings', {'id': 1, 'background_keep_alive': 0});
+      await legacy.close();
+
+      final upgraded =
+          await AppDatabase.open(path: path, factory: databaseFactoryFfi);
+      addTearDown(upgraded.close);
+      final row = (await upgraded.db.query('settings')).single;
+
+      expect(row['background_monitoring'], 1,
+          reason: 'upgrading users are exactly the ones hitting the stall');
+      expect(row['background_keep_alive'], 0,
+          reason: 'their separate wakelock choice must survive untouched');
     });
   });
 }
