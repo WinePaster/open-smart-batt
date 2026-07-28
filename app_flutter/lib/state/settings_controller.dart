@@ -13,7 +13,14 @@ import '../models/models.dart';
 
 /// ChangeNotifier wrapper around the single persisted [AppSettings] row.
 class SettingsController extends ChangeNotifier {
-  SettingsController(this._repo);
+  /// The lint below suggests `{this._history}`, which does not compile: Dart
+  /// forbids private named parameters.
+  // ignore: prefer_initializing_formals
+  SettingsController(this._repo, {HistoryRepo? history}) : _history = history;
+
+  /// Optional: pruning needs it, everything else does not. Null in tests that
+  /// only exercise settings.
+  final HistoryRepo? _history;
 
   final SettingsRepo _repo;
 
@@ -34,7 +41,7 @@ class SettingsController extends ChangeNotifier {
   AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
-  bool get autoLog => _settings.autoLog;
+  RetentionPolicy get retention => _settings.retention;
   bool get rawPacketLog => _settings.rawPacketLog;
   int get logMaxBytes => _settings.logMaxBytes;
 
@@ -67,7 +74,25 @@ class SettingsController extends ChangeNotifier {
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));
   Future<void> setTempUnit(TempUnit v) =>
       update(_settings.copyWith(tempUnit: v));
-  Future<void> setAutoLog(bool v) => update(_settings.copyWith(autoLog: v));
+  /// Change how long history is kept, then apply it immediately.
+  ///
+  /// Applying on change is the honest behaviour: the user picked "30 days"
+  /// expecting older rows to be gone, not to linger until the next launch.
+  /// Shortening the window DELETES data and cannot be undone — the UI copy
+  /// says so.
+  Future<void> setRetention(RetentionPolicy v) async {
+    await update(_settings.copyWith(retention: v));
+    await pruneHistory();
+  }
+
+  /// Drop history older than the retention window. No-op for
+  /// [RetentionPolicy.forever], and when no history repo was injected.
+  Future<void> pruneHistory() async {
+    final age = _settings.retention.maxAge;
+    final history = _history;
+    if (age == null || history == null) return;
+    await history.deleteOlderThan(DateTime.now().subtract(age));
+  }
   Future<void> setRawPacketLog(bool v) =>
       update(_settings.copyWith(rawPacketLog: v));
   Future<void> setLogMaxBytes(int v) =>

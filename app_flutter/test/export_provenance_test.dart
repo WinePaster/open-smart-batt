@@ -283,8 +283,8 @@ void main() {
       addTearDown(() async {
         await services.dispose();
       });
-      await services.settings.setAutoLog(true);
 
+      // Recording is unconditional since design 0011 — no switch to turn on.
       ble.emitLink(BleLinkState.ready);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 

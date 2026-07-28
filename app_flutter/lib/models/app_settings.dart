@@ -13,6 +13,33 @@ enum TempUnit { celsius, fahrenheit }
 /// [light].
 enum AppThemeMode { light, dark, auto }
 
+/// How long recorded telemetry history is kept (design 0011). DEFAULT
+/// [forever].
+///
+/// This REPLACED an "auto-log" on/off switch. That switch's only effect was
+/// whether history rows were written at all, which made it the history
+/// feature's master off button — and the people who turned it off were exactly
+/// the people who later could not produce data when asked for it. A year of
+/// history costs about 6 MB, so the storage argument it existed for never held.
+/// The useful control is how long to keep, not whether to record.
+enum RetentionPolicy {
+  days30,
+  days90,
+  days365,
+
+  /// Never prune. The default: a diagnostic app should not silently discard
+  /// the dealer's history, and nobody should lose data merely by upgrading.
+  forever;
+
+  /// Age beyond which rows are pruned, or null for [forever].
+  Duration? get maxAge => switch (this) {
+        RetentionPolicy.days30 => const Duration(days: 30),
+        RetentionPolicy.days90 => const Duration(days: 90),
+        RetentionPolicy.days365 => const Duration(days: 365),
+        RetentionPolicy.forever => null,
+      };
+}
+
 /// All user-configurable settings. Defaults match the mockup's shown state
 /// (raw-packet diagnostics OFF by default).
 class AppSettings {
@@ -47,8 +74,9 @@ class AppSettings {
   final TempUnit tempUnit;
 
   // --- data ---
-  /// Auto-write telemetry to history while connected.
-  final bool autoLog;
+  /// How long history is kept. Telemetry is ALWAYS recorded while connected
+  /// (design 0011); this only decides when old rows are pruned.
+  final RetentionPolicy retention;
 
   // --- diagnostics ---
   /// Log raw TX/RX BLE packets as hex. DEFAULT OFF.
@@ -65,7 +93,7 @@ class AppSettings {
     this.themeMode = AppThemeMode.light,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
-    this.autoLog = true,
+    this.retention = RetentionPolicy.forever,
     this.rawPacketLog = false,
     this.logMaxBytes = 5 * 1024 * 1024,
   });
@@ -81,7 +109,7 @@ class AppSettings {
     AppThemeMode? themeMode,
     AppLang? lang,
     TempUnit? tempUnit,
-    bool? autoLog,
+    RetentionPolicy? retention,
     bool? rawPacketLog,
     int? logMaxBytes,
   }) =>
@@ -93,7 +121,7 @@ class AppSettings {
         themeMode: themeMode ?? this.themeMode,
         lang: lang ?? this.lang,
         tempUnit: tempUnit ?? this.tempUnit,
-        autoLog: autoLog ?? this.autoLog,
+        retention: retention ?? this.retention,
         rawPacketLog: rawPacketLog ?? this.rawPacketLog,
         logMaxBytes: logMaxBytes ?? this.logMaxBytes,
       );
@@ -108,7 +136,7 @@ class AppSettings {
         'theme_mode': themeMode.name,
         'lang': lang.name,
         'temp_unit': tempUnit.name,
-        'auto_log': autoLog ? 1 : 0,
+        'retention': retention.name,
         'raw_packet_log': rawPacketLog ? 1 : 0,
         'log_max_bytes': logMaxBytes,
       };
@@ -130,7 +158,10 @@ class AppSettings {
           (e) => e.name == m['temp_unit'],
           orElse: () => TempUnit.celsius,
         ),
-        autoLog: (m['auto_log'] as num?)?.toInt() != 0,
+        retention: RetentionPolicy.values.firstWhere(
+          (r) => r.name == m['retention'],
+          orElse: () => RetentionPolicy.forever,
+        ),
         rawPacketLog: (m['raw_packet_log'] as num?)?.toInt() == 1,
         logMaxBytes:
             (m['log_max_bytes'] as num?)?.toInt() ?? (5 * 1024 * 1024),

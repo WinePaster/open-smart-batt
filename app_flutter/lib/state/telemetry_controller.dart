@@ -305,8 +305,12 @@ class TelemetryController extends ChangeNotifier {
   /// makes that visible instead of passing both off as "one minute".
   int _nSamples = 0;
 
+  /// Fold a sample into the current minute's bucket.
+  ///
+  /// Recording is UNCONDITIONAL since design 0011. The old `autoLog` switch
+  /// gated this, which meant a user could silently turn off the one thing we
+  /// later ask them to export; retention (how long to KEEP) replaced it.
   void _maybeAutoLog(TelemetrySample s) {
-    if (!_settings.autoLog) return;
     final t = s.timestamp;
     final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
     // A new unit mid-minute also closes the bucket, so one row never mixes two
