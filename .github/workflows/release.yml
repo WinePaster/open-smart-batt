@@ -185,7 +185,14 @@ jobs:
           generate_release_notes: true
           body: |
             社群自救版 · 非官方 · 非商業。
-            ⚠️ 此 APK 目前為 **debug 簽章**（尚未設定正式簽章金鑰）；**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
+
+            ⚠️ **安裝前請先移除舊版。** 此 APK 尚未設定正式簽章金鑰，每次發版的
+            簽章憑證都不同，Android 因此**不允許直接覆蓋更新**。移除舊版會一併
+            清除歷史紀錄與已存裝置 —— 如需保留，請先到「歷史 → 匯出」備份。
+            （詳見 docs/VERSIONING.md「簽章」一節）
+
+            ⚠️ 由於是 debug 簽章，**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
+
             versionName `${{ needs.version.outputs.version }}` · versionCode `${{ needs.version.outputs.build }}`
           files: |
             ${{ env.APK }}
