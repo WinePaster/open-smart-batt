@@ -8,6 +8,8 @@
 /// release the controllers' stream subscriptions, the BLE link and the DB.
 library;
 
+import 'dart:async';
+
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../platform/platform.dart';
@@ -84,7 +86,7 @@ class AppServices {
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
 
-    final settings = SettingsController(settingsRepo);
+    final settings = SettingsController(settingsRepo, history: historyRepo);
     final devices = DeviceController(deviceRepo);
     // design 0006: ONE session context shared by both controllers, so the log
     // events and the packet/history rows are attributed to the same unit. Seed
@@ -110,6 +112,11 @@ class AppServices {
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);
+
+    // Apply the retention window once per launch (design 0011). The window is
+    // measured in days, so there is no reason to prune more often than this —
+    // and doing it on every write would be pure I/O for no benefit.
+    unawaited(settings.pruneHistory());
 
     return AppServices._(
       appDb: db,

@@ -296,9 +296,9 @@
       }
     }
   },
-  "historyEmptyToday": "No records today.\nHistory is written automatically once a device is connected.",
+  "historyEmptyToday": "No records today.\nThey start accumulating once a device is connected.",
   "historyEmptyWarning": "No warning or event records.",
-  "historyEmptyAll": "No history yet.\nConnect a device and enable \"Auto-logging\" to start accumulating.",
+  "historyEmptyAll": "No history yet.\nIt starts accumulating once a device is connected.",
   "historyFooter": "{count, plural, =1{1 record · Local SQLite · Export CSV / Share} other{{count} records · Local SQLite · Export CSV / Share}}",
   "@historyFooter": {
     "placeholders": {
@@ -353,8 +353,12 @@
   "settingsLanguageEnglish": "English",
   "settingsLanguageSystem": "System",
   "settingsDataHeading": "Data",
-  "settingsAutoLogLabel": "Auto-record",
-  "settingsAutoLogSub": "Automatically write to history while connected",
+  "settingsRetentionLabel": "Keep history for",
+  "settingsRetentionSub": "Telemetry is always recorded while connected; this decides how long it is kept. Shortening it deletes older records immediately and cannot be undone.",
+  "retention30Days": "30 days",
+  "retention90Days": "90 days",
+  "retention365Days": "1 year",
+  "retentionForever": "Forever",
   "settingsExportAllLabel": "Export all data (CSV)",
   "settingsClearHistoryLabel": "Clear history",
   "settingsExportSubjectAllData": "OpenSmartBatt all data",

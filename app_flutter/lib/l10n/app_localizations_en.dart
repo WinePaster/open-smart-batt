@@ -516,14 +516,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get historyEmptyToday =>
-      'No records today.\nHistory is written automatically once a device is connected.';
+      'No records today.\nThey start accumulating once a device is connected.';
 
   @override
   String get historyEmptyWarning => 'No warning or event records.';
 
   @override
   String get historyEmptyAll =>
-      'No history yet.\nConnect a device and enable \"Auto-logging\" to start accumulating.';
+      'No history yet.\nIt starts accumulating once a device is connected.';
 
   @override
   String historyFooter(int count) {
@@ -645,11 +645,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDataHeading => 'Data';
 
   @override
-  String get settingsAutoLogLabel => 'Auto-record';
+  String get settingsRetentionLabel => 'Keep history for';
 
   @override
-  String get settingsAutoLogSub =>
-      'Automatically write to history while connected';
+  String get settingsRetentionSub =>
+      'Telemetry is always recorded while connected; this decides how long it is kept. Shortening it deletes older records immediately and cannot be undone.';
+
+  @override
+  String get retention30Days => '30 days';
+
+  @override
+  String get retention90Days => '90 days';
+
+  @override
+  String get retention365Days => '1 year';
+
+  @override
+  String get retentionForever => 'Forever';
 
   @override
   String get settingsExportAllLabel => 'Export all data (CSV)';

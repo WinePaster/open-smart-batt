@@ -493,13 +493,13 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get historyEmptyToday => '今天還沒有紀錄。\n連線裝置後會自動寫入歷史。';
+  String get historyEmptyToday => '今天還沒有紀錄。\n連線裝置後就會開始累積。';
 
   @override
   String get historyEmptyWarning => '沒有警告或事件紀錄。';
 
   @override
-  String get historyEmptyAll => '尚無歷史紀錄。\n連線裝置並開啟「自動紀錄」即可開始累積。';
+  String get historyEmptyAll => '尚無歷史紀錄。\n連線裝置後就會開始累積。';
 
   @override
   String historyFooter(int count) {
@@ -614,10 +614,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDataHeading => '資料';
 
   @override
-  String get settingsAutoLogLabel => '自動紀錄';
+  String get settingsRetentionLabel => '歷史保留期限';
 
   @override
-  String get settingsAutoLogSub => '連線時自動寫入歷史';
+  String get settingsRetentionSub =>
+      '連線時一律記錄；此設定決定舊資料保留多久。調短會立即刪除超出範圍的紀錄，且無法復原。';
+
+  @override
+  String get retention30Days => '30 天';
+
+  @override
+  String get retention90Days => '90 天';
+
+  @override
+  String get retention365Days => '1 年';
+
+  @override
+  String get retentionForever => '永久';
 
   @override
   String get settingsExportAllLabel => '匯出全部資料 (CSV)';

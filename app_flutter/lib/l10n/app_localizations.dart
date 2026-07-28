@@ -923,7 +923,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyEmptyToday.
   ///
   /// In en, this message translates to:
-  /// **'No records today.\nHistory is written automatically once a device is connected.'**
+  /// **'No records today.\nThey start accumulating once a device is connected.'**
   String get historyEmptyToday;
 
   /// No description provided for @historyEmptyWarning.
@@ -935,7 +935,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyEmptyAll.
   ///
   /// In en, this message translates to:
-  /// **'No history yet.\nConnect a device and enable \"Auto-logging\" to start accumulating.'**
+  /// **'No history yet.\nIt starts accumulating once a device is connected.'**
   String get historyEmptyAll;
 
   /// No description provided for @historyFooter.
@@ -1130,17 +1130,41 @@ abstract class AppLocalizations {
   /// **'Data'**
   String get settingsDataHeading;
 
-  /// No description provided for @settingsAutoLogLabel.
+  /// No description provided for @settingsRetentionLabel.
   ///
   /// In en, this message translates to:
-  /// **'Auto-record'**
-  String get settingsAutoLogLabel;
+  /// **'Keep history for'**
+  String get settingsRetentionLabel;
 
-  /// No description provided for @settingsAutoLogSub.
+  /// No description provided for @settingsRetentionSub.
   ///
   /// In en, this message translates to:
-  /// **'Automatically write to history while connected'**
-  String get settingsAutoLogSub;
+  /// **'Telemetry is always recorded while connected; this decides how long it is kept. Shortening it deletes older records immediately and cannot be undone.'**
+  String get settingsRetentionSub;
+
+  /// No description provided for @retention30Days.
+  ///
+  /// In en, this message translates to:
+  /// **'30 days'**
+  String get retention30Days;
+
+  /// No description provided for @retention90Days.
+  ///
+  /// In en, this message translates to:
+  /// **'90 days'**
+  String get retention90Days;
+
+  /// No description provided for @retention365Days.
+  ///
+  /// In en, this message translates to:
+  /// **'1 year'**
+  String get retention365Days;
+
+  /// No description provided for @retentionForever.
+  ///
+  /// In en, this message translates to:
+  /// **'Forever'**
+  String get retentionForever;
 
   /// No description provided for @settingsExportAllLabel.
   ///

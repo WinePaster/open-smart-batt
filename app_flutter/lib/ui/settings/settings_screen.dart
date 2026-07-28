@@ -256,9 +256,18 @@ class _DataCardState extends State<_DataCard> {
       child: Column(
         children: [
           SettingsRow(
-            label: l10n.settingsAutoLogLabel,
-            sub: l10n.settingsAutoLogSub,
-            trailing: _Toggle(value: s.autoLog, onChanged: s.setAutoLog),
+            label: l10n.settingsRetentionLabel,
+            sub: l10n.settingsRetentionSub,
+            trailing: SegmentedControl<RetentionPolicy>(
+              selected: s.retention,
+              onChanged: s.setRetention,
+              options: [
+                (value: RetentionPolicy.days30, label: l10n.retention30Days),
+                (value: RetentionPolicy.days90, label: l10n.retention90Days),
+                (value: RetentionPolicy.days365, label: l10n.retention365Days),
+                (value: RetentionPolicy.forever, label: l10n.retentionForever),
+              ],
+            ),
           ),
           SettingsLinkRow(
             icon: Icons.file_download_outlined,

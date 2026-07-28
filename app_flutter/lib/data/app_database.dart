@@ -45,7 +45,11 @@ class Db {
   /// migration body — after which whoever already upgraded never runs the
   /// loser's branch. Design 0008 was originally written as v6 while designs
   /// 0009/0010 took v6 and v7 on main; it was renumbered to v8 on merge.
-  static const int schemaVersion = 8;
+  /// v9: settings gained `retention` (design 0011), DEFAULT 'forever'. The
+  /// `auto_log` column is DEAD from v9 on — nothing reads it. It stays because
+  /// SQLite needs 3.35+ for DROP COLUMN and minSdk 24 ships older; rebuilding
+  /// the whole settings table to reclaim four bytes is not a trade worth making.
+  static const int schemaVersion = 9;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -232,6 +236,14 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN background_monitoring INTEGER NOT NULL DEFAULT 1',
       );
     }
+    if (from < 9) {
+      // design 0011: history is now always recorded; this decides how long it
+      // is KEPT. DEFAULT 'forever' so that upgrading — including from a build
+      // where the user had auto-log switched off — never discards anything.
+      await db.execute(
+        "ALTER TABLE ${Db.tableSettings} ADD COLUMN retention TEXT NOT NULL DEFAULT 'forever'",
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -288,6 +300,7 @@ class AppDatabase {
       temp_unit TEXT NOT NULL DEFAULT 'celsius',
       auto_log INTEGER NOT NULL DEFAULT 1,
       raw_packet_log INTEGER NOT NULL DEFAULT 0,
+      retention TEXT NOT NULL DEFAULT 'forever',
       log_max_bytes INTEGER NOT NULL DEFAULT ${5 * 1024 * 1024}
     )
     ''',

@@ -339,7 +339,7 @@ void main() {
       expect(s.themeMode, AppThemeMode.light);
       expect(s.lang, AppLang.zhHant);
       expect(s.tempUnit, TempUnit.celsius);
-      expect(s.autoLog, isTrue);
+      expect(s.retention, RetentionPolicy.forever);
       expect(s.logMaxBytes, 5 * 1024 * 1024);
     });
 
@@ -353,7 +353,7 @@ void main() {
         themeMode: AppThemeMode.auto,
         lang: AppLang.en,
         tempUnit: TempUnit.fahrenheit,
-        autoLog: false,
+        retention: RetentionPolicy.days90,
         rawPacketLog: true,
         logMaxBytes: 20 * 1024 * 1024,
       );
@@ -367,7 +367,7 @@ void main() {
       expect(s.themeMode, AppThemeMode.auto);
       expect(s.lang, AppLang.en);
       expect(s.tempUnit, TempUnit.fahrenheit);
-      expect(s.autoLog, isFalse);
+      expect(s.retention, RetentionPolicy.days90);
       expect(s.rawPacketLog, isTrue);
       expect(s.logMaxBytes, 20 * 1024 * 1024);
     });
