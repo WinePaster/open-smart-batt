@@ -152,12 +152,74 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: flutter pub get
 
+      # A release APK MUST carry the project's own, stable key. Signing with
+      # the debug key produces a fresh certificate on every CI run, and Android
+      # refuses to install an update signed by a different one — so every
+      # release forces an uninstall, wiping the user's history. Fail loudly
+      # rather than quietly shipping another un-updatable build.
+      - name: Verify Android signing secrets are complete
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [ -n "$ANDROID_KEYSTORE_BASE64" ]   || missing+=(ANDROID_KEYSTORE_BASE64)
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [ -n "$ANDROID_KEY_ALIAS" ]         || missing+=(ANDROID_KEY_ALIAS)
+          [ -n "$ANDROID_KEY_PASSWORD" ]      || missing+=(ANDROID_KEY_PASSWORD)
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::缺少 Android 簽章 secret：${missing[*]}"
+            echo "::error::未設定時 release 會退回 debug 簽章，產出的 APK 無法覆蓋安裝（使用者必須移除舊版、歷史全失）。"
+            echo "::error::設定方式見 docs/VERSIONING.md「Android release 簽章」。"
+            exit 1
+          fi
+
+      - name: Decode the release keystore (runner-only, never committed)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KEYSTORE="$RUNNER_TEMP/release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          # build.gradle.kts resolves storeFile against the android/ dir, so an
+          # absolute path is required here.
+          cat > "${APP_DIR}/android/key.properties" <<EOF
+          storeFile=$KEYSTORE
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
       - name: 編譯 release APK
         working-directory: ${{ env.APP_DIR }}
         run: |
           flutter build apk --release \
             --build-name="${{ needs.version.outputs.version }}" \
             --build-number="${{ needs.version.outputs.build }}"
+
+      # Proves the APK carries the intended key. Without this the failure mode
+      # is silent: a debug-signed APK builds and uploads perfectly happily, and
+      # only the user discovers it cannot be installed over their existing one.
+      - name: Assert the APK is signed with the release key
+        run: |
+          APK="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          CERTS="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK")"
+          echo "$CERTS"
+          SUBJECT="$(echo "$CERTS" | grep -m1 'Signer #1 certificate DN')"
+          if echo "$SUBJECT" | grep -qi 'CN=Android Debug'; then
+            echo "::error::APK 仍是 debug 簽章（$SUBJECT）。不可發佈。"
+            exit 1
+          fi
+          # Published in the release notes: for a sideloaded APK the signing
+          # certificate is a stronger authenticity check than a file hash,
+          # because it is stable across releases while the hash is not.
+          CERT_SHA="$(echo "$CERTS" | grep -m1 'Signer #1 certificate SHA-256 digest' | awk '{print $NF}')"
+          echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         run: |
@@ -186,12 +248,17 @@ jobs:
           body: |
             社群自救版 · 非官方 · 非商業。
 
-            ⚠️ **安裝前請先移除舊版。** 此 APK 尚未設定正式簽章金鑰，每次發版的
-            簽章憑證都不同，Android 因此**不允許直接覆蓋更新**。移除舊版會一併
-            清除歷史紀錄與已存裝置 —— 如需保留，請先到「歷史 → 匯出」備份。
-            （詳見 docs/VERSIONING.md「簽章」一節）
+            本版起 APK 以專案的**固定金鑰**簽章，**可直接覆蓋更新**，歷史紀錄與
+            已存裝置都會保留。
 
-            ⚠️ 由於是 debug 簽章，**請以下方 SHA256 為信任依據**，或自行從原始碼編譯後安裝。
+            ⚠️ **從 v0.6.8 或更早的版本升上來，這一次仍須先移除舊版。** 那些版本
+            是 debug 簽章、每次發版憑證都不同，Android 不允許覆蓋。移除會清除
+            歷史紀錄與已存裝置 —— 請先到「歷史 → 匯出」備份。**這是最後一次**，
+            之後就能直接更新。（詳見 docs/VERSIONING.md「Android release 簽章」）
+
+            驗證來源：簽章憑證 SHA-256 `${{ env.CERT_SHA }}`（**每一版都應相同**，
+            可用 `apksigner verify --print-certs` 核對），檔案完整性則見下方 SHA256。
+            或自行從原始碼編譯。
 
             versionName `${{ needs.version.outputs.version }}` · versionCode `${{ needs.version.outputs.build }}`
           files: |
