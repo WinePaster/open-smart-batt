@@ -18,6 +18,8 @@ import 'package:open_smart_batt/state/settings_controller.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  _logBudgetTests();
+
   setUpAll(sqfliteFfiInit);
 
   late AppDatabase appDb;
@@ -171,6 +173,56 @@ void main() {
           reason: 'the dead column stays put — SQLite cannot drop it here');
       expect(await HistoryRepo(upgraded.db).count(), 1,
           reason: 'their existing rows survive the upgrade');
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic-log budget (2026-07-29: 5/20 MB -> 20/100 MB)
+// ---------------------------------------------------------------------------
+//
+// Raising the options is trivial; the part that can break silently is the
+// EXISTING user. `SegmentedControl` matches on `==`, so a stored budget that is
+// no longer offered leaves the control with nothing selected — which reads as a
+// broken screen, not a stale preference. These pin the normalisation.
+void _logBudgetTests() {
+  group('log budget options (20 / 100 MB)', () {
+    test('the offered set is exactly 20 and 100 MB', () {
+      expect(AppSettings.logMaxBytesOptions,
+          [20 * 1024 * 1024, 100 * 1024 * 1024]);
+      expect(AppSettings.defaultLogMaxBytes, 20 * 1024 * 1024);
+    });
+
+    test('a legacy 5 MB row normalises to the new default', () {
+      // Pre-2026-07-29 installs stored 5 MB. Left alone it would render an
+      // unselected control.
+      final s = AppSettings.fromMap({'log_max_bytes': 5 * 1024 * 1024});
+      expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);
+      expect(AppSettings.logMaxBytesOptions.contains(s.logMaxBytes), isTrue);
+    });
+
+    test('a stored 20 MB row is kept as-is', () {
+      final s = AppSettings.fromMap({'log_max_bytes': 20 * 1024 * 1024});
+      expect(s.logMaxBytes, 20 * 1024 * 1024);
+    });
+
+    test('100 MB round-trips', () {
+      final s = AppSettings.fromMap({'log_max_bytes': 100 * 1024 * 1024});
+      expect(s.logMaxBytes, 100 * 1024 * 1024);
+    });
+
+    test('a missing or nonsense value falls back to the default', () {
+      expect(AppSettings.fromMap({}).logMaxBytes,
+          AppSettings.defaultLogMaxBytes);
+      expect(AppSettings.fromMap({'log_max_bytes': 7}).logMaxBytes,
+          AppSettings.defaultLogMaxBytes);
+    });
+
+    test('every offered option is selectable without normalisation', () {
+      // Guards the next person who edits the list but forgets fromMap.
+      for (final v in AppSettings.logMaxBytesOptions) {
+        expect(AppSettings.fromMap({'log_max_bytes': v}).logMaxBytes, v);
+      }
     });
   });
 }

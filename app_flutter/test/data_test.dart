@@ -340,7 +340,9 @@ void main() {
       expect(s.lang, AppLang.zhHant);
       expect(s.tempUnit, TempUnit.celsius);
       expect(s.retention, RetentionPolicy.forever);
-      expect(s.logMaxBytes, 5 * 1024 * 1024);
+      // Reference the constant, not a literal: this assertion drifted once
+      // already when the budget moved 5 MB -> 20 MB (2026-07-29).
+      expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);
     });
 
     test('save then load round-trips a non-default config', () async {

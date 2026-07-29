@@ -422,8 +422,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
               selected: s.logMaxBytes,
               onChanged: s.setLogMaxBytes,
               options: const [
-                (value: 5 * 1024 * 1024, label: '5 MB'),
                 (value: 20 * 1024 * 1024, label: '20 MB'),
+                (value: 100 * 1024 * 1024, label: '100 MB'),
               ],
             ),
           ),
