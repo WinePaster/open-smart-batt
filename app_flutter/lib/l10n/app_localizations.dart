@@ -386,6 +386,84 @@ abstract class AppLocalizations {
   /// **'Readings paused · last update {age}'**
   String dashboardTelemetryStale(String age);
 
+  /// No description provided for @captureMarkHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark what you are doing'**
+  String get captureMarkHeading;
+
+  /// No description provided for @captureMarkSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Writes one line into the diagnostic log so we can tell which reading belongs to which situation.'**
+  String get captureMarkSub;
+
+  /// No description provided for @captureMarkSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked: {label}'**
+  String captureMarkSaved(String label);
+
+  /// No description provided for @captureMarkPbOutA.
+  ///
+  /// In en, this message translates to:
+  /// **'Type-A output only'**
+  String get captureMarkPbOutA;
+
+  /// No description provided for @captureMarkPbOutC5v.
+  ///
+  /// In en, this message translates to:
+  /// **'Type-C output (5 V)'**
+  String get captureMarkPbOutC5v;
+
+  /// No description provided for @captureMarkPbOutCPd.
+  ///
+  /// In en, this message translates to:
+  /// **'Type-C output (PD)'**
+  String get captureMarkPbOutCPd;
+
+  /// No description provided for @captureMarkPbOutBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Both ports output'**
+  String get captureMarkPbOutBoth;
+
+  /// No description provided for @captureMarkPbIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Charging input only'**
+  String get captureMarkPbIn;
+
+  /// No description provided for @captureMarkPbIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything unplugged'**
+  String get captureMarkPbIdle;
+
+  /// No description provided for @captureMarkPackIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle (not charging or loaded)'**
+  String get captureMarkPackIdle;
+
+  /// No description provided for @captureMarkPackCharging.
+  ///
+  /// In en, this message translates to:
+  /// **'Charging'**
+  String get captureMarkPackCharging;
+
+  /// No description provided for @captureMarkPackLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Under load'**
+  String get captureMarkPackLoad;
+
+  /// No description provided for @captureMarkNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom note'**
+  String get captureMarkNote;
+
   /// No description provided for @dashboardProtectionHeading.
   ///
   /// In en, this message translates to:

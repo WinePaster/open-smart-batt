@@ -200,6 +200,47 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get captureMarkHeading => '標記你正在做的事';
+
+  @override
+  String get captureMarkSub => '在診斷日誌寫入一行，讓我們分得出哪一段讀數對應哪個情境。';
+
+  @override
+  String captureMarkSaved(String label) {
+    return '已標記：$label';
+  }
+
+  @override
+  String get captureMarkPbOutA => '只插 Type-A 輸出';
+
+  @override
+  String get captureMarkPbOutC5v => '只插 Type-C（5V）';
+
+  @override
+  String get captureMarkPbOutCPd => '只插 Type-C（PD）';
+
+  @override
+  String get captureMarkPbOutBoth => '兩個埠都插';
+
+  @override
+  String get captureMarkPbIn => '只接輸入充電';
+
+  @override
+  String get captureMarkPbIdle => '全部拔除';
+
+  @override
+  String get captureMarkPackIdle => '靜置（未充未放）';
+
+  @override
+  String get captureMarkPackCharging => '充電中';
+
+  @override
+  String get captureMarkPackLoad => '帶負載放電';
+
+  @override
+  String get captureMarkNote => '自訂備註';
+
+  @override
   String get dashboardProtectionHeading => '防護狀態 / 模式';
 
   @override

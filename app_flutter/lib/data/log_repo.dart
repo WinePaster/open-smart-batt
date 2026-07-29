@@ -136,6 +136,10 @@ class LogRepo {
     final out = <String>[
       ...header.map((h) => '# $h'),
       if (header.isNotEmpty) '# rows: ${rows.length}',
+      // design 0013: say up front whether this file carries ground truth, and
+      // which states it covers. Whoever receives it should not have to scan ten
+      // thousand lines to find out that it has none.
+      if (header.isNotEmpty) '# marks: ${_markSummary(rows)}',
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
     ];
@@ -178,6 +182,24 @@ class LogRepo {
     // labels byte-identical to what they were before this field existed.
     final build = e.appBuild == null ? '' : ' app=${e.appBuild}';
     return '$device$session$build';
+  }
+
+  /// `6 (pb_out_a, pb_out_c_5v, …)` or `none`.
+  ///
+  /// Explicitly `none` rather than an omitted line: "this capture has no marks"
+  /// is information, and a blank would read as a missing feature.
+  static String _markSummary(List<Map<String, Object?>> rows) {
+    final codes = <String>[];
+    var total = 0;
+    for (final r in rows) {
+      final note = r['note'] as String?;
+      if (note == null || !note.startsWith('mark: ')) continue;
+      total++;
+      final code = note.substring(6).split(' |').first.trim();
+      if (code.isNotEmpty && !codes.contains(code)) codes.add(code);
+    }
+    if (total == 0) return 'none';
+    return '$total (${codes.join(', ')})';
   }
 
   /// Rows with no device attribution — invisible to any per-device export.

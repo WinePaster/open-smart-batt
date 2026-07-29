@@ -135,6 +135,26 @@
       }
     }
   },
+  "captureMarkHeading": "Mark what you are doing",
+  "captureMarkSub": "Writes one line into the diagnostic log so we can tell which reading belongs to which situation.",
+  "captureMarkSaved": "Marked: {label}",
+  "@captureMarkSaved": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "captureMarkPbOutA": "Type-A output only",
+  "captureMarkPbOutC5v": "Type-C output (5 V)",
+  "captureMarkPbOutCPd": "Type-C output (PD)",
+  "captureMarkPbOutBoth": "Both ports output",
+  "captureMarkPbIn": "Charging input only",
+  "captureMarkPbIdle": "Everything unplugged",
+  "captureMarkPackIdle": "Idle (not charging or loaded)",
+  "captureMarkPackCharging": "Charging",
+  "captureMarkPackLoad": "Under load",
+  "captureMarkNote": "Custom note",
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "PVLT · Primary Voltage",
   "gaugeSohUnknown": "SOH --",
