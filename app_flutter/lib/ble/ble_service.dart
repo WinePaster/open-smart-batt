@@ -310,11 +310,12 @@ class BleService {
       final name = r.device.platformName.isNotEmpty
           ? r.device.platformName
           : r.advertisementData.advName;
-      // RCE if it advertises our service UUID (most precise) OR its name starts
-      // with "RCE" (e.g. RCE-SCAP_II). Either signal flags it as a vendor device.
+      // Vendor if it advertises our service UUID (most precise) OR its name
+      // carries a vendor token. See [looksLikeVendorName] for why this is a
+      // token-prefix match rather than `startsWith` or `contains`.
       final isVendor =
           r.advertisementData.serviceUuids.contains(_serviceGuid) ||
-              name.toUpperCase().startsWith('RCE');
+              looksLikeVendorName(name);
       final existing = _scanSeen[id];
       if (existing == null ||
           existing.rssi != r.rssi ||

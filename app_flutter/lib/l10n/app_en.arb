@@ -246,7 +246,15 @@
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",
   "devicesScanning": "Scanning…",
-  "devicesNearbyNotFound": "No nearby devices found (make sure the capacitor is powered on, Bluetooth is enabled, and you are close by)",
+  "devicesNearbyNotFound": "No nearby devices found (make sure the device is powered on, Bluetooth is enabled, and you are close by)",
+  "devicesNearbyNoneVendor": "{count, plural, =1{1 Bluetooth device is nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.} other{{count} Bluetooth devices are nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.}}",
+  "@devicesNearbyNoneVendor": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "devicesUnknownName": "Unknown",
   "devicesShowRceOnly": "Show RCE devices only",
   "devicesShowAllWithHidden": "{count, plural, =1{Show all BLE devices (1 non-RCE hidden)} other{Show all BLE devices ({count} non-RCE hidden)}}",

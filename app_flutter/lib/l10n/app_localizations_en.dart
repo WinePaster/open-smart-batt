@@ -397,7 +397,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesNearbyNotFound =>
-      'No nearby devices found (make sure the capacitor is powered on, Bluetooth is enabled, and you are close by)';
+      'No nearby devices found (make sure the device is powered on, Bluetooth is enabled, and you are close by)';
+
+  @override
+  String devicesNearbyNoneVendor(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Bluetooth devices are nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.',
+      one:
+          '1 Bluetooth device is nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get devicesUnknownName => 'Unknown';

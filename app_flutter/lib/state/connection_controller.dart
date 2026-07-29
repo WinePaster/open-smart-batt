@@ -739,10 +739,32 @@ class ConnectionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cap on scan-roster lines per scan. A crowded site is real — one field
+  /// capture saw 31 peripherals in a single pass — but the log budget is
+  /// shared with telemetry, so the roster is bounded rather than unbounded.
+  static const int kScanRosterLogLimit = 40;
+
   void _onScanning(bool scanning) {
     if (_scanning == scanning) return;
     _scanning = scanning;
-    if (!scanning) _event('scan done: ${_scanResults.length} device(s)');
+    if (!scanning) {
+      _event('scan done: ${_scanResults.length} device(s)');
+      // design 0015: the roster is written BEFORE any UI filtering, which is
+      // the whole point — it has to contain the entries the list hides. Without
+      // it, "I cannot find my device" is unanswerable: we cannot tell a
+      // radio-level miss from a filter-level hide, and those need opposite
+      // fixes. Logged in the controller, not BleService, because `_scanResults`
+      // is already the de-duplicated final list here.
+      for (final r in _scanResults.take(kScanRosterLogLimit)) {
+        _event("scan hit id=${r.id} name='${r.name}' "
+            'rssi=${r.rssi} vendor=${r.isVendor}');
+      }
+      if (_scanResults.length > kScanRosterLogLimit) {
+        _event('scan roster truncated at $kScanRosterLogLimit of '
+            '${_scanResults.length} — say so rather than let the file imply '
+            'the scan found only that many');
+      }
+    }
     notifyListeners();
   }
 
