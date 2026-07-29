@@ -189,7 +189,9 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           supportedLocales: AppLocalizations.supportedLocales,
           locale: _localeOf(settings.lang), // null => follow device locale
           // -------------------------------------------------------------------
-          home: const RootShell(),
+          home: RootShell(
+            deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+          ),
           // Global font bump (×1.15) on top of the user's system text scale.
           builder: (context, child) {
             final mq = MediaQuery.of(context);
@@ -233,7 +235,10 @@ enum _Tab { dashboard, history, settings }
 /// screens in an [IndexedStack] (state preserved across tab switches) and shows
 /// the startup community disclaimer once on first launch.
 class RootShell extends StatefulWidget {
-  const RootShell({super.key});
+  const RootShell({super.key, this.deviceInfoPanelBuilder});
+
+  /// Forwarded to [SettingsScreen]. Null on the open build (design 0003 seam).
+  final WidgetBuilder? deviceInfoPanelBuilder;
 
   @override
   State<RootShell> createState() => _RootShellState();
@@ -302,7 +307,9 @@ class _RootShellState extends State<RootShell> {
             const DashboardPage(),
             // Re-keyed on each switch to 歷史 so it reloads the latest records.
             HistoryScreen(key: ValueKey(_historyEpoch)),
-            const SettingsScreen(),
+            SettingsScreen(
+              deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+            ),
           ],
         ),
       ),

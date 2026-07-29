@@ -32,18 +32,30 @@ const String kProtocolUrl =
     'https://github.com/WinePaster/open-smart-batt/blob/main/docs/PROTOCOL.md';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.deviceInfoPanelBuilder});
+
+  /// Optional closed-side device-info panel (design 0003 seam). NULL on the
+  /// open build, where nothing is rendered and the screen is byte-identical to
+  /// before the slot existed.
+  ///
+  /// The open side knows only WHERE the panel goes, never what it contains: a
+  /// closed composition root passes `bootstrap(deviceInfoPanelBuilder: …)` and
+  /// reads its own [DeviceMetadata] inside the builder. No closed selector,
+  /// label or field name is referenced here.
+  final WidgetBuilder? deviceInfoPanelBuilder;
 
   @override
   Widget build(BuildContext context) {
+    final panel = deviceInfoPanelBuilder;
     return ListView(
       padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
-      children: const [
-        _ConnectionCard(),
-        _DisplayCard(),
-        _DataCard(),
-        _DiagnosticsCard(),
-        _AboutCard(),
+      children: [
+        const _ConnectionCard(),
+        if (panel != null) panel(context),
+        const _DisplayCard(),
+        const _DataCard(),
+        const _DiagnosticsCard(),
+        const _AboutCard(),
       ],
     );
   }
