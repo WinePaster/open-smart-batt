@@ -1442,12 +1442,6 @@ abstract class AppLocalizations {
   /// **'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.'**
   String get dashboardTelemetryStalledDespiteMonitor;
 
-  /// No description provided for @dashboardDeviceFaultSuspected.
-  ///
-  /// In en, this message translates to:
-  /// **'Suspected fault: the device set its status flag (code {code}). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.'**
-  String dashboardDeviceFaultSuspected(String code);
-
   /// No description provided for @packLabelUnclassified.
   ///
   /// In en, this message translates to:

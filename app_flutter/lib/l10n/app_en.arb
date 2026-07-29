@@ -422,14 +422,6 @@
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
   "dashboardTelemetryStalled": "Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.",
   "dashboardTelemetryStalledDespiteMonitor": "Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.",
-  "dashboardDeviceFaultSuspected": "Suspected fault: the device set its status flag (code {code}). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.",
-  "@dashboardDeviceFaultSuspected": {
-    "placeholders": {
-      "code": {
-        "type": "String"
-      }
-    }
-  },
   "packLabelUnclassified": "Unclassified (tap to set)",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",

@@ -18,6 +18,15 @@ class Selectors {
   static const int pvlt = 0x19;
 
   /// TWF warning / status bitfield. b4 (bit semantics unverified).
+  ///
+  /// Decoded and recorded, never interpreted. An earlier build read value
+  /// `0x20` as a device fault; field captures showed it appears ONLY on power
+  /// banks and only while charging (design 0018).
+  ///
+  /// ⚠️ It is NOT a usable charge/discharge signal either: trickle charging
+  /// reports `0x00`, so the byte is incomplete. Direction comes from the
+  /// 0x49 / 0x4A current fields, which are mutually exclusive across the whole
+  /// capture corpus.
   static const int twf = 0x20;
 
   /// Temperature (°C), signed int8 of b4.

@@ -818,11 +818,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.';
 
   @override
-  String dashboardDeviceFaultSuspected(String code) {
-    return 'Suspected fault: the device set its status flag (code $code). What this flag means is not yet confirmed — judge by the actual electrical behaviour, and please report this screen to us.';
-  }
-
-  @override
   String get packLabelUnclassified => 'Unclassified (tap to set)';
 
   @override

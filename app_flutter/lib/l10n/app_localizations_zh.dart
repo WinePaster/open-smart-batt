@@ -780,11 +780,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '資料已停止更新（連線仍在）。「背景持續監看」已開啟，代表系統仍然凍結了 App —— 部分機型需要另外把本 App 排除在電池最佳化之外。';
 
   @override
-  String dashboardDeviceFaultSuspected(String code) {
-    return '疑似異常：裝置回報了異常狀態旗標（狀態碼 $code）。此旗標的確切意義尚未證實，請以實際電氣狀況判斷，並把此畫面回報給我們。';
-  }
-
-  @override
   String get packLabelUnclassified => '未分類（請指定）';
 
   @override

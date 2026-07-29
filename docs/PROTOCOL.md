@@ -513,7 +513,7 @@ whole session except where noted):
 |---|---|---|
 | `0x00` | most units, most sessions | the normal/idle value |
 | `0x01` | a unit at PVLT 9.84 V with a 1.75 V cell imbalance; also a unit at a wholly normal PVLT 13.25 V | see below |
-| `0x20` | one unit, two sessions | PVLT ≈3.8 V, SVLT ≈9.0 V |
+| `0x20` | **power banks only** (`0x10 = 0x22`) — 447 frames across 4 captures; **0 frames across 13,535 battery/capacitor samples** | **charging.** PVLT ≈3.8–4.2 V is the SINGLE-CELL voltage, SVLT ≈9.0 V is the PD charging INPUT — not a 12 V pack in trouble |
 
 Only three of the eight bits have ever been non-zero, so most of the field is
 untested. A 2026-07-28 capture is the strongest single data point available: two
@@ -524,11 +524,41 @@ suggestive of **bit 0 = under-voltage**, but it is **not sufficient**: an earlie
 capture shows `0x01` on a unit sitting at a perfectly normal 13.25 V. Either the
 bit means something else, or its meaning is class-dependent.
 
-**Guidance for implementers.** Treating a TWF bit as a fault indicator is
-defensible *only* as an explicitly-labelled heuristic: say "suspected", show the
-raw byte alongside it, and never drive a destructive action from it. Do not
-present a bit as a decoded, named condition until a controlled experiment settles
-it — drive one unit across a known threshold and watch the byte change.
+### `0x20` means charging, on power banks (2026-07-29)
+
+Direction cross-check over the whole power-bank corpus:
+
+| | charging | discharging |
+|---|---|---|
+| TWF `0x20` | **42** | **0** |
+| TWF `0x00` | 10 | 449 |
+
+The forward direction holds without exception; the reverse does not. Ten
+charging samples report `0x00` — trickle charge (31–60 mA) and roughly one burst
+of start-up delay after the charger is connected.
+
+⚠️ **TWF is therefore NOT usable as the direction signal.** Use the `0x49` /
+`0x4A` current fields, which are mutually exclusive across the corpus and carry
+a magnitude. Deriving direction from this byte would show "discharging" during
+trickle charge.
+
+> Naming collision, stated once: the TWF **register** is selector `0x20`; the
+> TWF **value** `0x20` is what this section is about. They are unrelated.
+
+**Guidance for implementers.** **Do not present any TWF bit as a fault, not even
+a hedged one, until a controlled experiment settles it.**
+
+This advice previously read: label it "suspected", show the raw byte, never
+drive a destructive action. An implementation followed that guidance exactly —
+and a dealer still concluded from the screen that a healthy power bank was
+faulty while it charged normally. The hedge is not protection: a warning banner
+on a dashboard is read as a verdict regardless of its wording, and the raw byte
+shown beside it means nothing to a vehicle owner.
+
+The failure ran deeper than wording. The rule was derived from a capture that
+mixed several units with no per-device attribution, so a power bank's normal
+4 V cell reading was taken for a 12 V pack collapsed to 4 V. **Before drawing any
+conclusion from a byte, confirm which unit produced it.**
 
 **Known coverage gaps** (both are reasons not to trust any single bit):
 
@@ -555,6 +585,22 @@ minute). Still **only four units**, and a large gap has an innocent explanation
 (a pack under load, or mid-charge). **Unverified** — do not ship it as a decoded
 fault without a controlled capture, ideally a healthy unit parked long enough to
 rule out self-discharge.
+
+> 🚫 **PACKS ONLY — this signal is meaningless on a power bank, and applying it
+> there reproduces the exact failure described above.** On a power bank `PVLT` is
+> a single cell and `SVLT` is the USB port, so the two are separated by a boost
+> stage by design. Measured over the 2026-07-29 corpus:
+>
+> | class | median `SVLT − PVLT` |
+> |---|---|
+> | capacitor | −0.04 V |
+> | battery | −0.09 V |
+> | **power bank** | **1.41 V (max 9.49 V, n = 4690)** |
+>
+> The ">3 V = suspect" threshold above would flag **every power bank that is
+> charging** — the same false positive as the TWF `0x20` rule, arrived at by a
+> different formula. Any use of this signal must be gated on the device-type
+> byte first.
 
 > Note the corollary for UI work: a device reporting an abnormal condition may do
 > so *only* through registers that require the connect burst (`0x10`, `0x23`,
@@ -627,6 +673,10 @@ rule out self-discharge.
   than one byte** (`padLeft(8)` is only a floor) or the byte source differs. The
   "8-bit binary of byte[4]" framing and the specific protection-flag bit
   assignments are **not reliable**.
+  Note the distinction: the **value** `0x20` is now known to accompany charging
+  on power banks (§8.4), which says nothing about what bit 5 *means* on the other
+  classes — they have never produced it. Resolving a bit still needs a controlled
+  experiment.
 * **Per-code meaning of param-set acks `0211`–`0214`.** All four set the same flag
   (offset 0x133); the OV/UV/OT/threshold attribution is inferred, not proven.
 * **Initial "detect" command bytes.** Only the gating flags (0x3c/0x40) and that it
