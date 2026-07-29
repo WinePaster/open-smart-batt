@@ -102,9 +102,16 @@ class ModeArg {
 }
 
 /// Reported mode/status code, stored device-side at offset 0x113 (PROTOCOL.md
-/// §6.2) and echoed via selector 0x23. NOTE: the live capture shows a baseline
-/// of 0x05 with a transient pulse to 0x06; the documented 0/2/4 status space and
-/// the captured 0x05/0x06 echo space are distinct and not fully reconciled.
+/// §6.2) and echoed via selector 0x23.
+///
+/// These three codes are the **smart-battery / pack** space. A super-capacitor
+/// answers in a DIFFERENT space ([CapacitorStatus]) — see the class doc there
+/// for the capture that proves it.
+///
+/// Compare with `==`, never with a bitmask. PROTOCOL.md §6.2 records the
+/// reference app's own UI logic as equality (`currentMode != 2` / `!= 4`), and a
+/// mask is provably wrong: `5 & 4 != 0` would report a healthy capacitor as
+/// "cut-off active".
 class ReportedStatus {
   ReportedStatus._();
 
@@ -116,4 +123,26 @@ class ReportedStatus {
 
   /// Cut-off active (斷電模式已啟動).
   static const int cutOffActive = 4;
+}
+
+/// Super-capacitor status code space for selector `0x23`.
+///
+/// A capacitor does NOT have a run mode — it has no cut-off and no anti-theft
+/// (it is a monitor-plus-self-check unit), so [ReportedStatus] does not apply to
+/// it at all. Its `0x23` byte lives in its own space.
+///
+/// **Wire evidence** (our own captures, 2026-07-29 analysis):
+/// * super-capacitor (device-type `0x17`): `0x23` = `0x05` on **1802 of 1802**
+///   frames, no other value, on a unit the owner confirmed healthy.
+/// * smart battery (device-type `0x02`): `0x23` = `0x00` on 531/531 and 112/112
+///   frames across two different units.
+///
+/// Only the healthy value is named. Any other byte is reported as UNKNOWN
+/// (raw byte surfaced for diagnosis) rather than guessed at — we have no
+/// captured fault sample to name a code from.
+class CapacitorStatus {
+  CapacitorStatus._();
+
+  /// The value a healthy super-capacitor reports (see class doc).
+  static const int healthy = 5;
 }
