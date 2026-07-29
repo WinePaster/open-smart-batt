@@ -10,8 +10,10 @@
 // codes are asserted literally here — if one changes, this test is the place
 // that argument has to be made.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/ui/diagnostics/capture_wizard.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -153,6 +155,47 @@ void main() {
           'vendor=false'));
       final out = await logs.exportLog(header: const ['scope: all']);
       expect(out, contains('marks: none'));
+    });
+  });
+
+  group('guided run — what the dwell rule protects', () {
+    test('the minimum dwell exceeds the telemetry stall threshold', () {
+      // A step shorter than one poll gap can legitimately contain ZERO frames
+      // of the state being declared — which is how a real capture ended up with
+      // a 2-second session that proved nothing. The dwell has to clear the
+      // stall threshold with margin, or the guarantee is cosmetic.
+      expect(kCaptureStepDwell.inSeconds,
+          greaterThan(BleService.telemetryStallThreshold.inSeconds));
+      expect(kCaptureStepDwell, const Duration(seconds: 10));
+    });
+
+    test('the run covers the full script, without the free-text mark', () {
+      // The wizard walks declared states; "custom note" is not a state.
+      final script = CaptureMark.forClass(ProductClass.powerBank)
+          .where((m) => m != CaptureMark.note)
+          .map((m) => m.code)
+          .toList();
+      expect(script.length, 6);
+      expect(script.first, 'pb_out_a');
+      expect(script.last, 'pb_idle');
+    });
+
+    test('a completed step yields a CLOSED interval, a skipped one does not',
+        () {
+      // The analysis side needs a span, not a start. But a skipped step must
+      // NOT produce mark_end — that would hand back an interval containing
+      // unrelated data.
+      const m = CaptureMark.powerBankOutCPd;
+      expect(m.logLine('x'), startsWith('mark: pb_out_c_pd'));
+      expect(m.endLogLine(), 'mark_end: pb_out_c_pd');
+      expect(CaptureMark.skippedLogLine(m), isNot(contains('mark_end')));
+    });
+
+    test('skipped lines do not inflate the export mark summary as states', () {
+      // `mark: skipped | pb_x` parses to the code `skipped`, which is exactly
+      // right: it is a distinct thing from having been in that state.
+      final line = CaptureMark.skippedLogLine(CaptureMark.powerBankIn);
+      expect(line.substring(6).split(' |').first.trim(), 'skipped');
     });
   });
 }

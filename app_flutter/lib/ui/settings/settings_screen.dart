@@ -15,6 +15,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../dashboard/capture_mark_labels.dart';
+import '../diagnostics/capture_wizard.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -322,6 +324,46 @@ class _DiagnosticsCard extends StatefulWidget {
 class _DiagnosticsCardState extends State<_DiagnosticsCard> {
   bool _busy = false;
 
+  /// Run the guided capture script for the connected unit.
+  ///
+  /// Requires a live connection: the marks describe states of a device we are
+  /// recording, and running it disconnected would write ground truth for
+  /// nothing.
+  Future<void> _runCaptureWizard() async {
+    final l10n = AppLocalizations.of(context);
+    final conn = context.read<ConnectionController>();
+    final messenger = ScaffoldMessenger.of(context);
+    if (!conn.isOnline) {
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(milliseconds: 1800),
+        content: Text(l10n.disconnectedTitle),
+      ));
+      return;
+    }
+    final marks = CaptureMark.forClass(conn.packLabel)
+        .where((m) => m != CaptureMark.note)
+        .toList();
+    if (marks.isEmpty) {
+      // An unclassified unit has no script — offering one would invite the
+      // mislabelled ground truth this feature exists to prevent.
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(milliseconds: 1800),
+        content: Text(l10n.packLabelUnclassified),
+      ));
+      return;
+    }
+    final done = await showCaptureWizard(
+      context,
+      marks: marks,
+      labelFor: (m) => captureMarkLabel(l10n, m),
+    );
+    if (!done) return;
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 2600),
+      content: Text(l10n.captureWizardFinished),
+    ));
+  }
+
   Future<void> _exportLog() async {
     if (_busy) return;
     // The diagnostic log is the one export where "this connection only" is
@@ -435,6 +477,14 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
                 (value: 100 * 1024 * 1024, label: '100 MB'),
               ],
             ),
+          ),
+          // design 0013 Phase 2. Lives in Diagnostics rather than on the
+          // dashboard because it is a deliberate procedure, not a quick action —
+          // the dashboard bar covers spontaneous marking.
+          SettingsLinkRow(
+            icon: Icons.assignment_turned_in_outlined,
+            label: l10n.captureWizardTitle,
+            onTap: _runCaptureWizard,
           ),
           SettingsLinkRow(
             icon: Icons.file_download_outlined,

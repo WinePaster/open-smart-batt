@@ -464,6 +464,60 @@ abstract class AppLocalizations {
   /// **'Custom note'**
   String get captureMarkNote;
 
+  /// No description provided for @captureWizardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Guided capture'**
+  String get captureWizardTitle;
+
+  /// No description provided for @captureWizardSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Walks through the standard script, holding each state long enough to be usable.'**
+  String get captureWizardSub;
+
+  /// No description provided for @captureWizardStep.
+  ///
+  /// In en, this message translates to:
+  /// **'Step {n} of {total}'**
+  String captureWizardStep(int n, int total);
+
+  /// No description provided for @captureWizardHold.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold this state… {seconds} s'**
+  String captureWizardHold(int seconds);
+
+  /// No description provided for @captureWizardHoldDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Long enough — you can move on'**
+  String get captureWizardHoldDone;
+
+  /// No description provided for @captureWizardNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get captureWizardNext;
+
+  /// No description provided for @captureWizardSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get captureWizardSkip;
+
+  /// No description provided for @captureWizardAbort.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get captureWizardAbort;
+
+  /// No description provided for @captureWizardFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Capture finished. Export the diagnostic log and send it to us.'**
+  String get captureWizardFinished;
+
   /// No description provided for @dashboardProtectionHeading.
   ///
   /// In en, this message translates to:

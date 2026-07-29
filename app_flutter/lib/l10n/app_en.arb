@@ -155,6 +155,32 @@
   "captureMarkPackCharging": "Charging",
   "captureMarkPackLoad": "Under load",
   "captureMarkNote": "Custom note",
+  "captureWizardTitle": "Guided capture",
+  "captureWizardSub": "Walks through the standard script, holding each state long enough to be usable.",
+  "captureWizardStep": "Step {n} of {total}",
+  "@captureWizardStep": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "captureWizardHold": "Hold this state… {seconds} s",
+  "@captureWizardHold": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "captureWizardHoldDone": "Long enough — you can move on",
+  "captureWizardNext": "Done",
+  "captureWizardSkip": "Skip",
+  "captureWizardAbort": "Stop",
+  "captureWizardFinished": "Capture finished. Export the diagnostic log and send it to us.",
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "PVLT · Primary Voltage",
   "gaugeSohUnknown": "SOH --",
