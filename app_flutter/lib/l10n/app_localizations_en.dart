@@ -249,6 +249,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get captureMarkNote => 'Custom note';
 
   @override
+  String get captureWizardTitle => 'Guided capture';
+
+  @override
+  String get captureWizardSub =>
+      'Walks through the standard script, holding each state long enough to be usable.';
+
+  @override
+  String captureWizardStep(int n, int total) {
+    return 'Step $n of $total';
+  }
+
+  @override
+  String captureWizardHold(int seconds) {
+    return 'Hold this state… $seconds s';
+  }
+
+  @override
+  String get captureWizardHoldDone => 'Long enough — you can move on';
+
+  @override
+  String get captureWizardNext => 'Done';
+
+  @override
+  String get captureWizardSkip => 'Skip';
+
+  @override
+  String get captureWizardAbort => 'Stop';
+
+  @override
+  String get captureWizardFinished =>
+      'Capture finished. Export the diagnostic log and send it to us.';
+
+  @override
   String get dashboardProtectionHeading => 'Protection Status / Mode';
 
   @override

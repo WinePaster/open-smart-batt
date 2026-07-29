@@ -752,6 +752,15 @@ class ConnectionController extends ChangeNotifier {
     _event(mark.logLine(label, note: note));
   }
 
+  /// Close a marked interval, so the analysis side gets a span rather than a
+  /// start (design 0013 Phase 2).
+  void markCaptureEnd(CaptureMark mark) => _event(mark.endLogLine());
+
+  /// Record that a guided step was deliberately passed over. Distinct from an
+  /// absent mark: only one of the two is a reason to ask for a re-capture.
+  void markCaptureSkipped(CaptureMark mark) =>
+      _event(CaptureMark.skippedLogLine(mark));
+
   /// Cap on scan-roster lines per scan. A crowded site is real — one field
   /// capture saw 31 peripherals in a single pass — but the log budget is
   /// shared with telemetry, so the roster is bounded rather than unbounded.

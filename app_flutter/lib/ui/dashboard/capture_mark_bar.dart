@@ -23,6 +23,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import 'capture_mark_labels.dart';
 
 /// Collapsible strip of state marks for the connected unit.
 class CaptureMarkBar extends StatefulWidget {
@@ -35,26 +36,11 @@ class CaptureMarkBar extends StatefulWidget {
 class _CaptureMarkBarState extends State<CaptureMarkBar> {
   bool _open = false;
 
-  /// Locale label for a mark. The CODE is never translated — that is what
-  /// tooling matches — so this maps one to the other rather than storing text.
-  String _label(AppLocalizations l10n, CaptureMark m) => switch (m) {
-        CaptureMark.powerBankOutA => l10n.captureMarkPbOutA,
-        CaptureMark.powerBankOutC5v => l10n.captureMarkPbOutC5v,
-        CaptureMark.powerBankOutCPd => l10n.captureMarkPbOutCPd,
-        CaptureMark.powerBankOutBoth => l10n.captureMarkPbOutBoth,
-        CaptureMark.powerBankIn => l10n.captureMarkPbIn,
-        CaptureMark.powerBankIdle => l10n.captureMarkPbIdle,
-        CaptureMark.packIdle => l10n.captureMarkPackIdle,
-        CaptureMark.packCharging => l10n.captureMarkPackCharging,
-        CaptureMark.packLoad => l10n.captureMarkPackLoad,
-        CaptureMark.note => l10n.captureMarkNote,
-      };
-
   Future<void> _tap(BuildContext context, CaptureMark m) async {
     final l10n = AppLocalizations.of(context);
     final conn = context.read<ConnectionController>();
     final messenger = ScaffoldMessenger.of(context);
-    final label = _label(l10n, m);
+    final label = captureMarkLabel(l10n, m);
 
     String? note;
     if (m == CaptureMark.note) {
@@ -162,7 +148,7 @@ class _CaptureMarkBarState extends State<CaptureMarkBar> {
                     children: [
                       for (final m in marks)
                         _MarkChip(
-                          label: _label(l10n, m),
+                          label: captureMarkLabel(l10n, m),
                           onTap: () => _tap(context, m),
                         ),
                     ],

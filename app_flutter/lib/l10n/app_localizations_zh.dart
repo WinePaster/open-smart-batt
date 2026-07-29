@@ -241,6 +241,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get captureMarkNote => '自訂備註';
 
   @override
+  String get captureWizardTitle => '引導式擷取';
+
+  @override
+  String get captureWizardSub => '帶你走完標準劇本，每個狀態停留足夠長的時間才前進。';
+
+  @override
+  String captureWizardStep(int n, int total) {
+    return '步驟 $n / $total';
+  }
+
+  @override
+  String captureWizardHold(int seconds) {
+    return '請保持此狀態… $seconds 秒';
+  }
+
+  @override
+  String get captureWizardHoldDone => '時間足夠，可以前進';
+
+  @override
+  String get captureWizardNext => '我做好了';
+
+  @override
+  String get captureWizardSkip => '略過';
+
+  @override
+  String get captureWizardAbort => '中止';
+
+  @override
+  String get captureWizardFinished => '擷取完成。請匯出診斷日誌並回傳給我們。';
+
+  @override
   String get dashboardProtectionHeading => '防護狀態 / 模式';
 
   @override
