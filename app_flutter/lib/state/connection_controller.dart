@@ -558,6 +558,7 @@ class ConnectionController extends ChangeNotifier {
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
       _packLabel = ProductClass.unknown;
+      _loggedUnknownStatus.clear();
       // Stop attributing rows to this unit (the disconnect line above is still
       // attributed — it belongs to the connection that just ended).
       _session.end();
@@ -628,14 +629,41 @@ class ConnectionController extends ChangeNotifier {
     });
   }
 
+  /// Status bytes already reported this connection, so an unrecognised one is
+  /// logged once rather than every second.
+  final Set<int> _loggedUnknownStatus = <int>{};
+
   void _onTelemetrySample(TelemetrySample s) {
     _packResolver.observe(s);
     _recomputePackLabel();
     _updateNotificationBody(s);
+    _logUnknownCapacitorStatus(s);
     // Every frame proves the unit is still alive, so last-seen advances with
     // the data rather than sitting at the connect time.
     final id = _ble.connectedDeviceId;
     if (id != null) _touchLastSeen(id);
+  }
+
+  /// Record an unrecognised capacitor status byte to the diagnostic log.
+  ///
+  /// The dashboard deliberately shows plain language and NOT the raw byte (the
+  /// app's readers are vehicle owners, not reverse engineers). But that byte is
+  /// still the only lead we have on capacitor fault codes, so it has to survive
+  /// somewhere — and it cannot rely on the raw-packet log, which is OFF by
+  /// default. This uses the always-on event path instead, so the value reaches
+  /// us from any user who exports a log.
+  ///
+  /// Logged once per distinct value per connection: the frame repeats every
+  /// second and a flood would push the useful lines out of the 5 MB budget.
+  void _logUnknownCapacitorStatus(TelemetrySample s) {
+    if (_packLabel != ProductClass.supercapacitor) return;
+    final mode = s.mode;
+    if (mode == null || mode == CapacitorStatus.healthy) return;
+    if (!_loggedUnknownStatus.add(mode)) return;
+    _event('capacitor status byte not recognised: 0x'
+        '${mode.toRadixString(16).toUpperCase().padLeft(2, '0')} '
+        '(known healthy = 0x'
+        '${CapacitorStatus.healthy.toRadixString(16).toUpperCase().padLeft(2, '0')})');
   }
 
   /// How often a live connection rewrites `last_seen`.

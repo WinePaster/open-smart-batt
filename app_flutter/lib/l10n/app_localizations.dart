@@ -461,8 +461,8 @@ abstract class AppLocalizations {
   /// No description provided for @statusBadgeCapacitorUnknown.
   ///
   /// In en, this message translates to:
-  /// **'Unknown {raw}'**
-  String statusBadgeCapacitorUnknown(String raw);
+  /// **'Unrecognised'**
+  String get statusBadgeCapacitorUnknown;
 
   /// No description provided for @statusBadgeCutOffOn.
   ///
@@ -499,6 +499,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.'**
   String get statusAdvisoryNoteUnclassified;
+
+  /// No description provided for @statusAdvisoryCapacitorUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit is reporting a status this app does not recognise. It may be normal. Please export the diagnostic log (Settings) and send it to us — the log carries the detail we need.'**
+  String get statusAdvisoryCapacitorUnknown;
 
   /// No description provided for @statusAdvisoryThresholdBreach.
   ///
