@@ -38,7 +38,7 @@ class Selectors {
   /// DVOL per-series cell voltages (4 cells). Gated by field_cb 0168/01690104.
   static const int dvol = 0x24;
 
-  /// Year (年份) — §8.5. NOT the serial high-word (earlier
+  /// Year (年份) — §10.2. NOT the serial high-word (earlier
   /// recon mislabelled it). Byte layout pending capture; not decoded yet.
   static const int year = 0x25;
 
@@ -61,7 +61,7 @@ class Selectors {
   static const int secondaryCurrent = 0x2F;
 
   /// VADJ = 分串電壓精度 (per-cell voltage precision, mV/LSB); multiplier for
-  /// DVOL. Observed ~20.36 (§8.5). Not seen on the passive
+  /// DVOL. Observed ~20.36 (§10.2). Not seen on the passive
   /// poll — see PROTOCOL.md §10.
   static const int vadj = 0x30;
 

@@ -5,7 +5,7 @@
 /// ([TelemetrySample.isTypeAOutput], [TelemetrySample.isTypeCOutput],
 /// [TelemetrySample.inputFastChargeType], [TelemetrySample.outputFastChargeType]).
 ///
-/// TODO(design 0001 §7 Q1 / PROTOCOL.md §12.3): those fields are NOT yet
+/// TODO(design 0001 §7 Q1 / PROTOCOL.md §9.1): those fields are NOT yet
 /// populated — the exact "Command 7" SELECTOR value and the bit offsets of the
 /// supply bits + input/output fast-charge value fields are UNKNOWN pending a
 /// live `!#` capture on a power bank. The value→label tables (PD / QC / FCP / …)

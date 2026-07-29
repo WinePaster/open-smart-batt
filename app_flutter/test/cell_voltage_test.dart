@@ -139,5 +139,35 @@ void main() {
       expect(s.dvol, isNull, reason: 'raw/1000 would publish ~0.19 V per cell');
       expect(s.dvolPending, isTrue);
     });
+
+    test('a SHORT 0x47 publishes nothing, rather than 0.000 V per cell', () {
+      // InboundFrame.b() returns 0 out of range, so without a length guard a
+      // truncated frame decodes to four zero volts AND clears dvolPending —
+      // "we measured zero" where the truth is "we did not receive it". Same
+      // error as FB-13, different door. Three frames is the entire evidence
+      // base for this register, which is not enough to assume the length.
+      for (final len in [0, 2, 4, 6, 7]) {
+        final short = TelemetryDecoder.apply(
+            base, decodeOne(0x47, capturedMv.take(len).toList()),
+            at: at);
+        expect(short.dvol, isNull, reason: 'LEN $len must not publish cells');
+        expect(short.dvolPending, isFalse,
+            reason: 'LEN $len: a refused frame changes nothing at all');
+      }
+      // The full-length frame is unaffected.
+      final ok = TelemetryDecoder.apply(base, decodeOne(0x47, capturedMv),
+          at: at);
+      expect(ok.dvol!.length, 4);
+    });
+
+    test('a short 0x47 cannot erase per-cell voltages already published', () {
+      final good =
+          TelemetryDecoder.apply(base, decodeOne(0x47, capturedMv), at: at);
+      final after = TelemetryDecoder.apply(
+          good, decodeOne(0x47, capturedMv.take(4).toList()),
+          at: at);
+      expect(after.dvol![0], closeTo(3.755, 1e-9));
+      expect(after.dvolPending, isFalse);
+    });
   });
 }

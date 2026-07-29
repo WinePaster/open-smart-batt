@@ -6,7 +6,7 @@
 ///
 /// Design 0007: ALL THREE device-type bytes are now wire-verified, so the class
 /// is read off the wire and never inferred:
-///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§12.1);
+///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§9);
 ///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
 ///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27).
 ///
@@ -21,13 +21,13 @@
 library;
 
 /// Device-type byte (selector 0x10 b4) that identifies a power bank —
-/// PROTOCOL.md §8.2/§12.1. On the wire the byte is 0x22 (34); note an earlier
+/// PROTOCOL.md §8.2/§9. On the wire the byte is 0x22 (34); note an earlier
 /// recon mislabeled it `0x44`, which is the Dart Smi-tag (34 << 1).
 const int kPowerBankDeviceType = 0x22;
 
 /// Device-type byte (selector 0x10 b4) that identifies a smart battery —
 /// verified for the car battery (`RCE-CarBatt`) via the connect-burst HCI snoop
-/// (docs/devices.md §智慧電池; observed "device id = 02", §8.5).
+/// (docs/devices.md §智慧電池; observed "device id = 02", §10.2).
 const int kSmartBatteryDeviceType = 0x02;
 
 /// Device-type byte (selector 0x10 b4) that identifies a super-capacitor —

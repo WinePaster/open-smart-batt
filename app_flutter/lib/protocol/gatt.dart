@@ -13,7 +13,13 @@ class Gatt {
   static const String serviceUuid = '07b9fff0-d55f-5e82-ba44-81c0da86c46c';
 
   /// Write characteristic (slot ACE3), value handle 0x0018, props 0x08
-  /// = Write-Without-Response only. All commands + keep-alives go here.
+  /// = Write WITH response. The Write-Without-Response bit (0x04) is NOT set —
+  /// verified byte-for-byte in the raw HCI capture (17 characteristic
+  /// declarations across two independent captures) and on the wire (50 writes,
+  /// all ATT opcode 0x12, all answered by 0x13; opcode 0x52 never occurs).
+  /// Do NOT force write-without-response here: it throws on flutter_blue_plus
+  /// and silently kills every keep-alive, which is the FB-01 failure mode.
+  /// All commands + keep-alives go here. PROTOCOL.md §2 / §3.1.
   static const String writeCharUuid = '07b9ace3-d55f-5e82-ba44-81c0da86c46c';
 
   /// Notify characteristic (slot ACE4), value handle 0x001b, props 0x10 = Notify.

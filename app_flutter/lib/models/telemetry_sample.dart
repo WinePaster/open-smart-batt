@@ -62,7 +62,7 @@ class TelemetrySample {
   /// labelled **UT (under-temp)**; its scaling is not byte-verified, so we keep
   /// the raw byte only (read-back). It is preserved on the write path instead of
   /// being forced to 0x00, so setting OV/UV/OT does not clobber the device's UT.
-  /// PROTOCOL.md §8.5.
+  /// PROTOCOL.md §10.2.
   final int? warnUtByte;
 
   /// Charge info v1 / v2 — selector 0x41.
@@ -83,19 +83,31 @@ class TelemetrySample {
   /// fill-icon level (5% steps). Semantics unverified.
   final int? sohBucket;
 
-  /// State-of-charge percent (0..100), read DIRECTLY from the capacity frame
-  /// (selector 0x96) byte b6 — PROTOCOL.md §12.3. This is the device-reported
-  /// SOC; there is NO voltage->SOC curve. Distinct from [sohBucket], which is
-  /// only the icon-level bucket.
+  /// State-of-charge percent (0..100), read DIRECTLY from byte b6 of the
+  /// capacity frame. This is the device-reported SOC; there is NO voltage->SOC
+  /// curve. Distinct from [sohBucket], which is only the icon-level bucket.
+  ///
+  /// Two sources, and only one of them is evidenced:
+  ///   * power bank, selector 0x4B — PROTOCOL.md §9.1. A capture read 94 at the
+  ///     same minute the unit's own display showed 94 %. This is the real one.
+  ///   * pack, selector 0x96 — kept for symmetry, but 0x96 has NEVER been
+  ///     observed on the wire (0 of 206,516 frames, PROTOCOL.md §9). If it ever
+  ///     arrives, treat the first reading as unverified.
   final int? socPercent;
 
-  // ---- USB dual-port status (power bank "Command 7" frame) -----------------
-  // TODO(design 0001 §7 Q1): the exact selector value AND the bit offsets of
-  // the Type-A/Type-C supply bits and the input/output fast-charge value fields
-  // are UNKNOWN pending a live `!#` capture on a power bank. The value->label
-  // tables (PROTOCOL.md §12.3) are certain, but the bit positions are not, so
-  // these fields stay NULL until the wire layout is pinned down. Do NOT invent
-  // bit positions.
+  // ---- USB dual-port status ------------------------------------------------
+  // These four fields have never been populated, and the register they were
+  // waiting for has since been found: it is 0x4B byte b7 (PROTOCOL.md §9.1),
+  // where bit1 = Type-C, bit2 = output active, bit3 = PD input, bit5 = PD
+  // output. bit0 and bit4 are still open.
+  //
+  // They stay NULL because wiring them up is a UI change, not a decode change —
+  // see design 0017. Do NOT populate them piecemeal: the port shown must agree
+  // with the direction shown, and that is one decision, not four fields.
+  //
+  // The fast-charge value->label table these were originally shaped around
+  // (0 none / 2 PD / 4 QC2.0 / ...) came from analysis of the reference app and
+  // has NO wire evidence. Do not treat it as certain.
 
   /// USB Type-A port is currently supplying power (供電). NULL until decoded.
   final bool? isTypeAOutput;
@@ -103,16 +115,16 @@ class TelemetrySample {
   /// USB Type-C port is currently supplying power (供電). NULL until decoded.
   final bool? isTypeCOutput;
 
-  /// Input (charge) fast-charge protocol code (PROTOCOL.md §12.3: 0 none / 2 PD
+  /// Input (charge) fast-charge protocol code (PROTOCOL.md §9.1: 0 none / 2 PD
   /// / 4 other). NULL until decoded.
   final int? inputFastChargeType;
 
-  /// Output (supply) fast-charge protocol code (PROTOCOL.md §12.3: 0 none / 2 PD
+  /// Output (supply) fast-charge protocol code (PROTOCOL.md §9.1: 0 none / 2 PD
   /// / 4 QC2.0 / 6 QC3.0 / 8 FCP / 10 PE / 12 SFCP / 14 AFC). NULL until decoded.
   final int? outputFastChargeType;
 
   /// Device-type byte (b4) — selector 0x10. 0x22 (34) => power bank. PROTOCOL.md
-  /// §8.2/§12.1: 0x44 was the Dart Smi-tag (34<<1), NOT the wire byte.
+  /// §8.2/§9: 0x44 was the Dart Smi-tag (34<<1), NOT the wire byte.
   final int? deviceType;
 
   /// Product serial **tail** (zero-padded decimal string) — selector 0x26. This
@@ -178,19 +190,19 @@ class TelemetrySample {
       TelemetrySample(timestamp: at ?? DateTime.now());
 
   /// True when the device-type byte marks a power bank (0x22 = 34). PROTOCOL.md
-  /// §12.1: the reference app's `cmp #0x44` compares the Smi-tagged value
+  /// §9: the reference app's `cmp #0x44` compares the Smi-tagged value
   /// (34<<1), so the real wire byte is 0x22, not ASCII 'D'.
   bool get isPowerBank => deviceType == 0x22;
 
   /// True when the device-type byte marks a car smart battery (0x02). Observed
-  /// `[10] 裝置識別 = 02 汽車智慧電池` (PROTOCOL.md §8.5).
+  /// `[10] 裝置識別 = 02 汽車智慧電池` (PROTOCOL.md §10.2).
   bool get isSmartBattery => deviceType == 0x02;
 
   /// Full product serial = **dealer code (0x27) + product serial (0x26)**, per
   /// field feedback (`0168` + 經銷商編號 + 產品序號, e.g. `016800218000415`).
   /// The dealer code already carries the `0168`+dealer prefix; the product serial
   /// is zero-padded to 7 digits. Null until both source frames arrive (they come
-  /// in the connect burst, §8.5). Exact pad width is unverified — confirm vs the
+  /// in the connect burst, §10.2). Exact pad width is unverified — confirm vs the
   /// vendor app.
   String? get fullSerial {
     final d = dealerCode;

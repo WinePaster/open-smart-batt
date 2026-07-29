@@ -456,7 +456,7 @@ class BleService {
       // Diagnostic: dump the full GATT table (svc/char UUID + properties) to the
       // capture log. Confirmed the metadata burst (VADJ 0x30 / dealer 0x27) rides
       // the single notify char ace4 — there is NO second notify channel
-      // (PROTOCOL.md §8.5), so we subscribe to ace4 only.
+      // (PROTOCOL.md §10.2), so we subscribe to ace4 only.
       _dumpGatt(services);
 
       final notify = _notifyChar;
@@ -681,7 +681,7 @@ class BleService {
   ///
   /// [trailing] is the frame's 4th byte (observed UT / under-temp). When
   /// null (the default) we **preserve the last-read UT byte** from telemetry
-  /// (selector 0x2B, §8.5) instead of forcing 0x00 — so a user editing OV/UV/OT
+  /// (selector 0x2B, §10.2) instead of forcing 0x00 — so a user editing OV/UV/OT
   /// does not silently clobber the device's under-temp setting.
   Future<void> setThresholds({
     required double ovVolts,

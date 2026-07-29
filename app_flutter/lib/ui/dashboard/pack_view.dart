@@ -91,7 +91,7 @@ class PackScaffold extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final packLabel =
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
-    // Product serial: the full serial (dealer 0x27 + product 0x26, §8.5) once the
+    // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once the
     // connect burst arrives; else the tail-only serial; else the BLE device id
     // (MAC on Android, opaque UUID on iOS) as a placeholder.
     final serial = tele.fullSerial ??
