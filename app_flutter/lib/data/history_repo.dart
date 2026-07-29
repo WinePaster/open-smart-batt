@@ -342,13 +342,41 @@ class HistoryRepo {
             m[c],
       ]);
     }
+    // design 0019: a per-device export cannot state its own completeness from
+    // the result set — the rows it excluded are, by definition, not in it. So
+    // count them separately. `_contentSummary` can say "(+unattributed)" only
+    // for an all-devices export, which is exactly the asymmetry that let the
+    // per-device CSVs look complete while dropping 11.3 % of their samples.
+    final excluded =
+        deviceId == null ? 0 : await _countUnattributed(since: since);
     final body = const ListToCsvConverter().convert(rows);
     final lines = <String>[
       for (final h in header) '# $h',
       if (header.isNotEmpty) '# ${_contentSummary(raw)}',
+      // Omitted entirely at zero: an empty field reads as a missing feature
+      // (export_header.dart's rule).
+      if (header.isNotEmpty && excluded > 0)
+        '# excluded: $excluded unattributed rows',
       body,
     ];
     return (text: lines.join('\n'), rows: raw.length);
+  }
+
+  /// Rows in range that carry no device attribution, and are therefore absent
+  /// from every per-device export. Counted directly rather than inferred from
+  /// the result set, which cannot see them.
+  Future<int> _countUnattributed({DateTime? since}) async {
+    final where = <String>['device_id IS NULL'];
+    final args = <Object?>[];
+    if (since != null) {
+      where.add('timestamp >= ?');
+      args.add(since.millisecondsSinceEpoch);
+    }
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE ${where.join(' AND ')}',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
   /// `rows: N  range: A .. B  devices: N` — what the file actually contains, so

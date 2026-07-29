@@ -127,7 +127,18 @@ class LogRepo {
       whereArgs: args,
       orderBy: 'id ASC',
     );
-    final out = <String>[...header.map((h) => '# $h')];
+    // design 0019: the log export had no content summary at all — the CSV has
+    // had one since design 0009. Without it a recipient cannot tell a short
+    // capture from a truncated one, and cannot see that a per-device scope
+    // dropped the connect-time block (GATT dump, property flags) that lives on
+    // unattributed rows until `link: connecting`.
+    final excluded = deviceId == null ? 0 : await _countUnattributed();
+    final out = <String>[
+      ...header.map((h) => '# $h'),
+      if (header.isNotEmpty) '# rows: ${rows.length}',
+      if (header.isNotEmpty && excluded > 0)
+        '# excluded: $excluded unattributed rows',
+    ];
     String? lastKey;
     var first = true;
     for (final row in rows) {
@@ -167,6 +178,15 @@ class LogRepo {
     // labels byte-identical to what they were before this field existed.
     final build = e.appBuild == null ? '' : ' app=${e.appBuild}';
     return '$device$session$build';
+  }
+
+  /// Rows with no device attribution — invisible to any per-device export.
+  /// Counted directly; the filtered result set cannot see them.
+  Future<int> _countUnattributed() async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableDiagLog} WHERE device_id IS NULL',
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
   /// Number of distinct connections covered by a scope (for the export header).

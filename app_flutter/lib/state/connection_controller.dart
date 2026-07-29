@@ -186,13 +186,17 @@ class ConnectionController extends ChangeNotifier {
   ///
   /// Scan-time events legitimately carry a null device id (no connection yet);
   /// they stay unattributed rather than being filed under the previous unit.
-  void _event(String message) {
+  /// [deviceId] overrides the session's attribution for lines that name a
+  /// target before any session exists — `connect → X` and its failures. It does
+  /// NOT open a session: the attempt has not started, and `sessionId` staying
+  /// null says so honestly.
+  void _event(String message, {String? deviceId}) {
     final logs = _logs;
     if (logs == null) return;
     unawaited(logs.insertLog(
       LogEntry.event(
         message,
-        deviceId: _session.deviceId,
+        deviceId: deviceId ?? _session.deviceId,
         sessionId: _session.sessionId,
         appBuild: _appBuild,
       ),
@@ -402,11 +406,11 @@ class ConnectionController extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
-    _event('connect → $deviceId');
+    _event('connect → $deviceId', deviceId: deviceId);
     final ok = await _ble.ensurePermissions();
     if (!ok) {
       _lastError = 'permission_denied';
-      _event('connect aborted: permission denied');
+      _event('connect aborted: permission denied', deviceId: deviceId);
       notifyListeners();
       return;
     }
@@ -414,7 +418,7 @@ class ConnectionController extends ChangeNotifier {
       await _ble.connect(deviceId, timeout: timeout);
     } catch (e) {
       _lastError = e.toString();
-      _event('connect error: $e');
+      _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
       rethrow;
     }
@@ -516,7 +520,25 @@ class ConnectionController extends ChangeNotifier {
     // design 0006: open the recording session BEFORE logging this transition, so
     // the `link: ready` line itself is already attributed to the unit. The
     // session is closed further down, AFTER the disconnect line is written.
-    if (s == BleLinkState.ready) {
+    //
+    // design 0019: start at `connecting`, not at `ready`. Notifications are
+    // subscribed before `setNotifyValue` returns and that call can take up to
+    // its 15 s timeout, so waiting for `ready` left every frame in between
+    // unattributed — 11.3 % of history rows in one field capture, plus the
+    // whole connect-time block (GATT dump, property flags) that a per-device
+    // export then silently dropped.
+    //
+    // NOT earlier than this. `connect()` writes its `connect → X` line and only
+    // afterwards tears the previous link down, and packets from the OLD device
+    // are still arriving during that window (20 RX lines in one capture).
+    // Attributing from `connect →` would file them under X. `connecting` is
+    // safe because `connect()` awaits `disconnect()` — which cancels the notify
+    // subscription — before entering this state.
+    if (s == BleLinkState.connecting ||
+        s == BleLinkState.connected ||
+        s == BleLinkState.ready) {
+      // The handle we actually hold beats the target we last asked for: a
+      // capture with two interleaved connects showed the two disagree.
       final id = _ble.connectedDeviceId ?? _desiredDeviceId;
       if (id != null) _session.begin(id);
     }
