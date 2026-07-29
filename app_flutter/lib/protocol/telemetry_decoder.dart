@@ -94,6 +94,11 @@ class TelemetryDecoder {
   static List<double> dvol(InboundFrame f, double vadjScale) =>
       [for (var i = 4; i <= 7; i++) (f.b(i) / 1000.0) * vadjScale];
 
+  /// Per-cell voltages (V) — selector 0x47: 4 big-endian u16 mV values.
+  /// Already scaled by the device, so no VADJ is involved.
+  static List<double> cellVoltagesMv(InboundFrame f) =>
+      [for (var i = 4; i <= 10; i += 2) f.u16(i) / 1000.0];
+
   /// Warning over-voltage (V) — selector 0x2B: b4*0.025 + 14.4.
   static double warnOv(InboundFrame f) => f.b(4) * 0.025 + 14.4;
 
@@ -186,9 +191,22 @@ class TelemetryDecoder {
         return base.copyWith(timestamp: ts, current: current(f));
       case Selectors.vadj:
         return base.copyWith(timestamp: ts, vadj: vadj(f));
+      case Selectors.cellVoltagesMv:
+        // The device did the scaling for us, so this clears `dvolPending`
+        // WITHOUT needing 0x30 — a unit that streams 0x47 can show per-cell
+        // voltages even if the VADJ frame never arrives.
+        return base.copyWith(
+          timestamp: ts,
+          dvol: cellVoltagesMv(f),
+          dvolPending: false,
+        );
       case Selectors.dvol:
         final scale = base.vadj;
         if (scale == null) {
+          // 0x47 may already have published real per-cell voltages. Do NOT
+          // pull them back to "pending" just because this lower-level frame
+          // cannot be scaled yet — that would flicker a good reading away.
+          if (base.dvol != null) return base;
           // VADJ (0x30) not yet seen: the raw cell bytes are valid but the
           // volts scaling is unknown, so a `?? 1.0` default would publish a
           // bogus ~0.16 V per cell. Surface a pending state instead of a wrong

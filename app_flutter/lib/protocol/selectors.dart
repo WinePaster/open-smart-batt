@@ -62,6 +62,18 @@ class Selectors {
   /// Charge info (v1 / v2).
   static const int charge = 0x41;
 
+  /// Per-cell voltages in mV, 8 bytes = 4 x u16 big-endian.
+  ///
+  /// The same quantity as [dvol] (0x24), but already scaled BY THE DEVICE, so
+  /// it needs no [vadj]. Cross-checked against 0x24 x VADJ on a live unit: five
+  /// samples, all exactly `trunc(raw x VADJ)` — e.g. raw `0xB9`=185 x 20.30 =
+  /// 3755.5 -> 3755. That both confirms our 0x24 scaling end to end AND makes
+  /// this the authoritative source when it is present.
+  ///
+  /// Low rate: it rides the connect burst only (2 frames per session in the
+  /// capture) while 0x24 streams every second — so it does not replace 0x24.
+  static const int cellVoltagesMv = 0x47;
+
   /// Discharge info (v1 / v2) on a pack.
   ///
   /// On a POWER BANK the same 4-byte payload reads as `[u16 mV][u16 mA]`, and
