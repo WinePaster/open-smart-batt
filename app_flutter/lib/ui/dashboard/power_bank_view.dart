@@ -3,7 +3,7 @@
 /// Design 0001 §3.4: a power bank routes here DETERMINISTICALLY (device-type
 /// 0x22). Its instrument is a percent-mode SOC ring fed DIRECTLY by the
 /// device-reported state-of-charge (selector 0x96 b6 — there is NO voltage→SOC
-/// curve, PROTOCOL.md §12.3), alongside temperature + single-cell voltage
+/// curve, PROTOCOL.md §9.1), alongside temperature + single-cell voltage
 /// readouts and the (scaffolded) USB dual-port status. A power bank has NO DVOL
 /// per-cell card and NO cut-off / anti-theft controls — those live on the pack
 /// page, which a power bank never navigates to.
@@ -30,7 +30,7 @@ class PowerBankView extends StatelessWidget {
 
     final soc = tele.socPercent;
     // Sub-line under the SOC value: the single-cell voltage (PVLT is the cell
-    // voltage on a power bank, PROTOCOL.md §12.2) or a placeholder.
+    // voltage on a power bank, PROTOCOL.md §9.1) or a placeholder.
     final subText = tele.pvlt == null
         ? l10n.powerBankSocSubUnknown
         : l10n.powerBankCellSub(tele.pvlt!.toStringAsFixed(2));

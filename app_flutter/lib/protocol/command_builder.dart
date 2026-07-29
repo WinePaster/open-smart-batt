@@ -89,7 +89,7 @@ class CommandBuilder {
   /// Extended-poll keep-alive: the 2 bytes 0x21 0x23 ('!#'). Not a framed
   /// command. Sent on tick 1 for every device and every 5th tick for a power
   /// bank — the ONLY token that makes a device stream device-type / SOC / port
-  /// state (PROTOCOL.md §2 / §12.1).
+  /// state (PROTOCOL.md §2 / §9).
   Uint8List extendedPoll() => Uint8List.fromList(kExtendedPollBytes);
 
   /// Slow-metadata keep-alive: the single byte 0x40 ('@'). Not a framed command.

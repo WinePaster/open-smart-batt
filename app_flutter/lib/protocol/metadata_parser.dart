@@ -5,7 +5,15 @@
 /// no-op — it decodes NOTHING and enumerates NO selector numbers. A closed build
 /// injects a private implementation (in a separate package) that returns its own
 /// concrete [DeviceMetadata] subtype; that subtype and the selectors it handles
-/// live entirely on the closed side and never leak into this repository.
+/// live entirely on the closed side.
+///
+/// Note (2026-07-30): "the selectors it handles" is a smaller set than it once
+/// was. `0x25` / `0x29` / `0x38` / `0x3B` were declassified — they had their own
+/// wire evidence from this project's captures and are now documented openly in
+/// PROTOCOL.md §8.2.3. The seam is unaffected; the closed set is just shorter.
+/// Keeping this comment honest matters, because the previous wording implied
+/// the open repository disclosed nothing about those registers, and by then
+/// PROTOCOL.md already did.
 library;
 
 import 'inbound_frame.dart';
