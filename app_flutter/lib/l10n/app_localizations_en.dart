@@ -238,6 +238,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusBadgeCapacitorLabel => 'Capacitor Status';
 
   @override
+  String statusBadgeCapacitorUnknown(String raw) {
+    return 'Unknown $raw';
+  }
+
+  @override
   String get statusBadgeCutOffOn => 'On';
 
   @override
@@ -257,6 +262,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get statusAdvisoryNoteUnclassified =>
       'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.';
+
+  @override
+  String get statusAdvisoryThresholdBreach =>
+      'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.';
 
   @override
   String get capacitorCheckNoData =>
@@ -827,6 +836,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String powerBankCellSub(String volts) {
     return 'Cell $volts V';
   }
+
+  @override
+  String get powerBankCurrentLabel => 'Current';
+
+  @override
+  String get powerBankDesignCapacityLabel => 'Rated Capacity';
 
   @override
   String get powerBankSocReadoutLabel => 'Charge SOC';

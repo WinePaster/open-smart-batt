@@ -458,6 +458,12 @@ abstract class AppLocalizations {
   /// **'Capacitor Status'**
   String get statusBadgeCapacitorLabel;
 
+  /// No description provided for @statusBadgeCapacitorUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown {raw}'**
+  String statusBadgeCapacitorUnknown(String raw);
+
   /// No description provided for @statusBadgeCutOffOn.
   ///
   /// In en, this message translates to:
@@ -493,6 +499,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.'**
   String get statusAdvisoryNoteUnclassified;
+
+  /// No description provided for @statusAdvisoryThresholdBreach.
+  ///
+  /// In en, this message translates to:
+  /// **'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.'**
+  String get statusAdvisoryThresholdBreach;
 
   /// No description provided for @capacitorCheckNoData.
   ///
@@ -1459,6 +1471,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cell {volts} V'**
   String powerBankCellSub(String volts);
+
+  /// No description provided for @powerBankCurrentLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Current'**
+  String get powerBankCurrentLabel;
+
+  /// No description provided for @powerBankDesignCapacityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Rated Capacity'**
+  String get powerBankDesignCapacityLabel;
 
   /// No description provided for @powerBankSocReadoutLabel.
   ///

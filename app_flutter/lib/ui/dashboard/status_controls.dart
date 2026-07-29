@@ -39,32 +39,33 @@ class CapacitorControls extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
 
-    final runStatus = runStatusOf(l10n, tele.mode);
+    // A capacitor has NO run mode: no cut-off, no anti-theft (docs/devices.md
+    // capability matrix). The badge that used to sit here read the 0x23 byte
+    // through the pack code space and rendered a healthy unit's `5` as a red
+    // "cut-off" — see [packRunModeOf]. Removed, not fixed in place: the control
+    // was never applicable to this class.
+    final health = capacitorHealthOf(tele.mode);
     final capWarn = capacitorWarning(tele);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: StatusBadge(
-                icon: Icons.power_settings_new,
-                label: l10n.statusBadgeRunModeLabel,
-                value: runStatus.label,
-                tone: runStatus.tone,
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: StatusBadge(
-                icon: Icons.monitor_heart_outlined,
-                label: l10n.statusBadgeCapacitorLabel,
-                value: capWarn ? l10n.commonWarning : l10n.commonNormal,
-                tone: capWarn ? ControlTone.warn : ControlTone.good,
-              ),
-            ),
-          ],
+        StatusBadge(
+          icon: Icons.monitor_heart_outlined,
+          label: l10n.statusBadgeCapacitorLabel,
+          value: switch (health) {
+            CapacitorHealth.healthy => l10n.commonNormal,
+            // Raw byte rides along: it is the only lead we have on what a
+            // faulty unit reports, and a user can report it verbatim.
+            CapacitorHealth.unknown =>
+              l10n.statusBadgeCapacitorUnknown(_hexByte(tele.mode!)),
+            null => '--',
+          },
+          tone: switch (health) {
+            CapacitorHealth.healthy => ControlTone.good,
+            CapacitorHealth.unknown => ControlTone.warn,
+            null => ControlTone.neutral,
+          },
         ),
         const SizedBox(height: 13),
         ControlButton(
@@ -74,11 +75,23 @@ class CapacitorControls extends StatelessWidget {
           onPressed: online ? () => detectCapacitor(context, tele) : null,
         ),
         const SizedBox(height: 11),
+        // Threshold breach is OUR computation, so it is an advisory line — it
+        // must not masquerade as the device-reported status badge above.
+        if (capWarn) ...[
+          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
+          const SizedBox(height: 7),
+        ],
         AdvisoryNote(text: l10n.statusAdvisoryNoteCapacitor),
       ],
     );
   }
 }
+
+/// Render a status byte as `0x05`, so an unrecognised value reaches the user
+/// verbatim instead of being flattened into a bare "unknown". Today that raw
+/// byte is our only lead on what a faulty capacitor reports.
+String _hexByte(int v) =>
+    '0x${(v & 0xFF).toRadixString(16).toUpperCase().padLeft(2, '0')}';
 
 // ---------------------------------------------------------------------------
 // Battery body: cut-off badge + 解除斷電 + 防盜 (model-gated).
@@ -99,6 +112,7 @@ class BatteryControls extends StatelessWidget {
         .select<ConnectionController, bool>((c) => c.capabilities.hasAntiTheft);
 
     final runStatus = runStatusOf(l10n, tele.mode);
+    final known = packRunModeOf(tele.mode) != null;
     final cutOff = isCutOffMode(tele.mode);
 
     return Column(
@@ -119,9 +133,13 @@ class BatteryControls extends StatelessWidget {
               child: StatusBadge(
                 icon: Icons.power_off,
                 label: l10n.commonCutOff,
-                value: cutOff
-                    ? l10n.statusBadgeCutOffOn
-                    : l10n.statusBadgeCutOffOff,
+                // `--` while the byte is outside the pack space: "off" would be
+                // an assertion we cannot back (cf. [packRunModeOf]).
+                value: !known
+                    ? '--'
+                    : cutOff
+                        ? l10n.statusBadgeCutOffOn
+                        : l10n.statusBadgeCutOffOff,
                 tone: cutOff ? ControlTone.locked : ControlTone.neutral,
               ),
             ),
@@ -178,12 +196,18 @@ class PackControls extends StatelessWidget {
         .select<ConnectionController, DeviceCapabilities>((c) => c.capabilities);
 
     final runStatus = runStatusOf(l10n, tele.mode);
+    final known = packRunModeOf(tele.mode) != null;
     final capWarn = capacitorWarning(tele);
     final cutOff = isCutOffMode(tele.mode);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Only the two PACK badges here. The capacitor-status badge is gone:
+        // while the class is unresolved we do not know which code space the
+        // 0x23 byte belongs to, so asserting capacitor health would be a guess.
+        // Both badges self-disambiguate — a capacitor's byte is outside the
+        // pack space, so they render `--` rather than a wrong state.
         Row(
           children: [
             Expanded(
@@ -197,20 +221,13 @@ class PackControls extends StatelessWidget {
             const SizedBox(width: 9),
             Expanded(
               child: StatusBadge(
-                icon: Icons.monitor_heart_outlined,
-                label: l10n.statusBadgeCapacitorLabel,
-                value: capWarn ? l10n.commonWarning : l10n.commonNormal,
-                tone: capWarn ? ControlTone.warn : ControlTone.good,
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: StatusBadge(
                 icon: Icons.power_off,
                 label: l10n.commonCutOff,
-                value: cutOff
-                    ? l10n.statusBadgeCutOffOn
-                    : l10n.statusBadgeCutOffOff,
+                value: !known
+                    ? '--'
+                    : cutOff
+                        ? l10n.statusBadgeCutOffOn
+                        : l10n.statusBadgeCutOffOff,
                 tone: cutOff ? ControlTone.locked : ControlTone.neutral,
               ),
             ),
@@ -242,6 +259,12 @@ class PackControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
+        // Threshold breach is class-agnostic (it only needs 0x2B + a reading),
+        // so it survives the badge removal above as an advisory line.
+        if (capWarn) ...[
+          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
+          const SizedBox(height: 7),
+        ],
         AdvisoryNote(text: l10n.statusAdvisoryNoteUnclassified),
       ],
     );

@@ -231,6 +231,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusBadgeCapacitorLabel => '電容狀態';
 
   @override
+  String statusBadgeCapacitorUnknown(String raw) {
+    return '未知 $raw';
+  }
+
+  @override
   String get statusBadgeCutOffOn => '啟用';
 
   @override
@@ -250,6 +255,10 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get statusAdvisoryNoteUnclassified =>
       '尚未辨識出裝置型別，因此暫時顯示較寬鬆的功能集（不含防盜）。可於上方自行指定型別。';
+
+  @override
+  String get statusAdvisoryThresholdBreach =>
+      '目前讀數已超出裝置回報的警戒範圍（過壓／低壓／過溫）。此為 App 依裝置回報的門檻自行計算，並非裝置回報的故障。';
 
   @override
   String get capacitorCheckNoData => '尚未取得電容讀數，請稍候即時資料更新。';
@@ -789,6 +798,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String powerBankCellSub(String volts) {
     return '電芯 $volts V';
   }
+
+  @override
+  String get powerBankCurrentLabel => '電流';
+
+  @override
+  String get powerBankDesignCapacityLabel => '標示容量';
 
   @override
   String get powerBankSocReadoutLabel => '電量 SOC';

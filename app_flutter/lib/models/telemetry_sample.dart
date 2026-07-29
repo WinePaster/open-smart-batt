@@ -37,7 +37,16 @@ class TelemetrySample {
   /// Voltage-precision adjust factor — selector 0x30 (DVOL multiplier).
   final double? vadj;
 
-  /// Main current (A) — selector 0x2E.
+  /// Main current (A).
+  ///
+  /// TWO sources with DIFFERENT sign conventions, because the two product
+  /// classes use different registers:
+  /// * pack (battery / capacitor) — selector 0x2E, `512 - u16`, **signed**
+  ///   (negative while charging).
+  /// * power bank — selector 0x4A second field, mA, **unsigned magnitude**.
+  ///   Direction is not established (see [Selectors.discharge]), so no sign is
+  ///   invented. Anything reasoning about charge/discharge direction must not
+  ///   read this field on a power bank.
   final double? current;
 
   /// Warning over-voltage threshold (V) — selector 0x2B.
@@ -66,6 +75,9 @@ class TelemetrySample {
 
   /// Raw capacity byte (b6) — selector 0x96.
   final int? capacityRaw;
+
+  /// Design (nameplate) capacity in mAh — power-bank selector 0x4B, bytes b4b5.
+  final int? designCapacityMah;
 
   /// Capacity / SOH bucket = (n-1)*10 + 5 — selector 0x96. Drives the battery
   /// fill-icon level (5% steps). Semantics unverified.
@@ -158,6 +170,7 @@ class TelemetrySample {
     this.dischargeV1,
     this.dischargeV2,
     this.capacityRaw,
+    this.designCapacityMah,
     this.sohBucket,
     this.socPercent,
     this.isTypeAOutput,
@@ -227,6 +240,7 @@ class TelemetrySample {
     double? dischargeV1,
     double? dischargeV2,
     int? capacityRaw,
+    int? designCapacityMah,
     int? sohBucket,
     int? socPercent,
     bool? isTypeAOutput,
@@ -258,6 +272,7 @@ class TelemetrySample {
       dischargeV1: dischargeV1 ?? this.dischargeV1,
       dischargeV2: dischargeV2 ?? this.dischargeV2,
       capacityRaw: capacityRaw ?? this.capacityRaw,
+      designCapacityMah: designCapacityMah ?? this.designCapacityMah,
       sohBucket: sohBucket ?? this.sohBucket,
       socPercent: socPercent ?? this.socPercent,
       isTypeAOutput: isTypeAOutput ?? this.isTypeAOutput,

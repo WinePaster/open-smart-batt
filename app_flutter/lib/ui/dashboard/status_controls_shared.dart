@@ -24,6 +24,36 @@ import 'release_cutoff_dialog.dart';
 // Status interpretation (pure helpers, shared by every control body).
 // ---------------------------------------------------------------------------
 
+/// Run mode of a pack (smart battery), decoded from selector `0x23`.
+enum PackRunMode { normal, antiTheft, cutOff }
+
+/// Decode the `0x23` byte in the PACK status space ([ReportedStatus]).
+///
+/// Returns null when the byte is not one of the three pack codes — which is the
+/// normal outcome on a super-capacitor, whose `0x23` answers in an entirely
+/// different space ([CapacitorStatus]). Callers render null as `--`.
+///
+/// EQUALITY, not a bitmask. The previous mask (`mode & cutOffActive != 0`)
+/// reported every healthy super-capacitor as "cut-off active" in red, because
+/// its byte is `5` and `5 & 4 != 0`. The same bug fires for 6, 7, 12, 13…
+PackRunMode? packRunModeOf(int? mode) => switch (mode) {
+      ReportedStatus.normal => PackRunMode.normal,
+      ReportedStatus.antiTheftActive => PackRunMode.antiTheft,
+      ReportedStatus.cutOffActive => PackRunMode.cutOff,
+      _ => null,
+    };
+
+/// Run-mode badge value + tone. Null [mode] (or a byte outside the pack space)
+/// renders as a neutral `--` — we say nothing rather than guess.
+RunStatus runStatusOf(AppLocalizations l10n, int? mode) =>
+    switch (packRunModeOf(mode)) {
+      PackRunMode.cutOff => RunStatus(l10n.commonCutOff, ControlTone.locked),
+      PackRunMode.antiTheft =>
+        RunStatus(l10n.commonAntiTheft, ControlTone.good),
+      PackRunMode.normal => RunStatus(l10n.commonNormal, ControlTone.good),
+      null => const RunStatus('--', ControlTone.neutral),
+    };
+
 /// Run-mode badge value + tone.
 class RunStatus {
   const RunStatus(this.label, this.tone);
@@ -31,24 +61,37 @@ class RunStatus {
   final ControlTone tone;
 }
 
-/// Interpret the reported mode word into the run-mode badge (locked / anti-theft
-/// / normal). Shared by every control body.
-RunStatus runStatusOf(AppLocalizations l10n, int? mode) {
-  if (mode == null) return RunStatus('--', ControlTone.neutral);
-  if ((mode & ReportedStatus.cutOffActive) != 0) {
-    return RunStatus(l10n.commonCutOff, ControlTone.locked);
-  }
-  if ((mode & ReportedStatus.antiTheftActive) != 0) {
-    return RunStatus(l10n.commonAntiTheft, ControlTone.good);
-  }
-  return RunStatus(l10n.commonNormal, ControlTone.good);
+/// True only when the pack reports cut-off ACTIVE. Exact match — see
+/// [packRunModeOf] for why a bitmask is wrong here.
+bool isCutOffMode(int? mode) => packRunModeOf(mode) == PackRunMode.cutOff;
+
+/// Health of a super-capacitor as the DEVICE reports it (selector `0x23`).
+///
+/// Distinct from [capacitorWarning], which is a threshold comparison WE compute
+/// from live readings. Both are useful; conflating them is what made the old
+/// capacitor card self-contradictory (device state shown in the threshold badge
+/// and vice versa).
+enum CapacitorHealth {
+  /// The byte matches the value healthy units report ([CapacitorStatus.healthy]).
+  healthy,
+
+  /// Some other byte. We have no captured fault sample to name a code from, so
+  /// this is reported as unknown WITH the raw byte, never guessed at.
+  unknown,
 }
 
-/// True when the cut-off bit is set in the reported mode word.
-bool isCutOffMode(int? mode) =>
-    mode != null && (mode & ReportedStatus.cutOffActive) != 0;
+/// Decode the `0x23` byte in the CAPACITOR status space.
+/// Null [mode] means nothing has arrived yet — callers render `--`.
+CapacitorHealth? capacitorHealthOf(int? mode) => mode == null
+    ? null
+    : mode == CapacitorStatus.healthy
+        ? CapacitorHealth.healthy
+        : CapacitorHealth.unknown;
 
 /// True when a live reading breaches a known warning threshold (OV / UV / OT).
+///
+/// This is OUR computation from telemetry, NOT a device-reported state — see
+/// [CapacitorHealth]. It drives an advisory line, never the status badge.
 bool capacitorWarning(TelemetryController tele) {
   final pvlt = tele.pvlt;
   final ov = tele.warnOv;
