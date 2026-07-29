@@ -45,7 +45,7 @@ class CapacitorControls extends StatelessWidget {
     // "cut-off" — see [packRunModeOf]. Removed, not fixed in place: the control
     // was never applicable to this class.
     final health = capacitorHealthOf(tele.mode);
-    final capWarn = capacitorWarning(tele);
+    final thresholdBreach = readingBreachesThreshold(tele);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,7 +83,7 @@ class CapacitorControls extends StatelessWidget {
         ],
         // Threshold breach is OUR computation, so it is an advisory line — it
         // must not masquerade as the device-reported status badge above.
-        if (capWarn) ...[
+        if (thresholdBreach) ...[
           AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
           const SizedBox(height: 7),
         ],
@@ -114,6 +114,17 @@ class BatteryControls extends StatelessWidget {
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
     final cutOff = isCutOffMode(tele.mode);
+    // FB-30. This body was the ONLY one of the three that never consulted
+    // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
+    // over-temperature limits IT REPORTED (0x2B) said nothing at all, while a
+    // capacitor and an unclassified pack both did. The gap mattered more after
+    // design 0018 removed the device-reported fault banner: between the two,
+    // a battery had no abnormality signal of any kind left.
+    //
+    // The name is historical — the helper is a threshold comparison over
+    // PVLT/temperature against the device's own thresholds, and is not
+    // capacitor-specific.
+    final thresholdBreach = readingBreachesThreshold(tele);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,6 +181,13 @@ class BatteryControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
+        // Same treatment as the other two bodies: OUR computation from the
+        // device's own thresholds, so it is an advisory line and never a
+        // device-reported status badge.
+        if (thresholdBreach) ...[
+          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
+          const SizedBox(height: 7),
+        ],
         AdvisoryNote(text: l10n.statusAdvisoryNoteBattery),
       ],
     );
@@ -197,7 +215,7 @@ class PackControls extends StatelessWidget {
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
-    final capWarn = capacitorWarning(tele);
+    final thresholdBreach = readingBreachesThreshold(tele);
     final cutOff = isCutOffMode(tele.mode);
 
     return Column(
@@ -261,7 +279,7 @@ class PackControls extends StatelessWidget {
         const SizedBox(height: 11),
         // Threshold breach is class-agnostic (it only needs 0x2B + a reading),
         // so it survives the badge removal above as an advisory line.
-        if (capWarn) ...[
+        if (thresholdBreach) ...[
           AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
           const SizedBox(height: 7),
         ],

@@ -67,7 +67,7 @@ bool isCutOffMode(int? mode) => packRunModeOf(mode) == PackRunMode.cutOff;
 
 /// Health of a super-capacitor as the DEVICE reports it (selector `0x23`).
 ///
-/// Distinct from [capacitorWarning], which is a threshold comparison WE compute
+/// Distinct from [readingBreachesThreshold], which is a threshold comparison WE compute
 /// from live readings. Both are useful; conflating them is what made the old
 /// capacitor card self-contradictory (device state shown in the threshold badge
 /// and vice versa).
@@ -88,11 +88,16 @@ CapacitorHealth? capacitorHealthOf(int? mode) => mode == null
         ? CapacitorHealth.healthy
         : CapacitorHealth.unknown;
 
-/// True when a live reading breaches a known warning threshold (OV / UV / OT).
+/// True when a live reading breaches one of the thresholds the DEVICE reported
+/// (OV / UV / OT, selector 0x2B).
 ///
 /// This is OUR computation from telemetry, NOT a device-reported state — see
 /// [CapacitorHealth]. It drives an advisory line, never the status badge.
-bool capacitorWarning(TelemetryController tele) {
+///
+/// Named for the class it was written for; it is not capacitor-specific and all
+/// three control bodies use it (FB-30 — the battery body was the one that never
+/// did, and a battery over its own limits therefore said nothing).
+bool readingBreachesThreshold(TelemetryController tele) {
   final pvlt = tele.pvlt;
   final ov = tele.warnOv;
   final uv = tele.warnUv;
