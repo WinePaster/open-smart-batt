@@ -301,7 +301,7 @@ class AppDatabase {
       auto_log INTEGER NOT NULL DEFAULT 1,
       raw_packet_log INTEGER NOT NULL DEFAULT 0,
       retention TEXT NOT NULL DEFAULT 'forever',
-      log_max_bytes INTEGER NOT NULL DEFAULT ${5 * 1024 * 1024}
+      log_max_bytes INTEGER NOT NULL DEFAULT ${20 * 1024 * 1024}
     )
     ''',
     '''

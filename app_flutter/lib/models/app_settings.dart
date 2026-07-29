@@ -85,6 +85,21 @@ class AppSettings {
   /// Diagnostic log size cap (bytes) before rotation. Mockup: 5 MB / 20 MB.
   final int logMaxBytes;
 
+  /// The budgets the UI offers, smallest first. `fromMap` normalises anything
+  /// else to [defaultLogMaxBytes] — a stored value outside this set would leave
+  /// the segmented control with NOTHING selected (it matches on `==`), which
+  /// reads as a broken screen rather than a stale preference.
+  static const List<int> logMaxBytesOptions = [
+    20 * 1024 * 1024,
+    100 * 1024 * 1024,
+  ];
+
+  /// Default diagnostic-log budget. Raised from 5 MB on 2026-07-29: field logs
+  /// run about 13 KB/min while connected, so 5 MB started rotating after ~6.5 h
+  /// of dense capture — and rotation drops the OLDEST rows, which is exactly
+  /// where the connect-time GATT dump and metadata burst live.
+  static const int defaultLogMaxBytes = 20 * 1024 * 1024;
+
   const AppSettings({
     this.autoReconnect = true,
     this.pollIntervalMs = 1000,
@@ -95,7 +110,7 @@ class AppSettings {
     this.tempUnit = TempUnit.celsius,
     this.retention = RetentionPolicy.forever,
     this.rawPacketLog = false,
-    this.logMaxBytes = 5 * 1024 * 1024,
+    this.logMaxBytes = defaultLogMaxBytes,
   });
 
   /// Defaults (matches the mockup's initial UI state).
@@ -163,8 +178,7 @@ class AppSettings {
           orElse: () => RetentionPolicy.forever,
         ),
         rawPacketLog: (m['raw_packet_log'] as num?)?.toInt() == 1,
-        logMaxBytes:
-            (m['log_max_bytes'] as num?)?.toInt() ?? (5 * 1024 * 1024),
+        logMaxBytes: _normaliseLogMaxBytes((m['log_max_bytes'] as num?)?.toInt()),
       );
 
   /// Resolve the theme mode from a persisted row.
@@ -186,4 +200,10 @@ class AppSettings {
     }
     return AppThemeMode.light;
   }
+
+  /// Map a stored budget onto one the UI can display. Legacy 5 MB rows (the
+  /// pre-2026-07-29 default) land on the new default rather than leaving the
+  /// segmented control blank.
+  static int _normaliseLogMaxBytes(int? stored) =>
+      logMaxBytesOptions.contains(stored) ? stored! : defaultLogMaxBytes;
 }
