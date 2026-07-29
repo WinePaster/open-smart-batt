@@ -113,8 +113,7 @@ class TelemetryController extends ChangeNotifier {
   /// Reported mode/status code (selector 0x23).
   int? get mode => _sample.mode;
 
-  /// Raw TWF status bitfield (selector 0x20).
-  int? get twfRaw => _sample.twfRaw;
+
 
   /// Battery serial (selector 0x26, tail only).
   String? get serial => _sample.serial;
