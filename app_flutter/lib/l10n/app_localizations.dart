@@ -707,8 +707,14 @@ abstract class AppLocalizations {
   /// No description provided for @devicesNearbyNotFound.
   ///
   /// In en, this message translates to:
-  /// **'No nearby devices found (make sure the capacitor is powered on, Bluetooth is enabled, and you are close by)'**
+  /// **'No nearby devices found (make sure the device is powered on, Bluetooth is enabled, and you are close by)'**
   String get devicesNearbyNotFound;
+
+  /// No description provided for @devicesNearbyNoneVendor.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 Bluetooth device is nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.} other{{count} Bluetooth devices are nearby, but none of them looks like an RCE device. If yours is missing, tap Show all above.}}'**
+  String devicesNearbyNoneVendor(int count);
 
   /// No description provided for @devicesUnknownName.
   ///

@@ -128,8 +128,17 @@ String rebindSavedDeviceId({
 }) {
   if (!useNameKey || savedName.isEmpty) return savedId;
   if (candidates.containsKey(savedId)) return savedId;
-  for (final e in candidates.entries) {
-    if (e.value.isNotEmpty && e.value == savedName) return e.key;
-  }
+  // Rebind only on a UNIQUE name match. Duplicate advertised names are real,
+  // not hypothetical: two distinct power banks both advertise 'RCE_RSPB-01'
+  // (feedback_log/2026.07.29/007, confirmed in the vendor app's own scan list).
+  // Returning the first iteration hit would connect to whichever entry the map
+  // happened to yield and file its telemetry under the other unit's alias —
+  // silent, and indistinguishable afterwards. The caller already handles
+  // "cannot resolve", so refusing to guess is the cheaper failure.
+  final matches = [
+    for (final e in candidates.entries)
+      if (e.value.isNotEmpty && e.value == savedName) e.key,
+  ];
+  if (matches.length == 1) return matches.first;
   return savedId;
 }

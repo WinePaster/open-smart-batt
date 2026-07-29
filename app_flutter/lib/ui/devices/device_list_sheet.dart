@@ -295,25 +295,11 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
 
                 // ---- nearby scan ----------------------------------------
                 _ScanSectionLabel(scanning: conn.isScanning),
-                if (nearby.isEmpty)
-                  _EmptyHint(
-                    conn.isScanning ? l10n.devicesScanning : l10n.devicesNearbyNotFound,
-                  )
-                else
-                  for (final r in nearby)
-                    _DeviceRow(
-                      alias: r.name.isEmpty ? l10n.devicesUnknownName : r.name,
-                      aliasMuted: true,
-                      isVendor: r.isVendor,
-                      meta: '${_shortId(r.id)} · RSSI ${r.rssi} dBm',
-                      signalLevel: signalLevelFromRssi(r.rssi),
-                      isConnected: conn.isOnline && connectedId == r.id,
-                      isConnecting: _connectingId == r.id,
-                      onDisconnect: _disconnect,
-                      onConnect: () => _connectNew(r),
-                    ),
-
-                const SizedBox(height: 2),
+                // design 0015: the toggle used to sit at the very bottom of the
+                // sheet — below the saved list and below the fold when devices
+                // were saved. A user whose unit was filtered out never learned
+                // that anything had been hidden. It belongs directly under the
+                // section it filters.
                 Center(
                   child: TextButton(
                     onPressed: () =>
@@ -329,6 +315,33 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
                     ),
                   ),
                 ),
+                if (nearby.isEmpty)
+                  // "Nothing nearby" and "nothing nearby that looks like ours"
+                  // are different facts, and the second one has an action. The
+                  // old copy asserted the first even when N devices were being
+                  // hidden — telling the user to check the device is powered on
+                  // while its entry sat one tap away.
+                  _EmptyHint(
+                    conn.isScanning
+                        ? l10n.devicesScanning
+                        : (hiddenCount > 0
+                            ? l10n.devicesNearbyNoneVendor(hiddenCount)
+                            : l10n.devicesNearbyNotFound),
+                  )
+                else
+                  for (final r in nearby)
+                    _DeviceRow(
+                      alias: r.name.isEmpty ? l10n.devicesUnknownName : r.name,
+                      aliasMuted: true,
+                      isVendor: r.isVendor,
+                      meta: '${_shortId(r.id)} · RSSI ${r.rssi} dBm',
+                      signalLevel: signalLevelFromRssi(r.rssi),
+                      isConnected: conn.isOnline && connectedId == r.id,
+                      isConnecting: _connectingId == r.id,
+                      onDisconnect: _disconnect,
+                      onConnect: () => _connectNew(r),
+                    ),
+
               ],
             ),
           ),

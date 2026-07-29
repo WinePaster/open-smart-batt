@@ -378,7 +378,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesScanning => '掃描中…';
 
   @override
-  String get devicesNearbyNotFound => '附近找不到裝置（確認電容已上電、藍牙開啟，並靠近一點）';
+  String get devicesNearbyNotFound => '附近找不到裝置（確認裝置已上電、藍牙開啟，並靠近一點）';
+
+  @override
+  String devicesNearbyNoneVendor(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '附近有 $count 個藍牙裝置，但沒有一個看起來是 RCE 裝置。若你的裝置沒有出現，點上方「顯示全部」。',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get devicesUnknownName => 'Unknown';
