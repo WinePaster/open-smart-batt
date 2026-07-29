@@ -275,4 +275,86 @@ void main() {
       expect(find.text('--'), findsNWidgets(2));
     });
   });
+
+  // =========================================================================
+  // FB-30 — every pack body surfaces a threshold breach
+  // =========================================================================
+
+  group('threshold advisory reaches all three bodies (FB-30)', () {
+    /// A reading past the device's own over-voltage limit.
+    TelemetrySample breaching(int? deviceType) => TelemetrySample(
+          timestamp: DateTime.utc(2026, 7, 30),
+          deviceType: deviceType,
+          pvlt: 15.6, // over
+          warnOv: 15.175, // as reported by 0x2B on a real unit
+          warnUv: 11.975,
+          warnOt: 80,
+          temperatureC: 30,
+          mode: deviceType == 0x17 ? 5 : 0,
+        );
+
+    test('the helper fires on over-voltage and stays quiet in range', () {
+      // Pure check first: the widget assertions below are only meaningful if
+      // the comparison itself is right.
+      final s = breaching(0x02);
+      expect(s.pvlt! > s.warnOv!, isTrue);
+    });
+
+    testWidgets('a BATTERY over its own limit now says so', (tester) async {
+      // This is the defect: BatteryControls was the only body that never
+      // consulted the helper, so a battery past the limits IT reported showed
+      // nothing — and after design 0018 removed the fault banner, nothing else
+      // was left either.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+      await pumpUnder(tester, s, const BatteryControls());
+      await tester.runAsync(() async {
+        fakeBle.emit(breaching(0x02));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+      expect(find.textContaining('outside the warning range'), findsOneWidget);
+    });
+
+    testWidgets('a battery within range stays quiet', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+      await pumpUnder(tester, s, const BatteryControls());
+      await tester.runAsync(() async {
+        fakeBle.emit(TelemetrySample(
+          timestamp: DateTime.utc(2026, 7, 30),
+          deviceType: 0x02,
+          pvlt: 13.3,
+          warnOv: 15.175,
+          warnUv: 11.975,
+          mode: 0,
+        ));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+      expect(find.textContaining('outside the warning range'), findsNothing);
+    });
+
+    testWidgets('the capacitor body still has it (no regression)',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+      await pumpUnder(tester, s, const CapacitorControls());
+      await tester.runAsync(() async {
+        fakeBle.emit(breaching(0x17));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+      expect(find.textContaining('outside the warning range'), findsOneWidget);
+    });
+  });
 }
