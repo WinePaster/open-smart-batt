@@ -210,7 +210,7 @@ void main() {
       expect(find.text('Normal'), findsOneWidget);
     });
 
-    testWidgets('an unrecognised byte surfaces the raw value, not a guess',
+    testWidgets('an unrecognised byte says so in plain language, no hex',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -221,9 +221,14 @@ void main() {
       await pumpUnder(tester, s, const CapacitorControls());
       await emitMode(tester, 7);
 
-      // Reported verbatim so a user can pass it on — we have no fault sample.
-      expect(find.text('Unknown 0x07'), findsOneWidget);
+      expect(find.text('Unrecognised'), findsOneWidget);
+      // The readers of this screen are vehicle owners: no raw byte on screen.
+      // The value still reaches us — ConnectionController writes it to the
+      // diagnostic log through the always-on event path.
+      expect(find.textContaining('0x'), findsNothing);
       expect(find.textContaining('Cut-off'), findsNothing);
+      // And it tells them what to DO, rather than showing an inert code.
+      expect(find.textContaining('diagnostic log'), findsOneWidget);
     });
   });
 

@@ -238,9 +238,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusBadgeCapacitorLabel => 'Capacitor Status';
 
   @override
-  String statusBadgeCapacitorUnknown(String raw) {
-    return 'Unknown $raw';
-  }
+  String get statusBadgeCapacitorUnknown => 'Unrecognised';
 
   @override
   String get statusBadgeCutOffOn => 'On';
@@ -262,6 +260,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get statusAdvisoryNoteUnclassified =>
       'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.';
+
+  @override
+  String get statusAdvisoryCapacitorUnknown =>
+      'This unit is reporting a status this app does not recognise. It may be normal. Please export the diagnostic log (Settings) and send it to us — the log carries the detail we need.';
 
   @override
   String get statusAdvisoryThresholdBreach =>

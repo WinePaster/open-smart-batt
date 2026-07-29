@@ -55,10 +55,10 @@ class CapacitorControls extends StatelessWidget {
           label: l10n.statusBadgeCapacitorLabel,
           value: switch (health) {
             CapacitorHealth.healthy => l10n.commonNormal,
-            // Raw byte rides along: it is the only lead we have on what a
-            // faulty unit reports, and a user can report it verbatim.
-            CapacitorHealth.unknown =>
-              l10n.statusBadgeCapacitorUnknown(_hexByte(tele.mode!)),
+            // Plain language, never the raw byte: this app's readers are
+            // vehicle owners. The byte still reaches us — ConnectionController
+            // writes it to the diagnostic log via the always-on event path.
+            CapacitorHealth.unknown => l10n.statusBadgeCapacitorUnknown,
             null => '--',
           },
           tone: switch (health) {
@@ -75,6 +75,12 @@ class CapacitorControls extends StatelessWidget {
           onPressed: online ? () => detectCapacitor(context, tele) : null,
         ),
         const SizedBox(height: 11),
+        // Tell the owner what to DO about an unrecognised status, instead of
+        // showing them a hex byte they cannot act on.
+        if (health == CapacitorHealth.unknown) ...[
+          AdvisoryNote(text: l10n.statusAdvisoryCapacitorUnknown),
+          const SizedBox(height: 7),
+        ],
         // Threshold breach is OUR computation, so it is an advisory line — it
         // must not masquerade as the device-reported status badge above.
         if (capWarn) ...[
@@ -86,12 +92,6 @@ class CapacitorControls extends StatelessWidget {
     );
   }
 }
-
-/// Render a status byte as `0x05`, so an unrecognised value reaches the user
-/// verbatim instead of being flattened into a bare "unknown". Today that raw
-/// byte is our only lead on what a faulty capacitor reports.
-String _hexByte(int v) =>
-    '0x${(v & 0xFF).toRadixString(16).toUpperCase().padLeft(2, '0')}';
 
 // ---------------------------------------------------------------------------
 // Battery body: cut-off badge + 解除斷電 + 防盜 (model-gated).

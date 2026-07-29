@@ -150,20 +150,14 @@
   },
   "statusBadgeRunModeLabel": "Run Mode",
   "statusBadgeCapacitorLabel": "Capacitor Status",
-  "statusBadgeCapacitorUnknown": "Unknown {raw}",
-  "@statusBadgeCapacitorUnknown": {
-    "placeholders": {
-      "raw": {
-        "type": "String"
-      }
-    }
-  },
+  "statusBadgeCapacitorUnknown": "Unrecognised",
   "statusBadgeCutOffOn": "On",
   "statusBadgeCutOffOff": "Off",
   "controlDetectCapacitor": "Check Capacitor",
   "statusAdvisoryNoteCapacitor": "This unit is a super-capacitor (from the device type it reports); only the features it supports are shown. Its own over-voltage / under-voltage / over-temperature protection stays active.",
   "statusAdvisoryNoteBattery": "This unit is a smart battery (from the device type it reports). Anti-theft appears only on models that support it; after releasing the cut-off, avoid re-locking.",
   "statusAdvisoryNoteUnclassified": "The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.",
+  "statusAdvisoryCapacitorUnknown": "This unit is reporting a status this app does not recognise. It may be normal. Please export the diagnostic log (Settings) and send it to us — the log carries the detail we need.",
   "statusAdvisoryThresholdBreach": "A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.",
   "capacitorCheckNoData": "No capacitor readings yet; please wait for live data to update.",
   "capacitorCheckReadout": "SOH {soh}% · Secondary Voltage {svlt} V · Primary Voltage {pvlt} V",

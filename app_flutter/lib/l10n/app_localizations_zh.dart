@@ -231,9 +231,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusBadgeCapacitorLabel => '電容狀態';
 
   @override
-  String statusBadgeCapacitorUnknown(String raw) {
-    return '未知 $raw';
-  }
+  String get statusBadgeCapacitorUnknown => '無法辨識';
 
   @override
   String get statusBadgeCutOffOn => '啟用';
@@ -255,6 +253,10 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get statusAdvisoryNoteUnclassified =>
       '尚未辨識出裝置型別，因此暫時顯示較寬鬆的功能集（不含防盜）。可於上方自行指定型別。';
+
+  @override
+  String get statusAdvisoryCapacitorUnknown =>
+      '本機回報了 App 尚未認得的狀態，未必代表異常。請到「設定」匯出診斷日誌並回報給我們 —— 判斷所需的細節都在日誌裡。';
 
   @override
   String get statusAdvisoryThresholdBreach =>
