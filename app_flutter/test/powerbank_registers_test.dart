@@ -49,8 +49,12 @@ void main() {
     });
 
     test('a pack is UNAFFECTED — 0x4A keeps its documented meaning', () {
+      // The class must be RESOLVED for either branch to run: an unattributed
+      // 0x4A is refused outright (see 'class gate ordering'). A real pack
+      // always sends 0x10 earlier in the same burst, so this is faithful.
       final s = TelemetryDecoder.apply(
-          pack, decodeOne(0x4A, [0x04, 0xD4, 0x04, 0xCF]),
+          TelemetrySample.empty().copyWith(deviceType: 0x02),
+          decodeOne(0x4A, [0x04, 0xD4, 0x04, 0xCF]),
           at: at);
       expect(s.dischargeV1, closeTo(1.236, 1e-9));
       expect(s.dischargeV2, closeTo(1.231, 1e-9));
@@ -176,6 +180,27 @@ void main() {
           pack, decodeOne(0x4B, [0x27, 0x10, 0x5E, 0x26, 0x30]),
           at: at);
       expect(a.socPercent, isNull);
+
+      // 0x4A is the one that bites, because BOTH branches produce a number.
+      // The pack formula on this power-bank payload yields 3.955 / 1.081 —
+      // values a reviewer would wave through. With the class unresolved the
+      // frame must produce nothing at all, not a defensible-looking guess.
+      final b = TelemetryDecoder.apply(
+          pack, decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]),
+          at: at);
+      expect(b.current, isNull, reason: 'no class => no current');
+      expect(b.dischargeV1, isNull,
+          reason: 'the pack formula must not run on an unattributed frame');
+      expect(b.dischargeV2, isNull);
+
+      // Once the class IS known, the pack branch is still reachable.
+      final packKnown =
+          TelemetrySample.empty().copyWith(deviceType: 0x02);
+      final c = TelemetryDecoder.apply(
+          packKnown, decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]),
+          at: at);
+      expect(c.dischargeV1, isNotNull,
+          reason: 'the guard is about an UNKNOWN class, not about packs');
 
       // The real burst order — 0x10 leads, so one burst is enough.
       final d = TelemetryDecoder();

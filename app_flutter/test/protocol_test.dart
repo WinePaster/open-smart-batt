@@ -541,8 +541,12 @@ void main() {
           at: at);
       expect(c.chargeV1, closeTo(1.236, 1e-9));
       expect(c.chargeV2, closeTo(1.231, 1e-9));
+      // 0x4A is per-class (see powerbank_registers_test): the pack formula
+      // only runs once 0x10 has settled the class, because on a power bank the
+      // same four bytes mean millivolts and milliamps.
       final d = TelemetryDecoder.apply(
-          base, decodeOne(0x4A, [0x04, 0xD4, 0x04, 0xCF]),
+          base.copyWith(deviceType: 0x02),
+          decodeOne(0x4A, [0x04, 0xD4, 0x04, 0xCF]),
           at: at);
       expect(d.dischargeV1, closeTo(1.236, 1e-9));
       expect(d.dischargeV2, closeTo(1.231, 1e-9));

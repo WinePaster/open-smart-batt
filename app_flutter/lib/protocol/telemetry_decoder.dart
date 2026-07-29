@@ -116,7 +116,7 @@ class TelemetryDecoder {
   static int capacityRaw(InboundFrame f) => f.b(6);
 
   /// SOC percent — selector 0x96: b6 read DIRECTLY as a 0..100 percentage
-  /// (PROTOCOL.md §12.3). The device reports SOC straight; there is no
+  /// (PROTOCOL.md §9.1). The device reports SOC straight; there is no
   /// voltage->SOC curve. Clamped to 0..100. Distinct from [sohBucket].
   static int socPercent(InboundFrame f) {
     final v = f.b(6);
@@ -125,12 +125,12 @@ class TelemetryDecoder {
     return v;
   }
 
-  /// USB dual-port status — the power-bank "Command 7" frame (PROTOCOL.md §12.3).
+  /// USB dual-port status — the power-bank "Command 7" frame (PROTOCOL.md §9.1).
   ///
   /// TODO(design 0001 §7 Q1): the exact SELECTOR value AND the bit offsets of
   /// the Type-A/Type-C supply bits and the input/output fast-charge value fields
   /// are UNKNOWN pending a live `!#` capture on a power bank (the value->label
-  /// tables in PROTOCOL.md §12.3 are certain, but the bit positions are not).
+  /// tables in PROTOCOL.md §9.1 are certain, but the bit positions are not).
   /// We deliberately do NOT decode here — returning [base] unchanged — rather
   /// than invent bit positions. Wire this up (and add a case in [apply]) once
   /// the selector + bit layout is confirmed.
@@ -192,6 +192,15 @@ class TelemetryDecoder {
       case Selectors.vadj:
         return base.copyWith(timestamp: ts, vadj: vadj(f));
       case Selectors.cellVoltagesMv:
+        // Four big-endian u16s = 8 payload bytes. Anything shorter is refused
+        // outright: InboundFrame.b() returns 0 out of range, so a truncated
+        // frame would decode to 0.000 V per cell AND clear `dvolPending` —
+        // publishing "we measured zero" where the truth is "we did not
+        // receive it". That is the FB-13 mistake (a plausible number instead
+        // of a pending state) arriving through a different door, and the
+        // evidence base here is three frames, which is not enough to assume
+        // the length is always right.
+        if (f.len < 8) return base;
         // The device did the scaling for us, so this clears `dvolPending`
         // WITHOUT needing 0x30 — a unit that streams 0x47 can show per-cell
         // voltages even if the VADJ frame never arrives.
@@ -222,7 +231,7 @@ class TelemetryDecoder {
           warnUv: warnUv(f),
           warnOt: warnOt(f),
           // b7: observed 4th field (UT / under-temp). Scaling unverified —
-          // keep the raw byte so the write path can preserve it (§8.5).
+          // keep the raw byte so the write path can preserve it (§10.2).
           warnUtByte: f.b(7),
         );
       case Selectors.charge:
@@ -236,6 +245,16 @@ class TelemetryDecoder {
         // (design 0007 made the class deterministic off the 0x10 byte, which
         // arrives EARLIER in the same burst than 0x4A, so the gate is settled
         // by the time we get here).
+        //
+        // But "earlier in the burst" is an observation, not a guarantee: a
+        // truncated connect burst leaves the class unresolved, and eight such
+        // segments exist in the field corpus. With no 0x10 the pack branch
+        // below would run on a power bank and read 3955 mV / 1081 mA as
+        // "3.955 / 1.081" — two numbers that look entirely reasonable. That is
+        // the FB-22 failure mode exactly: a class-agnostic formula on an
+        // unattributed frame. design 0012 §5 says both 0x4A and 0x4B no-op
+        // while the class is unknown; 0x4B did and this did not.
+        if (base.deviceType == null) return base;
         if (base.isPowerBank) {
           // `[u16 mV][u16 mA]`. Only the current is taken: the mV field tracks
           // PVLT (0x19) to ±10 mV, so decoding it again would just be a second
@@ -271,7 +290,7 @@ class TelemetryDecoder {
         return base.copyWith(timestamp: ts, serial: serial(f));
       case Selectors.year:
         // 0x25 is 年份 (year), NOT the serial high-word — observed
-        // §8.5. Byte layout not yet captured, so decode is deferred rather
+        // §10.2. Byte layout not yet captured, so decode is deferred rather
         // than mis-folding it into `serial` (which corrupted the serial).
         return base;
       case Selectors.dealerCode:
