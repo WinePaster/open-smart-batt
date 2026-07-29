@@ -304,7 +304,9 @@ class _RootShellState extends State<RootShell> {
         child: IndexedStack(
           index: _tab.index,
           children: [
-            const DashboardPage(),
+            DashboardPage(
+              onOpenSettings: () => setState(() => _tab = _Tab.settings),
+            ),
             // Re-keyed on each switch to 歷史 so it reloads the latest records.
             HistoryScreen(key: ValueKey(_historyEpoch)),
             SettingsScreen(

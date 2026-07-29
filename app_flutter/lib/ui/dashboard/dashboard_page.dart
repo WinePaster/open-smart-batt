@@ -8,11 +8,14 @@
 /// cosmetic super-capacitor-vs-battery label NEVER influences this choice.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
+import '../../theme/app_theme.dart';
 import '../devices/device_list_sheet.dart';
 import 'disconnected_state.dart';
 import 'pack_view.dart';
@@ -20,10 +23,15 @@ import 'power_bank_view.dart';
 
 /// Dashboard body (intended to sit inside the app shell's [Scaffold] body).
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key, this.onScanRequested});
+  const DashboardPage({super.key, this.onScanRequested, this.onOpenSettings});
 
   /// Forwarded to [DisconnectedState]'s scan button (open device-list sheet).
   final VoidCallback? onScanRequested;
+
+  /// Switch to the Settings tab. The stale banner links there, because that is
+  /// where the platform-specific explanation now lives (design 0014 §3.3) —
+  /// the banner itself only states what is happening.
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -37,50 +45,99 @@ class DashboardPage extends StatelessWidget {
     // the app, so the readouts below would otherwise sit frozen with no hint.
     final stalled =
         context.select<TelemetryController, bool>((c) => c.telemetryStalled);
-    // A stall WITH the foreground service running means something else froze
-    // us — almost always an OEM battery optimiser — so the advice differs
-    // (design 0008 §3.6). Telling that user to enable a setting they already
-    // enabled is the fastest way to lose their trust.
-    final monitoring =
-        context.select<ConnectionController, bool>((c) => c.monitorRunning);
+    // The banner no longer branches on `monitorRunning`. It said one of two
+    // things depending on whether the foreground service was up — and BOTH
+    // pointed at Android-only remedies, while `_monitorRunning` has no platform
+    // check and the setting defaults to on, so every connected iOS user got the
+    // "battery optimisation" advice for a setting that is a no-op there
+    // (FB-26). Platform differences now live in exactly one place: Settings.
     return Column(
       children: [
-        if (stalled) _StaleBanner(monitoring: monitoring),
+        if (stalled) _StaleBanner(onOpenSettings: onOpenSettings),
         const Expanded(child: DashboardRouter()),
       ],
     );
   }
 }
 
-class _StaleBanner extends StatelessWidget {
-  const _StaleBanner({required this.monitoring});
+/// Freshness note for the readings below — NOT a warning.
+///
+/// It carries the AGE of the newest sample rather than an adjective: "paused"
+/// is a state, "24 seconds ago" is a fact, and it climbs. That distinction is
+/// what tells a user whether to ignore it (12 s) or act on it (6 min), and it
+/// survives into screenshots, which is how we read field reports.
+///
+/// Colour is deliberately neutral with an amber icon, not an amber fill: the
+/// fault banner and the nav indicator already use amber at α=0.16, and a third
+/// amber bar would flatten the severity ordering we just fixed. Its real
+/// prominence is structural — full width, pinned above the readings, not
+/// dismissible.
+class _StaleBanner extends StatefulWidget {
+  const _StaleBanner({this.onOpenSettings});
 
-  /// Whether the foreground service was running when the stall happened.
-  final bool monitoring;
+  final VoidCallback? onOpenSettings;
+
+  @override
+  State<_StaleBanner> createState() => _StaleBannerState();
+}
+
+class _StaleBannerState extends State<_StaleBanner> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ticks this widget only. Making the controller notify every second while
+    // stalled would rebuild the whole dashboard subtree — gauge, readouts,
+    // controls — none of which is changing. The rebuild should be exactly as
+    // wide as the text that moves.
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// Seconds-resolution age. `disconnected_state.dart`'s helper collapses
+  /// anything under a minute to "just now", which is useless for a banner that
+  /// appears after 8 seconds.
+  String _age(AppLocalizations l10n, Duration? d) {
+    if (d == null) return l10n.gaugeSohUnknown;
+    if (d.inMinutes < 1) return l10n.relativeSecondsAgo(d.inSeconds);
+    if (d.inHours < 1) return l10n.relativeMinutesAgo(d.inMinutes);
+    return l10n.relativeHoursAgo(d.inHours);
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
+    final colors = context.colors;
+    final age = context.read<TelemetryController>().telemetryAge;
     return Material(
-      color: theme.colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        child: Row(
-          children: [
-            Icon(Icons.pause_circle_outline,
-                size: 18, color: theme.colorScheme.onErrorContainer),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                monitoring
-                    ? l10n.dashboardTelemetryStalledDespiteMonitor
-                    : l10n.dashboardTelemetryStalled,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onErrorContainer),
+      color: colors.panel2,
+      child: InkWell(
+        onTap: widget.onOpenSettings,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+          child: Row(
+            children: [
+              const Icon(Icons.pause_circle_outline,
+                  size: 18, color: AppColors.amber),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l10n.dashboardTelemetryStale(_age(l10n, age)),
+                  style: TextStyle(fontSize: 11.5, color: colors.muted),
+                ),
               ),
-            ),
-          ],
+              if (widget.onOpenSettings != null)
+                Icon(Icons.chevron_right, size: 16, color: colors.muted),
+            ],
+          ),
         ),
       ),
     );

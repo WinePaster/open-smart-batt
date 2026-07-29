@@ -182,6 +182,12 @@ abstract class AppLocalizations {
   /// **'Just now'**
   String get relativeJustNow;
 
+  /// No description provided for @relativeSecondsAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 second ago} other{{count} seconds ago}}'**
+  String relativeSecondsAgo(int count);
+
   /// No description provided for @relativeMinutesAgo.
   ///
   /// In en, this message translates to:
@@ -373,6 +379,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.'**
   String get dashboardDvolPendingNote;
+
+  /// No description provided for @dashboardTelemetryStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Readings paused · last update {age}'**
+  String dashboardTelemetryStale(String age);
 
   /// No description provided for @dashboardProtectionHeading.
   ///
@@ -1028,11 +1040,17 @@ abstract class AppLocalizations {
   /// **'Keep monitoring in the background'**
   String get settingsBackgroundMonitorLabel;
 
-  /// No description provided for @settingsBackgroundMonitorSub.
+  /// No description provided for @settingsBackgroundMonitorSubAndroid.
   ///
   /// In en, this message translates to:
-  /// **'Keeps recording while the screen is off or you switch apps; shows an ongoing notification while connected (Android only)'**
-  String get settingsBackgroundMonitorSub;
+  /// **'Keeps recording while the screen is off or you switch apps; a persistent notification is shown while connected. If readings still stop, exclude this app from battery optimisation in system settings.'**
+  String get settingsBackgroundMonitorSubAndroid;
+
+  /// No description provided for @settingsBackgroundMonitorSubIos.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS does not support background monitoring: readings stop when the app leaves the foreground or the screen turns off, and the link is eventually dropped by the system. Keep the app in the foreground and turn on \"Keep screen awake while connected\" below.'**
+  String get settingsBackgroundMonitorSubIos;
 
   /// No description provided for @settingsKeepAwakeLabel.
   ///
@@ -1435,12 +1453,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.'**
   String get dashboardTelemetryStalled;
-
-  /// No description provided for @dashboardTelemetryStalledDespiteMonitor.
-  ///
-  /// In en, this message translates to:
-  /// **'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.'**
-  String get dashboardTelemetryStalledDespiteMonitor;
 
   /// No description provided for @packLabelUnclassified.
   ///
