@@ -34,7 +34,18 @@ bufs = {}   # handle -> (need_len, bytearray, dir)
 handle_uuid = {}   # att handle -> uuid string
 val_handle_char = {}  # char value handle -> char uuid
 pending_read = {}  # conn -> last read handle
+pending_read_by_type = {}  # conn -> type UUID of the last Read By Type Request
 att_events = []    # (ts, dir, conn, text)
+
+# BLE Core Vol 3 Part G 3.3.1.1. Getting 0x04 and 0x08 the wrong way round is
+# the single most consequential mistake you can make reading a GATT dump.
+_PROPS = [(0x01, "Broadcast"), (0x02, "Read"), (0x04, "WriteWithoutResponse"),
+          (0x08, "Write"), (0x10, "Notify"), (0x20, "Indicate"),
+          (0x40, "AuthSignedWrite"), (0x80, "ExtendedProps")]
+
+def props_str(props):
+    names = [n for bit, n in _PROPS if props & bit]
+    return "+".join(names) if names else "none"
 
 def uuid_str(b):
     if len(b) == 2:
@@ -57,7 +68,12 @@ def parse_att(ts, recv, conn, att):
             if len(e) < 4: break
             sh, eh = H(e[0:2]), H(e[2:4]); u = uuid_str(e[4:ln])
             att_events.append((ts, d, conn, f"SERVICE handles {sh:#06x}-{eh:#06x} uuid {u}"))
-    elif op == 0x09:  # Read By Type Response (char declarations)
+    elif op == 0x09:  # Read By Type Response
+        # A Read By Type Response is only a characteristic declaration when the
+        # REQUEST asked for type 0x2803. Parsing every 0x09 as a declaration
+        # silently misreads responses to any other type request.
+        if pending_read_by_type.get(conn) != 0x2803:
+            return
         ln = p[0]; body = p[1:]
         for i in range(0, len(body), ln):
             e = body[i:i+ln]
@@ -65,7 +81,9 @@ def parse_att(ts, recv, conn, att):
             decl_h = H(e[0:2]); props = e[2]; vh = H(e[3:5]); u = uuid_str(e[5:ln])
             val_handle_char[vh] = u
             handle_uuid[vh] = u
-            att_events.append((ts, d, conn, f"CHAR decl@{decl_h:#06x} value_handle {vh:#06x} props {props:#04x} uuid {u}"))
+            att_events.append((ts, d, conn,
+                f"CHAR decl@{decl_h:#06x} value_handle {vh:#06x} "
+                f"props {props:#04x} ({props_str(props)}) uuid {u}"))
     elif op == 0x05:  # Find Information Response
         fmt = p[0]; body = p[1:]
         step = 4 if fmt == 1 else 18
@@ -74,16 +92,24 @@ def parse_att(ts, recv, conn, att):
             if len(e) < step: break
             h = H(e[0:2]); u = uuid_str(e[2:step])
             handle_uuid.setdefault(h, u)
-    elif op in (0x52, 0x12, 0x18):  # Write Command / Write Request / Prepare? (0x18=exec) treat 0x12/0x52
-        if op in (0x52, 0x12):
-            h = H(p[0:2]); val = p[2:]
-            u = handle_uuid.get(h, "?")
-            att_events.append((ts, d, conn, f"WRITE handle {h:#06x} uuid {u} value[{len(val)}] {val.hex()}"))
+    elif op in (0x52, 0x12):
+        # KEEP THESE DISTINCT. 0x12 = Write Request (with response, expects a
+        # 0x13 back); 0x52 = Write Command (no response). Collapsing both to
+        # "WRITE" is how this project once concluded a with-response-only
+        # characteristic was write-without-response. See PROTOCOL.md §2.
+        kind = "WRITE_REQ(0x12)" if op == 0x12 else "WRITE_CMD(0x52)"
+        h = H(p[0:2]); val = p[2:]
+        u = handle_uuid.get(h, "?")
+        att_events.append((ts, d, conn, f"{kind} handle {h:#06x} uuid {u} value[{len(val)}] {val.hex()}"))
+    elif op == 0x13:  # Write Response — pairs with 0x12, proves the mode used
+        att_events.append((ts, d, conn, "WRITE_RSP(0x13)"))
     elif op in (0x1b, 0x1d):  # Notification / Indication
         h = H(p[0:2]); val = p[2:]
         u = handle_uuid.get(h, "?")
         kind = "NOTIFY" if op == 0x1b else "INDICATE"
         att_events.append((ts, d, conn, f"{kind} handle {h:#06x} uuid {u} value[{len(val)}] {val.hex()}"))
+    elif op == 0x08:  # Read By Type Request — remember which type was asked for
+        pending_read_by_type[conn] = H(p[4:6]) if len(p) >= 6 else None
     elif op == 0x0a:  # Read Request
         h = H(p[0:2]); pending_read[conn] = h
     elif op == 0x0b:  # Read Response
