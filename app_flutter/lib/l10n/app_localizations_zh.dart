@@ -55,6 +55,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get relativeJustNow => '剛剛';
 
   @override
+  String relativeSecondsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 秒前',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String relativeMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -183,6 +193,11 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get dashboardDvolPendingNote =>
       '已收到分串電壓資料，但尚未收到電壓校正係數（VADJ），待其送達後即顯示校正後數值。';
+
+  @override
+  String dashboardTelemetryStale(String age) {
+    return '資料已暫停更新 · 上次更新$age';
+  }
 
   @override
   String get dashboardProtectionHeading => '防護狀態 / 模式';
@@ -564,8 +579,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsBackgroundMonitorLabel => '背景持續監看';
 
   @override
-  String get settingsBackgroundMonitorSub =>
-      '螢幕關閉或切到其他 App 時仍持續記錄，連線期間會顯示一則常駐通知（僅 Android）';
+  String get settingsBackgroundMonitorSubAndroid =>
+      '螢幕關閉或切到其他 App 時仍持續記錄，連線期間會顯示一則常駐通知。若開啟後資料仍會停更，請到系統設定把本 App 排除在電池最佳化之外。';
+
+  @override
+  String get settingsBackgroundMonitorSubIos =>
+      'iOS 目前不支援背景監看：App 切到背景或螢幕關閉時資料會停止更新，時間久了連線也會被系統中斷。請讓 App 保持在前景，並開啟下方的「連線時保持螢幕喚醒」。';
 
   @override
   String get settingsKeepAwakeLabel => '連線時保持螢幕喚醒';
@@ -773,11 +792,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dashboardTelemetryStalled =>
-      '資料已停止更新（連線仍在）。App 被系統暫停時會這樣，開啟「背景持續監看」可避免。';
-
-  @override
-  String get dashboardTelemetryStalledDespiteMonitor =>
-      '資料已停止更新（連線仍在）。「背景持續監看」已開啟，代表系統仍然凍結了 App —— 部分機型需要另外把本 App 排除在電池最佳化之外。';
+      'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.';
 
   @override
   String get packLabelUnclassified => '未分類（請指定）';

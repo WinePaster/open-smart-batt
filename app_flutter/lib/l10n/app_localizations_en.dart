@@ -55,6 +55,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relativeJustNow => 'Just now';
 
   @override
+  String relativeSecondsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seconds ago',
+      one: '1 second ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String relativeMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -189,6 +200,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dashboardDvolPendingNote =>
       'Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.';
+
+  @override
+  String dashboardTelemetryStale(String age) {
+    return 'Readings paused · last update $age';
+  }
 
   @override
   String get dashboardProtectionHeading => 'Protection Status / Mode';
@@ -592,8 +608,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Keep monitoring in the background';
 
   @override
-  String get settingsBackgroundMonitorSub =>
-      'Keeps recording while the screen is off or you switch apps; shows an ongoing notification while connected (Android only)';
+  String get settingsBackgroundMonitorSubAndroid =>
+      'Keeps recording while the screen is off or you switch apps; a persistent notification is shown while connected. If readings still stop, exclude this app from battery optimisation in system settings.';
+
+  @override
+  String get settingsBackgroundMonitorSubIos =>
+      'iOS does not support background monitoring: readings stop when the app leaves the foreground or the screen turns off, and the link is eventually dropped by the system. Keep the app in the foreground and turn on \"Keep screen awake while connected\" below.';
 
   @override
   String get settingsKeepAwakeLabel => 'Keep screen awake while connected';
@@ -812,10 +832,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dashboardTelemetryStalled =>
       'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.';
-
-  @override
-  String get dashboardTelemetryStalledDespiteMonitor =>
-      'Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.';
 
   @override
   String get packLabelUnclassified => 'Unclassified (tap to set)';

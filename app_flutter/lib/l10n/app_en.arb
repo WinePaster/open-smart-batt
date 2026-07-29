@@ -28,6 +28,14 @@
   },
   "relativeNever": "Never connected",
   "relativeJustNow": "Just now",
+  "relativeSecondsAgo": "{count, plural, =1{1 second ago} other{{count} seconds ago}}",
+  "@relativeSecondsAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "relativeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
   "@relativeMinutesAgo": {
     "placeholders": {
@@ -119,6 +127,14 @@
   "dashboardSerialLabel": "Serial No.",
   "dashboardDvolHeading": "Per-Cell Voltage DVOL",
   "dashboardDvolPendingNote": "Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.",
+  "dashboardTelemetryStale": "Readings paused · last update {age}",
+  "@dashboardTelemetryStale": {
+    "placeholders": {
+      "age": {
+        "type": "String"
+      }
+    }
+  },
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "PVLT · Primary Voltage",
   "gaugeSohUnknown": "SOH --",
@@ -336,7 +352,8 @@
   "settingsAutoReconnectLabel": "Auto-reconnect",
   "settingsAutoReconnectSub": "Automatically attempt to reconnect when the connection drops",
   "settingsBackgroundMonitorLabel": "Keep monitoring in the background",
-  "settingsBackgroundMonitorSub": "Keeps recording while the screen is off or you switch apps; shows an ongoing notification while connected (Android only)",
+  "settingsBackgroundMonitorSubAndroid": "Keeps recording while the screen is off or you switch apps; a persistent notification is shown while connected. If readings still stop, exclude this app from battery optimisation in system settings.",
+  "settingsBackgroundMonitorSubIos": "iOS does not support background monitoring: readings stop when the app leaves the foreground or the screen turns off, and the link is eventually dropped by the system. Keep the app in the foreground and turn on \"Keep screen awake while connected\" below.",
   "settingsKeepAwakeLabel": "Keep screen awake while connected",
   "settingsKeepAwakeSub": "Screen won't turn off automatically, handy for viewing while riding (active when connected)",
   "monitorNotificationTitle": "OpenSmartBatt · monitoring",
@@ -421,7 +438,6 @@
   "settingsAboutDialogBody": "This app is an independent, community-developed open-source tool based on public reverse-engineering research, communicating via Bluetooth with the RCE smart capacitor/battery you have purchased.\n\nThis project is not an official RCE product and has no affiliation with the manufacturer; it is intended solely for personal, non-commercial use by owners of the hardware.",
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
   "dashboardTelemetryStalled": "Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.",
-  "dashboardTelemetryStalledDespiteMonitor": "Readings have stopped updating (the link is still up). Background monitoring is on, so the system froze the app anyway — some phones also need this app excluded from battery optimisation.",
   "packLabelUnclassified": "Unclassified (tap to set)",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",

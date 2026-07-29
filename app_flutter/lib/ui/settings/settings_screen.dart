@@ -88,12 +88,21 @@ class _ConnectionCard extends StatelessWidget {
           // design 0008: background execution and keeping the screen on are
           // two different things. They shared one setting while the wakelock
           // was the only mitigation available; now they are separate.
+          // Platform-split, and disabled on iOS. The switch does nothing there
+          // (NoopMonitorService), yet it still flipped `monitorRunning` — which
+          // is how the dashboard ended up giving iOS users Android-only advice
+          // (FB-26). The row is kept rather than hidden: a user who has heard
+          // of the feature needs to see WHY it is unavailable, and the stored
+          // preference must survive for a future iOS implementation or a move
+          // to Android.
           SettingsRow(
             label: l10n.settingsBackgroundMonitorLabel,
-            sub: l10n.settingsBackgroundMonitorSub,
+            sub: Platform.isIOS
+                ? l10n.settingsBackgroundMonitorSubIos
+                : l10n.settingsBackgroundMonitorSubAndroid,
             trailing: _Toggle(
               value: s.backgroundMonitoring,
-              onChanged: s.setBackgroundMonitoring,
+              onChanged: Platform.isIOS ? null : s.setBackgroundMonitoring,
             ),
           ),
           SettingsRow(
@@ -583,11 +592,15 @@ void _showAbout(BuildContext context) {
 // ---------------------------------------------------------------------------
 
 /// Compact themed switch used by the settings rows.
+///
+/// A null [onChanged] renders the switch disabled but still shows its value —
+/// used where a setting exists and is stored, but the platform cannot honour it
+/// (design 0014 §3.4).
 class _Toggle extends StatelessWidget {
   const _Toggle({required this.value, required this.onChanged});
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
