@@ -739,6 +739,19 @@ class ConnectionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Record a capture state mark (design 0013).
+  ///
+  /// Writes through the always-on event path, the same one `link: ready` uses,
+  /// so a mark cannot be lost to `rawPacketLog` being off. The UI only offers
+  /// marking while raw logging is on — a mark with no packets beside it has
+  /// nothing to correlate against — but if one is somehow requested anyway,
+  /// silently discarding it would be the worst outcome: the user would believe
+  /// their ground truth was recorded when it was not, and mislabelled ground
+  /// truth is worse than none.
+  void markCaptureState(CaptureMark mark, String label, {String? note}) {
+    _event(mark.logLine(label, note: note));
+  }
+
   /// Cap on scan-roster lines per scan. A crowded site is real — one field
   /// capture saw 31 peripherals in a single pass — but the log budget is
   /// shared with telemetry, so the roster is bounded rather than unbounded.

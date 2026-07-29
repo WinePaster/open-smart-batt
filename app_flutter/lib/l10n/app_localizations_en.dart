@@ -207,6 +207,48 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get captureMarkHeading => 'Mark what you are doing';
+
+  @override
+  String get captureMarkSub =>
+      'Writes one line into the diagnostic log so we can tell which reading belongs to which situation.';
+
+  @override
+  String captureMarkSaved(String label) {
+    return 'Marked: $label';
+  }
+
+  @override
+  String get captureMarkPbOutA => 'Type-A output only';
+
+  @override
+  String get captureMarkPbOutC5v => 'Type-C output (5 V)';
+
+  @override
+  String get captureMarkPbOutCPd => 'Type-C output (PD)';
+
+  @override
+  String get captureMarkPbOutBoth => 'Both ports output';
+
+  @override
+  String get captureMarkPbIn => 'Charging input only';
+
+  @override
+  String get captureMarkPbIdle => 'Everything unplugged';
+
+  @override
+  String get captureMarkPackIdle => 'Idle (not charging or loaded)';
+
+  @override
+  String get captureMarkPackCharging => 'Charging';
+
+  @override
+  String get captureMarkPackLoad => 'Under load';
+
+  @override
+  String get captureMarkNote => 'Custom note';
+
+  @override
   String get dashboardProtectionHeading => 'Protection Status / Mode';
 
   @override

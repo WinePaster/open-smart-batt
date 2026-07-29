@@ -17,6 +17,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../devices/device_list_sheet.dart';
+import 'capture_mark_bar.dart';
 import 'disconnected_state.dart';
 import 'pack_view.dart';
 import 'power_bank_view.dart';
@@ -55,6 +56,8 @@ class DashboardPage extends StatelessWidget {
       children: [
         if (stalled) _StaleBanner(onOpenSettings: onOpenSettings),
         const Expanded(child: DashboardRouter()),
+        // Only renders while raw logging is on (design 0013) — see the widget.
+        const CaptureMarkBar(),
       ],
     );
   }
