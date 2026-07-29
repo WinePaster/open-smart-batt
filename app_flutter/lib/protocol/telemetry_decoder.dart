@@ -214,10 +214,31 @@ class TelemetryDecoder {
           chargeV2: scaled1000(f, 6),
         );
       case Selectors.discharge:
+        // Same 4 bytes, two readings — this is the per-class register map
+        // (design 0007 made the class deterministic off the 0x10 byte, which
+        // arrives EARLIER in the same burst than 0x4A, so the gate is settled
+        // by the time we get here).
+        if (base.isPowerBank) {
+          // `[u16 mV][u16 mA]`. Only the current is taken: the mV field tracks
+          // PVLT (0x19) to ±10 mV, so decoding it again would just be a second
+          // name for the same number. Magnitude only — see Selectors.discharge.
+          return base.copyWith(timestamp: ts, current: f.u16(6) / 1000.0);
+        }
         return base.copyWith(
           timestamp: ts,
           dischargeV1: scaled1000(f, 4),
           dischargeV2: scaled1000(f, 6),
+        );
+      case Selectors.powerBankCapacity:
+        // Class-gated for the same reason: nothing else in our captures sends
+        // 0x4B, and a wrong SOC is worse than no SOC.
+        if (!base.isPowerBank) return base;
+        return base.copyWith(
+          timestamp: ts,
+          // b6, the same byte position 0x96 uses on a pack — read directly as
+          // a percentage, no voltage->SOC curve.
+          socPercent: socPercent(f),
+          designCapacityMah: f.u16(4),
         );
       case Selectors.capacity:
         return base.copyWith(

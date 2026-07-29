@@ -800,6 +800,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get powerBankCurrentLabel => '電流';
+
+  @override
+  String get powerBankDesignCapacityLabel => '標示容量';
+
+  @override
   String get powerBankSocReadoutLabel => '電量 SOC';
 
   @override

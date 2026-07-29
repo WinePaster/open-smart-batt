@@ -106,6 +106,23 @@ class PowerBankView extends StatelessWidget {
                     value: soc == null ? '--' : soc.toString(),
                     unit: '%',
                   ),
+                  // Magnitude, no direction — the register's charge/discharge
+                  // attribution is unresolved (see Selectors.discharge), so the
+                  // label deliberately says "Current", not "Output"/"Charge".
+                  if (tele.current != null)
+                    Readout(
+                      icon: Icons.electric_bolt,
+                      label: l10n.powerBankCurrentLabel,
+                      value: tele.current!.toStringAsFixed(2),
+                      unit: 'A',
+                    ),
+                  if (tele.sample.designCapacityMah != null)
+                    Readout(
+                      icon: Icons.battery_std,
+                      label: l10n.powerBankDesignCapacityLabel,
+                      value: tele.sample.designCapacityMah!.toString(),
+                      unit: 'mAh',
+                    ),
                 ],
               ),
             ),

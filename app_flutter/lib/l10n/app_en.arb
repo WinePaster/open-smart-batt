@@ -448,6 +448,8 @@
       }
     }
   },
+  "powerBankCurrentLabel": "Current",
+  "powerBankDesignCapacityLabel": "Rated Capacity",
   "powerBankSocReadoutLabel": "Charge SOC",
   "powerBankCellVoltageLabel": "Cell Voltage",
   "powerBankOutputVoltageLabel": "Output Voltage",

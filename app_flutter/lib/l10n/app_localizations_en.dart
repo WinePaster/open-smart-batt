@@ -838,6 +838,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get powerBankCurrentLabel => 'Current';
+
+  @override
+  String get powerBankDesignCapacityLabel => 'Rated Capacity';
+
+  @override
   String get powerBankSocReadoutLabel => 'Charge SOC';
 
   @override

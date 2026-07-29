@@ -1472,6 +1472,18 @@ abstract class AppLocalizations {
   /// **'Cell {volts} V'**
   String powerBankCellSub(String volts);
 
+  /// No description provided for @powerBankCurrentLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Current'**
+  String get powerBankCurrentLabel;
+
+  /// No description provided for @powerBankDesignCapacityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Rated Capacity'**
+  String get powerBankDesignCapacityLabel;
+
   /// No description provided for @powerBankSocReadoutLabel.
   ///
   /// In en, this message translates to:

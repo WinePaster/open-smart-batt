@@ -62,8 +62,35 @@ class Selectors {
   /// Charge info (v1 / v2).
   static const int charge = 0x41;
 
-  /// Discharge info (v1 / v2).
+  /// Discharge info (v1 / v2) on a pack.
+  ///
+  /// On a POWER BANK the same 4-byte payload reads as `[u16 mV][u16 mA]`, and
+  /// the second field is the ampere figure the unit itself reports: a live
+  /// capture held 1042–1128 mA at the same moment the unit's own display showed
+  /// 1.05 A. The first field tracks [pvlt] to within ±10 mV over 48 frames, so
+  /// it is the same cell voltage and is not decoded again.
+  ///
+  /// Whether that current is measured cell-side or at the output port is NOT
+  /// established, and the sibling register 0x49 carries a second (voltage,
+  /// current) pair whose current field read zero across 97 frames / 4 sessions
+  /// / both output profiles. So the app publishes a MAGNITUDE and never a
+  /// direction, and 0x49 is deliberately left undecoded.
   static const int discharge = 0x4A;
+
+  /// Power-bank capacity frame, 5 bytes:
+  /// `[u16 design capacity mAh][u8 SOC %][u8 ?][u8 ?]`.
+  ///
+  /// The power-bank equivalent of [capacity] (0x96), which power banks do not
+  /// send. SOC is byte b6, read directly as a percentage — a capture read 94 at
+  /// the same moment the unit's own display showed 94 %, and the value fell
+  /// monotonically 94 → 63 over five hours. Design capacity read 10000 on a
+  /// unit rated 10000 mAh.
+  ///
+  /// The trailing two bytes are NOT decoded: one is a strong second-temperature
+  /// candidate (it rises monotonically with output power across 100 samples)
+  /// but a single sample jumped 29 → 65 → 28 within five seconds, which no
+  /// temperature does. Naming it on that evidence would be a guess.
+  static const int powerBankCapacity = 0x4B;
 
   /// Capacity / SOH bucket.
   static const int capacity = 0x96;
