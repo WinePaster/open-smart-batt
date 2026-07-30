@@ -441,6 +441,45 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 > without error; the only honest UI is "sent", plus whatever `0x23` says
 > afterwards.
 
+> 📉 **Negative result — the whole-corpus TX census (2026-07-31).** All **32**
+> log files in `feedback_log/` were re-walked on the transmit side: TX lines
+> parsed as `b8 SEL ROLE LEN payload XOR`, XOR folded over all preceding bytes,
+> with a single TX line allowed to concatenate several frames. ⚠️ De-duplicated
+> — exports are cumulative, and a naive union counts **42** `0x23` and **20**
+> `0x2A` writes where there are 20 and 10.
+>
+> | CMD | ROLE | LEN | payload | frames | XOR |
+> |---|---|---|---|---|---|
+> | `0x23` mode | `0x00` | 1 | `06` — **always** | **20** | 20 / 20 clean |
+> | `0x2A` auth | `0x01` | 4 | 6 distinct `cb`/`sum` pairs | **10** | 10 / 10 clean |
+>
+> **That is the entire set. This app has never written any other binary command
+> code, in any session, to any device class.** Specifically:
+>
+> * 🚫 **No `0x2B` threshold write has ever been captured** — zero frames,
+>   corpus-wide. §8.3 documents that write path, but it comes from the reference
+>   app's code, **not from the wire.** Nothing here says it is wrong; it says it
+>   is **untested**. The same holds for `changeCutOffPassword` (§6.3), which
+>   would ride `0x2A`.
+> * **All 20 mode writes carried mode `0x06`.** `0`, `1` and `2` have never been
+>   sent — which is why the recommendation to write `0` above rests on
+>   elimination and the distributor's numbering, not on a capture.
+> * **Half the mode writes went out bare:** 10 of 20 `0x23` frames had no `0x2A`
+>   bundled behind them.
+> * **No write ever moved the readback.** The seven sessions containing a `0x23`
+>   write hold **1,730** `0x23` reply frames between them, and in every one of the
+>   seven the reply is a **single constant value for the whole session**
+>   (`0x00` in two sessions, `0x01` in two, `0x02` in three).
+>
+> The transmit path itself was alive throughout: the same corpus carries 10,635
+> `#`, 423 `@` and 194 `!#` ASCII keep-alive writes (§4.2). This is a statement
+> about what was ever *commanded*, not about a dead TX path.
+>
+> ⇒ Read it as the boundary of the evidence. **Every configuration write in this
+> document is decompiled rather than observed.** An implementation may send them,
+> but must not present them as verified — and, per the paragraph above, cannot
+> verify them by watching `0x23`.
+
 **Reported status** (device → app) uses the **same code space** as the mode
 argument:
 
@@ -978,9 +1017,21 @@ so the two are not interchangeable with a pack's signed `0x2E`.
 
 ### `0x4B` `b7` — port and protocol flags
 
-Observed values: `0x00`, `0x01`, `0x03`, `0x05`, `0x06`, `0x07`, `0x0a`, `0x12`,
-`0x26`. (An earlier note listed "38" — that was decimal for `0x26`, listed twice
-under two radices. **`0x38` has never occurred.**)
+Observed values: `0x00`, `0x01`, **`0x02`**, `0x03`, `0x05`, `0x06`, `0x07`,
+`0x0a`, `0x12`, `0x26` — over 703 de-duplicated `0x4B` frames. (An earlier note
+listed "38" — that was decimal for `0x26`, listed twice under two radices.
+**`0x38` has never occurred.**)
+
+> **`0x02` added 2026-07-31.** It comes from a capture that had not been walked
+> when this list was written: `feedback_log/2026.07.30/009`, unit
+> `RSPB-01行動電源`, session 9, **7 frames**, 2026-07-30 11:31:23 → 11:31:53. The
+> value is **bit 1 alone**, and the unit is taking a charge — `0x49` reads
+> 5,180–5,188 mV / **328 mA** with the `0x4A` current at 0, port voltage (`0x37`)
+> 5.18 V, SOC (`b6`) 96 %, `0x21` 29 °C, `b8` = `0x30` throughout. ✅ own
+> capture, XOR-clean. It shows bit 1 occurring **without** bit 0 and **without**
+> bit 2, on a plain 5 V (non-PD) input. That is consistent with the bit-1 = Type-C
+> reading below, but with n = 7 on one unit it **adds a value to the list rather
+> than settling anything.**
 
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
@@ -988,8 +1039,38 @@ under two radices. **`0x38` has never occurred.**)
 | **bit 3** | **PD input ⇒ set** | 221/221 | ⚠️ **One-way only.** PD charging does *not* imply bit 3: a unit charging at 9.05 V / 1.83 A (≈16 W) left it clear |
 | **bit 2** | **output active** | 689/691 | Two counterexamples, both at 15–31 mA next to a direction change |
 | **bit 1** | **Type-C** | A Type-A-only session was 134/134 clear | ⚠️ A Type-C session was **79/84**, not 84/84 — the first ~11 seconds read as bit-1-clear |
-| **bit 4** | **unknown** | Appears only as `0x12` (bit1+bit4), 15 bursts, on **one** unit | 🚫 Not decoded. Suspected firmware variant — notably, that is the unit that also failed name-based discovery |
+| **bit 4** | **unknown** | Appears only as `0x12` (bit1+bit4), **16** frames, on **one** unit | 🚫 Not decoded. Suspected firmware variant — notably, that is the unit that also failed name-based discovery. See the measurement below |
 | **bit 0** | **probably "Type-A active"** | See below | ⚠️ Not settled |
+
+**On bit 4: a measurement that supports "firmware variant of bit 3" — and is not
+proof of it** (2026-07-31).
+
+The firmware-variant suspicion in the table above has until now been bare
+suspicion, with nothing behind it but "only one unit does this". There is now a
+measurement. `0x12` (bit 1 + bit 4) and `0x0a` (bit 1 + bit 3) describe the
+**same physical state** — a ≈9 V PD charge over Type-C — and differ only in
+which of the two bits carries it:
+
+| `b7` | frames | port voltage `0x37` | `0x49` charge current | Units producing it |
+|---|---|---|---|---|
+| `0x0a` | 247 | 8.75 – 9.09 V | 508 – 1,791 mA | two device names, **neither** the `0x12` unit |
+| `0x12` | 16 | 9.03 – 9.07 V on 15 frames; one frame at 4.40 V, mid-negotiation | 396 – 1,834 mA | **one** (`行動外電源2`) |
+
+⚠️ **State the overlap accurately: it is near-total, not total.** `0x12`'s port
+voltage sits inside `0x0a`'s window, but its charge current runs a little past
+*both* ends — 396 mA below `0x0a`'s 508 mA floor and 1,834 mA above its 1,791 mA
+ceiling. What the table shows is that **no measured quantity separates the two
+states, while the device does**: every `0x12` frame in the corpus comes from one
+physical power bank, and that unit has never emitted `0x0a`. That is what a
+firmware variant would look like.
+
+It is **not proof.** The two sets were captured at different times on different
+hardware with no controlled variable; "same state" is read off the numbers, not
+imposed. **The capture that would settle it: the same charger and cable into
+both units, back to back, labelled as such.** No such capture exists.
+
+*(Count corrected here from 15 to 16 frames. The difference is de-duplication of
+overlapping cumulative exports, not a new observation.)*
 
 **On bit 0: three readings tested, two eliminated, one survives — and it is
 still not decoded.**
@@ -1185,7 +1266,7 @@ session**. Rows that cannot state one say so — that is the point of the column
 
 | Selector | Class | LEN | Payload | Notes |
 |---|---|---|---|---|
-| `0x40` | **battery `0x02`** (2026-07-30) | 2 | this unit: `20xx`, 15 distinct, `2000` (2134) / `2010` (1582) / `2001` (718) / `200d` (692) … — earlier unattributed logs: `222b` (8747) / `2229` (8745) | ✅ **Attribution resolved.** The 2026-07-30 capture is a single-device 23-hour log carrying 5,398 `0x40` frames *and* 2,127 `0x10` = `0x02` frames, which is exactly the "capture one *identified* unit" this row used to ask for. **Byte 0 is `0x20` on all 5,398 frames of that unit but `0x22` in the older logs** ⇒ byte 0 is not a constant, it is per-unit or per-state. Emission is **1:1 with `0x21`/`0x2E`** (5,398 : 5,398 : 5,398) and it sits immediately after `0x20` (TWF) in every telemetry group. Still **not decoded**: byte 1 grouped against current, temperature and PVLT in the same frame shows no separation (all 15 groups' ranges overlap). To decode: the same unit before and after a charge cycle, with the charge state labelled. |
+| `0x40` | **battery `0x02`** (2026-07-30) | 2 | this unit: `20xx`, 15 distinct, `2000` (2134) / `2010` (1582) / `2001` (718) / `200d` (692) … — earlier unattributed capture, de-duplicated: `222b` (708) / `2229` (91) / `022b` (14) | ✅ **Attribution resolved.** The 2026-07-30 capture is a single-device 23-hour log carrying 5,398 `0x40` frames *and* 2,127 `0x10` = `0x02` frames, which is exactly the "capture one *identified* unit" this row used to ask for. Emission is **1:1 with `0x21`/`0x2E`** (5,398 : 5,398 : 5,398) and it sits immediately after `0x20` (TWF) in every telemetry group. Still **not decoded**: byte 1 grouped against current, temperature and PVLT in the same frame shows no separation (all 15 groups' ranges overlap). **Three candidate readings are now positively refuted, and the experiment this row used to propose was the wrong one — see §10.1.1.** |
 | `0x3C` | battery `0x02` | 2 | `0000` ×4, `1100` ×1 | Answers `!#` only (§2), so a 23-hour session yielded 5 samples. One of the five differs — enough to prove it is not a constant, far too few to say what changes it. |
 | `0x4D` | battery `0x02` | 7 | `320d240d08001c`, `320d1e0cfa0024`, `320d100ce70029`, `320d320d08002a`, `21b8f10000b8f1` | Answers `!#` only. Four of five samples share the shape `[0x32][u16][u16][u16]`, the two middle words landing in the same 3.30–3.38 V range as the cells. ⚠️ **They are not the `0x47` max/min** — checked against all five bursts, and one burst puts both words *below* every cell `0x47` reported. The trailing word is likewise **not** the `0x21` temperature (two of four exceed that session's observed maximum). The fifth sample breaks the shape entirely (leading `0x21`, two words repeating `b8f1`) on a frame that is nonetheless XOR-clean. **No hypothesis survives n=5; do not decode.** |
 | `0x42` | capacitor | 4 | `07c87805`, constant | Same value on both platforms and every session of the same unit — consistent with a static setting or model code. Unproven. |
@@ -1209,6 +1290,88 @@ frames by LEN**, not from substring-matching hex text. An earlier pass using
 `grep` over log text reported `0x1F` and `0x22` as selectors; strict framing shows
 **no such frames** — those were payload bytes that happened to follow a `0xB8`.
 Any future selector claim should come from the framing walk.
+
+#### 10.1.1 `0x40`: three floated candidates, all refuted (2026-07-31)
+
+`0x40` has been carried as undecoded with three candidate readings in
+circulation — **cycle count**, **nameplate capacity (mAh)** and a **cumulative
+charge accumulator**. All three are refuted by data already on disk. No new
+capture was needed to kill them, and none of them should be re-floated.
+
+Source: `feedback_log/2026.07.30/006/opensmartbatt-20260730-172720.log` — one
+identified unit (`0x10` = `0x02` on 2,127 of 2,127 frames), six connections,
+2026-07-29 18:10 → 2026-07-30 17:06 (≈23 h), **5,398 `0x40` frames**, every one
+LEN 2 and XOR-clean. ✅ **verified** — this project's own capture, re-measured
+2026-07-31.
+
+| Candidate | Verdict | The measurement that kills it |
+|---|---|---|
+| **cycle count** | 🔴 refuted | byte 1 **decreases** — 329 times in this one session |
+| **cumulative charge** | 🔴 refuted | same measurement; an accumulator does not run backwards |
+| **nameplate capacity (mAh)** | 🔴 refuted | byte 1 **changes at all** — 643 times, on one unit, with no hardware change |
+
+Byte 1, walked in timestamp order across all 5,398 frames: **314 increases, 329
+decreases, 4,754 unchanged** — it moves on **643 of 5,397** consecutive pairs
+(**11.9 %**). First value `0x01`, last `0x0d`, 15 distinct payloads. The
+behaviour is present *within* individual connections, so it is not an artefact
+of stitching six sessions together (session 4: 124 up / 134 down; session 6:
+163 up / 171 down).
+
+Two further measurements from the same re-walk:
+
+* **Byte 0 is not stable within a single session either.** This row previously
+  said byte 0 was "per-unit or per-state"; it understated the case. In the older
+  unattributed capture (`feedback_log/2026.07.07_2/opensmartbatt-20260707-114646.log`
+  — 813 `0x40` frames, all inside one continuous 6 min 07 s stretch on
+  2026-07-05) byte 0 is `0x22` on **799** frames and `0x02` on **14**, arriving
+  as four short excursions (1, 1, 11 and 1 frames) out of otherwise long `0x22`
+  runs. Across the whole corpus byte 0 takes only `0x20`, `0x22` and `0x02`, so
+  **only bits 1 and 5 are ever used** — but bit 1 flips inside one session on one
+  unit, which rules out a fixed per-unit identifier.
+* **On the identified unit byte 1 never exceeds `0x18`** — mask `0x1F`, 15 of the
+  32 possible low-5-bit patterns, and bit 1 occurs only paired with bit 4. That is
+  *consistent with* a bitfield, but a small magnitude occupies the same bits, so
+  this is a **reading, not a decode**. It is also not a general property of the
+  register: the older unit's byte 1 is `0x29`/`0x2b`, which sets bit 5.
+
+🔴 **Correction to counts previously printed in this row.** The earlier figures
+for the unattributed capture — `222b` (8,747) / `2229` (8,745) — do not
+reproduce by any method tried, and are far larger than the log can hold. That
+session is exported **three times** in the corpus (the two `2026.07.06_1` logs
+and the `2026.07.07_2` log carry byte-identical copies of it), and
+de-duplicated it holds `222b` ×708, `2229` ×91, `022b` ×14 = **813 frames
+total**. ⚠️ Exports in `feedback_log/` are **cumulative** — each contains all
+earlier sessions for that device — so any count taken from this corpus must be
+de-duplicated before it is published.
+
+**The experiment this row used to propose does not exist, and would not have
+settled it.** It asked for "the same unit before and after a charge cycle, with
+the charge state labelled". Batch `006` *already* carries in-band charge
+labelling: `0x2E` (signed main current, §8.2) is present on all 5,398 telemetry
+groups, and 339 of them are negative. But those 339 fall into **28 separate
+runs, the longest lasting 25.8 s** (2026-07-30 17:05:17.756 → 17:05:43.527),
+with current swinging −41 A … +14 A. That is a running vehicle's alternator,
+not a charge cycle — labelled, in band, and useless for this purpose.
+
+⇒ **The capture that would actually settle it:** the same `0x10` = `0x02` unit,
+on a **sustained** charge — **≥30 min continuous** with `0x2E` negative
+throughout — held in **one continuous connection**, with `!#` issued at both ends
+so the connect burst brackets the run (§10.2 — without it the metadata
+registers never arrive). Anything shorter re-measures the transient that batch
+`006` already contains.
+
+> 🚫 **Unconfirmed lead — do NOT implement, and do not read it as a partial
+> decode.** Pairing each `0x40` frame with the `0x24` cell voltages from the same
+> telemetry group, byte 1 **bit 3** is set almost only when cell 4 (payload index
+> 3) is at or above every other cell: **867 of 870** bit-3 frames, 99.7 %.
+> **The converse fails badly, and that is the half that matters:** of the 3,437
+> frames where cell 4 is the maximum, bit 3 is set in only **867 — 25.2 %**. A
+> rule that fires on a quarter of its own condition predicts nothing. It is
+> further **confounded with pack voltage**: bit-3 frames average PVLT 13.48 V
+> against 13.82 V for the rest, and "cell 4 is highest" is itself a low-voltage
+> condition (13.64 V vs 13.99 V), so the association may be entirely mediated by
+> voltage. One unit, one session, no controlled variation. Recorded only so the
+> next reader does not re-find it and mistake it for a decode.
 
 ### 10.2 Capture prerequisite: no keep-alive write ⇒ no metadata
 
