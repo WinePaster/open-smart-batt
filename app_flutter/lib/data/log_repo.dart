@@ -188,6 +188,19 @@ class LogRepo {
     // dropped the connect-time block (GATT dump, property flags) that lives on
     // unattributed rows until `link: connecting`.
     final excluded = deviceId == null ? 0 : await _countUnattributed();
+    // The other half of the same silent loss. design 0019 counted the rows with
+    // NO device, but [_scope] filters `device_id = ?`, which drops rows belonging
+    // to OTHER units just as completely — and those said nothing at all. A phone
+    // that has watched two packs exports one of them and the file reads as if the
+    // other never existed. Both numbers are reported, never summed: "recorded
+    // before we knew the unit" and "belongs to a different unit" are different
+    // facts, and only the first one is a defect of ours.
+    //
+    // Deliberately scope-wide, i.e. NOT narrowed by [sessionId] — same as
+    // [excluded]. A session-scoped export's other rows are mostly this device's
+    // own other connections, which the `connections=N` header line already
+    // covers; counting them here would read as data loss when it is not.
+    final fromOthers = deviceId == null ? 0 : await _countOtherDevices(deviceId);
     final out = <String>[
       ...header.map((h) => '# $h'),
       if (header.isNotEmpty) '# rows: ${rows.length}',
@@ -197,6 +210,10 @@ class LogRepo {
       if (header.isNotEmpty) '# marks: ${_markSummary(rows)}',
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
+      // Omitted at zero, like every other optional preamble field: an empty
+      // field reads as a missing feature (export_header.dart's rule).
+      if (header.isNotEmpty && fromOthers > 0)
+        '# excluded: $fromOthers rows from other devices',
     ];
     String? lastKey;
     var first = true;
@@ -262,6 +279,25 @@ class LogRepo {
   Future<int> _countUnattributed() async {
     final r = await _db.rawQuery(
       'SELECT COUNT(*) AS n FROM ${Db.tableDiagLog} WHERE device_id IS NULL',
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Rows attributed to some OTHER unit than [deviceId] — invisible to this
+  /// device's export for the opposite reason to [_countUnattributed]: they have
+  /// an attribution, just not this one.
+  ///
+  /// `IS NOT NULL` is redundant — SQL three-valued logic already makes
+  /// `NULL != 'AA'` evaluate to NULL rather than true, so unattributed rows
+  /// never match — but it is spelled out because the partition between this
+  /// count and [_countUnattributed] has to be exact and obviously so: every
+  /// excluded row must land in exactly one of the two, and a reader should not
+  /// have to recall the three-valued rule to be sure of it.
+  Future<int> _countOtherDevices(String deviceId) async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableDiagLog} '
+      'WHERE device_id IS NOT NULL AND device_id != ?',
+      [deviceId],
     );
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }

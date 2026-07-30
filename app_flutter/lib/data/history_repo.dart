@@ -354,6 +354,11 @@ class HistoryRepo {
     // per-device CSVs look complete while dropping 11.3 % of their samples.
     final excluded =
         deviceId == null ? 0 : await countUnattributed(since: since);
+    // The door design 0019 left open: rows attributed to a DIFFERENT unit are
+    // dropped by [_scope] and were reported nowhere. See [countOtherDevices].
+    final fromOthers = deviceId == null
+        ? 0
+        : await countOtherDevices(deviceId, since: since);
     final body = const ListToCsvConverter().convert(rows);
     final lines = <String>[
       for (final h in header) '# $h',
@@ -362,6 +367,8 @@ class HistoryRepo {
       // (export_header.dart's rule).
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
+      if (header.isNotEmpty && fromOthers > 0)
+        '# excluded: $fromOthers rows from other devices',
       body,
     ];
     return (text: lines.join('\n'), rows: raw.length);
@@ -379,6 +386,42 @@ class HistoryRepo {
   Future<int> countUnattributed({DateTime? since}) async {
     final where = <String>['device_id IS NULL'];
     final args = <Object?>[];
+    if (since != null) {
+      where.add('timestamp >= ?');
+      args.add(since.millisecondsSinceEpoch);
+    }
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE ${where.join(' AND ')}',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Rows in range belonging to some OTHER unit than [deviceId] — the other
+  /// half of the same silent loss [countUnattributed] covers.
+  ///
+  /// design 0019 counted the rows with NO device and stopped there, but
+  /// [_scope] filters `device_id = ?`, which drops rows belonging to a
+  /// DIFFERENT unit just as completely — and unlike the unattributed ones,
+  /// those said nothing at all. A phone that has watched two packs exports one
+  /// of them and the CSV reads as though the other had never been connected.
+  ///
+  /// Reported separately from [countUnattributed], never summed: "recorded
+  /// before we knew the unit" and "belongs to a different unit" are different
+  /// facts, and only the first is a shortcoming of ours.
+  ///
+  /// Scoped by [since] — unlike the log's equivalent, which has no time window.
+  /// A count that reached outside the exported range would describe rows the
+  /// file was never going to contain, which is not the question the header
+  /// line answers.
+  ///
+  /// `IS NOT NULL` is redundant under SQL three-valued logic (`NULL != 'AA'`
+  /// evaluates to NULL, not true, so unattributed rows never match), but it is
+  /// spelled out so the partition against [countUnattributed] is exact and
+  /// visibly so: every excluded row lands in exactly one of the two.
+  Future<int> countOtherDevices(String deviceId, {DateTime? since}) async {
+    final where = <String>['device_id IS NOT NULL', 'device_id != ?'];
+    final args = <Object?>[deviceId];
     if (since != null) {
       where.add('timestamp >= ?');
       args.add(since.millisecondsSinceEpoch);

@@ -130,6 +130,74 @@ void main() {
       expect(out.text, contains('(+unattributed)'));
     });
 
+    // The door design 0019 left open in the CSV exporter, mirroring the same
+    // fix in LogRepo: `_scope` filters `device_id = ?`, so ANOTHER unit's rows
+    // were dropped and — unlike the unattributed ones — reported nowhere.
+
+    test('a per-device CSV names the rows belonging to other units', () async {
+      final t = DateTime.utc(2026, 7, 29, 12);
+      await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
+      await history.insertSample(sample(t), deviceId: 'BB', samples: 3);
+      await history.insertSample(sample(t), deviceId: 'CC', samples: 4);
+
+      final out = await history.exportCsv(
+        deviceId: 'AA',
+        header: const ['scope: device=AA'],
+      );
+      expect(out.rows, 1);
+      expect(out.text, contains('excluded: 2 rows from other devices'));
+      // No unattributed rows here, so that line must stay away rather than
+      // appear as "excluded: 0".
+      expect(out.text, isNot(contains('unattributed rows')));
+    });
+
+    test('the two CSV exclusions are counted separately and account for every '
+        'row exactly once', () async {
+      final t = DateTime.utc(2026, 7, 29, 12);
+      await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
+      await history.insertSample(sample(t), deviceId: null, samples: 3);
+      await history.insertSample(sample(t), deviceId: null, samples: 4);
+      await history.insertSample(sample(t), deviceId: 'BB', samples: 5);
+
+      final out = await history.exportCsv(
+        deviceId: 'AA',
+        header: const ['scope: device=AA'],
+      );
+      expect(out.rows, 1);
+      expect(out.text, contains('excluded: 2 unattributed rows'));
+      expect(out.text, contains('excluded: 1 rows from other devices'));
+      // 1 exported + 2 unattributed + 1 other = 4 stored. The partition has to
+      // be exact, or the header understates the loss it exists to admit.
+      expect(await history.count(), 4);
+    });
+
+    test('the other-devices count respects the export time window', () async {
+      final t = DateTime.utc(2026, 7, 29, 12);
+      final old = t.subtract(const Duration(days: 2));
+      await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
+      await history.insertSample(sample(t), deviceId: 'BB', samples: 3);
+      // Outside the window: it was never going to be in this file, so counting
+      // it would describe a loss that did not happen.
+      await history.insertSample(sample(old), deviceId: 'BB', samples: 9);
+
+      final out = await history.exportCsv(
+        deviceId: 'AA',
+        since: t.subtract(const Duration(hours: 1)),
+        header: const ['scope: device=AA'],
+      );
+      expect(out.text, contains('excluded: 1 rows from other devices'));
+    });
+
+    test('an all-devices CSV claims no other-device exclusion', () async {
+      final t = DateTime.utc(2026, 7, 29, 12);
+      await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
+      await history.insertSample(sample(t), deviceId: 'BB', samples: 3);
+
+      final out = await history.exportCsv(header: const ['scope: all devices']);
+      expect(out.rows, 2);
+      expect(out.text, isNot(contains('excluded')));
+    });
+
     test('the log export gained a row count and the same exclusion note',
         () async {
       await logs.insertLog(LogEntry.event('link: ready', deviceId: 'AA'));
@@ -144,6 +212,71 @@ void main() {
       final all = await logs.exportLog(header: const ['scope: all']);
       expect(all, contains('rows: 3'));
       expect(all, isNot(contains('excluded')));
+    });
+
+    test('a per-device log export names the OTHER units it dropped too',
+        () async {
+      // The remaining door. design 0019 closed the NULL case and left this one:
+      // `_scope()` filters `device_id = ?`, so a phone that has watched two
+      // packs exported one of them and the file read as if the other had never
+      // been connected. Nothing in the preamble said otherwise.
+      await logs.insertLog(LogEntry.event('a1', deviceId: 'AA', sessionId: 1));
+      await logs.insertLog(LogEntry.event('b1', deviceId: 'BB', sessionId: 2));
+      await logs.insertLog(LogEntry.event('b2', deviceId: 'BB', sessionId: 2));
+
+      final out =
+          await logs.exportLog(deviceId: 'AA', header: const ['scope: AA']);
+      expect(out, contains('rows: 1'));
+      expect(out, contains('excluded: 2 rows from other devices'));
+      // No unattributed rows exist here, so that line must stay away rather
+      // than appear as "excluded: 0".
+      expect(out, isNot(contains('unattributed')));
+    });
+
+    test('the two exclusions are counted separately, never summed', () async {
+      // Collapsing them would hide which is which: "recorded before we knew the
+      // unit" is a defect of ours, "belongs to a different unit" is not, and
+      // they lead to opposite follow-up questions.
+      await logs.insertLog(LogEntry.event('a1', deviceId: 'AA', sessionId: 1));
+      await logs.insertLog(LogEntry.event('scan start'));
+      await logs.insertLog(LogEntry.event('GATT dump: 2 service(s)'));
+      await logs.insertLog(LogEntry.event('b1', deviceId: 'BB', sessionId: 2));
+
+      final out =
+          await logs.exportLog(deviceId: 'AA', header: const ['scope: AA']);
+      expect(out, contains('excluded: 2 unattributed rows'));
+      expect(out, contains('excluded: 1 rows from other devices'));
+      // Every row is accounted for exactly once: 1 exported + 2 + 1 = 4 stored.
+      expect(await logs.count(), 4);
+    });
+
+    test('an all-devices log export drops nothing, so it claims nothing',
+        () async {
+      await logs.insertLog(LogEntry.event('a1', deviceId: 'AA', sessionId: 1));
+      await logs.insertLog(LogEntry.event('b1', deviceId: 'BB', sessionId: 2));
+      await logs.insertLog(LogEntry.event('scan start'));
+
+      final out = await logs.exportLog(header: const ['scope: all']);
+      expect(out, contains('rows: 3'));
+      expect(out, isNot(contains('excluded')));
+    });
+
+    test('a session-scoped export still reports the other units', () async {
+      // The scope narrows to one connection, but the device-level exclusion is
+      // reported scope-wide on purpose: this device's OWN other sessions are
+      // already visible as `connections=N`, whereas another unit's rows are not
+      // represented anywhere else in the file.
+      await logs.insertLog(LogEntry.event('a1', deviceId: 'AA', sessionId: 1));
+      await logs.insertLog(LogEntry.event('a2', deviceId: 'AA', sessionId: 2));
+      await logs.insertLog(LogEntry.event('b1', deviceId: 'BB', sessionId: 3));
+
+      final out = await logs.exportLog(
+        deviceId: 'AA',
+        sessionId: 1,
+        header: const ['scope: AA session=1'],
+      );
+      expect(out, contains('rows: 1'));
+      expect(out, contains('excluded: 1 rows from other devices'));
     });
 
     test('no header means no summary — a raw blob stays a raw blob', () async {
