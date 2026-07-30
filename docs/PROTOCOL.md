@@ -403,6 +403,35 @@ argument — do not compare the two:
 * Anti-theft: `switchMode(currentMode != 2 ? 1 : 0)`
 * Cut-off: `switchMode(currentMode != 4 ? 2 : 0)`
 
+#### What the two modes physically do
+
+⚠️ **Source: the vendor's distributor, verbally, 2026-07-30. NOT verified on the
+wire** — no capture in this corpus has a unit in either state. Recorded because
+the difference is a safety matter and the register names alone do not convey it.
+
+| Mode | Behaviour |
+|---|---|
+| **Cut-off** (`2`) | Output is disconnected outright. Nothing is supplied; the vehicle will not start. |
+| **Anti-theft** (`1`) | Output stays live. The pack watches the current draw and disconnects **when it exceeds a configured amperage**, after which it supplies nothing. |
+
+Two consequences worth stating plainly:
+
+* **Anti-theft is a current trip, not a passive flag.** It works by letting a
+  thief connect and then cutting power the moment they draw enough to crank the
+  engine. That is also why it is model-gated: a pack without the current sense
+  cannot implement it.
+* 🔴 **Anti-theft is arguably the more hazardous of the two while a vehicle is
+  in use.** Cut-off fails immediately and obviously — the vehicle will not
+  start. Anti-theft fails *later*, on a current spike, which on a moving vehicle
+  means power is lost while it is being driven. A client offering this control
+  should say so, not merely warn that the mode is "unverified".
+
+**The trip current is configurable**, per the same source — but **no write path
+for it is identified in this document**. `0x2B` (§8.2.2) carries OV / UV / OT and
+a trailing byte, with no current field, so the threshold is set somewhere this
+corpus has not captured. Anyone reverse-engineering the anti-theft path should
+start there rather than assume `0x2B` covers it.
+
 ### 6.3 `changeCutOffPassword(newPwBytes)`
 
 ```
