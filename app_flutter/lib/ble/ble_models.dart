@@ -5,6 +5,8 @@
 /// app decoupled from the BLE plugin surface (only [BleService] touches it).
 library;
 
+import 'dart:async' show TimeoutException;
+
 import '../models/log_entry.dart' show LogDirection;
 
 /// Lifecycle of the single BLE link [BleService] manages.
@@ -115,4 +117,51 @@ bool looksLikeVendorName(String advertisedName) {
     }
   }
   return false;
+}
+
+/// Guards work that spans an `await` against a newer connect superseding it.
+///
+/// FB-39 (design 0021). `_setupConnection()` reads `_device` once and then
+/// awaits service discovery and CCCD enable — but everything it writes
+/// afterwards (`_writeChar`, `_notifyChar`, the link state, the keep-alive
+/// timer) is OBJECT-level state, unrelated to the local it captured. A field
+/// capture caught the consequence: three `discoverServices` timeouts stretched
+/// one unit's connect across a minute, the owner gave up and tapped a different
+/// device, and the first unit's `ready` landed five seconds later — so the app
+/// came online as a device the user had already moved away from.
+///
+/// The counter is bumped by every `connect()` and `disconnect()`. Work that
+/// started under an older value must abandon itself, and — see [isCurrent] —
+/// must abandon itself QUIETLY: a newer connection now owns the shared state,
+/// so tearing down would break the connection the user actually wants.
+class ConnectEpoch {
+  int _v = 0;
+
+  /// The value in force right now. Capture this before the first `await`.
+  int get current => _v;
+
+  /// Open a new epoch, invalidating every in-flight caller. Returns the new
+  /// value (callers rarely need it; it exists to make tests explicit).
+  int begin() => ++_v;
+
+  /// Whether work captured at [epoch] may still touch shared state.
+  bool isCurrent(int epoch) => epoch == _v;
+}
+
+/// Human-readable reason for a failed GATT setup, for the diagnostic log.
+///
+/// FB-23 (design 0021). The old code rethrew out of a stream listener, where no
+/// caller can catch it, so a routine discovery timeout reached the user as an
+/// `Uncaught: FlutterBluePlusException` line — 101 of them in a single field
+/// capture. The exception text is kept verbatim at the end, because it is still
+/// the most specific thing we have; the prefix exists so a reader who is not
+/// holding the source can tell the three cases apart.
+String gattSetupFailureReason(Object error) {
+  if (error is TimeoutException) {
+    return 'service discovery timed out';
+  }
+  if (error is StateError && error.message.contains('GATT characteristics')) {
+    return 'required characteristics missing: ${error.message}';
+  }
+  return 'setup failed: $error';
 }
