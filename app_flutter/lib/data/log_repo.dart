@@ -3,6 +3,12 @@
 /// Optional TX/RX hex packet log, only written when `AppSettings.rawPacketLog`
 /// is ON (DEFAULT OFF). Capped/rotated by an approximate byte budget
 /// (`AppSettings.logMaxBytes`, default 5 MB) — oldest rows are dropped first.
+///
+/// Rotation accounting is O(1) per insert: a running byte total is kept in
+/// memory and only crossing the cap queries the database. It used to run
+/// `SUM(LENGTH(...))` over the whole table on *every* insert, which at the
+/// measured packet rate meant tens of full-table scans per second once the log
+/// reached its cap. See `_lowWaterFraction` and `_estimatedBytes`.
 library;
 
 import 'package:sqflite/sqflite.dart';
@@ -20,12 +26,61 @@ class LogRepo {
   /// separators when rendered via [LogEntry.toLogLine], used for rotation math.
   static const int _rowOverheadBytes = 40;
 
+  /// When a trim runs, it drops down to this fraction of the cap rather than to
+  /// just under it, leaving headroom before the next one is due.
+  ///
+  /// Without headroom, a log sitting at its cap trims on *every* insert — the
+  /// steady state, not an edge case, since the cap is reached after roughly two
+  /// hours of capture. At 5 MB / ~54 B per row that is ~97,000 rows, and each
+  /// trim is two `SUM(LENGTH(...))` scans plus a `COUNT(*)`. Measured packet
+  /// rate is a median of 13/s (peak 22/s), so the old code ran on the order of
+  /// 39 full-table scans per second, forever.
+  ///
+  /// At 0.9 each trim frees ~10% of the cap ≈ 9,700 rows ≈ 12 minutes of
+  /// capture. Combined with [_estimatedBytes] that is one trim per ~9,700
+  /// inserts instead of one per insert.
+  static const double _lowWaterFraction = 0.9;
+
+  /// Running estimate of [approxBytes], maintained by [insertLog] so the hot
+  /// path costs no query at all. `null` means "unknown, re-ground on next use".
+  ///
+  /// Kept exact rather than merely close: [trimToBytes] and [clearLog] both
+  /// re-ground it from the real query, so error cannot accumulate across trims.
+  /// The one drift source between trims is `String.length` (UTF-16 code units)
+  /// against SQLite `LENGTH()` (characters), which differ only for astral-plane
+  /// text in `note` — and a late trim, not a broken cap, is the worst it can do.
+  ///
+  /// ⚠️ Assumes this repo is the only writer to `diag_log`. That holds in the
+  /// app (one [LogRepo] per database); a second instance would keep its own
+  /// estimate and could trim late.
+  int? _estimatedBytes;
+
+  /// Size this row contributes, matching [approxBytes]'s SQL exactly.
+  static int _rowBytes(Map<String, Object?> map) =>
+      ((map['hex'] as String?)?.length ?? 0) +
+      ((map['note'] as String?)?.length ?? 0) +
+      _rowOverheadBytes;
+
   /// Insert a log entry. If [maxBytes] is given, trim oldest rows afterwards
   /// to keep the estimated log size within budget. Returns the new row id.
+  ///
+  /// The budget check is O(1): the running total in [_estimatedBytes] is
+  /// incremented locally and only crossing [maxBytes] touches the database.
   Future<int> insertLog(LogEntry entry, {int? maxBytes}) async {
     final map = Map<String, Object?>.from(entry.toMap())..remove('id');
     final id = await _db.insert(Db.tableDiagLog, map);
-    if (maxBytes != null) {
+    if (maxBytes == null) {
+      // Not tracking a budget on this call, so the running total no longer
+      // accounts for every row. Drop it rather than let it read low.
+      _estimatedBytes = null;
+      return id;
+    }
+    final known = _estimatedBytes;
+    // Seeding reads the real total, which already includes the row just
+    // inserted; otherwise add it ourselves.
+    final estimate =
+        _estimatedBytes = known == null ? await approxBytes() : known + _rowBytes(map);
+    if (estimate > maxBytes) {
       await trimToBytes(maxBytes);
     }
     return id;
@@ -223,27 +278,45 @@ class LogRepo {
   }
 
   /// Delete every log row.
-  Future<int> clearLog() => _db.delete(Db.tableDiagLog);
+  Future<int> clearLog() async {
+    final n = await _db.delete(Db.tableDiagLog);
+    _estimatedBytes = 0;
+    return n;
+  }
 
   /// Drop oldest rows until the estimated size is within [maxBytes].
   ///
-  /// Removes rows in one batched delete (estimated from the average row size)
-  /// then re-checks once, so worst case is two passes.
+  /// Trims down to [_lowWaterFraction] of the cap, not merely under it, so the
+  /// next trim is thousands of inserts away instead of the next one. Removes
+  /// rows in one batched delete (estimated from the average row size) then
+  /// re-checks once, so worst case is two passes.
+  ///
+  /// On return [_estimatedBytes] always holds a freshly queried total — this is
+  /// where the running estimate is re-grounded.
   Future<void> trimToBytes(int maxBytes) async {
     if (maxBytes <= 0) {
       await clearLog();
       return;
     }
+    // Callers get what they asked for — under maxBytes — with the low-water
+    // mark only deciding how far under.
+    final target = (maxBytes * _lowWaterFraction).floor().clamp(1, maxBytes);
     for (var pass = 0; pass < 2; pass++) {
-      final total = await approxBytes();
-      if (total <= maxBytes) return;
+      final total = _estimatedBytes = await approxBytes();
+      if (total <= target) return;
       final rows = await count();
-      if (rows <= 0) return;
+      if (rows <= 0) {
+        _estimatedBytes = 0;
+        return;
+      }
       final avg = (total / rows).ceil().clamp(1, total);
-      // +1 row of slack so we drop strictly below the cap.
-      final toRemove = (((total - maxBytes) / avg).ceil() + 1).clamp(1, rows);
+      // +1 row of slack so we drop strictly below the target.
+      final toRemove = (((total - target) / avg).ceil() + 1).clamp(1, rows);
       await _deleteOldest(toRemove);
     }
+    // Both passes deleted, so the last figure is stale. One more query keeps
+    // the estimate exact on exit rather than leaving it reading high.
+    _estimatedBytes = await approxBytes();
   }
 
   Future<void> _deleteOldest(int n) async {

@@ -459,4 +459,179 @@ void main() {
       expect(await repo.count(), lessThan(before));
     });
   });
+
+  // --- Rotation cost -------------------------------------------------------
+  //
+  // insertLog used to call trimToBytes on every insert, and trimToBytes opens
+  // with a SUM(LENGTH(...)) over the whole table. Once the log reaches its cap
+  // — the steady state, ~2 hours of capture at the measured median of 13
+  // packets/s — that is two such scans plus a COUNT(*) per packet, over ~97,000
+  // rows. These tests hold the cost down, not just the correctness: a comment
+  // saying "O(1)" is not enforceable, a query count is.
+
+  group('LogRepo rotation cost', () {
+    late AppDatabase appDb;
+    late _CountingDb db;
+
+    setUp(() async {
+      appDb = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      db = _CountingDb(appDb.db);
+    });
+    tearDown(() async => appDb.close());
+
+    // 6 payload bytes → 12 hex chars, no note ⇒ 12 + 40 = 52 bytes per row.
+    LogEntry entry(int i) => LogEntry.fromBytes(
+          LogDirection.rx,
+          const [0xB8, 0x19, 0x01, 0x02, 0x04, 0xD4],
+          at: DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000)
+              .add(Duration(milliseconds: i)),
+        );
+
+    test('steady-state inserts do not scan the table each time', () async {
+      final repo = LogRepo(db);
+      const cap = 20000; // ~385 rows; low water 18000 ⇒ ~38 rows of headroom.
+      const inserts = 800;
+
+      for (var i = 0; i < inserts; i++) {
+        await repo.insertLog(entry(i), maxBytes: cap);
+      }
+
+      // The cap is still the contract.
+      expect(await repo.approxBytes(), lessThanOrEqualTo(cap));
+
+      // Before this change every insert scanned at least once, so scans >=
+      // inserts. Headroom makes trims rare; the exact figure depends on row
+      // size, hence a ratio rather than a magic number.
+      expect(db.sumScans, lessThan(inserts ~/ 10),
+          reason: 'insertLog should not scan the table on the hot path — '
+              '${db.sumScans} scans for $inserts inserts');
+    });
+
+    test('a trim leaves headroom instead of stopping at the cap', () async {
+      final repo = LogRepo(db);
+      const cap = 20000;
+      for (var i = 0; i < 500; i++) {
+        await repo.insertLog(entry(i));
+      }
+      expect(await repo.approxBytes(), greaterThan(cap));
+
+      await repo.trimToBytes(cap);
+
+      // Under the cap — the caller's contract — and specifically under the low
+      // water mark, which is what buys the headroom.
+      final after = await repo.approxBytes();
+      expect(after, lessThanOrEqualTo(cap));
+      expect(after, lessThanOrEqualTo((cap * 0.9).floor()),
+          reason: 'trimming to just under the cap re-trims on the next insert');
+    });
+
+    test('the running total survives an insert made without a budget',
+        () async {
+      final repo = LogRepo(db);
+      const cap = 8000;
+      // Budgeted inserts seed the running total...
+      for (var i = 0; i < 50; i++) {
+        await repo.insertLog(entry(i), maxBytes: cap);
+      }
+      // ...then a batch that bypasses it entirely. If the total were carried
+      // forward unchanged it would now read low, and the cap would overrun.
+      for (var i = 50; i < 400; i++) {
+        await repo.insertLog(entry(i));
+      }
+      for (var i = 400; i < 450; i++) {
+        await repo.insertLog(entry(i), maxBytes: cap);
+      }
+
+      expect(await repo.approxBytes(), lessThanOrEqualTo(cap));
+    });
+
+    test('clearLog resets the running total', () async {
+      final repo = LogRepo(db);
+      const cap = 8000;
+      for (var i = 0; i < 300; i++) {
+        await repo.insertLog(entry(i), maxBytes: cap);
+      }
+      await repo.clearLog();
+      expect(await repo.count(), 0);
+
+      // A stale non-zero total here would trim a nearly empty table.
+      final scansBefore = db.sumScans;
+      await repo.insertLog(entry(999), maxBytes: cap);
+      expect(await repo.count(), 1);
+      expect(db.sumScans, scansBefore,
+          reason: 'a cleared log is known to be empty; no query needed');
+    });
+  });
+}
+
+/// Counts the queries [LogRepo] issues, so the rotation tests can assert cost.
+///
+/// Implements only the five [Database] members [LogRepo] uses; anything else
+/// throws via [noSuchMethod], which is the desired outcome — a new query path
+/// should fail loudly here rather than go uncounted.
+class _CountingDb implements Database {
+  _CountingDb(this._inner);
+
+  final Database _inner;
+
+  /// `SUM(LENGTH(...))` full-table scans — the cost this change is about.
+  int sumScans = 0;
+
+  /// `COUNT(*)` queries, issued by trimToBytes alongside each scan.
+  int countQueries = 0;
+
+  @override
+  Future<int> insert(String table, Map<String, Object?> values,
+          {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) =>
+      _inner.insert(table, values,
+          nullColumnHack: nullColumnHack, conflictAlgorithm: conflictAlgorithm);
+
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql,
+      [List<Object?>? arguments]) {
+    if (sql.contains('SUM(LENGTH')) sumScans++;
+    if (sql.contains('COUNT(*)')) countQueries++;
+    return _inner.rawQuery(sql, arguments);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> query(
+    String table, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) =>
+      _inner.query(table,
+          distinct: distinct,
+          columns: columns,
+          where: where,
+          whereArgs: whereArgs,
+          groupBy: groupBy,
+          having: having,
+          orderBy: orderBy,
+          limit: limit,
+          offset: offset);
+
+  @override
+  Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) =>
+      _inner.delete(table, where: where, whereArgs: whereArgs);
+
+  @override
+  Future<int> rawDelete(String sql, [List<Object?>? arguments]) =>
+      _inner.rawDelete(sql, arguments);
+
+  /// Everything else throws. Declared so the class satisfies [Database] without
+  /// stubbing 16 unused members — and so an uncounted query path is a loud
+  /// failure rather than a silent one.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
