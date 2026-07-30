@@ -455,3 +455,32 @@ TestFlight、實際是本機手動上傳 build 2110」的直接成因。灰色�
 `APPLE_TEAM_ID`、`IOS_P12_BASE64`、`IOS_P12_PASSWORD`、
 `IOS_MOBILEPROVISION_BASE64`、`ASC_KEY_ID`、`ASC_ISSUER_ID`、`ASC_API_KEY_BASE64`。
 這些一律只存在於 GitHub Actions secrets，**絕不進 repo**。
+
+### 發版前先查現況（不要憑印象）
+
+本文件寫的是**做法**，不是**現況**。哪些 secret 已經設好會變，所以這裡**刻意不放
+快照** —— 快照只會換個地方腐爛。要知道現況就跑：
+
+```bash
+gh secret list      # 只列名稱與設定時間，不會顯示值
+gh variable list    # IOS_RELEASE_ENABLED 在這裡，不在 secret 裡
+```
+
+判讀：
+
+| 看到什麼 | 意義 |
+|---|---|
+| 四個 `ANDROID_*` 都在 | Android release 會用固定 keystore 簽 → **可原地更新** |
+| 少任一個 `ANDROID_*` | workflow 會**大聲失敗**（不是靜默退回 debug），先補齊再發 |
+| `gh variable list` 是空的 | iOS job 一律 skipped，**不論 secret 補得多齊** |
+| 六個 iOS secret 不齊而 variable 為 `true` | job 失敗並列出缺哪幾個 |
+
+> 📌 **這一節是 2026-07-30 補的，起因是一次真實的誤判。** 當時 `todo.md` 把 F1
+> 簽章列為「待擁有者設 secret」，實際上四個 Android secret 早在 **2026-07-28 12:00**
+> 就設好了，v0.6.9 / 0.6.10 / 0.6.11 全部是用它簽的 —— 待辦上多躺了一週。
+>
+> 成因不是誰偷懶：稽核時誠實標注了「外部動作，無法從 repo 判定」，而**「無法判定」
+> 在轉述時變成了「尚未完成」**。兩者差很多。一行 `gh secret list` 就能分開。
+>
+> ⇒ **凡是 repo 裡看不到的狀態（secrets、TestFlight 上架、實機驗證），文件只能寫
+> 「怎麼查」，不能寫「現在是什麼」。**
