@@ -14,6 +14,7 @@
 library;
 
 export 'app_database.dart';
+export 'pending_writes.dart';
 export 'history_repo.dart';
 export 'device_repo.dart';
 export 'settings_repo.dart';

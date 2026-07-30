@@ -34,6 +34,7 @@ class AppServices {
     required this.devices,
     required this.connection,
     required this.telemetry,
+    required this.pending,
     required this.appBuild,
     required this.platform,
   });
@@ -50,6 +51,10 @@ class AppServices {
   final DeviceController devices;
   final ConnectionController connection;
   final TelemetryController telemetry;
+
+  /// Fire-and-forget database writes still in flight. Drained by [dispose]
+  /// before the database closes; see [PendingWrites].
+  final PendingWrites pending;
 
   /// This build (`version+buildNumber`) and OS description, resolved ONCE at
   /// startup (design 0010). Stamped on every recorded row and reused by the
@@ -92,6 +97,9 @@ class AppServices {
     // events and the packet/history rows are attributed to the same unit. Seed
     // the counter from storage to keep session ids monotonic across restarts.
     final session = SessionContext()..seed(await logRepo.lastSessionId());
+    // ONE tracker shared by everything that writes without awaiting, so
+    // [dispose] can drain the lot before closing the database.
+    final pending = PendingWrites();
     final connection = ConnectionController(
       bleService,
       settings: settings,
@@ -100,6 +108,7 @@ class AppServices {
       session: session,
       appBuild: env.build,
       monitor: monitorService,
+      pending: pending,
     );
     final telemetry = TelemetryController(
       bleService,
@@ -108,6 +117,7 @@ class AppServices {
       logs: logRepo,
       session: session,
       appBuild: env.build,
+      pending: pending,
     );
 
     // Prime the persisted controllers before the first frame.
@@ -116,7 +126,7 @@ class AppServices {
     // Apply the retention window once per launch (design 0011). The window is
     // measured in days, so there is no reason to prune more often than this —
     // and doing it on every write would be pure I/O for no benefit.
-    unawaited(settings.pruneHistory());
+    pending.add(settings.pruneHistory());
 
     return AppServices._(
       appDb: db,
@@ -129,18 +139,34 @@ class AppServices {
       devices: devices,
       connection: connection,
       telemetry: telemetry,
+      pending: pending,
       appBuild: env.build,
       platform: env.platform,
     );
   }
 
-  /// Tear everything down (controllers → BLE → DB).
+  /// Tear everything down (controllers → BLE → pending writes → DB).
+  ///
+  /// The order matters and the middle step is the whole point. Disposing the
+  /// controllers and the BLE service stops *new* work being queued; draining
+  /// [pending] then waits for the writes already in flight. Only then is it
+  /// safe to close the database.
+  ///
+  /// 🔴 Closing before the drain is what produced the intermittent
+  /// `DatabaseException(error database_closed)` — a two-step `insertLog`
+  /// resuming after `close()`. See [PendingWrites] for the full trace.
+  ///
+  /// The drain is bounded: if a write wedges we close anyway rather than hang
+  /// shutdown forever. Its result is deliberately ignored here — there is no
+  /// remedy at this point and nowhere left to report to, since the log sink is
+  /// the database we are about to close.
   Future<void> dispose() async {
     telemetry.dispose();
     connection.dispose();
     devices.dispose();
     settings.dispose();
     await ble.dispose();
+    await pending.drain();
     await appDb.close();
   }
 }

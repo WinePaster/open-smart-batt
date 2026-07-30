@@ -28,10 +28,12 @@ class TelemetryController extends ChangeNotifier {
     Duration? stallThreshold,
     Duration? stallCheckInterval,
     String? appBuild,
+    PendingWrites? pending,
   }) {
     _settings = settings;
     _history = history;
     _logs = logs;
+    _pending = pending ?? PendingWrites();
     _session = session ?? SessionContext();
     _appBuild = appBuild;
     _stallThreshold = stallThreshold ?? BleService.telemetryStallThreshold;
@@ -51,6 +53,13 @@ class TelemetryController extends ChangeNotifier {
   late final SettingsController _settings;
   late final HistoryRepo _history;
   late final LogRepo _logs;
+
+  /// In-flight history/log writes, so teardown can wait for them before the
+  /// database closes. See [PendingWrites] for the race this closes.
+  late final PendingWrites _pending;
+
+  /// The tracker, so a composition root can drain it (see `AppServices`).
+  PendingWrites get pendingWrites => _pending;
 
   /// Which unit/connection recorded rows belong to (design 0006). Shared with
   /// [ConnectionController]; see [SessionContext].
@@ -381,7 +390,7 @@ class TelemetryController extends ChangeNotifier {
         temperatureC: _nTemp > 0 ? (_sTemp / _nTemp).round() : null,
         current: _nCur > 0 ? _sCur / _nCur : null,
       );
-      unawaited(_history.insertSample(
+      _pending.add(_history.insertSample(
         avg,
         deviceId: _bucketDeviceId,
         samples: _nSamples,
@@ -407,7 +416,7 @@ class TelemetryController extends ChangeNotifier {
       sessionId: _session.sessionId,
       appBuild: _appBuild,
     );
-    unawaited(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
+    _pending.add(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
   }
 
   void _onLinkState(BleLinkState s) {

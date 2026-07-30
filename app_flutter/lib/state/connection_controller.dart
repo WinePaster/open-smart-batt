@@ -37,10 +37,12 @@ class ConnectionController extends ChangeNotifier {
     SessionContext? session,
     String? appBuild,
     MonitorService? monitor,
+    PendingWrites? pending,
   }) {
     _settings = settings;
     _devices = devices;
     _logs = logs;
+    _pending = pending ?? PendingWrites();
     _session = session ?? SessionContext();
     _appBuild = appBuild;
     _monitor = monitor ?? NoopMonitorService();
@@ -174,6 +176,13 @@ class ConnectionController extends ChangeNotifier {
   bool get monitorRunning => _monitorRunning;
   late final SettingsController _settings;
   late final DeviceController? _devices;
+
+  /// In-flight log/device writes, so teardown can wait for them before the
+  /// database closes. See [PendingWrites] for the race this closes.
+  late final PendingWrites _pending;
+
+  /// The tracker, so a composition root can drain it (see `AppServices`).
+  PendingWrites get pendingWrites => _pending;
   LogRepo? _logs;
   late final SessionContext _session;
 
@@ -193,7 +202,7 @@ class ConnectionController extends ChangeNotifier {
   void _event(String message, {String? deviceId}) {
     final logs = _logs;
     if (logs == null) return;
-    unawaited(logs.insertLog(
+    _pending.add(logs.insertLog(
       LogEntry.event(
         message,
         deviceId: deviceId ?? _session.deviceId,
@@ -731,7 +740,8 @@ class ConnectionController extends ChangeNotifier {
     }
     _lastSeenWrittenAt = now;
     _lastSeenDeviceId = id;
-    unawaited(_devices?.touch(id, lastSeen: now));
+    final touch = _devices?.touch(id, lastSeen: now);
+    if (touch != null) _pending.add(touch);
   }
 
   /// Recompute the cosmetic pack label; notify + persist only on a real change
@@ -747,7 +757,8 @@ class ConnectionController extends ChangeNotifier {
     if (next != ProductClass.unknown) {
       final id = _ble.connectedDeviceId;
       if (id != null) {
-        unawaited(_devices?.setProductClass(id, next));
+        final write = _devices?.setProductClass(id, next);
+        if (write != null) _pending.add(write);
       }
     }
     notifyListeners();
