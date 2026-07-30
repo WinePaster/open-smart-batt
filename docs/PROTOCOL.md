@@ -425,18 +425,29 @@ writing.
 | `0x30` payload | VADJ | Frames | Class |
 |---|---|---|---|
 | `07e1` | **20.17** | 531 | battery (`0x10`=`0x02`) |
+| `07f4` | **20.36** | 292 | battery — JIS 40 Ah, 2026-07-30 |
 | `07ee` | **20.30** | 112 | battery |
 | `07da` | **20.10** | 84 | battery |
 
-Baseline: whole-corpus re-walk, 2026-07-30. These are the **only** three values
-observed; every one came from a battery, and no capacitor or power bank has ever
-sent `0x30`. Spread is ≈1 %, consistent with a factory per-unit calibration.
+Baseline: whole-corpus re-walk 2026-07-30, plus the 2026-07-30 field capture.
+Every observed value came from a battery; no capacitor or power bank has ever
+sent `0x30`. Spread is ≈1.3 %, consistent with a factory per-unit calibration.
 
-> Earlier revisions listed a fourth value (≈20.06, attributed to a
-> "motorcycle-class unit") sourced to a 2026-07-05 capture. **That capture is not
-> in the corpus and the claim cannot be reproduced**; furthermore the logs that
-> stream `0x40` contain no `0x10` frames at all, so no class attribution was ever
-> possible for them (§10.1). The row is removed rather than carried unverifiable.
+> 📌 **`20.36` was deleted from this table earlier the same day and then turned up
+> on the wire.** It had been listed as "car battery, HCI snoop 2026-07-06" with a
+> cross-reference to a section this document does not contain, and it could not be
+> reproduced from the public corpus — so it was removed. Hours later a JIS 40 Ah
+> battery reported `07f4` across 292 frames.
+>
+> The removal was defensible on process and wrong on fact. Recording it because
+> the distinction matters: **"cannot be reproduced from the material we hold" is
+> not "false".** The right treatment for such a row is to move it to the pending
+> table with the capture that would settle it, not to delete it.
+>
+> An earlier fourth value (≈20.06, attributed to a "motorcycle-class unit",
+> 2026-07-05) remains **unreproducible** — that capture is not in the corpus, and
+> the logs streaming `0x40` carry no `0x10` at all, so they never supported a class
+> attribution (§10.1). It stays out until a capture shows it.
 
 **Consistency check (verified 2026-07-28).** On units that report DVOL, the four
 scaled cell voltages sum to the secondary voltage:
@@ -543,7 +554,7 @@ see §10.
 |---|---|---|
 | `0x00` | most units, most sessions | the normal/idle value |
 | `0x01` | a unit at PVLT 9.84 V with a 1.75 V cell imbalance; also a unit at a wholly normal PVLT 13.25 V; and ~10 % of power-bank samples while discharging | see below |
-| `0x20` | **power banks only** (`0x10 = 0x22`) — 2,769 frames; **0 frames across 13,574 battery/capacitor samples** | **charging.** PVLT ≈3.8–4.2 V is the SINGLE-CELL voltage, SVLT ≈9.0 V is the PD charging INPUT — not a 12 V pack in trouble |
+| `0x20` | **power banks only** (`0x10 = 0x22`) — 2,769 frames; **0 frames across 14,857 battery/capacitor samples** (13,574 corpus + 1,283 added by a 2026-07-30 two-device capture) | **charging.** PVLT ≈3.8–4.2 V is the SINGLE-CELL voltage, SVLT ≈9.0 V is the PD charging INPUT — not a 12 V pack in trouble |
 
 ⚠️ **A further 84 `0x20` frames sit in sessions with no `0x10` attribution.**
 Walked frame by frame, all 84 are power banks (PVLT ≈ 4 V, SVLT ≈ 9 V). They are
@@ -801,9 +812,26 @@ exactly equal `trunc(raw × VADJ)`** (e.g. `0xB9` = 185 × 20.30 = 3755.5 → 37
 Within each session only one of the many distinct `0x24` values matches, so this
 is not a coincidence.
 
-⚠️ **Small sample, and it does not replace `0x24`:** three frames, two units, and
-**exactly one frame per session, always in the first connect burst** — while
-`0x24` streams at 1.9–2.9 frames/second. Only ever seen on device-type `0x02`.
+Evidence as of 2026-07-30: **20 of 20 cell values exact, across 5 frames and 3
+units at 3 distinct VADJ factors** (20.10 / 20.30 / 20.36). The 2026-07-30 capture
+added the strongest pair, because that battery was charging — its cells moved
+through 60 distinct `0x24` patterns during the session, and both `0x47` frames
+still resolve to a pattern actually observed:
+
+```
+0x47 = [3318, 3318, 3318, 3318]  ⇒ raw [163,163,163,163] x 20.36  ✓ exact
+0x47 = [3440, 3481, 3461, 3461]  ⇒ raw [169,171,170,170] x 20.36  ✓ exact
+```
+
+⚠️ **It still does not replace `0x24`:** exactly one frame per session, always in
+the first connect burst, while `0x24` streams at 1.9–2.9 frames/second. Only ever
+seen on device-type `0x02`.
+
+> A method note that cost a wrong conclusion once: on a unit whose voltage is
+> moving, `0x47` must be compared against the `0x24` frame **nearest in time**,
+> not merely the last one seen. Comparing across a 24-second gap on a charging
+> battery produced a uniform +20 mV discrepancy that looked like a broken formula
+> and was really one raw LSB of charge.
 
 ### ⚠️ Pending items in this section, in one place
 
