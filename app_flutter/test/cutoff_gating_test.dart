@@ -145,10 +145,23 @@ void main() {
       expect(f.sublist(6, 12), [0xB8, 0x2A, 0x01, 0x04, 0x00, 0xA9]);
     });
 
-    test('cut-off is mode 2 and release is mode 6 — distinct commands', () {
-      expect(ModeArg.cutOff, 2);
-      expect(ModeArg.release, 6);
-      expect(ModeArg.cutOff, isNot(ModeArg.release));
+    test('the write encoding is the vendor\'s: 0 normal, 1 anti-theft, 2 cut-off',
+        () {
+      expect(ModeArg.unlock, 0x00);
+      expect(ModeArg.antiTheft, 0x01);
+      expect(ModeArg.cutOff, 0x02);
+    });
+
+    test('release writes NORMAL, not 0x06 (design 0024)', () {
+      // Eight 0x06 writes against two batteries genuinely in cut-off — across
+      // both cb derivation rules and with auth omitted entirely — moved 0x23
+      // exactly zero times. The only wire sighting of 0x06 was a capacitor,
+      // which has no cut-off feature and answers 0x23 in its own space.
+      const b = CommandBuilder();
+      const creds = AuthCredentials(cb: 0x00A8, pwSum: 0x00A8);
+      final f = b.switchMode(ModeArg.unlock, creds);
+      expect(f.sublist(0, 5), [0xB8, 0x23, 0x00, 0x01, 0x00]);
+      expect(f[4], isNot(0x06), reason: 'the code that never worked');
     });
   });
 

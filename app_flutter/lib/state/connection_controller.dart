@@ -470,10 +470,25 @@ class ConnectionController extends ChangeNotifier {
   /// Raw write (Write-Without-Response).
   Future<void> writeCommand(List<int> bytes) => _ble.writeCommand(bytes);
 
-  /// Documented-safe release: mode 0x06 + auth in one 15-byte write.
-  /// This is the "解除斷電 / 檢測電容" action on the dashboard.
+  /// Release: mode 0x00 (normal) + auth in one 15-byte write.
+  ///
+  /// 🔴 **Was 0x06 until 2026-07-30 (design 0024).** Labelled captures of two
+  /// batteries actually sitting in cut-off show eight 0x06 writes — three
+  /// cb/pwSum combinations across both derivation rules, plus bare mode frames
+  /// with no auth at all — and `0x23` never moved once. Every real transition in
+  /// those captures happened minutes away from any write of ours.
+  ///
+  /// That eliminates the auth value and the auth requirement as causes and
+  /// leaves the mode code. The distributor states the write encoding as
+  /// 0x00 normal / 0x01 anti-theft / 0x02 cut-off, so returning to normal means
+  /// writing normal.
+  ///
+  /// ⚠️ 0x00 is **not yet proven** to work — no capture holds a successful
+  /// write. The evidence is elimination plus the vendor's own numbering, which
+  /// is why callers verify the result against 0x23 rather than reporting
+  /// success (design 0024 §2.2).
   Future<void> releaseCutOff({required int cb, required int pwSum}) =>
-      _ble.switchMode(ModeArg.release, cb: cb, pwSum: pwSum);
+      _ble.switchMode(ModeArg.unlock, cb: cb, pwSum: pwSum);
 
   /// Generic mode switch — caller MUST gate which [mode] codes it sends.
   Future<void> switchMode(int mode,
@@ -486,8 +501,8 @@ class ConnectionController extends ChangeNotifier {
   Future<void> switchModeOnly(int mode) =>
       writeCommand(const CommandBuilder().modeSet(mode));
 
-  /// EXPERIMENTAL release with no auth (mode 0x06 only). See [switchModeOnly].
-  Future<void> releaseCutOffModeOnly() => switchModeOnly(ModeArg.release);
+  /// EXPERIMENTAL release with no auth (mode 0x00 only). See [switchModeOnly].
+  Future<void> releaseCutOffModeOnly() => switchModeOnly(ModeArg.unlock);
 
   /// Standalone verify-auth (9-byte auth frame).
   Future<void> sendAuth({required int cb, required int pwSum}) =>

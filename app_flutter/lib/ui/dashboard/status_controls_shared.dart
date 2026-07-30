@@ -157,24 +157,38 @@ void detectCapacitor(BuildContext context, TelemetryController tele) {
   );
 }
 
-/// Snack text for a mode write that returned without throwing — design 0020 §3.3.
+/// Watch `0x23` after a mode write and report what actually happened.
 ///
-/// It says "sent", never "done". A mode write has **no observable
-/// acknowledgement** on the wire: a 23-hour capture wrote mode 0x06 five times
-/// and `0x23` stayed `0x00` on 2131/2131 frames, with no error frame and no
-/// change in reply cadence (PROTOCOL.md §6.2). So the app cannot distinguish
-/// accepted / rejected / already-in-that-state, and must not imply it can — it
-/// reports what was sent plus what the device is reporting right now.
-String _modeSentText(
+/// Design 0024 §2.2. Until today every mode write reported "sent" and stopped
+/// there, because the wire carries no acknowledgement — but `0x23` streams at
+/// roughly 1 Hz, so the device's own answer arrives within seconds if we simply
+/// look. This turns each attempt into evidence, which matters while the release
+/// code itself is unproven: eight writes of the previous code changed nothing,
+/// and nobody could tell from the app.
+///
+/// Reports "unchanged", never "failed". A device that ignored the write and one
+/// that was never in that state look identical from here, and we do not know
+/// which we are seeing.
+Future<String> _modeWriteOutcome(
   AppLocalizations l10n,
   TelemetryController tele, {
   required String action,
+  required int? before,
   required bool skipAuth,
-}) {
+}) async {
+  const window = Duration(seconds: 6);
+  const step = Duration(milliseconds: 500);
+  final deadline = DateTime.now().add(window);
+  while (DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(step);
+    if (tele.mode != before) {
+      return l10n.modeChangedSnack(action, runStatusOf(l10n, tele.mode).label);
+    }
+  }
   final status = runStatusOf(l10n, tele.mode).label;
   return skipAuth
-      ? l10n.modeSentNoAuthSnack(action, status)
-      : l10n.modeSentSnack(action, status);
+      ? l10n.modeUnchangedNoAuthSnack(action, status)
+      : l10n.modeUnchangedSnack(action, status);
 }
 
 /// 解除斷電 — documented-safe release (mode 0x06 + auth) via the auth dialog.
@@ -184,6 +198,7 @@ Future<void> releaseCutOff(
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
   final action = l10n.commonReleaseCutOff;
+  final before = tele.mode;
   final req = await showReleaseCutOffDialog(
     context,
     initialDealerCode: tele.dealerCode,
@@ -195,13 +210,11 @@ Future<void> releaseCutOff(
     } else {
       await conn.releaseCutOff(cb: req.creds!.cb, pwSum: req.creds!.pwSum);
     }
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(milliseconds: 2600),
-        content: Text(_modeSentText(l10n, tele,
-            action: action, skipAuth: req.skipAuth)),
-      ),
-    );
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(await _modeWriteOutcome(l10n, tele,
+          action: action, before: before, skipAuth: req.skipAuth)),
+    ));
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(
@@ -225,6 +238,7 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
   final action = l10n.commonCutOffAction;
+  final before = tele.mode;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
@@ -266,13 +280,11 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
       await conn.switchMode(ModeArg.cutOff,
           cb: req.creds!.cb, pwSum: req.creds!.pwSum);
     }
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(milliseconds: 2600),
-        content: Text(_modeSentText(l10n, tele,
-            action: action, skipAuth: req.skipAuth)),
-      ),
-    );
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(await _modeWriteOutcome(l10n, tele,
+          action: action, before: before, skipAuth: req.skipAuth)),
+    ));
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(
@@ -289,6 +301,7 @@ Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
+  final before = tele.mode;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
@@ -323,15 +336,14 @@ Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
       await conn.switchMode(ModeArg.antiTheft,
           cb: req.creds!.cb, pwSum: req.creds!.pwSum);
     }
-    // Same honesty as the other two mode writes (design 0020 §3.3): anti-theft
-    // is no more acknowledged than release or cut-off is.
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(milliseconds: 2600),
-        content: Text(_modeSentText(l10n, tele,
-            action: l10n.commonAntiTheft, skipAuth: req.skipAuth)),
-      ),
-    );
+    // All three mode writes go through the same verification (design 0024 §2.3).
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(await _modeWriteOutcome(l10n, tele,
+          action: l10n.commonAntiTheft,
+          before: before,
+          skipAuth: req.skipAuth)),
+    ));
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(

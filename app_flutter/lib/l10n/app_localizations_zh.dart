@@ -387,6 +387,21 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String modeChangedSnack(String action, String status) {
+    return '$action完成 —— 裝置現在回報：$status。';
+  }
+
+  @override
+  String modeUnchangedSnack(String action, String status) {
+    return '已送出$action指令，但裝置狀態沒有變更（仍為：$status）。';
+  }
+
+  @override
+  String modeUnchangedNoAuthSnack(String action, String status) {
+    return '已送出$action（實驗：未帶驗證），裝置狀態沒有變更（仍為：$status）。';
+  }
+
+  @override
   String get cutOffDialogTitle => '送出斷電指令';
 
   @override

@@ -400,6 +400,21 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String modeChangedSnack(String action, String status) {
+    return '$action done — the device now reports: $status.';
+  }
+
+  @override
+  String modeUnchangedSnack(String action, String status) {
+    return '$action command sent, but the device state did not change (still: $status).';
+  }
+
+  @override
+  String modeUnchangedNoAuthSnack(String action, String status) {
+    return '$action sent without auth (experimental); the device state did not change (still: $status).';
+  }
+
+  @override
   String get cutOffDialogTitle => 'Send Cut-off Command';
 
   @override

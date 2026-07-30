@@ -144,8 +144,15 @@ class ModeArg {
   /// Activate cut-off (斷電).
   static const int cutOff = 2;
 
-  /// Release / detect special: triggers a 10 s detect keep-alive poller after
-  /// the write. live HCI capture uses this value (0x06) as the cut-off release.
+  /// Detect special: triggers a 10 s detect keep-alive poller after the write.
+  ///
+  /// 🔴 **No longer used for release (design 0024, 2026-07-30).** The "live HCI
+  /// capture uses this as the cut-off release" note this constant used to carry
+  /// rested on one observation — of a **super-capacitor**, whose `0x23` reverted
+  /// to `0x05`, its own status space, and which has no cut-off feature at all.
+  /// Against two batteries genuinely in cut-off it did nothing across eight
+  /// writes. What 0x06 actually is remains unknown; the constant is kept because
+  /// the frame is documented, not because a use for it is established.
   static const int release = 6;
 }
 

@@ -710,6 +710,24 @@ abstract class AppLocalizations {
   /// **'{action} command sent without auth (experimental). The device currently reports: {status}.'**
   String modeSentNoAuthSnack(String action, String status);
 
+  /// No description provided for @modeChangedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} done — the device now reports: {status}.'**
+  String modeChangedSnack(String action, String status);
+
+  /// No description provided for @modeUnchangedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} command sent, but the device state did not change (still: {status}).'**
+  String modeUnchangedSnack(String action, String status);
+
+  /// No description provided for @modeUnchangedNoAuthSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} sent without auth (experimental); the device state did not change (still: {status}).'**
+  String modeUnchangedNoAuthSnack(String action, String status);
+
   /// No description provided for @cutOffDialogTitle.
   ///
   /// In en, this message translates to:

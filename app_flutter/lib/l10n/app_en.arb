@@ -277,6 +277,39 @@
       }
     }
   },
+  "modeChangedSnack": "{action} done — the device now reports: {status}.",
+  "modeUnchangedSnack": "{action} command sent, but the device state did not change (still: {status}).",
+  "modeUnchangedNoAuthSnack": "{action} sent without auth (experimental); the device state did not change (still: {status}).",
+  "@modeChangedSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "@modeUnchangedSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "@modeUnchangedNoAuthSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
   "cutOffDialogTitle": "Send Cut-off Command",
   "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
   "cutOffDialogConfirm": "I understand — send it",
