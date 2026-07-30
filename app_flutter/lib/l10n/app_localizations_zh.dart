@@ -811,6 +811,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDiagnosticsHeading => '診斷 / 開發者';
 
   @override
+  String get rawLogOffDialogTitle => '這份日誌不會包含封包內容';
+
+  @override
+  String get rawLogOffDialogBody =>
+      '「記錄原始藍牙封包」目前是關閉的，所以這份檔案只會有連線事件，不會有裝置實際傳回的資料。如果你是要回報問題給開發者，這份檔案幫助有限。\n\n開啟後需要重新連線並操作一次，才會錄到內容。';
+
+  @override
+  String get rawLogOffExportAnyway => '仍要匯出';
+
+  @override
+  String get rawLogOffEnable => '開啟記錄';
+
+  @override
+  String get rawLogEnabledSnack => '已開啟原始封包記錄。請重新連線、操作一段時間後再匯出。';
+
+  @override
   String get settingsRawPacketLogLabel => '記錄原始藍牙封包';
 
   @override

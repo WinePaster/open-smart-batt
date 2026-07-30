@@ -1454,6 +1454,36 @@ abstract class AppLocalizations {
   /// **'Diagnostics / Developer'**
   String get settingsDiagnosticsHeading;
 
+  /// No description provided for @rawLogOffDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This log will have no packet contents'**
+  String get rawLogOffDialogTitle;
+
+  /// No description provided for @rawLogOffDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'\"Log raw Bluetooth packets\" is currently off, so this file will contain only connection events — none of the data the device actually sent. If you are reporting a problem to the developers, it will not help much.\n\nAfter enabling it you need to reconnect and use the device once before anything is recorded.'**
+  String get rawLogOffDialogBody;
+
+  /// No description provided for @rawLogOffExportAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Export anyway'**
+  String get rawLogOffExportAnyway;
+
+  /// No description provided for @rawLogOffEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn it on'**
+  String get rawLogOffEnable;
+
+  /// No description provided for @rawLogEnabledSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw packet logging is on. Reconnect, use the device for a while, then export again.'**
+  String get rawLogEnabledSnack;
+
   /// No description provided for @settingsRawPacketLogLabel.
   ///
   /// In en, this message translates to:

@@ -26,6 +26,7 @@ List<String> exportHeaderLines({
   required String platform,
   required String scope,
   int? connections,
+  bool? rawPacketLog,
 }) {
   final scopeLine = StringBuffer('scope: $scope');
   if (connections != null) scopeLine.write('  connections=$connections');
@@ -34,6 +35,18 @@ List<String> exportHeaderLines({
     'exported: ${exportedAt.toIso8601String()}',
     scopeLine.toString(),
     'app: $appBuild  platform: $platform',
+    // FB-32. A capture arrived holding ONE line of content beside a CSV with
+    // 366 samples: raw packet logging defaults off, so the packets were never
+    // written at all. Nothing in the file said so, and we spent three replies
+    // telling reporters to change their export scope instead — which was not
+    // the cause.
+    //
+    // `on` is emitted too, deliberately. If only `off` appeared, a missing line
+    // would mean both "it was on" and "an older build wrote this" — the same
+    // ambiguity that made FB-10's version inference a coincidence rather than a
+    // fact.
+    if (rawPacketLog != null)
+      'raw packet log: ${rawPacketLog ? 'on' : 'off'}',
   ];
 }
 

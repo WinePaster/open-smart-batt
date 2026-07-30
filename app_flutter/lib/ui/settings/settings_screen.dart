@@ -366,6 +366,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
 
   Future<void> _exportLog() async {
     if (_busy) return;
+    // FB-32: say it BEFORE the scope sheet. Otherwise the reporter picks a
+    // scope, shares a file, and only we find out it holds nothing.
+    if (!context.read<SettingsController>().rawPacketLog) {
+      if (!await _warnRawPacketLogOff()) return;
+    }
+    if (!mounted) return;
     // The diagnostic log is the one export where "this connection only" is
     // useful — that is the slice we ask a reporter for (design 0006 §3.4).
     final target = await chooseExportScope(context, offerSession: true);
@@ -377,11 +383,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // Captured now: the lookup runs after an await, when this screen may be gone.
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
+    final rawLog = context.read<SettingsController>().rawPacketLog;
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final header = await _logHeader(tele, services, target);
+      final header = await _logHeader(tele, services, target, rawLog);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -414,10 +421,57 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
 
   /// `#`-prefixed preamble telling whoever receives the file which unit, which
   /// app build and how many connections it covers (design 0006 §3.6).
+  /// FB-32 §3.2. Returns true to carry on with the export.
+  ///
+  /// Enabling deliberately CANCELS the export instead of continuing: the rows
+  /// do not exist yet, so carrying on would hand the user an equally empty file
+  /// while making them believe the problem was solved — worse than not warning
+  /// at all.
+  Future<bool> _warnRawPacketLogOff() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final settings = context.read<SettingsController>();
+    final choice = await showDialog<_RawLogChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.rawLogOffDialogTitle),
+        content: SingleChildScrollView(
+          child: Text(
+            l10n.rawLogOffDialogBody,
+            style: TextStyle(color: ctx.colors.muted, height: 1.5),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_RawLogChoice.exportAnyway),
+            child: Text(l10n.rawLogOffExportAnyway),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_RawLogChoice.enable),
+            child: Text(l10n.rawLogOffEnable),
+          ),
+        ],
+      ),
+    );
+    if (choice == _RawLogChoice.enable) {
+      await settings.setRawPacketLog(true);
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(milliseconds: 3200),
+        content: Text(l10n.rawLogEnabledSnack),
+      ));
+      return false;
+    }
+    return choice == _RawLogChoice.exportAnyway;
+  }
+
   Future<List<String>> _logHeader(
     TelemetryController tele,
     AppServices services,
     ExportTarget target,
+    // Passed in, not read here: this method awaits first, by which time the
+    // screen may be gone and a `context.read` would throw mid-export — the same
+    // reason `labelFor` is captured by the caller.
+    bool rawPacketLog,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
@@ -429,6 +483,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       platform: services.platform,
       scope: exportScopeLabel(target),
       connections: sessions,
+      rawPacketLog: rawPacketLog,
     );
   }
 
@@ -710,3 +765,8 @@ Future<bool> _confirm(
   );
   return result ?? false;
 }
+
+/// FB-32: what the "raw packet log is off" dialog resolved to. Dismissing it
+/// yields null, which cancels — an accidental tap outside must not ship a file
+/// the user was just told is nearly empty.
+enum _RawLogChoice { exportAnyway, enable }

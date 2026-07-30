@@ -852,6 +852,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDiagnosticsHeading => 'Diagnostics / Developer';
 
   @override
+  String get rawLogOffDialogTitle => 'This log will have no packet contents';
+
+  @override
+  String get rawLogOffDialogBody =>
+      '\"Log raw Bluetooth packets\" is currently off, so this file will contain only connection events — none of the data the device actually sent. If you are reporting a problem to the developers, it will not help much.\n\nAfter enabling it you need to reconnect and use the device once before anything is recorded.';
+
+  @override
+  String get rawLogOffExportAnyway => 'Export anyway';
+
+  @override
+  String get rawLogOffEnable => 'Turn it on';
+
+  @override
+  String get rawLogEnabledSnack =>
+      'Raw packet logging is on. Reconnect, use the device for a while, then export again.';
+
+  @override
   String get settingsRawPacketLogLabel => 'Log raw Bluetooth packets';
 
   @override
