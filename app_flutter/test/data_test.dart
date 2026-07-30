@@ -3,7 +3,10 @@
 // Uses sqflite_common_ffi so the tests run headless on the host VM (no Android
 // emulator / no platform channels). This exercises OUR app DB (not the
 // vendor's): HistoryRepo, DeviceRepo, SettingsRepo, LogRepo.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -563,6 +566,49 @@ void main() {
       expect(await repo.count(), 1);
       expect(db.sumScans, scansBefore,
           reason: 'a cleared log is known to be empty; no query needed');
+    });
+  });
+
+  group('journal mode', () {
+    // A real file, not `:memory:` — an in-memory database reports
+    // `journal_mode = memory` whatever it is asked for, so it cannot show
+    // whether _onConfigure did anything.
+    late Directory dir;
+    late AppDatabase fileDb;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('osb_wal');
+      fileDb = await AppDatabase.open(
+        path: p.join(dir.path, 'wal.db'),
+        factory: databaseFactoryFfi,
+      );
+    });
+    tearDown(() async {
+      await fileDb.close();
+      await dir.delete(recursive: true);
+    });
+
+    Future<String> pragma(String name) async {
+      final r = await fileDb.db.rawQuery('PRAGMA $name');
+      return '${r.first.values.first}'.toLowerCase();
+    }
+
+    test('WAL is on', () async {
+      // ~3.5x on insert (390-412 us -> 112 us, measured on host). Android does
+      // NOT come through this path: it is switched on by the manifest
+      // meta-data `com.tekartik.sqflite.wal_enabled`, which sqflite reads at
+      // open() before onConfigure runs. Nothing in Dart can assert that half —
+      // if this test is ever the only thing guarding WAL, Android has silently
+      // reverted to the rollback journal.
+      expect(await pragma('journal_mode'), 'wal');
+    });
+
+    test('synchronous stays FULL', () async {
+      // The usual WAL recipe drops this to NORMAL, which is where "WAL loses
+      // the last few transactions on power loss" comes from. The measured gain
+      // did not need it, and this app records evidence a user cannot re-capture
+      // on request. 2 == SQLITE_SYNC_FULL.
+      expect(await pragma('synchronous'), '2');
     });
   });
 }

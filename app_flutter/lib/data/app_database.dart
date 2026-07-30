@@ -8,6 +8,8 @@
 /// docs/PROTOCOL.md §9 column correspondence. No vendor DB is read or copied.
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -130,6 +132,14 @@ class AppDatabase {
   /// Delete the database file — the user-initiated last resort offered by the
   /// startup failure screen. DESTROYS history, saved devices and settings, so
   /// it must never be triggered automatically.
+  ///
+  /// Goes through the FACTORY's `deleteDatabase`, never `File.delete`, because
+  /// under WAL the data is not all in the one file: a `-wal` left beside a
+  /// deleted database is how a "reset" comes back haunted. Checked in all three
+  /// implementations we ship on — sqflite_android hands off to
+  /// `SQLiteDatabase.deleteDatabase(File)`, sqflite_darwin removes `-shm`/`-wal`
+  /// explicitly (SqflitePlugin.m `deleteDatabaseFile:`), and sqflite_common's
+  /// io filesystem removes `-wal`, `-shm` and `-journal`.
   static Future<void> reset({String? path, DatabaseFactory? factory}) async {
     final fac = factory ?? databaseFactory;
     await fac.deleteDatabase(path ?? await defaultPath(factory: fac));
@@ -148,6 +158,51 @@ class AppDatabase {
   static Future<void> _onConfigure(Database db) async {
     // Enforce foreign keys / sane defaults (no FKs yet, but cheap to enable).
     await db.execute('PRAGMA foreign_keys = ON');
+    // Write-ahead logging. Measured on host: 390–412 µs per insert on the
+    // rollback journal, 112 µs with WAL — ~3.5×, on the path that runs at the
+    // measured 13 packets/s median (peak 22) with `rawPacketLog` on, plus a
+    // history row a minute and every event line.
+    //
+    // `synchronous` is deliberately NOT touched. The usual WAL recipe pairs it
+    // with `synchronous = NORMAL`, which is where WAL's reputation for losing
+    // the last transactions on power loss comes from; the gain above was
+    // measured with it left at FULL, so there is nothing to buy by weakening
+    // it. This app records evidence — a truncated capture is the one failure
+    // mode we cannot ask a user to reproduce.
+    //
+    // 🔴 **Android is deliberately left on the rollback journal.** It cannot be
+    // reached from here anyway — sqflite's Android side decides WAL at open()
+    // time via `SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING`, gated on the
+    // manifest meta-data `com.tekartik.sqflite.wal_enabled`, read before
+    // onConfigure runs — but the point is that we chose NOT to set that
+    // meta-data, and the reason should outlive whoever next notices the
+    // asymmetry:
+    //
+    //   Database.java:54  // To turn on when supported fully
+    //   Database.java:55  // 2022-09-14 experiments show several corruption issue.
+    //   Database.java:56  final static boolean WAL_ENABLED_BY_DEFAULT = false;
+    //
+    // Upstream's default-off is not an oversight, it is a corruption report.
+    // And the mitigation we rely on below does not transfer: on Android the
+    // WAL synchronous mode comes from the framework resource `db_wal_sync_mode`,
+    // not from us, so "we keep synchronous = FULL" would be a claim we cannot
+    // make on the one platform the reports came from.
+    //
+    // Weigh that against what it buys. After the O(1) rotation accounting
+    // (`log_repo.dart`), this path uses ~0.54% of one background thread at the
+    // measured packet rate, and only while `rawPacketLog` is on — which is off
+    // by default. Trading any corruption risk on a database holding the user's
+    // entire history (retention defaults to forever) for 0.4% of a background
+    // thread on an opt-in diagnostic path is not a trade worth making.
+    //
+    // To revisit: read `PRAGMA synchronous` on a real Android device under WAL
+    // and check whether upstream has flipped the default since.
+    //
+    // rawQuery, not execute: `PRAGMA journal_mode` RETURNS the resulting mode
+    // as a row rather than being a pure statement.
+    if (!Platform.isAndroid) {
+      await db.rawQuery('PRAGMA journal_mode = WAL');
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
