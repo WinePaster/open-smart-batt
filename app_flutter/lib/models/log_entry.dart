@@ -4,6 +4,8 @@
 /// (DEFAULT OFF). Exportable as a .log file.
 library;
 
+import 'device_ident.dart';
+
 /// Direction of a logged BLE packet, or `event` for a connection/error note.
 enum LogDirection { tx, rx, event }
 
@@ -22,6 +24,10 @@ class LogEntry {
   final String hex;
 
   /// Optional human note (e.g. "keep-alive", "switchMode(6)", decoded selector).
+  ///
+  /// MAC-redacted on the way in by both factories — see [redactMacAddresses].
+  /// The note is rendered verbatim by [toLogLine], so it is an export path in
+  /// its own right and cannot rely on the caller having been careful.
   final String? note;
 
   /// Which unit this row belongs to (BLE remote id), or null when it was
@@ -72,7 +78,7 @@ class LogEntry {
         hex: bytes
             .map((b) => (b & 0xFF).toRadixString(16).padLeft(2, '0'))
             .join(),
-        note: note,
+        note: note == null ? null : redactMacAddresses(note),
         deviceId: deviceId,
         sessionId: sessionId,
         appBuild: appBuild,
@@ -90,7 +96,7 @@ class LogEntry {
         timestamp: at ?? DateTime.now(),
         direction: LogDirection.event,
         hex: '',
-        note: message,
+        note: redactMacAddresses(message),
         deviceId: deviceId,
         sessionId: sessionId,
         appBuild: appBuild,
@@ -118,6 +124,15 @@ class LogEntry {
         'app_build': appBuild,
       };
 
+  /// Reads a stored row.
+  ///
+  /// The note is redacted HERE, not only at write time: this table accumulates
+  /// across upgrades, so a device updating to this build still holds rows a
+  /// previous build wrote with a raw MAC in the text. `fromMap` is the single
+  /// funnel every reader goes through — the exporter builds each line from it
+  /// (`log_repo.dart`) — so scrubbing here covers the legacy rows too.
+  /// [deviceId] keeps the raw id: it is the scoping/grouping key and never
+  /// reaches a file unhashed (`_sectionLabel`).
   static LogEntry fromMap(Map<String, Object?> m) => LogEntry(
         id: (m['id'] as num?)?.toInt(),
         timestamp: DateTime.fromMillisecondsSinceEpoch(
@@ -127,7 +142,10 @@ class LogEntry {
           orElse: () => LogDirection.rx,
         ),
         hex: m['hex'] as String,
-        note: m['note'] as String?,
+        note: switch (m['note'] as String?) {
+          null => null,
+          final n => redactMacAddresses(n),
+        },
         deviceId: m['device_id'] as String?,
         sessionId: (m['session_id'] as num?)?.toInt(),
         appBuild: m['app_build'] as String?,
