@@ -692,6 +692,60 @@ abstract class AppLocalizations {
   /// **'Release failed: {error}'**
   String releaseFailedSnack(String error);
 
+  /// No description provided for @commonCutOffAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut Off'**
+  String get commonCutOffAction;
+
+  /// No description provided for @modeSentSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} command sent. The device currently reports: {status}. This model sends no acknowledgement — watch the actual state.'**
+  String modeSentSnack(String action, String status);
+
+  /// No description provided for @modeSentNoAuthSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} command sent without auth (experimental). The device currently reports: {status}.'**
+  String modeSentNoAuthSnack(String action, String status);
+
+  /// No description provided for @cutOffDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Cut-off Command'**
+  String get cutOffDialogTitle;
+
+  /// No description provided for @cutOffDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
+  String get cutOffDialogBody;
+
+  /// No description provided for @cutOffDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand — send it'**
+  String get cutOffDialogConfirm;
+
+  /// No description provided for @cutOffFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off command failed: {error}'**
+  String cutOffFailedSnack(String error);
+
+  /// No description provided for @cutOffDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The cut-off command can only be sent while the device reports it is running normally.'**
+  String get cutOffDisabledNote;
+
+  /// No description provided for @releaseDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The device reports it is running normally and is not cut off, so there is nothing to release.'**
+  String get releaseDisabledNote;
+
   /// No description provided for @antiTheftDialogTitle.
   ///
   /// In en, this message translates to:

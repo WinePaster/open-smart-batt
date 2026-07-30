@@ -374,6 +374,40 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get commonCutOffAction => '斷電';
+
+  @override
+  String modeSentSnack(String action, String status) {
+    return '已送出$action指令。裝置目前回報：$status。本機型不會回覆確認，請觀察實際狀態。';
+  }
+
+  @override
+  String modeSentNoAuthSnack(String action, String status) {
+    return '已送出$action指令（實驗：未帶驗證）。裝置目前回報：$status。';
+  }
+
+  @override
+  String get cutOffDialogTitle => '送出斷電指令';
+
+  @override
+  String get cutOffDialogBody =>
+      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n解除斷電這條路徑目前尚未被證實可用。我們手上沒有任何一次擷取顯示裝置對模式指令有回應，認證值的推導方式也還在查證中。如果解除失敗，本 App 無法讓這顆電池復電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
+
+  @override
+  String get cutOffDialogConfirm => '我了解，仍要送出';
+
+  @override
+  String cutOffFailedSnack(String error) {
+    return '斷電指令失敗：$error';
+  }
+
+  @override
+  String get cutOffDisabledNote => '只有在裝置回報運行正常時，才能送出斷電指令。';
+
+  @override
+  String get releaseDisabledNote => '裝置目前回報運行正常，未處於斷電狀態，沒有需要解除的對象。';
+
+  @override
   String get antiTheftDialogTitle => '啟用防盜模式';
 
   @override

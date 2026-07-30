@@ -387,6 +387,42 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get commonCutOffAction => 'Cut Off';
+
+  @override
+  String modeSentSnack(String action, String status) {
+    return '$action command sent. The device currently reports: $status. This model sends no acknowledgement — watch the actual state.';
+  }
+
+  @override
+  String modeSentNoAuthSnack(String action, String status) {
+    return '$action command sent without auth (experimental). The device currently reports: $status.';
+  }
+
+  @override
+  String get cutOffDialogTitle => 'Send Cut-off Command';
+
+  @override
+  String get cutOffDialogBody =>
+      'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.';
+
+  @override
+  String get cutOffDialogConfirm => 'I understand — send it';
+
+  @override
+  String cutOffFailedSnack(String error) {
+    return 'Cut-off command failed: $error';
+  }
+
+  @override
+  String get cutOffDisabledNote =>
+      'The cut-off command can only be sent while the device reports it is running normally.';
+
+  @override
+  String get releaseDisabledNote =>
+      'The device reports it is running normally and is not cut off, so there is nothing to release.';
+
+  @override
   String get antiTheftDialogTitle => 'Enable Anti-theft Mode';
 
   @override

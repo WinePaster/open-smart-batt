@@ -254,6 +254,42 @@
       }
     }
   },
+  "commonCutOffAction": "Cut Off",
+  "modeSentSnack": "{action} command sent. The device currently reports: {status}. This model sends no acknowledgement — watch the actual state.",
+  "@modeSentSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "modeSentNoAuthSnack": "{action} command sent without auth (experimental). The device currently reports: {status}.",
+  "@modeSentNoAuthSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "cutOffDialogTitle": "Send Cut-off Command",
+  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
+  "cutOffDialogConfirm": "I understand — send it",
+  "cutOffFailedSnack": "Cut-off command failed: {error}",
+  "@cutOffFailedSnack": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cutOffDisabledNote": "The cut-off command can only be sent while the device reports it is running normally.",
+  "releaseDisabledNote": "The device reports it is running normally and is not cut off, so there is nothing to release.",
   "antiTheftDialogTitle": "Enable Anti-theft Mode",
   "antiTheftDialogBody": "Anti-theft mode is not fully verified and appears only on supported models. Are you sure you want to send the anti-theft command?",
   "antiTheftSentSnack": "Anti-theft command sent",
