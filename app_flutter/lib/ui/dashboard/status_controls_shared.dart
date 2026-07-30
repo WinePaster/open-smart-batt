@@ -191,7 +191,25 @@ Future<String> _modeWriteOutcome(
       : l10n.modeUnchangedSnack(action, status);
 }
 
-/// 解除斷電 — documented-safe release (mode 0x06 + auth) via the auth dialog.
+/// 復電 — write "normal" (mode 0x00), with no auth frame at all.
+///
+/// Owner's decision 2026-07-30: one switch, one confirmation, no password.
+///
+/// The password this used to demand is set by the DISTRIBUTOR, so a typical
+/// owner does not have it — and the dialog required it, leaving the only
+/// function the community build offers reachable only by flipping a toggle
+/// labelled "experimental: skip verification". That was backwards.
+///
+/// ⚠️ Whether 0x00 needs auth is **untested**. The one no-auth capture we hold
+/// paired a bare mode frame with 0x06, the code we now know is wrong, so its
+/// failure says nothing about auth. This ships unverified on purpose — and
+/// [_modeWriteOutcome] is why that is acceptable: the app reads 0x23 back and
+/// tells the user what actually happened, so a wrong guess surfaces as "state
+/// unchanged" rather than as silence, and every attempt becomes the evidence
+/// that settles it.
+///
+/// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
+/// hence the control is no longer named after cut-off alone.
 Future<void> releaseCutOff(
     BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
@@ -199,21 +217,37 @@ Future<void> releaseCutOff(
   final messenger = ScaffoldMessenger.of(context);
   final action = l10n.commonReleaseCutOff;
   final before = tele.mode;
-  final req = await showReleaseCutOffDialog(
-    context,
-    initialDealerCode: tele.dealerCode,
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l10n.releaseConfirmTitle),
+      content: SingleChildScrollView(
+        child: Text(
+          l10n.releaseConfirmBody,
+          style: TextStyle(color: ctx.colors.muted, height: 1.5),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(l10n.commonCancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(l10n.releaseConfirmContinue),
+        ),
+      ],
+    ),
   );
-  if (req == null) return;
+  if (ok != true) return;
   try {
-    if (req.skipAuth) {
-      await conn.releaseCutOffModeOnly();
-    } else {
-      await conn.releaseCutOff(cb: req.creds!.cb, pwSum: req.creds!.pwSum);
-    }
+    await conn.releaseCutOffModeOnly();
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 3600),
+      // skipAuth:false deliberately — going without auth is how this command
+      // works now, not a toggle the user flipped, so it needs no caveat.
       content: Text(await _modeWriteOutcome(l10n, tele,
-          action: action, before: before, skipAuth: req.skipAuth)),
+          action: action, before: before, skipAuth: false)),
     ));
   } catch (e) {
     messenger.showSnackBar(

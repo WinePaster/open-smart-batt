@@ -267,10 +267,10 @@ void main() {
       await pumpUnder(tester, s, const BatteryControls());
       await goOnline(tester, ReportedStatus.normal);
 
-      expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNull,
+      expect(buttonNamed(tester, 'Restore Power').onPressed, isNull,
           reason: 'FB-34: nothing to release on a normal pack');
       // A greyed-out button must say why (design 0020 §3.2).
-      expect(find.textContaining('not cut off'), findsOneWidget);
+      expect(find.textContaining('nothing to restore'), findsOneWidget);
     });
 
     testWidgets('cut-off active: release offered', (tester) async {
@@ -283,10 +283,10 @@ void main() {
       await pumpUnder(tester, s, const BatteryControls());
       await goOnline(tester, ReportedStatus.cutOffActive);
 
-      expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNotNull);
+      expect(buttonNamed(tester, 'Restore Power').onPressed, isNotNull);
       // An enabled button explains nothing: the note exists to justify a
       // disabled one, and a live pack in cut-off has nothing to justify.
-      expect(find.textContaining('nothing to release'), findsNothing);
+      expect(find.textContaining('nothing to restore'), findsNothing);
     });
 
     testWidgets('unreadable status: release stays available', (tester) async {
@@ -300,7 +300,7 @@ void main() {
       // A capacitor's byte — outside the pack code space entirely.
       await goOnline(tester, CapacitorStatus.healthy);
 
-      expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNotNull,
+      expect(buttonNamed(tester, 'Restore Power').onPressed, isNotNull,
           reason: 'never block the escape hatch on an unreadable state');
     });
   });

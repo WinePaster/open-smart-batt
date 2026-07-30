@@ -118,11 +118,11 @@ void main() {
       await pumpUnder(tester, s, const CapacitorControls());
 
       expect(find.text('Check Capacitor'), findsOneWidget);
-      expect(find.text('Release Cut-off'), findsNothing);
+      expect(find.text('Restore Power'), findsNothing);
       expect(find.text('Anti-theft'), findsNothing);
     });
 
-    testWidgets('BatteryControls shows 解除斷電 but not 檢測電容',
+    testWidgets('BatteryControls shows 復電 but not 檢測電容',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -132,7 +132,7 @@ void main() {
 
       await pumpUnder(tester, s, const BatteryControls());
 
-      expect(find.text('Release Cut-off'), findsOneWidget);
+      expect(find.text('Restore Power'), findsOneWidget);
       expect(find.text('Check Capacitor'), findsNothing);
       // Anti-theft is model-gated (no override wired) → hidden by default.
       expect(find.text('Anti-theft'), findsNothing);
@@ -154,7 +154,7 @@ void main() {
       expect(find.byType(BatteryView), findsNothing);
       // Capacitor body → 檢測電容 only.
       expect(find.text('Check Capacitor'), findsOneWidget);
-      expect(find.text('Release Cut-off'), findsNothing);
+      expect(find.text('Restore Power'), findsNothing);
     });
 
     testWidgets('smart-battery label → BatteryView', (tester) async {
@@ -169,7 +169,7 @@ void main() {
 
       expect(find.byType(BatteryView), findsOneWidget);
       expect(find.byType(CapacitorView), findsNothing);
-      expect(find.text('Release Cut-off'), findsOneWidget);
+      expect(find.text('Restore Power'), findsOneWidget);
       expect(find.text('Check Capacitor'), findsNothing);
     });
 
@@ -188,7 +188,7 @@ void main() {
       expect(find.byType(BatteryView), findsNothing);
       // Union of pack controls EXCEPT anti-theft (design 0004 §3.3).
       expect(find.text('Check Capacitor'), findsOneWidget);
-      expect(find.text('Release Cut-off'), findsOneWidget);
+      expect(find.text('Restore Power'), findsOneWidget);
       expect(find.text('Anti-theft'), findsNothing);
     });
   });

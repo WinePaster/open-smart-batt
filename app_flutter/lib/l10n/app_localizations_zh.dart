@@ -33,7 +33,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonAntiTheft => '防盜';
 
   @override
-  String get commonReleaseCutOff => '解除斷電';
+  String get commonReleaseCutOff => '復電';
 
   @override
   String get commonNoRecordsToExport => '沒有可匯出的紀錄';
@@ -420,7 +420,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cutOffDisabledNote => '只有在裝置回報運行正常時，才能送出斷電指令。';
 
   @override
-  String get releaseDisabledNote => '裝置目前回報運行正常，未處於斷電狀態，沒有需要解除的對象。';
+  String get releaseDisabledNote => '裝置目前回報運行正常，不在斷電或防盜模式，沒有需要恢復的對象。';
 
   @override
   String get antiTheftDialogTitle => '啟用防盜模式';
@@ -435,6 +435,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String antiTheftFailedSnack(String error) {
     return '指令失敗：$error';
   }
+
+  @override
+  String get releaseConfirmTitle => '恢復正常運作';
+
+  @override
+  String get releaseConfirmBody =>
+      '此功能用於：如果您的電池處於防盜或斷電模式，可以恢復正常。\\n\\n目前還是實驗功能，請小心使用。';
+
+  @override
+  String get releaseConfirmContinue => '復電';
 
   @override
   String get releaseDialogErrorAuthFormat => '驗證值格式錯誤（用十進位或 0x 十六進位）';

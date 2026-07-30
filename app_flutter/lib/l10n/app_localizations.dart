@@ -149,7 +149,7 @@ abstract class AppLocalizations {
   /// No description provided for @commonReleaseCutOff.
   ///
   /// In en, this message translates to:
-  /// **'Release Cut-off'**
+  /// **'Restore Power'**
   String get commonReleaseCutOff;
 
   /// No description provided for @commonNoRecordsToExport.
@@ -761,7 +761,7 @@ abstract class AppLocalizations {
   /// No description provided for @releaseDisabledNote.
   ///
   /// In en, this message translates to:
-  /// **'The device reports it is running normally and is not cut off, so there is nothing to release.'**
+  /// **'The device reports it is running normally — not in cut-off or anti-theft mode, so there is nothing to restore.'**
   String get releaseDisabledNote;
 
   /// No description provided for @antiTheftDialogTitle.
@@ -787,6 +787,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Command failed: {error}'**
   String antiTheftFailedSnack(String error);
+
+  /// No description provided for @releaseConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore normal operation'**
+  String get releaseConfirmTitle;
+
+  /// No description provided for @releaseConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this if your battery is in anti-theft or cut-off mode — it asks the pack to return to normal.\\n\\nThis is still an experimental function. Please use it with care.'**
+  String get releaseConfirmBody;
+
+  /// No description provided for @releaseConfirmContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get releaseConfirmContinue;
 
   /// No description provided for @releaseDialogErrorAuthFormat.
   ///

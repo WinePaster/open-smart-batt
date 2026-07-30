@@ -33,7 +33,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonAntiTheft => 'Anti-theft';
 
   @override
-  String get commonReleaseCutOff => 'Release Cut-off';
+  String get commonReleaseCutOff => 'Restore Power';
 
   @override
   String get commonNoRecordsToExport => 'No records to export';
@@ -435,7 +435,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get releaseDisabledNote =>
-      'The device reports it is running normally and is not cut off, so there is nothing to release.';
+      'The device reports it is running normally — not in cut-off or anti-theft mode, so there is nothing to restore.';
 
   @override
   String get antiTheftDialogTitle => 'Enable Anti-theft Mode';
@@ -451,6 +451,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String antiTheftFailedSnack(String error) {
     return 'Command failed: $error';
   }
+
+  @override
+  String get releaseConfirmTitle => 'Restore normal operation';
+
+  @override
+  String get releaseConfirmBody =>
+      'Use this if your battery is in anti-theft or cut-off mode — it asks the pack to return to normal.\\n\\nThis is still an experimental function. Please use it with care.';
+
+  @override
+  String get releaseConfirmContinue => 'Restore';
 
   @override
   String get releaseDialogErrorAuthFormat =>

@@ -8,7 +8,7 @@
   "commonWarning": "Warning",
   "commonCutOff": "Cut-off",
   "commonAntiTheft": "Anti-theft",
-  "commonReleaseCutOff": "Release Cut-off",
+  "commonReleaseCutOff": "Restore Power",
   "commonNoRecordsToExport": "No records to export",
   "commonExportFailed": "Export failed: {error}",
   "@commonExportFailed": {
@@ -322,7 +322,7 @@
     }
   },
   "cutOffDisabledNote": "The cut-off command can only be sent while the device reports it is running normally.",
-  "releaseDisabledNote": "The device reports it is running normally and is not cut off, so there is nothing to release.",
+  "releaseDisabledNote": "The device reports it is running normally — not in cut-off or anti-theft mode, so there is nothing to restore.",
   "antiTheftDialogTitle": "Enable Anti-theft Mode",
   "antiTheftDialogBody": "Anti-theft mode is not fully verified and appears only on supported models. Are you sure you want to send the anti-theft command?",
   "antiTheftSentSnack": "Anti-theft command sent",
@@ -334,6 +334,9 @@
       }
     }
   },
+  "releaseConfirmTitle": "Restore normal operation",
+  "releaseConfirmBody": "Use this if your battery is in anti-theft or cut-off mode — it asks the pack to return to normal.\\n\\nThis is still an experimental function. Please use it with care.",
+  "releaseConfirmContinue": "Restore",
   "releaseDialogErrorAuthFormat": "Invalid auth value format (use decimal or 0x hexadecimal)",
   "releaseDialogErrorDealerLength": "Dealer code must be at least 8 digits",
   "releaseDialogBody": "Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.",
