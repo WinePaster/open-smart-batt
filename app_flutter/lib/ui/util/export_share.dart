@@ -21,14 +21,45 @@ String exportStamp([DateTime? at]) =>
 Rect sharePositionFromBox(RenderBox box) =>
     box.localToGlobal(Offset.zero) & box.size;
 
-/// Computes the iPad share-sheet popover anchor [Rect] for the widget behind
-/// [context]. Returns `null` if the render object isn't a laid-out [RenderBox]
-/// yet (callers then fall back to the system default). iPhone ignores the
-/// anchor, so passing `null` there is harmless.
+/// Clips [rect] to [bounds] — the coordinate space the platform validates the
+/// anchor against, i.e. the Flutter view. Returns `null` when nothing survives,
+/// so the caller passes no anchor and gets the system default position.
+///
+/// 🔴 **Required, not cosmetic (FB-40, 2026-07-30 `016`).** iOS rejects an
+/// anchor that is zero-sized or reaches outside the source view, and it does so
+/// on **iPhone as well as iPad** — even though only iPad renders the sheet as a
+/// popover. The rejection is a `PlatformException` out of `shareXFiles`, which
+/// the export call sites catch and show as 「匯出失敗」, so the export is lost:
+///
+/// ```
+/// sharePositionOrigin: argument must be set,
+/// {{15, -76.928543864442759}, {345, 369}} must be non-zero and within
+/// coordinate space of source view: {{0, 0}, {375, 667}}
+/// ```
+///
+/// That anchor is the Settings 「資料」 card (`ListView` padding 15 ⇒ x = 15,
+/// width = 375 − 30 = 345) scrolled 77 pt above the viewport top. Anchors come
+/// from the *card*, not the screen, so any card the user scrolls past the top
+/// or bottom edge produces an out-of-bounds Rect on every phone-sized screen.
+Rect? clampShareAnchor(Rect rect, Rect bounds) {
+  final clipped = rect.intersect(bounds);
+  return clipped.isEmpty ? null : clipped;
+}
+
+/// Computes the share-sheet anchor [Rect] for the widget behind [context],
+/// clipped to the view so the platform cannot reject it (see [clampShareAnchor]).
+///
+/// Returns `null` if the render object isn't a laid-out [RenderBox] yet, or if
+/// the widget is scrolled entirely out of view. Callers then fall back to the
+/// system default position, which is harmless everywhere — only iPad uses the
+/// anchor to place the popover.
 Rect? sharePositionFromContext(BuildContext context) {
   final box = context.findRenderObject();
   if (box is! RenderBox || !box.hasSize) return null;
-  return sharePositionFromBox(box);
+  final view = View.of(context);
+  final bounds = Offset.zero & (view.physicalSize / view.devicePixelRatio);
+  if (bounds.isEmpty) return null;
+  return clampShareAnchor(sharePositionFromBox(box), bounds);
 }
 
 /// Write [content] to a temp file named [filename] and open the share sheet.
@@ -38,7 +69,9 @@ Rect? sharePositionFromContext(BuildContext context) {
 /// [ShareResultStatus] so callers can surface success/dismissal.
 /// [sharePositionOrigin] anchors the share sheet on iPad (where it is a
 /// popover); compute it at the call site from the triggering widget via
-/// [sharePositionFromContext]. iPhone/Android ignore it.
+/// [sharePositionFromContext], which clips it to the view. Only iPad *uses* the
+/// anchor, but iOS *validates* it on every device, so it must be in bounds or
+/// `null` — never a raw un-clipped widget Rect (FB-40).
 Future<ShareResultStatus> shareTextAsFile({
   required String content,
   required String filename,
