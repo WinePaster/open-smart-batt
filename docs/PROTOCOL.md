@@ -375,7 +375,31 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 | `0` | Deactivate / unlock (normal) |
 | `1` | Activate anti-theft (防盜) |
 | `2` | Activate cut-off (斷電) |
-| `6` | Cut-off release / post-connect detect. After the write the app starts a **10 s periodic detect poller**. Observed on the wire: mode pulses to `0x06` for **about 1 s (≈2 frames)** and reverts to `0x05` — it behaves like a routine post-connect handshake, not a latching unlock |
+| `6` | **Not a release** — see below. Purpose unknown; the reference client starts a 10 s periodic detect poller after writing it |
+
+> 🔴 **`0x06` does not release a cut-off (measured 2026-07-30).** This row read
+> "cut-off release" on the strength of one observation — of a **super-capacitor**,
+> whose `0x23` pulsed to `0x06` for about a second and reverted to `0x05`, its
+> own status space, and which has no cut-off feature at all.
+>
+> Against batteries **actually sitting in cut-off**, it does nothing:
+>
+> | unit | writes of `0x06` | `cb` used | `0x23` |
+> |---|---|---|---|
+> | 1261 (JIS 40 Ah) | 6 | `a2e6`, plus bare mode frames with no auth | `0x02` throughout |
+> | 1441 (EU 50 Ah) | 2 | `00a8` | `0x02` / `0x01` throughout |
+>
+> Eight writes, two units, both `cb` derivation rules, and auth omitted entirely
+> — `0x23` never moved. Every real transition in those captures occurred five to
+> fourteen minutes away from any write, i.e. by other means.
+>
+> That eliminates the auth value and the auth requirement, and leaves the mode
+> code. **To return a pack to normal, write `0`** — the value the distributor
+> gives for 正常模式 and the one the reference UI writes when leaving a mode.
+>
+> ⚠️ `0` is **not proven** either: no capture holds a successful write. The case
+> for it is elimination plus the vendor's numbering, so a client should verify
+> against `0x23` afterwards rather than report success.
 
 > ⚠️ **A mode write is not acknowledged in any observable way.** In a 2026-07-30
 > capture a client wrote mode `0x06` five times to a battery (four bundled with
