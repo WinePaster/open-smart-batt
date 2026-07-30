@@ -76,6 +76,10 @@ void main() {
   // Pure gating — the truth table from design 0020 §3.1
   // =========================================================================
 
+  // Kept although the community build renders no cut-off button: the gate and
+  // its action still exist in status_controls_shared.dart for the distributor
+  // build, and an untested destructive path is exactly what should not be
+  // waiting there when someone wires it up (design 0020 §9).
   group('cutOffActionEnabled — only on a provably normal pack', () {
     test('normal is the ONLY state that enables it', () {
       expect(cutOffActionEnabled(ReportedStatus.normal), isTrue);
@@ -224,9 +228,36 @@ void main() {
         ),
       );
 
-  group('BatteryControls gating', () {
-    testWidgets('normal: cut-off offered, release refused and explained',
-        (tester) async {
+  group('BatteryControls — release only in the community build', () {
+    testWidgets('there is NO cut-off button, in any state', (tester) async {
+      // Owner's decision 2026-07-30 (design 0020 §9): the build that reaches
+      // the general public only ever moves a pack toward normal. Both the
+      // states that would have enabled it and the one that would have disabled
+      // it must render nothing.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const BatteryControls());
+      for (final mode in [
+        ReportedStatus.normal,
+        ReportedStatus.cutOffActive,
+        ReportedStatus.antiTheftActive,
+      ]) {
+        await goOnline(tester, mode);
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is ControlButton && w.label == 'Cut Off',
+          ),
+          findsNothing,
+          reason: 'mode 0x${mode.toRadixString(16)}',
+        );
+      }
+    });
+
+    testWidgets('normal: release refused and explained', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -236,15 +267,13 @@ void main() {
       await pumpUnder(tester, s, const BatteryControls());
       await goOnline(tester, ReportedStatus.normal);
 
-      expect(buttonNamed(tester, 'Cut Off').onPressed, isNotNull);
       expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNull,
           reason: 'FB-34: nothing to release on a normal pack');
       // A greyed-out button must say why (design 0020 §3.2).
       expect(find.textContaining('not cut off'), findsOneWidget);
     });
 
-    testWidgets('cut-off active: release offered, cut-off refused',
-        (tester) async {
+    testWidgets('cut-off active: release offered', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -255,12 +284,12 @@ void main() {
       await goOnline(tester, ReportedStatus.cutOffActive);
 
       expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNotNull);
-      expect(buttonNamed(tester, 'Cut Off').onPressed, isNull);
-      expect(find.textContaining('running normally'), findsOneWidget);
+      // An enabled button explains nothing: the note exists to justify a
+      // disabled one, and a live pack in cut-off has nothing to justify.
+      expect(find.textContaining('nothing to release'), findsNothing);
     });
 
-    testWidgets('unreadable status: release stays available, cut-off does not',
-        (tester) async {
+    testWidgets('unreadable status: release stays available', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -273,7 +302,6 @@ void main() {
 
       expect(buttonNamed(tester, 'Release Cut-off').onPressed, isNotNull,
           reason: 'never block the escape hatch on an unreadable state');
-      expect(buttonNamed(tester, 'Cut Off').onPressed, isNull);
     });
   });
 

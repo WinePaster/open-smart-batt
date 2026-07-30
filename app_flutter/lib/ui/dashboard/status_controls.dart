@@ -116,9 +116,8 @@ class BatteryControls extends StatelessWidget {
     // Named `isCutOff`, not `cutOff`: the latter now shadows the cut-off action
     // this body invokes.
     final isCutOff = isCutOffMode(tele.mode);
-    // Design 0020 §3.1 (FB-34 / FB-35). Deliberately asymmetric, and NOT each
-    // other's negation — see the helper docs.
-    final canCutOff = cutOffActionEnabled(tele.mode);
+    // Design 0020 §3.1 (FB-34). `cutOffActionEnabled` is not consulted here —
+    // this build has no cut-off button (§9).
     final canRelease = releaseActionEnabled(tele.mode);
     // FB-30. This body was the ONLY one of the three that never consulted
     // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
@@ -163,21 +162,16 @@ class BatteryControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 13),
-        // Design 0020 §3.7 — two rows, because three side-by-side buttons are
-        // unreadable on a narrow screen at large text scale.
+        // 🔴 The community build offers RELEASE ONLY (owner's decision,
+        // 2026-07-30 — design 0020 §9). Cut-off and anti-theft both leave a
+        // vehicle unable to start, and the path back is still unproven, so the
+        // build that reaches the general public only ever moves a pack toward
+        // normal. The `cutOff()` action and its gate stay in
+        // status_controls_shared.dart with their tests: the distributor build
+        // will need them, and deleting a tested destructive path only to
+        // rewrite it later is how it comes back less careful.
         Row(
           children: [
-            Expanded(
-              child: ControlButton(
-                variant: ControlButtonVariant.warn,
-                icon: Icons.power_off,
-                label: l10n.commonCutOffAction,
-                onPressed: online && canCutOff
-                    ? () => cutOff(context, tele)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 9),
             Expanded(
               child: ControlButton(
                 variant: ControlButtonVariant.warn,
@@ -188,26 +182,26 @@ class BatteryControls extends StatelessWidget {
                     : null,
               ),
             ),
+            // Anti-theft is unchanged: still model-gated, so still off unless a
+            // unit is explicitly marked as supporting it.
+            if (hasAntiTheft) ...[
+              const SizedBox(width: 9),
+              Expanded(
+                child: ControlButton(
+                  variant: ControlButtonVariant.ghost,
+                  icon: Icons.shield_outlined,
+                  label: l10n.commonAntiTheft,
+                  onPressed: online ? () => antiTheft(context, tele) : null,
+                ),
+              ),
+            ],
           ],
         ),
-        if (hasAntiTheft) ...[
-          const SizedBox(height: 9),
-          ControlButton(
-            variant: ControlButtonVariant.ghost,
-            icon: Icons.shield_outlined,
-            label: l10n.commonAntiTheft,
-            onPressed: online ? () => antiTheft(context, tele) : null,
-          ),
-        ],
         const SizedBox(height: 11),
         // Design 0020 §3.2 — a disabled button must say why. Greying one out
         // silently just relocates the confusion FB-34 was opened for. Only
         // shown while online: offline, everything is disabled for one obvious
         // reason and repeating it per-button is noise.
-        if (online && !canCutOff) ...[
-          AdvisoryNote(text: l10n.cutOffDisabledNote),
-          const SizedBox(height: 7),
-        ],
         if (online && !canRelease) ...[
           AdvisoryNote(text: l10n.releaseDisabledNote),
           const SizedBox(height: 7),
