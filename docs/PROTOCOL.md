@@ -473,9 +473,20 @@ argument:
 > table. Compare with `==`, never a mask — and the correction sharpens that,
 > since `5 & 1 != 0` would now call a healthy capacitor "anti-theft".
 
-**UI button logic** (function page):
+**UI button logic** (function page) — ⚠️ **treat as unreliable**:
 * Anti-theft: `switchMode(currentMode != 2 ? 1 : 0)`
 * Cut-off: `switchMode(currentMode != 4 ? 2 : 0)`
+
+> 🔴 The comparison constants here are `2` and `4` — exactly the reported-status
+> values the table above was corrected away from on 2026-07-30. That is unlikely
+> to be a coincidence: this decompiled reading is the most probable source of
+> those numbers, which means it is quite possibly misread rather than merely
+> describing something we misunderstood.
+>
+> The one part that survives independently is the shape: **leaving a mode writes
+> `0`**, which agrees with the distributor's own encoding (`0` normal, `1`
+> anti-theft, `2` cut-off) and is what this document now recommends for a
+> release. Do not lean on the comparison constants until someone re-derives them.
 
 #### What the two modes physically do
 
