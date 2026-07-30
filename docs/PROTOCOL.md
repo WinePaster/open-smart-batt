@@ -413,6 +413,13 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 > — `0x23` never moved. Every real transition in those captures occurred five to
 > fourteen minutes away from any write, i.e. by other means.
 >
+> ⚠️ 2026-07-31: 1261's presence "in cut-off" is **inferred** from its `0x23` =
+> `0x02`, not owner-labelled — batch `010` names no mode (see the withdrawal
+> note below). This does not weaken the elimination: the argument is that
+> `0x23` **never moved across 20 mode writes**, which holds whatever state the
+> pack was in. Across all six exports every single write was `0x06`; mode `0`,
+> `1` and `2` were never sent even once.
+>
 > That eliminates the auth value and the auth requirement, and leaves the mode
 > code. **To return a pack to normal, write `0`** — the value the distributor
 > gives for 正常模式 and the one the reference UI writes when leaving a mode.
@@ -454,13 +461,22 @@ argument:
 >
 > | unit 1441 (EU 50 Ah) | unit 1261 (JIS 40 Ah) |
 > |---|---|
-> | 19:00 `0x00` | 18:58 `0x02` ← exported as 斷電 |
+> | 19:00 `0x00` | 18:58 `0x02` ← ⚠️ **unlabelled**, withdrawn |
 > | 19:09 `0x02` ← exported as 斷電 | 19:16 `0x01` ← exported as 防盜 |
 > | 19:19 `0x01` ← exported as 防盜 | 19:22 `0x00` ← exported as 正常 |
 > | 19:24 `0x00` ← exported as 正常 | |
 >
-> Two independent units, three states each, zero XOR failures, and the
-> distributor independently gives the same numbering for the write argument.
+> ⚠️ **Narrowed 2026-07-31.** The 1261 `0x02` cell read "exported as 斷電" when
+> this table was written. It was not: batch `010`'s readme gives the pack only
+> ("日規鋰鐵40AH") and names **no** mode, unlike `011`–`015`, which each name
+> one. The owner has ruled that batch's mode unknown and not worth chasing, so
+> the row is withdrawn as evidence — the `0x02` **reading** stands, the label
+> does not.
+>
+> State the count honestly: 705 `0x23` frames, zero XOR failures, `0x23`
+> constant within every session. `0x02` = cut-off is owner-labelled on **one**
+> unit (1441); `0x01` and `0x00` on **two**. The distributor independently gives
+> the same numbering for the write argument.
 >
 > **`0x04` is not a pack state.** It appears nowhere in this corpus.
 >
@@ -491,8 +507,43 @@ argument:
 #### What the two modes physically do
 
 ⚠️ **Source: the vendor's distributor, verbally, 2026-07-30. NOT verified on the
-wire** — no capture in this corpus has a unit in either state. Recorded because
-the difference is a safety matter and the register names alone do not convey it.
+wire.** Recorded because the difference is a safety matter and the register
+names alone do not convey it.
+
+> 🔴 **Corrected 2026-07-31 — the reason it is unverified has changed.** This
+> paragraph used to say "no capture in this corpus has a unit in either state".
+> That is no longer true: `010`–`015` hold two packs sitting in cut-off and
+> anti-theft for minutes at a time. The claim is still unverified, but now for a
+> different and more fixable reason — **no load and no output-side
+> measurement**:
+>
+> `0x2E` current by mode, per-minute buckets from the `014` / `015` exports
+> (min–max, mean, buckets/samples):
+>
+> | unit | 斷電 (`0x02`) | 防盜 (`0x01`) | 正常 (`0x00`) |
+> |---|---|---|---|
+> | 1441 (EU 50 Ah) | `0.00` flat (10 / 1321) | `0.00` flat (9 / 1278) | `0.00` flat (9 / 931) |
+> | 1261 (JIS 40 Ah) | 0.00–0.46, x̄ 0.13 (8 / 2118) | 0.00–0.73, x̄ 0.37 (7 / 1617) | 0.51–1.00, x̄ 0.75 (2 / 311) |
+>
+> 1441 reads `0.00 A` in **every** mode, so nothing about it distinguishes
+> cut-off from normal — it had no load attached. 1261's mean rises monotonically
+> 0.13 → 0.37 → 0.75 across 斷電 → 防盜 → 正常. Per the owner (2026-07-31) the
+> residual draw is the **BLE module and BMS supplying themselves**, which is
+> consistent with cut-off disconnecting the *output* while the electronics stay
+> powered — the pack must keep its radio up to be released again.
+>
+> ⚠️ Three caveats. (1) 1261's cut-off column comes from the sessions whose mode
+> label was **withdrawn** above, so "this is what cut-off looks like" is not
+> established for that unit. (2) It cannot be cross-checked against 1441, which
+> reads `0.00 A` regardless. (3) **The draw is not a floor**: cut-off and
+> anti-theft each contain minute-buckets averaging exactly `0.00 A`, so the
+> current does not sit at a steady housekeeping level — and 460 mA is high for a
+> BLE module alone. The 正常 column is 2 buckets / 311 samples, far too thin to
+> lean on.
+>
+> **To actually verify:** put a known load on a pack in cut-off and record
+> whether the load current is zero while `0x2E` still shows the housekeeping
+> draw. One capture settles it.
 
 | Mode | Behaviour |
 |---|---|

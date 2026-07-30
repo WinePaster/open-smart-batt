@@ -167,16 +167,25 @@ class ModeArg {
 ///
 /// ```
 /// unit 1441 (EU 50Ah)          unit 1261 (JIS 40Ah)
-///   19:00  0x00                  18:58  0x02   ← exported as 斷電模式
+///   19:00  0x00                  18:58  0x02   ← UNLABELLED, see below
 ///   19:09  0x02  ← 斷電模式       19:16  0x01   ← exported as 防盜模式
 ///   19:19  0x01  ← 防盜模式       19:22  0x00   ← exported as 正常模式
 ///   19:24  0x00  ← 正常模式
 /// ```
 ///
-/// Two independent units, three states each, zero XOR failures. The distributor
-/// independently states the same numbering for the WRITE argument, so reported
-/// status and [ModeArg] share one space — the previous "these are different code
-/// spaces, do not compare them" note was wrong about packs.
+/// ⚠️ **Narrowed 2026-07-31.** The 1261 `0x02` row was previously written as
+/// "exported as 斷電模式". It was not: batch `010`'s readme names the pack only
+/// ("日規鋰鐵40AH") and states no mode, unlike `011`–`015` which all name one.
+/// The owner has ruled that batch's mode unknown and not worth chasing, so this
+/// row is **withdrawn as evidence** — the `0x02` reading stands, the label does
+/// not.
+///
+/// Zero XOR failures across 705 frames. What survives is still decisive, but
+/// state the count honestly: `0x02` = cut-off is labelled on **one** unit
+/// (1441), `0x01` and `0x00` on **two**. The distributor independently states
+/// the same numbering for the WRITE argument, so reported status and [ModeArg]
+/// share one space — the previous "these are different code spaces, do not
+/// compare them" note was wrong about packs.
 ///
 /// What this cost while it was wrong: a battery sitting in cut-off (`0x02`) was
 /// rendered as "anti-theft", with the cut-off badge reading "off" — the app told
