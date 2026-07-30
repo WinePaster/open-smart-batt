@@ -199,14 +199,33 @@ class ConnectionController extends ChangeNotifier {
   /// target before any session exists — `connect → X` and its failures. It does
   /// NOT open a session: the attempt has not started, and `sessionId` staying
   /// null says so honestly.
+  ///
+  /// 🔴 That last sentence was FALSE from `93e967a` (design 0019, shipped in
+  /// v0.6.12) until this fix. The override was applied to `deviceId` alone while
+  /// `sessionId` kept reading `_session.sessionId` — and the case the override
+  /// exists for is precisely the one where a session IS live: [connect] writes
+  /// `connect → X` BEFORE tearing the previous link down, so while unit Y was
+  /// connected the row went out as `device_id=X, session_id=<Y's session>`.
+  ///
+  /// `LogRepo.exportLog` sections on deviceId/sessionId/appBuild, so that single
+  /// row minted a one-line section header claiming Y's connection number for X,
+  /// and in an all-devices export the same session number appeared under two
+  /// different device headings — the sort of thing a reader resolves by assuming
+  /// the file is wrong about something else.
+  ///
+  /// The session id may only travel with a row that belongs to that session, so
+  /// an override naming a DIFFERENT unit drops it. An override naming the unit
+  /// already being recorded (a reconnect to the live device) keeps it: there the
+  /// session really is that row's own.
   void _event(String message, {String? deviceId}) {
     final logs = _logs;
     if (logs == null) return;
+    final foreign = deviceId != null && deviceId != _session.deviceId;
     _pending.add(logs.insertLog(
       LogEntry.event(
         message,
         deviceId: deviceId ?? _session.deviceId,
-        sessionId: _session.sessionId,
+        sessionId: foreign ? null : _session.sessionId,
         appBuild: _appBuild,
       ),
       maxBytes: _settings.logMaxBytes,
