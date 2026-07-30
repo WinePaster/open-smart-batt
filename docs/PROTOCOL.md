@@ -78,6 +78,26 @@ Duration = 1,000,000 µs (1 s). A tick counter drives which token is written
 > = `0x45`; the tag artefact was read as `0x44`), not from the link. **Across
 > 3,808 observed `0x10` frames the payload byte is only ever `0x02`, `0x17` or
 > `0x22`; `0x44` occurs zero times.** The power bank is `0x22` (34). See §9.
+>
+> Re-checked 2026-07-30 over the whole corpus: **13,444 XOR-clean `0x10` frames**,
+> still only `0x02` (7,333) / `0x17` (5,272) / `0x22` (839).
+
+> ⚠️ **One vendor claim this document does not adopt.** The distributor states
+> (2026-07-30) that the third-generation "flagship" super-capacitor is `0x18`,
+> with `0x17` reserved for the second generation. Three of the four values given
+> match the wire exactly; this one does not, and `0x18` has **never** been
+> observed — zero of 13,444 frames.
+>
+> The conflict is specific rather than vague: the unit whose owner identified it
+> as the flagship (serial 7809, dealer `01680217`, fw 1.06, MAC
+> `6C:79:B8:33:76:9F`) reports `0x17` across 976 frames, reproduced value-for-
+> value on iOS a day later.
+>
+> Either that unit is a second-generation one its owner labelled wrongly, or
+> `0x18` exists on flagship units this corpus has never held, or the claim is a
+> planned value rather than a shipped one. **A client should treat an unknown
+> device-type byte as unclassified rather than guessing**, which is what leaves
+> the failure direction safe here.
 
 #### The two tokens get **different** answers (measured 2026-07-30)
 
