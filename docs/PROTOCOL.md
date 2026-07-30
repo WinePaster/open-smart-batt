@@ -390,14 +390,44 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 > without error; the only honest UI is "sent", plus whatever `0x23` says
 > afterwards.
 
-**Reported status** (device → app) uses a **different code space** from the mode
-argument — do not compare the two:
+**Reported status** (device → app) uses the **same code space** as the mode
+argument:
 
 | reported status | Meaning / UI |
 |---|---|
 | `0` | Normal (lock icon) |
-| `2` | Anti-theft active (防盜模式已啟動) |
-| `4` | Cut-off active (斷電模式已啟動) |
+| `1` | Anti-theft active (防盜模式已啟動) |
+| `2` | Cut-off active (斷電模式已啟動) |
+
+> 🔴 **Corrected 2026-07-30, from `0 / 2 / 4`.** Earlier revisions carried those
+> values *and* the claim that reported status and the mode argument were
+> different code spaces that must never be compared. Both came from the
+> reference app's decompiled UI logic (`currentMode != 2` / `!= 4`); neither had
+> ever been seen on the wire.
+>
+> An owner then put two batteries through all three states and labelled each
+> export with the state it was in. `0x23` tracked the labels exactly:
+>
+> | unit 1441 (EU 50 Ah) | unit 1261 (JIS 40 Ah) |
+> |---|---|
+> | 19:00 `0x00` | 18:58 `0x02` ← exported as 斷電 |
+> | 19:09 `0x02` ← exported as 斷電 | 19:16 `0x01` ← exported as 防盜 |
+> | 19:19 `0x01` ← exported as 防盜 | 19:22 `0x00` ← exported as 正常 |
+> | 19:24 `0x00` ← exported as 正常 | |
+>
+> Two independent units, three states each, zero XOR failures, and the
+> distributor independently gives the same numbering for the write argument.
+>
+> **`0x04` is not a pack state.** It appears nowhere in this corpus.
+>
+> What the error cost while it stood: a pack sitting in cut-off reports `0x02`,
+> which the old table read as *anti-theft*, so a client following this document
+> told an owner their battery was not cut off while it was.
+>
+> ⚠️ The capacitor exception is unaffected: a super-capacitor answers `0x23` in
+> its own space (`0x05` on 2,982 frames) and still must not be read through this
+> table. Compare with `==`, never a mask — and the correction sharpens that,
+> since `5 & 1 != 0` would now call a healthy capacitor "anti-theft".
 
 **UI button logic** (function page):
 * Anti-theft: `switchMode(currentMode != 2 ? 1 : 0)`

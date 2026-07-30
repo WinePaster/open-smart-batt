@@ -10,8 +10,12 @@
 // app: a super-capacitor (device-type 0x17) answered `0x23` = `0x05` on
 // 1802/1802 frames with no other value, while two smart batteries
 // (device-type 0x02) answered `0x00` on 531/531 and 112/112 frames.
-// PROTOCOL.md §6.2 independently records the reported-status space as 0/2/4 and
-// the reference UI's own logic as EQUALITY (`currentMode != 2` / `!= 4`).
+// The reported-status VALUES were corrected on 2026-07-30 from 0/2/4 to 0/1/2
+// (see ReportedStatus). The old numbers came from decompiled UI logic and were
+// never observed; labelled captures of two units through all three states now
+// pin them. What this file is really about — EQUALITY, never a bitmask —
+// survives the correction unchanged, and the correction makes it sharper: a
+// healthy capacitor reports 5, and 5 & 1 != 0 would now call it anti-theft.
 //
 // CLEAN-ROOM: expectations derive only from docs/PROTOCOL.md and our captures.
 import 'dart:async';
@@ -69,6 +73,27 @@ void main() {
   // =========================================================================
 
   group('packRunModeOf — equality, never a bitmask', () {
+    test('the wire-verified values are the ones we decode', () {
+      // Not symbolic: these three numbers are the correction itself, and a
+      // symbolic-only assertion would still pass if someone reverted them.
+      expect(ReportedStatus.normal, 0x00);
+      expect(ReportedStatus.antiTheftActive, 0x01);
+      expect(ReportedStatus.cutOffActive, 0x02);
+    });
+
+    test('a battery in cut-off is NOT reported as anti-theft', () {
+      // The regression this correction fixes: 0x02 decoded to anti-theft, so a
+      // cut-off pack showed "anti-theft" with the cut-off badge reading "off".
+      expect(packRunModeOf(0x02), PackRunMode.cutOff);
+      expect(isCutOffMode(0x02), isTrue);
+      expect(packRunModeOf(0x01), PackRunMode.antiTheft);
+    });
+
+    test('0x04 is not a pack state — it has never been observed', () {
+      expect(packRunModeOf(0x04), isNull);
+      expect(isCutOffMode(0x04), isFalse);
+    });
+
     test('the three pack codes decode', () {
       expect(packRunModeOf(ReportedStatus.normal), PackRunMode.normal);
       expect(packRunModeOf(ReportedStatus.antiTheftActive),
@@ -83,8 +108,8 @@ void main() {
     });
 
     test('every other byte the mask would have misread stays null', () {
-      // Each of these has bit 2 (0x04) or bit 1 (0x02) set, so the old mask
-      // claimed cut-off / anti-theft for all of them.
+      // Each of these has a bit in common with a pack code, so a mask claims
+      // cut-off / anti-theft for all of them.
       for (final b in [5, 6, 7, 12, 13, 14, 20, 0xFF]) {
         expect(packRunModeOf(b), isNull, reason: 'byte $b must not decode');
         expect(isCutOffMode(b), isFalse, reason: 'byte $b must not be cut-off');

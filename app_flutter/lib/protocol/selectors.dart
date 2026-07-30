@@ -152,25 +152,49 @@ class ModeArg {
 /// Reported mode/status code, stored device-side at offset 0x113 (PROTOCOL.md
 /// §6.2) and echoed via selector 0x23.
 ///
-/// These three codes are the **smart-battery / pack** space. A super-capacitor
-/// answers in a DIFFERENT space ([CapacitorStatus]) — see the class doc there
-/// for the capture that proves it.
+/// 🔴 **Corrected 2026-07-30 from `0 / 2 / 4` to `0 / 1 / 2`.** The old values
+/// were inferred from the reference app's decompiled UI logic (`currentMode !=
+/// 2` / `!= 4`) and were never seen on the wire. Labelled ground truth now
+/// falsifies them: an owner put two batteries through all three states and
+/// annotated each export, and `0x23` tracked the labels exactly.
 ///
-/// Compare with `==`, never with a bitmask. PROTOCOL.md §6.2 records the
-/// reference app's own UI logic as equality (`currentMode != 2` / `!= 4`), and a
-/// mask is provably wrong: `5 & 4 != 0` would report a healthy capacitor as
-/// "cut-off active".
+/// ```
+/// unit 1441 (EU 50Ah)          unit 1261 (JIS 40Ah)
+///   19:00  0x00                  18:58  0x02   ← exported as 斷電模式
+///   19:09  0x02  ← 斷電模式       19:16  0x01   ← exported as 防盜模式
+///   19:19  0x01  ← 防盜模式       19:22  0x00   ← exported as 正常模式
+///   19:24  0x00  ← 正常模式
+/// ```
+///
+/// Two independent units, three states each, zero XOR failures. The distributor
+/// independently states the same numbering for the WRITE argument, so reported
+/// status and [ModeArg] share one space — the previous "these are different code
+/// spaces, do not compare them" note was wrong about packs.
+///
+/// What this cost while it was wrong: a battery sitting in cut-off (`0x02`) was
+/// rendered as "anti-theft", with the cut-off badge reading "off" — the app told
+/// an owner their pack was not cut off while it was.
+///
+/// `0x04` is NOT a pack state. It has never been observed, here or anywhere in
+/// the corpus, and decodes to null.
+///
+/// A super-capacitor answers in a DIFFERENT space ([CapacitorStatus]) — that
+/// part still holds; see the class doc there for the capture that proves it.
+///
+/// Compare with `==`, never with a bitmask. A mask is still provably wrong, and
+/// on the corrected values it is wrong in a new way: a healthy capacitor reports
+/// `5`, and `5 & 1 != 0` would report it as "anti-theft active".
 class ReportedStatus {
   ReportedStatus._();
 
-  /// Normal (lock icon).
+  /// Normal (lock icon). ✅ wire-verified.
   static const int normal = 0;
 
-  /// Anti-theft active (防盜模式已啟動).
-  static const int antiTheftActive = 2;
+  /// Anti-theft active (防盜模式已啟動). ✅ wire-verified 2026-07-30.
+  static const int antiTheftActive = 1;
 
-  /// Cut-off active (斷電模式已啟動).
-  static const int cutOffActive = 4;
+  /// Cut-off active (斷電模式已啟動). ✅ wire-verified 2026-07-30.
+  static const int cutOffActive = 2;
 }
 
 /// Super-capacitor status code space for selector `0x23`.
