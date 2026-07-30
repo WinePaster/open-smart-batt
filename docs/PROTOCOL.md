@@ -79,6 +79,29 @@ Duration = 1,000,000 µs (1 s). A tick counter drives which token is written
 > 3,808 observed `0x10` frames the payload byte is only ever `0x02`, `0x17` or
 > `0x22`; `0x44` occurs zero times.** The power bank is `0x22` (34). See §9.
 
+#### The two tokens get **different** answers (measured 2026-07-30)
+
+`#` and `!#` are not interchangeable. A 23-hour single-battery capture
+(31,596 lines, 63,375 XOR-clean frames, 5 residual bytes) sent `#` **2,126**
+times and `!#` **5** times, and the reply sets separate cleanly:
+
+| Written | Selectors that answer | Frames each |
+|---|---|---|
+| `#` (and the periodic `@`) | `0x10 0x14 0x19 0x1C 0x1D 0x20 0x21 0x23 0x24 0x26 0x27 0x29 0x2B 0x2E 0x30 0x35 0x37 0x40` | ≈2,127 (identity group) / ≈5,398 (fast telemetry) |
+| `!#` **only** | `0x17 0x25 0x31 0x34 0x36 0x38 0x39 0x3A 0x3B 0x3C 0x3F 0x47 0x4D` | **exactly 5** |
+
+2,126 against 5 leaves no ambiguity. Two consequences for anyone writing a client
+or reading a capture:
+
+* **`!#` is not just a session opener.** Tick 1 sends it once, so a long session
+  gets the extended group *once* — but the 6th session in this capture received no
+  `!#` at all (the first one landed 9 minutes later, already inside session 2) and
+  therefore streamed **zero** frames from the second row for its entire life.
+* **"This device does not support X" is unprovable from a capture that wrote only
+  `#`.** That is the same failure mode as §10.2, one level finer: there, a broken
+  write path hid 20-odd registers; here, a *working* write path that never
+  re-sends `!#` still hides 13 of them.
+
 ---
 
 ## 3. GATT (service + characteristic UUIDs)
@@ -261,7 +284,7 @@ values identify the device class in field reports: `01680102` on batteries and
 | `0x4B` | power bank | `[u16 design mAh][u8 SOC %][u8 port flags][u8 ?]` | §9.1 |
 | `0x4C` | power bank | Constant, undecoded | §10.1 |
 | `0x96` | — | Capacity / SOH info | ⚠️ **Never observed on the wire** (0 / 206,516 frames) — see §9 |
-| `0x2C` / `0x34` / `0x3A` / `0x42` / `0x40` | see §10.1 | Streamed but undecoded | §10.1 |
+| `0x2C` / `0x34` / `0x3A` / `0x3C` / `0x40` / `0x42` / `0x4D` | see §10.1 | Streamed but undecoded | §10.1 |
 
 ### 5.3 Observed dealer-code label strings
 
@@ -269,6 +292,14 @@ values identify the device class in field reports: `01680102` on batteries and
 |---|---|---|
 | `01680102` | Battery-class dealer code | ✅ observed on the wire (`0x27` payload `00a801020000`) |
 | `01680217` | Capacitor-class dealer code | ✅ observed on the wire (`0x27` payload `00a802170001`) |
+| `01690102` | Battery-class dealer code, **`0169` prefix** | ✅ observed on the wire (`0x27` payload `00a901020000`, 2,127 frames, 2026-07-30) |
+
+> 📌 **The prefix is not fixed at `0168`.** Every code recorded here before
+> 2026-07-30 began `0168`, and §4.4 names the family after it. A motorcycle-class
+> battery reports `0169`. A client must therefore parse the code, never match a
+> `0168` literal — and `cb` (§6.1) is derived from the whole 8-digit value, so the
+> prefix reaches the auth frame: this unit's `cb` is `0xC9F6` (1690102 & 0xFFFF),
+> not the `0x00A8` that `01680102` yields.
 
 > ⚠️ Earlier revisions listed further codes (`01680104`, `…0218`, `0211`–`0214`)
 > with per-code meanings. **`01680104` has never been observed** in any capture,
@@ -289,11 +320,34 @@ knowledge of it via a **16-bit checksum = sum of the password's character code
 units**, split big-endian: `sum_hi = sum>>8`, `sum_lo = sum & 0xFF`.
 
 The auth frame also carries an **echo value** `cb` derived from the dealer-code
-label string (§4.4): the first 8 characters are parsed as a **decimal** number,
-then `cb_hi = v >> 8`, `cb_lo = v & 0xFF`.
+label string (§4.4).
 
-Observed on the wire: `cb = 0x00A8` for the battery-class code `01680102`
-(168 → hi `0x00`, lo `0xA8`). ⚠️ **Both this value and the password checksum
+**`cb` is the first two payload bytes of `0x27`, big-endian** — equivalently, the
+label string's leading **4** characters read as decimal (§4.4 renders those two
+bytes as `%04d`):
+
+| `0x27` payload | Label | `cb` |
+|---|---|---|
+| `00a801020000` | `01680102` | `0x00A8` (168) — ✅ observed on the wire |
+| `00a901020000` | `01690102` | `0x00A9` (169) — predicted, **not yet confirmed** |
+
+> 🔴 **This corrects a rule that earlier revisions stated as "the first 8
+> characters", and that contradicted the one wire observation printed directly
+> beneath it.** Parsing 8 characters of `01680102` gives 1,680,102, whose low 16
+> bits are `0xA2E6` — not the `0x00A8` that was actually captured. The "168" in
+> the old example came from 4 characters, so the prose and its own evidence
+> disagreed. **The evidence wins.**
+>
+> ⚠️ **This document's own client implemented the 8-character rule**, and a
+> 2026-07-30 capture shows it writing `cb = 0xC9F6` (1690102 & 0xFFFF) to a
+> `01690102` battery where this table predicts `0x00A9`. The device did not
+> change `0x23` in response — see §6.2. That is **consistent with** a rejected
+> auth but does not prove it: the same capture's battery was already in normal
+> mode, so a correctly-authenticated release would also have been a no-op. **Both
+> the 4-character rule and the failure mode need one deliberate capture against a
+> unit that is actually in cut-off.**
+
+⚠️ **Both this value and the password checksum
 travel in cleartext in the auth write, and the dealer code is broadcast by the
 device itself in `0x27` telemetry — so a passive sniffer learns one of the two
 for free, and the auth frame is replayable as-is.** This is a property of the
@@ -322,6 +376,19 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 | `1` | Activate anti-theft (防盜) |
 | `2` | Activate cut-off (斷電) |
 | `6` | Cut-off release / post-connect detect. After the write the app starts a **10 s periodic detect poller**. Observed on the wire: mode pulses to `0x06` for **about 1 s (≈2 frames)** and reverts to `0x05` — it behaves like a routine post-connect handshake, not a latching unlock |
+
+> ⚠️ **A mode write is not acknowledged in any observable way.** In a 2026-07-30
+> capture a client wrote mode `0x06` five times to a battery (four bundled with
+> auth, one mode-only) and `0x23` read `0x00` on **2,131 of 2,131** frames across
+> the whole 23-hour session — no pulse, no error frame, no change in the reply
+> cadence. The `0x06 → 0x05` pulse quoted in the row above came from a
+> **capacitor**, which answers `0x23` in a different code space entirely (§6.2
+> reported-status table applies to packs only).
+>
+> ⇒ **A client cannot tell "accepted" from "rejected" from "not in that state
+> anyway" by watching `0x23`.** Do not report success on a write returning
+> without error; the only honest UI is "sent", plus whatever `0x23` says
+> afterwards.
 
 **Reported status** (device → app) uses a **different code space** from the mode
 argument — do not compare the two:
@@ -428,6 +495,7 @@ writing.
 | `07f4` | **20.36** | 292 | battery — JIS 40 Ah, 2026-07-30 |
 | `07ee` | **20.30** | 112 | battery |
 | `07da` | **20.10** | 84 | battery |
+| `07d0` | **20.00** | 2,127 | battery — motorcycle class, fw 1.00, 2026-07-30 |
 
 Baseline: whole-corpus re-walk 2026-07-30, plus the 2026-07-30 field capture.
 Every observed value came from a battery; no capacitor or power bank has ever
@@ -445,9 +513,13 @@ sent `0x30`. Spread is ≈1.3 %, consistent with a factory per-unit calibration.
 > table with the capture that would settle it, not to delete it.
 >
 > An earlier fourth value (≈20.06, attributed to a "motorcycle-class unit",
-> 2026-07-05) remains **unreproducible** — that capture is not in the corpus, and
-> the logs streaming `0x40` carry no `0x10` at all, so they never supported a class
-> attribution (§10.1). It stays out until a capture shows it.
+> 2026-07-05) is **still not reproduced, but the reason given for excluding it is
+> now void.** That reason was "the logs streaming `0x40` carry no `0x10` at all,
+> so they never supported a class attribution" — a 2026-07-30 capture is a
+> `0x10`-identified motorcycle-class battery *and* streams `0x40` (§10.1), so the
+> class does reach the wire. That unit reports **20.00**, not 20.06, across 2,127
+> frames. ⇒ The row stays out on its own merits (this corpus still contains no
+> capture reporting 20.06), not because motorcycle-class VADJ was unobservable.
 
 **Consistency check (verified 2026-07-28).** On units that report DVOL, the four
 scaled cell voltages sum to the secondary voltage:
@@ -807,25 +879,45 @@ vendor-app screenshot taken during `0x26` shows the Type-A icon dark.
 ### `0x47` — per-cell voltages, pre-scaled (battery only)
 
 `4 × big-endian u16`, in **mV, already scaled by the device** — so it needs no
-VADJ. Cross-checked against `0x24 × VADJ` on live units: **12 of 12 cell values
-exactly equal `trunc(raw × VADJ)`** (e.g. `0xB9` = 185 × 20.30 = 3755.5 → 3755).
-Within each session only one of the many distinct `0x24` values matches, so this
-is not a coincidence.
+VADJ. Only ever seen on device-type `0x02`.
 
-Evidence as of 2026-07-30: **20 of 20 cell values exact, across 5 frames and 3
-units at 3 distinct VADJ factors** (20.10 / 20.30 / 20.36). The 2026-07-30 capture
-added the strongest pair, because that battery was charging — its cells moved
-through 60 distinct `0x24` patterns during the session, and both `0x47` frames
-still resolve to a pattern actually observed:
+#### ⚠️ `0x47` and `0x24` are **not** two views of one number
 
-```
-0x47 = [3318, 3318, 3318, 3318]  ⇒ raw [163,163,163,163] x 20.36  ✓ exact
-0x47 = [3440, 3481, 3461, 3461]  ⇒ raw [169,171,170,170] x 20.36  ✓ exact
-```
+Earlier revisions of this section stated the identity
+`0x47_mV = trunc(0x24_raw × VADJ)` and cited "20 of 20 exact". **That rule holds
+on four units and fails completely on a fifth**, so it is not a property of the
+protocol. Whole-corpus re-check, each `0x47` frame paired with the `0x24` frame
+nearest in time:
 
-⚠️ **It still does not replace `0x24`:** exactly one frame per session, always in
-the first connect burst, while `0x24` streams at 1.9–2.9 frames/second. Only ever
-seen on device-type `0x02`.
+| Capture | fw | VADJ | `mV = trunc(raw×VADJ)` | `raw = trunc(mV/VADJ)` |
+|---|---|---|---|---|
+| 4 car-class batteries (2026-07-29 ×2, 2026-07-30 ×2) | 1.02 / 1.03 | 20.10 / 20.30 / 20.36 / 20.46 | **24 / 24 ✅** | 0 / 24 |
+| motorcycle-class battery (2026-07-30) | **1.00** | **20.00** | **0 / 20 ❌** | **20 / 20 ✅** |
+
+The fifth unit's failure is **structural, not a tolerance problem**: at
+VADJ = 20.00 the expression `trunc(raw × 20.00)` can only produce multiples of
+20, and that unit's `0x47` reports 3357 / 3337 / 3364 / 3299 / 3386 / 3389 … —
+none of which is. Solving for the VADJ that *would* satisfy the forward rule over
+its 20 pairs yields an **empty interval** (`[20.1159, 20.0061)`), so no
+calibration value rescues it. The inverse rule instead pins VADJ to
+`(19.9939, 20.0000]` — bracketing the device's own `0x30` reading exactly.
+
+⇒ **The two registers are independent readings of the same cells at different
+resolutions.** On the four car-class units `0x24` is evidently the source and
+`0x47` a pre-scaled copy; on the motorcycle unit `0x47` carries real precision
+that the 8-bit `0x24` discards (1 LSB = 20 mV there). Whether firmware version,
+device class, or the integral VADJ is the discriminator is **not determined** —
+one capture from a second fw-1.00 unit would settle it.
+
+**For an implementer:** prefer `0x47` where present, never *derive* either
+register from the other, and never present a `0x24`-derived cell voltage as
+though it had `0x47`'s resolution.
+
+⚠️ **It still does not replace `0x24`:** `0x24` streams at 1.9–2.9 frames/second
+while `0x47` answers `!#` and nothing else (§2) — **once per `!#`, not once per
+session.** In the 2026-07-30 capture five `!#` writes produced exactly five
+`0x47` frames across 23 hours, and the one session that never received an `!#`
+got none at all.
 
 > A method note that cost a wrong conclusion once: on a unit whose voltage is
 > moving, `0x47` must be compared against the `0x24` frame **nearest in time**,
@@ -928,7 +1020,9 @@ session**. Rows that cannot state one say so — that is the point of the column
 
 | Selector | Class | LEN | Payload | Notes |
 |---|---|---|---|---|
-| `0x40` | ⚠️ **unattributed** | 2 | `222b` (8747) / `2229` (8745) | Barely moves. Candidates: cycle count, capacity, accumulated charge — **none evidenced**. ⚠️ **The logs that carry it contain no `0x10` frames at all**, so the earlier "smart battery" attribution had no basis. One of them is the mixed-unit capture that caused the TWF misreading (§8.4). To decode: capture one *identified* unit before and after a charge cycle. |
+| `0x40` | **battery `0x02`** (2026-07-30) | 2 | this unit: `20xx`, 15 distinct, `2000` (2134) / `2010` (1582) / `2001` (718) / `200d` (692) … — earlier unattributed logs: `222b` (8747) / `2229` (8745) | ✅ **Attribution resolved.** The 2026-07-30 capture is a single-device 23-hour log carrying 5,398 `0x40` frames *and* 2,127 `0x10` = `0x02` frames, which is exactly the "capture one *identified* unit" this row used to ask for. **Byte 0 is `0x20` on all 5,398 frames of that unit but `0x22` in the older logs** ⇒ byte 0 is not a constant, it is per-unit or per-state. Emission is **1:1 with `0x21`/`0x2E`** (5,398 : 5,398 : 5,398) and it sits immediately after `0x20` (TWF) in every telemetry group. Still **not decoded**: byte 1 grouped against current, temperature and PVLT in the same frame shows no separation (all 15 groups' ranges overlap). To decode: the same unit before and after a charge cycle, with the charge state labelled. |
+| `0x3C` | battery `0x02` | 2 | `0000` ×4, `1100` ×1 | Answers `!#` only (§2), so a 23-hour session yielded 5 samples. One of the five differs — enough to prove it is not a constant, far too few to say what changes it. |
+| `0x4D` | battery `0x02` | 7 | `320d240d08001c`, `320d1e0cfa0024`, `320d100ce70029`, `320d320d08002a`, `21b8f10000b8f1` | Answers `!#` only. Four of five samples share the shape `[0x32][u16][u16][u16]`, the two middle words landing in the same 3.30–3.38 V range as the cells. ⚠️ **They are not the `0x47` max/min** — checked against all five bursts, and one burst puts both words *below* every cell `0x47` reported. The trailing word is likewise **not** the `0x21` temperature (two of four exceed that session's observed maximum). The fifth sample breaks the shape entirely (leading `0x21`, two words repeating `b8f1`) on a frame that is nonetheless XOR-clean. **No hypothesis survives n=5; do not decode.** |
 | `0x42` | capacitor | 4 | `07c87805`, constant | Same value on both platforms and every session of the same unit — consistent with a static setting or model code. Unproven. |
 | `0x41` | capacitor | **8** | `304d303c0100272d` | Labelled "charge info" by the reference app. ⚠️ The previous reason for refusing the §8.2 formula — "observed length doesn't match" — was **itself a parsing error** (LEN 8 was miscounted as 9 by including the XOR byte), and 8 bytes accommodates the 2×u16 layout. It is still not decoded, but for a better reason: **no capture has ever varied it against a known charge state.** |
 | `0x4C` | power bank | 2 | `3c0a`, **691/691 constant** across 3 units and 2 phones | Nothing varies ⇒ nothing can be inferred about field boundaries. |
@@ -963,7 +1057,7 @@ Selectors observed **with a working write path**, grouped by the `0x10` byte:
 
 | Class | Selectors observed |
 |---|---|
-| Battery `0x02` | `0x10 0x14 0x17 0x19 0x1C 0x1D 0x20 0x21 0x23 0x24 0x25 0x26 0x27 0x29 0x2B 0x2C 0x2E 0x30 0x31 0x34 0x35 0x36 0x37 0x38 0x39 0x3A 0x3B 0x3F 0x47` |
+| Battery `0x02` | `0x10 0x14 0x17 0x19 0x1C 0x1D 0x20 0x21 0x23 0x24 0x25 0x26 0x27 0x29 0x2B 0x2C 0x2E 0x30 0x31 0x34 0x35 0x36 0x37 0x38 0x39 0x3A 0x3B 0x3C 0x3F 0x40 0x47 0x4D` |
 | Capacitor `0x17` | `0x10 0x19 0x20 0x21 0x23 0x25 0x26 0x27 0x29 0x2B 0x2C 0x2E 0x34 0x37 0x38 0x3A 0x3B 0x41 0x42` |
 | Power bank `0x22` | `0x10 0x19 0x20 0x21 0x25 0x29 0x34 0x37 0x38 0x3A 0x3B 0x49 0x4A 0x4B 0x4C` |
 | **Broken write path** (zero TX) | `0x19 0x20 0x21 0x24 0x2E 0x37` — six registers |
@@ -972,7 +1066,17 @@ Selectors observed **with a working write path**, grouped by the `0x10` byte:
 > Two things this table says that the previous single-column version could not:
 > **`0x96` appears nowhere** (see §9), and the sets differ **by class**, so
 > "this device doesn't support X" requires knowing which device you had.
-> The final row is why: `0x40` is only ever seen where no `0x10` arrived.
+>
+> 🔴 **Correction (2026-07-30).** This note previously read "the final row is why:
+> `0x40` is only ever seen where no `0x10` arrived", and §10.1 built an
+> unattributable-forever caveat on top of it. **A same-day capture falsifies it**:
+> one battery, one device, 23 hours, 5,398 `0x40` frames alongside 2,127
+> `0x10` = `0x02`. The old statement was true of the corpus at the time and was
+> read as though it were true of the register. `0x3C`, `0x40` and `0x4D` are now
+> in the battery row above on direct evidence.
+>
+> Note what changed and what did not: `0x40` remains **undecoded**. Knowing which
+> class emits a register is a prerequisite for decoding it, not a substitute.
 
 The six that survive a broken write path are the free-running telemetry stream.
 Everything identifying — **device type (`0x10`), serial (`0x26`), manufacture year
