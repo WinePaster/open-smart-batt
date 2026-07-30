@@ -174,13 +174,25 @@ class TelemetryController extends ChangeNotifier {
   Future<int> historyCount() => _history.count();
 
   /// Bucketed trend for the chart (DB-side aggregation).
+  ///
+  /// FB-38: [deviceId] must match whatever the list is showing. A chart and a
+  /// list disagreeing about which unit they cover is worse than neither being
+  /// filtered.
   Future<List<HistoryBucket>> historyBuckets(
-          {DateTime? since, required int bucketMs}) =>
-      _history.queryBuckets(since: since, bucketMs: bucketMs);
+          {DateTime? since, required int bucketMs, String? deviceId}) =>
+      _history.queryBuckets(
+          since: since, bucketMs: bucketMs, deviceId: deviceId);
 
   /// Range-wide min/max/avg stats over raw rows.
-  Future<HistoryStats> historyStats({DateTime? since}) =>
-      _history.aggregate(since: since);
+  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) =>
+      _history.aggregate(since: since, deviceId: deviceId);
+
+  /// Rows in range that were recorded before the unit was identified.
+  ///
+  /// FB-38 / FB-21: a device-scoped view excludes these, so the screen has to
+  /// be able to say how many it is not showing.
+  Future<int> historyUnattributedCount({DateTime? since}) =>
+      _history.countUnattributed(since: since);
 
   /// CSV export of matching history rows (for share_plus / file write).
   ///

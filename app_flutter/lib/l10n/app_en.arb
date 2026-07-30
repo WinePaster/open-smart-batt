@@ -254,6 +254,42 @@
       }
     }
   },
+  "commonCutOffAction": "Cut Off",
+  "modeSentSnack": "{action} command sent. The device currently reports: {status}. This model sends no acknowledgement — watch the actual state.",
+  "@modeSentSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "modeSentNoAuthSnack": "{action} command sent without auth (experimental). The device currently reports: {status}.",
+  "@modeSentNoAuthSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "cutOffDialogTitle": "Send Cut-off Command",
+  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
+  "cutOffDialogConfirm": "I understand — send it",
+  "cutOffFailedSnack": "Cut-off command failed: {error}",
+  "@cutOffFailedSnack": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cutOffDisabledNote": "The cut-off command can only be sent while the device reports it is running normally.",
+  "releaseDisabledNote": "The device reports it is running normally and is not cut off, so there is nothing to release.",
   "antiTheftDialogTitle": "Enable Anti-theft Mode",
   "antiTheftDialogBody": "Anti-theft mode is not fully verified and appears only on supported models. Are you sure you want to send the anti-theft command?",
   "antiTheftSentSnack": "Anti-theft command sent",
@@ -340,6 +376,15 @@
   "devicesAliasHint": "e.g. Capacitor #1 (front car)",
   "historyFilterAll": "All",
   "historyFilterToday": "Today",
+  "historyScopeAllDevices": "All devices",
+  "historyScopeHiddenNote": "{count} more record(s) are not shown: they were saved before the app had identified which unit they came from.",
+  "@historyScopeHiddenNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "historyFilterWarning": "Warnings",
   "historyExportCsv": "Export CSV",
   "historyExportSubject": "OpenSmartBatt History",
@@ -441,8 +486,16 @@
   "settingsClearConfirm": "Clear",
   "settingsHistoryCleared": "History cleared",
   "settingsDiagnosticsHeading": "Diagnostics / Developer",
+  "rawLogOffDialogTitle": "This log will have no packet contents",
+  "rawLogOffDialogBody": "\"Log raw Bluetooth packets\" is currently off, so this file will contain only connection events — none of the data the device actually sent. If you are reporting a problem to the developers, it will not help much.\n\nAfter enabling it you need to reconnect and use the device once before anything is recorded.",
+  "rawLogOffExportAnyway": "Export anyway",
+  "rawLogOffEnable": "Turn it on",
+  "rawLogEnabledSnack": "Raw packet logging is on. Reconnect, use the device for a while, then export again.",
+  "rawLogContentsDialogTitle": "This log contains your device's Bluetooth address",
+  "rawLogContentsDialogBody": "Raw packet logging is on, so this file includes the frames the device sent — and one of them is the device reporting its own Bluetooth hardware address.\n\nThis is your own hardware, not personal data, and the device already broadcasts it to anything in range. It is kept in the file on purpose: removing it would break the frame checksums that make a capture usable as evidence.\n\nJust be aware of it before posting the file somewhere public.",
+  "rawLogContentsContinue": "Got it, export",
   "settingsRawPacketLogLabel": "Log raw Bluetooth packets",
-  "settingsRawPacketLogSub": "Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default",
+  "settingsRawPacketLogSub": "Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device's own Bluetooth address.",
   "settingsLogMaxSizeLabel": "Log size limit",
   "settingsLogMaxSizeSub": "Automatically rotates and overwrites when exceeded",
   "settingsExportLogLabel": "Export diagnostic log (.log)",

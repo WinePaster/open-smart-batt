@@ -387,6 +387,42 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get commonCutOffAction => 'Cut Off';
+
+  @override
+  String modeSentSnack(String action, String status) {
+    return '$action command sent. The device currently reports: $status. This model sends no acknowledgement — watch the actual state.';
+  }
+
+  @override
+  String modeSentNoAuthSnack(String action, String status) {
+    return '$action command sent without auth (experimental). The device currently reports: $status.';
+  }
+
+  @override
+  String get cutOffDialogTitle => 'Send Cut-off Command';
+
+  @override
+  String get cutOffDialogBody =>
+      'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.';
+
+  @override
+  String get cutOffDialogConfirm => 'I understand — send it';
+
+  @override
+  String cutOffFailedSnack(String error) {
+    return 'Cut-off command failed: $error';
+  }
+
+  @override
+  String get cutOffDisabledNote =>
+      'The cut-off command can only be sent while the device reports it is running normally.';
+
+  @override
+  String get releaseDisabledNote =>
+      'The device reports it is running normally and is not cut off, so there is nothing to release.';
+
+  @override
   String get antiTheftDialogTitle => 'Enable Anti-theft Mode';
 
   @override
@@ -573,6 +609,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get historyFilterToday => 'Today';
+
+  @override
+  String get historyScopeAllDevices => 'All devices';
+
+  @override
+  String historyScopeHiddenNote(int count) {
+    return '$count more record(s) are not shown: they were saved before the app had identified which unit they came from.';
+  }
 
   @override
   String get historyFilterWarning => 'Warnings';
@@ -808,11 +852,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDiagnosticsHeading => 'Diagnostics / Developer';
 
   @override
+  String get rawLogOffDialogTitle => 'This log will have no packet contents';
+
+  @override
+  String get rawLogOffDialogBody =>
+      '\"Log raw Bluetooth packets\" is currently off, so this file will contain only connection events — none of the data the device actually sent. If you are reporting a problem to the developers, it will not help much.\n\nAfter enabling it you need to reconnect and use the device once before anything is recorded.';
+
+  @override
+  String get rawLogOffExportAnyway => 'Export anyway';
+
+  @override
+  String get rawLogOffEnable => 'Turn it on';
+
+  @override
+  String get rawLogEnabledSnack =>
+      'Raw packet logging is on. Reconnect, use the device for a while, then export again.';
+
+  @override
+  String get rawLogContentsDialogTitle =>
+      'This log contains your device\'s Bluetooth address';
+
+  @override
+  String get rawLogContentsDialogBody =>
+      'Raw packet logging is on, so this file includes the frames the device sent — and one of them is the device reporting its own Bluetooth hardware address.\n\nThis is your own hardware, not personal data, and the device already broadcasts it to anything in range. It is kept in the file on purpose: removing it would break the frame checksums that make a capture usable as evidence.\n\nJust be aware of it before posting the file somewhere public.';
+
+  @override
+  String get rawLogContentsContinue => 'Got it, export';
+
+  @override
   String get settingsRawPacketLogLabel => 'Log raw Bluetooth packets';
 
   @override
   String get settingsRawPacketLogSub =>
-      'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default';
+      'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device\'s own Bluetooth address.';
 
   @override
   String get settingsLogMaxSizeLabel => 'Log size limit';

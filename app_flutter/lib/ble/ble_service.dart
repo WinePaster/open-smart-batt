@@ -66,6 +66,10 @@ class BleService {
   bool _settingUp = false;
   bool _retryingConnect = false;
 
+  /// FB-39 (design 0021): invalidates a connection setup that a newer
+  /// connect/disconnect has superseded. See [ConnectEpoch].
+  final ConnectEpoch _epoch = ConnectEpoch();
+
   /// Human-readable reason for the most recent disconnect (flutter_blue_plus
   /// [DisconnectReason]: code + description), or null if none/unknown. Surfaced
   /// so the controller can log WHY a link dropped (supervision timeout vs a
@@ -137,6 +141,23 @@ class BleService {
   /// timeout, retrying only multiplies the freeze); Android = 3 (connect-bounce
   /// recovery).
   static int connectAttemptsFor({required bool isIOS}) => isIOS ? 1 : 3;
+
+  /// Our own service-discovery timeout — deliberately SHORTER than the 15 s
+  /// flutter_blue_plus applies internally (design 0021 §3.3).
+  ///
+  /// The point is to be the one who notices. With no timeout of our own, the
+  /// plugin's fires first and arrives as an exception out of a stream listener,
+  /// which is why a field capture holds 101 `Uncaught:` lines. Owning the
+  /// timeout lets us retry once and write a readable line instead.
+  ///
+  /// ⚠️ 8 s is an estimate, not a measured optimum — see design 0021 §7 Q2.
+  static const Duration discoverTimeout = Duration(seconds: 8);
+
+  /// Service-discovery attempts. Two, on every platform: the capture that
+  /// motivated this showed discovery failing three times and then succeeding,
+  /// so one shot throws away a link that was about to work. 2 × 8 s still
+  /// bounds the wait tighter than the single 15 s it replaces.
+  static int discoverAttemptsFor({required bool isIOS}) => 2;
 
   /// Connect timeout to use on [isIOS].
   static Duration connectTimeoutFor({required bool isIOS}) =>
@@ -350,6 +371,11 @@ class BleService {
   /// first. Emits [BleLinkState] transitions on [linkState].
   Future<void> connect(String deviceId,
       {Duration? timeout, bool autoConnect = false}) async {
+    // FB-39: open a new epoch BEFORE anything else, so a setup already awaiting
+    // for the previous device abandons itself instead of publishing `ready`
+    // over the top of this one. `disconnect()` opens another; both invalidate
+    // the same older work, and opening twice is harmless.
+    _epoch.begin();
     await disconnect();
     await stopScan();
 
@@ -428,14 +454,42 @@ class BleService {
     }
   }
 
+  /// Discover services with OUR timeout, retrying once (design 0021 §3.3).
+  ///
+  /// Each timeout is logged: a capture where discovery fails and then succeeds
+  /// looks identical to one where it succeeded first time, unless the failures
+  /// are written down.
+  Future<List<BluetoothService>> _discoverServices(
+      BluetoothDevice device) async {
+    final attempts = discoverAttemptsFor(isIOS: Platform.isIOS);
+    Object? lastErr;
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await device.discoverServices().timeout(discoverTimeout);
+      } catch (e) {
+        lastErr = e;
+        _emitEvent('service discovery attempt $attempt/$attempts failed: '
+            '${gattSetupFailureReason(e)}');
+      }
+    }
+    throw lastErr!;
+  }
+
   Future<void> _setupConnection() async {
     final device = _device;
     if (device == null || _settingUp || _state == BleLinkState.ready) return;
+    // FB-39: everything below this line writes OBJECT-level state, so it must
+    // not run if a newer connect has taken over while we were awaiting.
+    final epoch = _epoch.current;
     _settingUp = true;
     _setState(BleLinkState.connected);
 
     try {
-      final services = await device.discoverServices();
+      final services = await _discoverServices(device);
+      // Superseded: a newer connection now owns the shared fields. Abandon
+      // QUIETLY — no state change, and above all no teardown, which would tear
+      // down the link the user actually asked for.
+      if (!_epoch.isCurrent(epoch)) return;
       _writeChar = null;
       _notifyChar = null;
 
@@ -468,14 +522,31 @@ class BleService {
 
       // Subscribe BEFORE the first write (PROTOCOL.md §2). setNotifyValue(true)
       // writes the CCCD enable value [0x01, 0x00].
-      _notifySub = notify.onValueReceived.listen(_onNotify);
+      final mySub = notify.onValueReceived.listen(_onNotify);
+      _notifySub = mySub;
       await notify.setNotifyValue(true);
+
+      // Second guard: the CCCD write is the other await this method spans.
+      if (!_epoch.isCurrent(epoch)) {
+        // Reclaim only OUR subscription. If a newer setup has already replaced
+        // the field, cancelling would silence the live device.
+        if (identical(_notifySub, mySub)) _notifySub = null;
+        await mySub.cancel();
+        return;
+      }
 
       _startKeepAlive();
       _setState(BleLinkState.ready);
     } catch (e) {
-      await _teardown(emitDisconnected: true);
-      rethrow;
+      // FB-23: do NOT rethrow. The only caller is a `connectionState` stream
+      // listener, so a rethrow reaches no handler — it just becomes an
+      // `Uncaught:` line, which is all the field capture ever showed. Write a
+      // readable reason instead and let the disconnect drive the normal
+      // reconnect path.
+      _emitEvent('gatt setup failed: ${gattSetupFailureReason(e)}');
+      if (_epoch.isCurrent(epoch)) {
+        await _teardown(emitDisconnected: true);
+      }
     } finally {
       _settingUp = false;
     }
@@ -532,6 +603,10 @@ class BleService {
 
   /// Disconnect the current device and reset state.
   Future<void> disconnect() async {
+    // FB-39: bump before the early return too. A disconnect requested while a
+    // setup is mid-await must invalidate it even when `_device` has already
+    // been cleared — that is exactly the window the guard exists for.
+    _epoch.begin();
     final device = _device;
     if (device == null) return;
     _setState(BleLinkState.disconnecting);

@@ -48,12 +48,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _warningOnly = false;
   bool _exporting = false;
 
+  /// FB-38: which unit the chart, the stats AND the list cover. Null = all.
+  ///
+  /// Seeded from the live connection in [didChangeDependencies]; offline it
+  /// stays null on purpose. Guessing a unit while offline would quietly drop
+  /// the other units' rows with nothing on screen to explain the gap — and the
+  /// capture that opened FB-38 was taken offline.
+  String? _deviceId;
+  bool _seededDevice = false;
+
   late Future<_HistoryData> _future;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_seededDevice) return;
+    _seededDevice = true;
+    final live = context.read<TelemetryController>().recordingDeviceId;
+    if (live != null) {
+      _deviceId = live;
+      _future = _load();
+    }
   }
 
   TelemetryController get _tele => context.read<TelemetryController>();
@@ -74,16 +95,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final tele = _tele;
     final since = _sinceFor(_range);
     final total = await tele.historyCount();
-    final stats = await tele.historyStats(since: since);
+    final scoped = _deviceId;
+    final stats = await tele.historyStats(since: since, deviceId: scoped);
     // Bucket width: aim for ~180 points across the visible span (>= 1 minute).
     final from = since ?? stats.firstAt;
     final spanMs = from == null
         ? 60000
         : DateTime.now().millisecondsSinceEpoch - from.millisecondsSinceEpoch;
     final bucketMs = (spanMs ~/ _targetBucketPoints).clamp(60000, 24 * 3600000);
-    final buckets = await tele.historyBuckets(since: since, bucketMs: bucketMs);
-    final rows = await tele.historyWithDevice(since: since, limit: _rowCap);
-    return _HistoryData(rows: rows, buckets: buckets, stats: stats, total: total);
+    final buckets = await tele.historyBuckets(
+        since: since, bucketMs: bucketMs, deviceId: scoped);
+    final rows = await tele.historyWithDevice(
+        since: since, limit: _rowCap, deviceId: scoped);
+    // Only meaningful while scoped: with no device filter these rows ARE shown.
+    final hidden = scoped == null
+        ? 0
+        : await tele.historyUnattributedCount(since: since);
+    return _HistoryData(
+        rows: rows,
+        buckets: buckets,
+        stats: stats,
+        total: total,
+        hiddenUnattributed: hidden);
   }
 
   void _reload() => setState(() => _future = _load());
@@ -97,6 +130,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _toggleWarning() => setState(() => _warningOnly = !_warningOnly);
+
+  void _setDevice(String? id) {
+    if (id == _deviceId) return;
+    setState(() {
+      _deviceId = id;
+      _future = _load();
+    });
+  }
 
   Future<void> _exportCsv() async {
     if (_exporting) return;
@@ -173,6 +214,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _toolbar(),
+        ?_deviceBar(),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.amber,
@@ -244,6 +286,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ],
                         ),
                       ),
+                    if (_deviceId != null && data.hiddenUnattributed > 0)
+                      _hiddenNote(data.hiddenUnattributed),
                     _footer(data.total),
                   ],
                 );
@@ -306,6 +350,69 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
+
+  /// FB-38: device scope. Rendered only when there is a real choice — with one
+  /// saved unit the control is pure noise, and it says nothing the export
+  /// dialog does not already.
+  Widget? _deviceBar() {
+    final l10n = AppLocalizations.of(context);
+    final devices = context.watch<DeviceController>().devices;
+    if (devices.length < 2) return null;
+    final items = <(String?, String)>[
+      (null, l10n.historyScopeAllDevices),
+      for (final d in devices)
+        (d.id, d.alias.isNotEmpty ? d.alias : shortDeviceHash(d.id)),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(15, 0, 15, 4),
+      child: Row(
+        children: [
+          Icon(Icons.devices_other, size: 15, color: context.colors.muted),
+          const SizedBox(width: 7),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: items.any((e) => e.$1 == _deviceId) ? _deviceId : null,
+                isDense: true,
+                isExpanded: true,
+                style: TextStyle(fontSize: 12.5, color: context.colors.text),
+                dropdownColor: context.colors.panel2,
+                items: [
+                  for (final (id, label) in items)
+                    DropdownMenuItem<String?>(
+                      value: id,
+                      child: Text(label, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: _setDevice,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The scope's own footnote. A filter that silently drops 29 % of the rows —
+  /// which is what the capture behind FB-38 held — is FB-21 relocated from the
+  /// export to the screen, so the screen has to admit it too.
+  Widget _hiddenNote(int n) => Padding(
+        padding: const EdgeInsets.only(top: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, size: 14, color: AppColors.amber),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                AppLocalizations.of(context).historyScopeHiddenNote(n),
+                style: const TextStyle(
+                    fontSize: 10.5, height: 1.5, color: AppColors.amber),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _footer(int total) {
     return IndustrialCard(
@@ -384,11 +491,16 @@ class _HistoryData {
     required this.buckets,
     required this.stats,
     required this.total,
+    this.hiddenUnattributed = 0,
   });
   final List<({TelemetrySample sample, String? deviceId})> rows;
   final List<HistoryBucket> buckets;
   final HistoryStats stats;
   final int total;
+
+  /// Rows the device scope excluded because they were recorded before the unit
+  /// was identified (FB-38 §3.4). Zero when unscoped.
+  final int hiddenUnattributed;
 }
 
 // ====================== trend chart + stats =============================

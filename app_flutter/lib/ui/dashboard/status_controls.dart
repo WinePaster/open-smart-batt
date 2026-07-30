@@ -113,7 +113,13 @@ class BatteryControls extends StatelessWidget {
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
-    final cutOff = isCutOffMode(tele.mode);
+    // Named `isCutOff`, not `cutOff`: the latter now shadows the cut-off action
+    // this body invokes.
+    final isCutOff = isCutOffMode(tele.mode);
+    // Design 0020 §3.1 (FB-34 / FB-35). Deliberately asymmetric, and NOT each
+    // other's negation — see the helper docs.
+    final canCutOff = cutOffActionEnabled(tele.mode);
+    final canRelease = releaseActionEnabled(tele.mode);
     // FB-30. This body was the ONLY one of the three that never consulted
     // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
     // over-temperature limits IT REPORTED (0x2B) said nothing at all, while a
@@ -148,39 +154,64 @@ class BatteryControls extends StatelessWidget {
                 // an assertion we cannot back (cf. [packRunModeOf]).
                 value: !known
                     ? '--'
-                    : cutOff
+                    : isCutOff
                         ? l10n.statusBadgeCutOffOn
                         : l10n.statusBadgeCutOffOff,
-                tone: cutOff ? ControlTone.locked : ControlTone.neutral,
+                tone: isCutOff ? ControlTone.locked : ControlTone.neutral,
               ),
             ),
           ],
         ),
         const SizedBox(height: 13),
+        // Design 0020 §3.7 — two rows, because three side-by-side buttons are
+        // unreadable on a narrow screen at large text scale.
         Row(
           children: [
             Expanded(
               child: ControlButton(
                 variant: ControlButtonVariant.warn,
-                icon: Icons.power_settings_new,
-                label: l10n.commonReleaseCutOff,
-                onPressed: online ? () => releaseCutOff(context, tele) : null,
+                icon: Icons.power_off,
+                label: l10n.commonCutOffAction,
+                onPressed: online && canCutOff
+                    ? () => cutOff(context, tele)
+                    : null,
               ),
             ),
-            if (hasAntiTheft) ...[
-              const SizedBox(width: 9),
-              Expanded(
-                child: ControlButton(
-                  variant: ControlButtonVariant.ghost,
-                  icon: Icons.shield_outlined,
-                  label: l10n.commonAntiTheft,
-                  onPressed: online ? () => antiTheft(context, tele) : null,
-                ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: ControlButton(
+                variant: ControlButtonVariant.warn,
+                icon: Icons.power_settings_new,
+                label: l10n.commonReleaseCutOff,
+                onPressed: online && canRelease
+                    ? () => releaseCutOff(context, tele)
+                    : null,
               ),
-            ],
+            ),
           ],
         ),
+        if (hasAntiTheft) ...[
+          const SizedBox(height: 9),
+          ControlButton(
+            variant: ControlButtonVariant.ghost,
+            icon: Icons.shield_outlined,
+            label: l10n.commonAntiTheft,
+            onPressed: online ? () => antiTheft(context, tele) : null,
+          ),
+        ],
         const SizedBox(height: 11),
+        // Design 0020 §3.2 — a disabled button must say why. Greying one out
+        // silently just relocates the confusion FB-34 was opened for. Only
+        // shown while online: offline, everything is disabled for one obvious
+        // reason and repeating it per-button is noise.
+        if (online && !canCutOff) ...[
+          AdvisoryNote(text: l10n.cutOffDisabledNote),
+          const SizedBox(height: 7),
+        ],
+        if (online && !canRelease) ...[
+          AdvisoryNote(text: l10n.releaseDisabledNote),
+          const SizedBox(height: 7),
+        ],
         // Same treatment as the other two bodies: OUR computation from the
         // device's own thresholds, so it is an advisory line and never a
         // device-reported status badge.
@@ -217,6 +248,12 @@ class PackControls extends StatelessWidget {
     final known = packRunModeOf(tele.mode) != null;
     final thresholdBreach = readingBreachesThreshold(tele);
     final cutOff = isCutOffMode(tele.mode);
+    // Design 0020 §3.1 applies here too. There is deliberately NO 斷電 button in
+    // this body (design 0020 §7 Q3, ruled 2026-07-30): an unclassified pack is
+    // one whose device type we could not even read, and sending it a command
+    // that can immobilise a vehicle has no justification. Release stays — it is
+    // the escape hatch, and this body already offered it.
+    final canRelease = releaseActionEnabled(tele.mode);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -271,12 +308,18 @@ class PackControls extends StatelessWidget {
                   variant: ControlButtonVariant.warn,
                   icon: Icons.power_settings_new,
                   label: l10n.commonReleaseCutOff,
-                  onPressed: online ? () => releaseCutOff(context, tele) : null,
+                  onPressed: online && canRelease
+                      ? () => releaseCutOff(context, tele)
+                      : null,
                 ),
               ),
           ],
         ),
         const SizedBox(height: 11),
+        if (caps.hasCutOff && online && !canRelease) ...[
+          AdvisoryNote(text: l10n.releaseDisabledNote),
+          const SizedBox(height: 7),
+        ],
         // Threshold breach is class-agnostic (it only needs 0x2B + a reading),
         // so it survives the badge removal above as an advisory line.
         if (thresholdBreach) ...[

@@ -692,6 +692,60 @@ abstract class AppLocalizations {
   /// **'Release failed: {error}'**
   String releaseFailedSnack(String error);
 
+  /// No description provided for @commonCutOffAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut Off'**
+  String get commonCutOffAction;
+
+  /// No description provided for @modeSentSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} command sent. The device currently reports: {status}. This model sends no acknowledgement — watch the actual state.'**
+  String modeSentSnack(String action, String status);
+
+  /// No description provided for @modeSentNoAuthSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} command sent without auth (experimental). The device currently reports: {status}.'**
+  String modeSentNoAuthSnack(String action, String status);
+
+  /// No description provided for @cutOffDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Cut-off Command'**
+  String get cutOffDialogTitle;
+
+  /// No description provided for @cutOffDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
+  String get cutOffDialogBody;
+
+  /// No description provided for @cutOffDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand — send it'**
+  String get cutOffDialogConfirm;
+
+  /// No description provided for @cutOffFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off command failed: {error}'**
+  String cutOffFailedSnack(String error);
+
+  /// No description provided for @cutOffDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The cut-off command can only be sent while the device reports it is running normally.'**
+  String get cutOffDisabledNote;
+
+  /// No description provided for @releaseDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The device reports it is running normally and is not cut off, so there is nothing to release.'**
+  String get releaseDisabledNote;
+
   /// No description provided for @antiTheftDialogTitle.
   ///
   /// In en, this message translates to:
@@ -997,6 +1051,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Today'**
   String get historyFilterToday;
+
+  /// No description provided for @historyScopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All devices'**
+  String get historyScopeAllDevices;
+
+  /// No description provided for @historyScopeHiddenNote.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} more record(s) are not shown: they were saved before the app had identified which unit they came from.'**
+  String historyScopeHiddenNote(int count);
 
   /// No description provided for @historyFilterWarning.
   ///
@@ -1388,6 +1454,54 @@ abstract class AppLocalizations {
   /// **'Diagnostics / Developer'**
   String get settingsDiagnosticsHeading;
 
+  /// No description provided for @rawLogOffDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This log will have no packet contents'**
+  String get rawLogOffDialogTitle;
+
+  /// No description provided for @rawLogOffDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'\"Log raw Bluetooth packets\" is currently off, so this file will contain only connection events — none of the data the device actually sent. If you are reporting a problem to the developers, it will not help much.\n\nAfter enabling it you need to reconnect and use the device once before anything is recorded.'**
+  String get rawLogOffDialogBody;
+
+  /// No description provided for @rawLogOffExportAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Export anyway'**
+  String get rawLogOffExportAnyway;
+
+  /// No description provided for @rawLogOffEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn it on'**
+  String get rawLogOffEnable;
+
+  /// No description provided for @rawLogEnabledSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw packet logging is on. Reconnect, use the device for a while, then export again.'**
+  String get rawLogEnabledSnack;
+
+  /// No description provided for @rawLogContentsDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This log contains your device\'s Bluetooth address'**
+  String get rawLogContentsDialogTitle;
+
+  /// No description provided for @rawLogContentsDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw packet logging is on, so this file includes the frames the device sent — and one of them is the device reporting its own Bluetooth hardware address.\n\nThis is your own hardware, not personal data, and the device already broadcasts it to anything in range. It is kept in the file on purpose: removing it would break the frame checksums that make a capture usable as evidence.\n\nJust be aware of it before posting the file somewhere public.'**
+  String get rawLogContentsDialogBody;
+
+  /// No description provided for @rawLogContentsContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it, export'**
+  String get rawLogContentsContinue;
+
   /// No description provided for @settingsRawPacketLogLabel.
   ///
   /// In en, this message translates to:
@@ -1397,7 +1511,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRawPacketLogSub.
   ///
   /// In en, this message translates to:
-  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default'**
+  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device\'s own Bluetooth address.'**
   String get settingsRawPacketLogSub;
 
   /// No description provided for @settingsLogMaxSizeLabel.

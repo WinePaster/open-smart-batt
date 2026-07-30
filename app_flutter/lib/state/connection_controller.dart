@@ -406,7 +406,10 @@ class ConnectionController extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
-    _event('connect → $deviceId', deviceId: deviceId);
+    // The id is hashed in the TEXT but kept raw in the `deviceId` column: the
+    // column is the scoping key and is hashed on its way out (`_sectionLabel`),
+    // whereas the note is rendered verbatim. On Android the raw id is a MAC.
+    _event('connect → ${shortDeviceHash(deviceId)}', deviceId: deviceId);
     final ok = await _ble.ensurePermissions();
     if (!ok) {
       _lastError = 'permission_denied';
@@ -439,7 +442,8 @@ class ConnectionController extends ChangeNotifier {
       useNameKey: Platform.isIOS,
     );
     if (targetId != device.id) {
-      _event('rebound saved id ${device.id} → $targetId (name=${device.name})');
+      _event('rebound saved id ${shortDeviceHash(device.id)} → '
+          '${shortDeviceHash(targetId)} (name=${device.name})');
     }
     try {
       await connect(targetId);
@@ -777,8 +781,14 @@ class ConnectionController extends ChangeNotifier {
       // radio-level miss from a filter-level hide, and those need opposite
       // fixes. Logged in the controller, not BleService, because `_scanResults`
       // is already the de-duplicated final list here.
+      // The roster is the ONE place that logs units the user does not own —
+      // every nearby advertiser lands here, so on Android it would publish
+      // bystanders' MACs into a file the user mails out. The hash keeps what
+      // the roster is for: "same unit → same fragment" still correlates a scan
+      // hit with the `connect →` line that follows it, and the diagnostic value
+      // for FB-24 sits in name/rssi/vendor, not in the id.
       for (final r in _scanResults.take(kScanRosterLogLimit)) {
-        _event("scan hit id=${r.id} name='${r.name}' "
+        _event("scan hit id=${shortDeviceHash(r.id)} name='${r.name}' "
             'rssi=${r.rssi} vendor=${r.isVendor}');
       }
       if (_scanResults.length > kScanRosterLogLimit) {

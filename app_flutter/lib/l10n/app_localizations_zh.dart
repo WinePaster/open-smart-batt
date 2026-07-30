@@ -374,6 +374,40 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get commonCutOffAction => '斷電';
+
+  @override
+  String modeSentSnack(String action, String status) {
+    return '已送出$action指令。裝置目前回報：$status。本機型不會回覆確認，請觀察實際狀態。';
+  }
+
+  @override
+  String modeSentNoAuthSnack(String action, String status) {
+    return '已送出$action指令（實驗：未帶驗證）。裝置目前回報：$status。';
+  }
+
+  @override
+  String get cutOffDialogTitle => '送出斷電指令';
+
+  @override
+  String get cutOffDialogBody =>
+      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n解除斷電這條路徑目前尚未被證實可用。我們手上沒有任何一次擷取顯示裝置對模式指令有回應，認證值的推導方式也還在查證中。如果解除失敗，本 App 無法讓這顆電池復電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
+
+  @override
+  String get cutOffDialogConfirm => '我了解，仍要送出';
+
+  @override
+  String cutOffFailedSnack(String error) {
+    return '斷電指令失敗：$error';
+  }
+
+  @override
+  String get cutOffDisabledNote => '只有在裝置回報運行正常時，才能送出斷電指令。';
+
+  @override
+  String get releaseDisabledNote => '裝置目前回報運行正常，未處於斷電狀態，沒有需要解除的對象。';
+
+  @override
   String get antiTheftDialogTitle => '啟用防盜模式';
 
   @override
@@ -545,6 +579,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get historyFilterToday => '今天';
+
+  @override
+  String get historyScopeAllDevices => '全部裝置';
+
+  @override
+  String historyScopeHiddenNote(int count) {
+    return '另有 $count 筆紀錄未顯示：它們是在 App 尚未辨識出裝置之前存下的。';
+  }
 
   @override
   String get historyFilterWarning => '警告';
@@ -769,10 +811,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDiagnosticsHeading => '診斷 / 開發者';
 
   @override
+  String get rawLogOffDialogTitle => '這份日誌不會包含封包內容';
+
+  @override
+  String get rawLogOffDialogBody =>
+      '「記錄原始藍牙封包」目前是關閉的，所以這份檔案只會有連線事件，不會有裝置實際傳回的資料。如果你是要回報問題給開發者，這份檔案幫助有限。\n\n開啟後需要重新連線並操作一次，才會錄到內容。';
+
+  @override
+  String get rawLogOffExportAnyway => '仍要匯出';
+
+  @override
+  String get rawLogOffEnable => '開啟記錄';
+
+  @override
+  String get rawLogEnabledSnack => '已開啟原始封包記錄。請重新連線、操作一段時間後再匯出。';
+
+  @override
+  String get rawLogContentsDialogTitle => '這份日誌含有裝置的藍牙位址';
+
+  @override
+  String get rawLogContentsDialogBody =>
+      '原始封包記錄是開啟的，所以這份檔案包含裝置送出的封包內容 —— 其中一筆是裝置回報自己的藍牙硬體位址。\n\n那是你自己的硬體，不是個人資料，而且裝置本來就持續對周圍廣播它。檔案裡保留它是刻意的：移除會破壞幀的校驗碼，那份擷取就失去作為證據的價值。\n\n公開張貼這個檔案前，請留意這一點。';
+
+  @override
+  String get rawLogContentsContinue => '我知道了，匯出';
+
+  @override
   String get settingsRawPacketLogLabel => '記錄原始藍牙封包';
 
   @override
-  String get settingsRawPacketLogSub => '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉';
+  String get settingsRawPacketLogSub =>
+      '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉。內容含裝置自身的藍牙位址。';
 
   @override
   String get settingsLogMaxSizeLabel => '日誌容量上限';

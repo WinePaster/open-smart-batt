@@ -65,6 +65,29 @@ class RunStatus {
 /// [packRunModeOf] for why a bitmask is wrong here.
 bool isCutOffMode(int? mode) => packRunModeOf(mode) == PackRunMode.cutOff;
 
+/// May we offer 斷電 (mode 0x02)? — design 0020 §3.1 (FB-35).
+///
+/// ONLY when the device positively reports normal. Every other case — cut-off,
+/// anti-theft, and a byte we cannot place in the pack space at all — is refused:
+/// we do not send a lock command to a device whose state we cannot read.
+bool cutOffActionEnabled(int? mode) =>
+    packRunModeOf(mode) == PackRunMode.normal;
+
+/// May we offer 解除斷電 (mode 0x06)? — design 0020 §3.1 (FB-34).
+///
+/// The MIRROR of [cutOffActionEnabled], and deliberately NOT its negation-plus-
+/// unknown: an unreadable state leaves release ENABLED. The asymmetry is the
+/// whole point — refusing the release on a device we cannot read risks locking
+/// an owner out of their vehicle, while the cost of the opposite mistake is one
+/// wasted write.
+///
+/// FB-34: this used to be unconditional, so a battery reporting `normal` still
+/// offered a large red 解除斷電 button that could not possibly do anything, and
+/// reported "sent" when pressed. That is exactly what a field report described
+/// as 「測試斷電功能，無作動」.
+bool releaseActionEnabled(int? mode) =>
+    packRunModeOf(mode) != PackRunMode.normal;
+
 /// Health of a super-capacitor as the DEVICE reports it (selector `0x23`).
 ///
 /// Distinct from [readingBreachesThreshold], which is a threshold comparison WE compute
@@ -134,12 +157,33 @@ void detectCapacitor(BuildContext context, TelemetryController tele) {
   );
 }
 
+/// Snack text for a mode write that returned without throwing — design 0020 §3.3.
+///
+/// It says "sent", never "done". A mode write has **no observable
+/// acknowledgement** on the wire: a 23-hour capture wrote mode 0x06 five times
+/// and `0x23` stayed `0x00` on 2131/2131 frames, with no error frame and no
+/// change in reply cadence (PROTOCOL.md §6.2). So the app cannot distinguish
+/// accepted / rejected / already-in-that-state, and must not imply it can — it
+/// reports what was sent plus what the device is reporting right now.
+String _modeSentText(
+  AppLocalizations l10n,
+  TelemetryController tele, {
+  required String action,
+  required bool skipAuth,
+}) {
+  final status = runStatusOf(l10n, tele.mode).label;
+  return skipAuth
+      ? l10n.modeSentNoAuthSnack(action, status)
+      : l10n.modeSentSnack(action, status);
+}
+
 /// 解除斷電 — documented-safe release (mode 0x06 + auth) via the auth dialog.
 Future<void> releaseCutOff(
     BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
+  final action = l10n.commonReleaseCutOff;
   final req = await showReleaseCutOffDialog(
     context,
     initialDealerCode: tele.dealerCode,
@@ -148,26 +192,92 @@ Future<void> releaseCutOff(
   try {
     if (req.skipAuth) {
       await conn.releaseCutOffModeOnly();
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.releaseSentNoAuthSnack),
-        ),
-      );
     } else {
       await conn.releaseCutOff(cb: req.creds!.cb, pwSum: req.creds!.pwSum);
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.releaseSentSnack),
-        ),
-      );
     }
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(milliseconds: 2600),
+        content: Text(_modeSentText(l10n, tele,
+            action: action, skipAuth: req.skipAuth)),
+      ),
+    );
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(milliseconds: 1600),
         content: Text(l10n.releaseFailedSnack('$e')),
+      ),
+    );
+  }
+}
+
+/// 斷電 — manual cut-off (mode 0x02 + auth). Design 0020 Phase 2 (FB-35).
+///
+/// SAFETY: this is the app's first outbound command that can immobilise a
+/// vehicle, and the release path that would undo it is **not proven to work**
+/// (design 0020 §7 Q1 + FB-36). Two gates stand in front of it: an explicit
+/// risk confirmation that names that specific consequence, then the same
+/// per-device auth dialog anti-theft uses. The caller additionally gates the
+/// button on [cutOffActionEnabled].
+Future<void> cutOff(BuildContext context, TelemetryController tele) async {
+  final conn = context.read<ConnectionController>();
+  final l10n = AppLocalizations.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final action = l10n.commonCutOffAction;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(l10n.cutOffDialogTitle),
+      content: SingleChildScrollView(
+        child: Text(
+          l10n.cutOffDialogBody,
+          style: TextStyle(color: context.colors.muted, height: 1.5),
+        ),
+      ),
+      actions: [
+        // Cancel first and unstyled-destructive-last: the safe choice is the
+        // one a hurried tap lands on.
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(l10n.commonCancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(
+            l10n.cutOffDialogConfirm,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  if (!context.mounted) return;
+  final req = await showReleaseCutOffDialog(
+    context,
+    initialDealerCode: tele.dealerCode,
+  );
+  if (req == null) return;
+  try {
+    if (req.skipAuth) {
+      await conn.switchModeOnly(ModeArg.cutOff);
+    } else {
+      await conn.switchMode(ModeArg.cutOff,
+          cb: req.creds!.cb, pwSum: req.creds!.pwSum);
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(milliseconds: 2600),
+        content: Text(_modeSentText(l10n, tele,
+            action: action, skipAuth: req.skipAuth)),
+      ),
+    );
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(milliseconds: 1600),
+        content: Text(l10n.cutOffFailedSnack('$e')),
       ),
     );
   }
@@ -213,10 +323,13 @@ Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
       await conn.switchMode(ModeArg.antiTheft,
           cb: req.creds!.cb, pwSum: req.creds!.pwSum);
     }
+    // Same honesty as the other two mode writes (design 0020 §3.3): anti-theft
+    // is no more acknowledged than release or cut-off is.
     messenger.showSnackBar(
       SnackBar(
-        duration: const Duration(milliseconds: 1600),
-        content: Text(l10n.antiTheftSentSnack),
+        duration: const Duration(milliseconds: 2600),
+        content: Text(_modeSentText(l10n, tele,
+            action: l10n.commonAntiTheft, skipAuth: req.skipAuth)),
       ),
     );
   } catch (e) {
