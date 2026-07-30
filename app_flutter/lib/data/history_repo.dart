@@ -201,15 +201,20 @@ class HistoryRepo {
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
   /// returns avg/min/max of pvlt + temperature per bucket (ascending by time).
   /// [bucketMs] >= 60000 (one minute, the storage granularity).
+  /// FB-38: [deviceId] scopes the chart the same way it scopes the list. These
+  /// two used to build their own `WHERE` instead of going through [_scope],
+  /// which is exactly how the device dimension came to exist on the list and
+  /// not on the chart — so the History screen drew one unit's 3.7 V beside
+  /// another's 14 V and called it a voltage anomaly.
   Future<List<HistoryBucket>> queryBuckets({
     DateTime? since,
     required int bucketMs,
+    String? deviceId,
   }) async {
     final b = bucketMs < 60000 ? 60000 : bucketMs;
-    final where = since == null ? '' : 'WHERE timestamp >= ?';
-    final args = <Object?>[
-      if (since != null) since.millisecondsSinceEpoch,
-    ];
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final args = <Object?>[...?scopeArgs];
     final rows = await _db.rawQuery(
       'SELECT (timestamp / $b) * $b AS bucket, '
       'AVG(pvlt) AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
@@ -235,11 +240,11 @@ class HistoryRepo {
   }
 
   /// Range-wide min/max/avg over raw rows (accurate stats, not bucket-averaged).
-  Future<HistoryStats> aggregate({DateTime? since}) async {
-    final where = since == null ? '' : 'WHERE timestamp >= ?';
-    final args = <Object?>[
-      if (since != null) since.millisecondsSinceEpoch,
-    ];
+  /// FB-38: see [queryBuckets] — same gap, same fix.
+  Future<HistoryStats> aggregate({DateTime? since, String? deviceId}) async {
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final args = <Object?>[...?scopeArgs];
     final r = await _db.rawQuery(
       'SELECT MIN(pvlt) AS minP, MAX(pvlt) AS maxP, AVG(pvlt) AS avgP, '
       'MIN(temperature) AS minT, MAX(temperature) AS maxT, AVG(temperature) AS avgT, '
@@ -348,7 +353,7 @@ class HistoryRepo {
     // for an all-devices export, which is exactly the asymmetry that let the
     // per-device CSVs look complete while dropping 11.3 % of their samples.
     final excluded =
-        deviceId == null ? 0 : await _countUnattributed(since: since);
+        deviceId == null ? 0 : await countUnattributed(since: since);
     final body = const ListToCsvConverter().convert(rows);
     final lines = <String>[
       for (final h in header) '# $h',
@@ -365,7 +370,13 @@ class HistoryRepo {
   /// Rows in range that carry no device attribution, and are therefore absent
   /// from every per-device export. Counted directly rather than inferred from
   /// the result set, which cannot see them.
-  Future<int> _countUnattributed({DateTime? since}) async {
+  /// Rows recorded before the unit was identified, in [since]'s range.
+  ///
+  /// Public since FB-38: a device-scoped VIEW hides these exactly as a
+  /// device-scoped EXPORT does, and the screen has to be able to say so. The
+  /// export has admitted it since design 0019; leaving the screen silent would
+  /// just relocate FB-21 rather than fix it.
+  Future<int> countUnattributed({DateTime? since}) async {
     final where = <String>['device_id IS NULL'];
     final args = <Object?>[];
     if (since != null) {

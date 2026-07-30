@@ -581,6 +581,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyFilterToday => '今天';
 
   @override
+  String get historyScopeAllDevices => '全部裝置';
+
+  @override
+  String historyScopeHiddenNote(int count) {
+    return '另有 $count 筆紀錄未顯示：它們是在 App 尚未辨識出裝置之前存下的。';
+  }
+
+  @override
   String get historyFilterWarning => '警告';
 
   @override

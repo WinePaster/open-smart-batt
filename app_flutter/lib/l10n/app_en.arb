@@ -376,6 +376,15 @@
   "devicesAliasHint": "e.g. Capacitor #1 (front car)",
   "historyFilterAll": "All",
   "historyFilterToday": "Today",
+  "historyScopeAllDevices": "All devices",
+  "historyScopeHiddenNote": "{count} more record(s) are not shown: they were saved before the app had identified which unit they came from.",
+  "@historyScopeHiddenNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "historyFilterWarning": "Warnings",
   "historyExportCsv": "Export CSV",
   "historyExportSubject": "OpenSmartBatt History",

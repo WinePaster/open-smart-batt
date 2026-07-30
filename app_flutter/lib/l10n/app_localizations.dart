@@ -1052,6 +1052,18 @@ abstract class AppLocalizations {
   /// **'Today'**
   String get historyFilterToday;
 
+  /// No description provided for @historyScopeAllDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'All devices'**
+  String get historyScopeAllDevices;
+
+  /// No description provided for @historyScopeHiddenNote.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} more record(s) are not shown: they were saved before the app had identified which unit they came from.'**
+  String historyScopeHiddenNote(int count);
+
   /// No description provided for @historyFilterWarning.
   ///
   /// In en, this message translates to:

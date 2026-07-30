@@ -159,6 +159,8 @@
   "devicesAliasHint": "例如：電容 #1（前車）",
   "historyFilterAll": "全部",
   "historyFilterToday": "今天",
+  "historyScopeAllDevices": "全部裝置",
+  "historyScopeHiddenNote": "另有 {count} 筆紀錄未顯示：它們是在 App 尚未辨識出裝置之前存下的。",
   "historyFilterWarning": "警告",
   "historyExportCsv": "匯出 CSV",
   "historyExportSubject": "OpenSmartBatt 歷史紀錄",

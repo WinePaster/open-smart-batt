@@ -611,6 +611,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyFilterToday => 'Today';
 
   @override
+  String get historyScopeAllDevices => 'All devices';
+
+  @override
+  String historyScopeHiddenNote(int count) {
+    return '$count more record(s) are not shown: they were saved before the app had identified which unit they came from.';
+  }
+
+  @override
   String get historyFilterWarning => 'Warnings';
 
   @override
