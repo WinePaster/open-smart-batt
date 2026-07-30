@@ -1484,6 +1484,24 @@ abstract class AppLocalizations {
   /// **'Raw packet logging is on. Reconnect, use the device for a while, then export again.'**
   String get rawLogEnabledSnack;
 
+  /// No description provided for @rawLogContentsDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This log contains your device\'s Bluetooth address'**
+  String get rawLogContentsDialogTitle;
+
+  /// No description provided for @rawLogContentsDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw packet logging is on, so this file includes the frames the device sent — and one of them is the device reporting its own Bluetooth hardware address.\n\nThis is your own hardware, not personal data, and the device already broadcasts it to anything in range. It is kept in the file on purpose: removing it would break the frame checksums that make a capture usable as evidence.\n\nJust be aware of it before posting the file somewhere public.'**
+  String get rawLogContentsDialogBody;
+
+  /// No description provided for @rawLogContentsContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it, export'**
+  String get rawLogContentsContinue;
+
   /// No description provided for @settingsRawPacketLogLabel.
   ///
   /// In en, this message translates to:
@@ -1493,7 +1511,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRawPacketLogSub.
   ///
   /// In en, this message translates to:
-  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default'**
+  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device\'s own Bluetooth address.'**
   String get settingsRawPacketLogSub;
 
   /// No description provided for @settingsLogMaxSizeLabel.

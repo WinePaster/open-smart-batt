@@ -368,7 +368,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     if (_busy) return;
     // FB-32: say it BEFORE the scope sheet. Otherwise the reporter picks a
     // scope, shares a file, and only we find out it holds nothing.
-    if (!context.read<SettingsController>().rawPacketLog) {
+    // Exactly one "here is what this file is" dialog, either way: off means it
+    // carries almost nothing (FB-32), on means it carries the device's own BLE
+    // address (FB-37). Both are things the sender should know BEFORE sharing.
+    if (context.read<SettingsController>().rawPacketLog) {
+      if (!await _confirmRawLogContents()) return;
+    } else {
       if (!await _warnRawPacketLogOff()) return;
     }
     if (!mounted) return;
@@ -421,6 +426,50 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
 
   /// `#`-prefixed preamble telling whoever receives the file which unit, which
   /// app build and how many connections it covers (design 0006 §3.6).
+  /// FB-37 (ruled 2026-07-30: disclose, do not redact). Returns true to export.
+  ///
+  /// `0x38` is the device reporting its own BLE address as ASCII, so a raw
+  /// frame dump carries a hardware address — on iOS too, which is why FB-33's
+  /// "only Android exposes a MAC" premise did not cover this. Twelve distinct
+  /// addresses already sit across fifteen collected captures.
+  ///
+  /// Redaction was considered and rejected: the frame is XOR-checksummed, so
+  /// substituting the payload either breaks the checksum (our own corruption
+  /// becomes indistinguishable from real corruption) or requires forging it,
+  /// which would put bytes the device never sent into a file we treat as
+  /// evidence. Dropping the whole frame is clean but costs the register.
+  ///
+  /// So the file keeps the address and the sender is told, once, that it is
+  /// there — because the realistic harm is not that the address exists (a BLE
+  /// peripheral broadcasts it continuously to anyone in range) but that a file
+  /// tying it to a named reporter could be posted somewhere permanent.
+  Future<bool> _confirmRawLogContents() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.rawLogContentsDialogTitle),
+        content: SingleChildScrollView(
+          child: Text(
+            l10n.rawLogContentsDialogBody,
+            style: TextStyle(color: ctx.colors.muted, height: 1.5),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.rawLogContentsContinue),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   /// FB-32 §3.2. Returns true to carry on with the export.
   ///
   /// Enabling deliberately CANCELS the export instead of continuing: the rows

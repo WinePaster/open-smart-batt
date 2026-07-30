@@ -47,6 +47,12 @@ List<String> exportHeaderLines({
     // fact.
     if (rawPacketLog != null)
       'raw packet log: ${rawPacketLog ? 'on' : 'off'}',
+    // FB-37, ruled 2026-07-30: disclose rather than redact. Whoever RECEIVES
+    // the file needs this as much as whoever sent it — a reader deciding
+    // whether to attach a capture to a public issue is not the same person who
+    // saw the export dialog.
+    if (rawPacketLog == true)
+      'note: raw frames include the device\'s own BLE address (selector 0x38)',
   ];
 }
 

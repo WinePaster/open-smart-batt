@@ -827,10 +827,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get rawLogEnabledSnack => '已開啟原始封包記錄。請重新連線、操作一段時間後再匯出。';
 
   @override
+  String get rawLogContentsDialogTitle => '這份日誌含有裝置的藍牙位址';
+
+  @override
+  String get rawLogContentsDialogBody =>
+      '原始封包記錄是開啟的，所以這份檔案包含裝置送出的封包內容 —— 其中一筆是裝置回報自己的藍牙硬體位址。\n\n那是你自己的硬體，不是個人資料，而且裝置本來就持續對周圍廣播它。檔案裡保留它是刻意的：移除會破壞幀的校驗碼，那份擷取就失去作為證據的價值。\n\n公開張貼這個檔案前，請留意這一點。';
+
+  @override
+  String get rawLogContentsContinue => '我知道了，匯出';
+
+  @override
   String get settingsRawPacketLogLabel => '記錄原始藍牙封包';
 
   @override
-  String get settingsRawPacketLogSub => '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉';
+  String get settingsRawPacketLogSub =>
+      '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉。內容含裝置自身的藍牙位址。';
 
   @override
   String get settingsLogMaxSizeLabel => '日誌容量上限';
