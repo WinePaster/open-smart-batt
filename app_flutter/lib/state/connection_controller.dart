@@ -248,6 +248,14 @@ class ConnectionController extends ChangeNotifier {
   final PackClassResolver _packResolver = PackClassResolver();
   ProductClass _packLabel = ProductClass.unknown;
 
+  /// The class stored for [_desiredDeviceId], restored the moment we start
+  /// connecting so routing has an answer before the device-type byte can
+  /// possibly arrive (FB-43). Deliberately NOT held in [PackClassResolver]:
+  /// that resolver resets on every disconnect, and the window this exists to
+  /// cover is precisely the connect/disconnect churn of a retrying link.
+  /// Cleared only when the target changes or the user disconnects.
+  ProductClass _seedClass = ProductClass.unknown;
+
   BleLinkState _link = BleLinkState.disconnected;
   List<DiscoveredDevice> _scanResults = const [];
   bool _scanning = false;
@@ -315,18 +323,31 @@ class ConnectionController extends ChangeNotifier {
 
   // ---- product class / cosmetic pack label (design 0001 §3.1 / §3.4) ----
 
-  /// The DETERMINISTIC routing class from the device-type byte: power bank, or
-  /// [ProductClass.unknown] for any pack. This is the ONLY class allowed to pick
-  /// a layout (design 0001 §3.1), and the SINGLE source of truth shared by
-  /// routing ([DashboardRouter]), persistence ([_recomputePackLabel]) and
-  /// capability gating ([capabilities]) — no controller derives the class
-  /// independently.
-  ProductClass get resolvedClass => _packResolver.deviceClass;
+  /// The DETERMINISTIC routing class: the device-type byte when we have it,
+  /// else [_seedClass] — the class already stored for the device we are
+  /// connecting to. Still the ONLY class allowed to pick a layout (design 0001
+  /// §3.1) and the SINGLE source of truth shared by routing ([DashboardRouter]),
+  /// persistence ([_recomputePackLabel]) and capability gating ([capabilities]).
+  ///
+  /// FB-43: the seed was added because the byte cannot arrive before the link is
+  /// up, so a saved power bank was routed to the pack layout for the whole
+  /// connect — 10 s in the 2026-07-31 report, where a stale iOS NSUUID burned 8 s
+  /// before the retry that worked. The invariant survives because the seed is
+  /// itself wire-derived: [setPackLabelOverride] is the only other writer of a
+  /// stored class and its picker offers pack classes ONLY, so a stored
+  /// [ProductClass.powerBank] can have come from nowhere but a 0x22 byte. A user
+  /// GUESS therefore still cannot pick a layout — that is why the seed is kept
+  /// here and not folded into [PackClassResolver.label], which does include the
+  /// guess.
+  ProductClass get resolvedClass {
+    final fromWire = _packResolver.deviceClass;
+    if (fromWire != ProductClass.unknown) return fromWire;
+    return _seedClass;
+  }
 
-  /// True only for a confirmed power bank (device-type 0x22) — the sole
-  /// deterministic routing signal. Read straight off the resolver so routing can
-  /// never disagree with persistence.
-  bool get isPowerBank => _packResolver.deviceClass.isPowerBank;
+  /// True only for a confirmed power bank (device-type 0x22, or a stored class
+  /// that can only have come from one) — the sole deterministic routing signal.
+  bool get isPowerBank => resolvedClass.isPowerBank;
 
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
   /// 解除斷電 / 防盜), design 0004 §3.2. This is GATING, never routing.
@@ -426,11 +447,19 @@ class ConnectionController extends ChangeNotifier {
 
   /// Connect to a device by BLE id. Cancels any pending auto-reconnect, ensures
   /// permissions, and remembers the id as the auto-reconnect target.
-  Future<void> connect(String deviceId, {Duration? timeout}) async {
+  Future<void> connect(String deviceId,
+      {Duration? timeout, ProductClass? seedClass}) async {
     _reconnectTimer?.cancel();
     _reconnectAttempts = 0; // fresh manual connect resets the backoff
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
+    // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
+    // chosen while the link is still coming up, and on a stale iOS NSUUID that
+    // can take ~10 s. `seedClass` covers a rebound id whose record still lives
+    // under the OLD id (connectToSaved); the lookup covers everything else.
+    _seedClass = seedClass ??
+        _devices?.deviceFor(deviceId)?.productClass ??
+        ProductClass.unknown;
     _lastError = null;
     notifyListeners();
 
@@ -474,7 +503,7 @@ class ConnectionController extends ChangeNotifier {
           '${shortDeviceHash(targetId)} (name=${device.name})');
     }
     try {
-      await connect(targetId);
+      await connect(targetId, seedClass: device.productClass);
     } catch (e) {
       // iOS: a failed connect to a saved record usually means the NSUUID is
       // stale — flag it so the UI can prompt a re-pick instead of spinning.
@@ -489,6 +518,7 @@ class ConnectionController extends ChangeNotifier {
   Future<void> disconnect() async {
     _manualDisconnect = true;
     _desiredDeviceId = null;
+    _seedClass = ProductClass.unknown; // no target ⇒ nothing to route for
     _reconnectTimer?.cancel();
     await _ble.disconnect();
   }
@@ -606,13 +636,15 @@ class ConnectionController extends ChangeNotifier {
       final id = _ble.connectedDeviceId;
       if (id != null) {
         _touchLastSeen(id, force: true);
-        // Seed from the saved record so the chip is right immediately, before
-        // the first device-type frame lands. It is only a SEED: the wire byte
-        // overrides it a moment later (design 0007 §3.3), which is what heals a
-        // record saved wrong while the old fingerprint was guessing.
+        // Re-seed from the saved record. [connect] already did this for the id
+        // the user picked; this covers the paths that never went through it —
+        // an OS-level autoConnect recovery, or a rebound id whose record we
+        // could not find then. It is only a SEED: the wire byte overrides it a
+        // moment later (design 0007 §3.3), which is what heals a record saved
+        // wrong while the old fingerprint was guessing.
         final savedLabel = _devices?.deviceFor(id)?.productClass;
         if (savedLabel != null && savedLabel != ProductClass.unknown) {
-          _packResolver.setOverride(savedLabel);
+          _seedClass = savedLabel;
         }
       }
       _recomputePackLabel();
@@ -766,14 +798,25 @@ class ConnectionController extends ChangeNotifier {
   /// Recompute the cosmetic pack label; notify + persist only on a real change
   /// (the settling window and fingerprint each flip at most once per session).
   void _recomputePackLabel() {
-    final next = _packResolver.label;
+    // Wire byte, else the user's choice, else the saved-record seed. The seed
+    // ranks LAST here on purpose: an explicit choice the user just made about
+    // the unit in front of them beats a class we restored from storage.
+    var next = _packResolver.label;
+    final fromResolver = next != ProductClass.unknown;
+    if (!fromResolver) next = _seedClass;
     if (next == _packLabel) return;
     _packLabel = next;
     // Persist the class onto the saved record (design 0001 §5 Phase 5). This is
     // also the SELF-HEAL for design 0007: a unit stored as the wrong class while
     // the fingerprint was guessing gets corrected the moment its wire byte
     // arrives — the user does not have to fix it by hand.
-    if (next != ProductClass.unknown) {
+    //
+    // Guarded on [fromResolver]: a label that came from the seed came out of
+    // this very record, so writing it back is a pointless round-trip, and on a
+    // REBOUND iOS id it would be worse than pointless — it would stamp one
+    // device's class onto another's row (FB-25's failure mode, from the other
+    // direction).
+    if (fromResolver && next != ProductClass.unknown) {
       final id = _ble.connectedDeviceId;
       if (id != null) {
         final write = _devices?.setProductClass(id, next);

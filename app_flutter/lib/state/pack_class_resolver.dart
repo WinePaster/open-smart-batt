@@ -48,6 +48,10 @@ class PackClassResolver {
   /// Apply (or clear, with null) an explicit user choice. Only consulted for a
   /// unit whose device-type byte is unrecognised — a verified byte always wins,
   /// so a stale or mistaken choice can never re-hide a known class.
+  ///
+  /// A user choice is a GUESS and must never pick a layout. Routing therefore
+  /// does not read this at all; see [ConnectionController.resolvedClass], which
+  /// falls back to the saved-record seed instead (FB-43).
   void setOverride(ProductClass? label) => _override = label;
 
   /// The current user override, if any.
