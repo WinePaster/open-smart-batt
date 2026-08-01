@@ -3,6 +3,16 @@
 /// Shown when no device is connected: a pulsing Bluetooth glyph, a prompt, a
 /// quick-select list of saved devices (one-tap reconnect) and a "scan others"
 /// button that hands off to the device-list sheet.
+///
+/// It also reports an auto-reconnect in progress, which it did not used to.
+/// This screen once read only [ConnectionController.isBusy], and `isBusy` is
+/// false during the backoff WAIT between two attempts — the link is genuinely
+/// `disconnected` then. So a phone working through a five-attempt reconnect
+/// showed a spinner that appeared, vanished for two seconds, reappeared for a
+/// fraction of a second, vanished for four. A field capture that spent 15.7 s
+/// of a 16.2 s wait in that state is what this addresses. It changes nothing
+/// about the reconnect policy or its timing: the state was always there, it was
+/// simply not on screen.
 library;
 
 import 'package:flutter/material.dart';
@@ -28,6 +38,26 @@ class DisconnectedState extends StatelessWidget {
     final conn = context.watch<ConnectionController>();
     final devices = conn.savedDevices;
 
+    // One flag for "the app is working on it", covering both halves of the
+    // cycle: the attempt itself (isBusy) and the backoff wait before the next
+    // one (isRetrying). Either alone leaves a visible hole.
+    final retrying = conn.isRetrying;
+    final working = conn.isBusy || retrying;
+
+    final String title;
+    final String body;
+    if (retrying) {
+      title = l10n.disconnectedRetrying(
+          conn.reconnectAttempts, ConnectionController.maxReconnectAttempts);
+      body = l10n.disconnectedRetryingBody;
+    } else if (conn.isBusy) {
+      title = l10n.disconnectedConnecting;
+      body = l10n.disconnectedBody;
+    } else {
+      title = l10n.disconnectedTitle;
+      body = l10n.disconnectedBody;
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
@@ -40,10 +70,11 @@ class DisconnectedState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const _PulseIcon(),
+            _PulseIcon(working: working),
             const SizedBox(height: 24),
             Text(
-              l10n.disconnectedTitle,
+              title,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 23,
                 letterSpacing: 0.5,
@@ -55,7 +86,7 @@ class DisconnectedState extends StatelessWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
               child: Text(
-                l10n.disconnectedBody,
+                body,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14.5,
@@ -224,8 +255,15 @@ class _DeviceGlyph extends StatelessWidget {
 }
 
 /// Pulsing Bluetooth glyph (mockup `.bigico` + ring animation).
+///
+/// When [working] it also carries a steady progress ring. Steady is the point:
+/// the ring must not blink out during the backoff wait, or it reports "stopped
+/// trying" for the majority of a multi-attempt reconnect.
 class _PulseIcon extends StatefulWidget {
-  const _PulseIcon();
+  const _PulseIcon({required this.working});
+
+  /// An attempt is running or scheduled — see [DisconnectedState].
+  final bool working;
 
   @override
   State<_PulseIcon> createState() => _PulseIconState();
@@ -272,6 +310,15 @@ class _PulseIconState extends State<_PulseIcon>
               );
             },
           ),
+          if (widget.working)
+            const SizedBox(
+              width: 112,
+              height: 112,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.amber,
+              ),
+            ),
           Container(
             width: 96,
             height: 96,

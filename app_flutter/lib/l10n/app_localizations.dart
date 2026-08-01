@@ -584,6 +584,24 @@ abstract class AppLocalizations {
   /// **'Scan other devices'**
   String get disconnectedScanButton;
 
+  /// No description provided for @disconnectedConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get disconnectedConnecting;
+
+  /// No description provided for @disconnectedRetrying.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting… (attempt {attempt} of {max})'**
+  String disconnectedRetrying(int attempt, int max);
+
+  /// No description provided for @disconnectedRetryingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.'**
+  String get disconnectedRetryingBody;
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:

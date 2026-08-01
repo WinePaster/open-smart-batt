@@ -318,6 +318,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get disconnectedScanButton => 'Scan other devices';
 
   @override
+  String get disconnectedConnecting => 'Connecting…';
+
+  @override
+  String disconnectedRetrying(int attempt, int max) {
+    return 'Reconnecting… (attempt $attempt of $max)';
+  }
+
+  @override
+  String get disconnectedRetryingBody =>
+      'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.';
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }

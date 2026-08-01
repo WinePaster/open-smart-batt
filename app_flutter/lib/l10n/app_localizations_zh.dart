@@ -307,6 +307,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disconnectedScanButton => '掃描其他裝置';
 
   @override
+  String get disconnectedConnecting => '連線中…';
+
+  @override
+  String disconnectedRetrying(int attempt, int max) {
+    return '重新連線中…（第 $attempt 次，共 $max 次）';
+  }
+
+  @override
+  String get disconnectedRetryingBody => '裝置沒有回應，正在等待下一次嘗試。剛斷線時這是正常的。';
+
+  @override
   String quickPickLastValue(String value) {
     return '上次 $value V';
   }

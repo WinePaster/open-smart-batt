@@ -202,6 +202,19 @@
   "disconnectedBody": "Reconnect to a saved device, or scan for nearby RCE devices.",
   "disconnectedQuickSelectHeading": "Quick Select",
   "disconnectedScanButton": "Scan other devices",
+  "disconnectedConnecting": "Connecting…",
+  "disconnectedRetrying": "Reconnecting… (attempt {attempt} of {max})",
+  "@disconnectedRetrying": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "disconnectedRetryingBody": "The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.",
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {

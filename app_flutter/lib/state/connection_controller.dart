@@ -345,6 +345,25 @@ class ConnectionController extends ChangeNotifier {
   /// True when fully disconnected (dashboard shows the empty state).
   bool get isDisconnected => _link == BleLinkState.disconnected;
 
+  /// True while an auto-reconnect attempt is SCHEDULED but not yet running —
+  /// i.e. during the backoff wait between two tries.
+  ///
+  /// This is the gap [isBusy] cannot see. Between attempts the link really is
+  /// `disconnected`, so `isBusy` is false, and a UI driven by it alone shows a
+  /// spinner that stops and restarts every couple of seconds. Field logs put
+  /// that gap at 2 s on the first retry and doubling from there
+  /// ([reconnectBackoff]), and a capture that spent 15.7 s of a 16.2 s wait in
+  /// exactly this state is what prompted exposing it: the app was working the
+  /// whole time and did not look like it.
+  ///
+  /// Pair with [reconnectAttempts] to say WHICH attempt is pending.
+  bool get isRetrying => _reconnectTimer?.isActive ?? false;
+
+  /// How many auto-reconnect attempts have been started for the current target
+  /// (0 once a link goes healthy, or after a fresh manual connect). Capped at
+  /// [maxReconnectAttempts].
+  int get reconnectAttempts => _reconnectAttempts;
+
   /// Deduped, RSSI-sorted scan results (vendor-service filtered).
   List<DiscoveredDevice> get scanResults => _scanResults;
 
