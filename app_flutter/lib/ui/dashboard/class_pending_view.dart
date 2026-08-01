@@ -14,7 +14,8 @@
 /// Three states, in order of how long the wait has run:
 ///
 /// 1. under [kClassPendingGrace] — draw nothing. A healthy link answers in
-///    about a second, so a placeholder here would flash on every connect.
+///    well under a second (p50 0.061 s across a day of field logs), so a
+///    placeholder here would flash on every connect.
 /// 2. under [kClassPendingTimeout] — "identifying device".
 /// 3. past it — offer a way out, and say WHY when we know: a non-zero
 ///    keep-alive failure count is the difference between "this is taking a
@@ -47,7 +48,7 @@ class _ClassPendingViewState extends State<ClassPendingView> {
     super.initState();
     // The view's content is a function of elapsed time, and nothing else
     // notifies on the passage of time. Coarse on purpose: the two thresholds
-    // are 300 ms and 6 s, so a quarter-second tick resolves both without
+    // are 500 ms and 6 s, so a quarter-second tick resolves both without
     // rebuilding on every frame.
     _tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (mounted) setState(() {});
@@ -67,8 +68,8 @@ class _ClassPendingViewState extends State<ClassPendingView> {
     final elapsed = conn.pendingFor ?? Duration.zero;
 
     // Grace window: deliberately empty, NOT a spinner. A spinner that appears
-    // and vanishes inside 300 ms reads as a glitch, and there is nothing to
-    // hide — the pack layout is not being drawn underneath either.
+    // and vanishes inside the grace window reads as a glitch, and there is
+    // nothing to hide — the pack layout is not drawn underneath either.
     if (elapsed < kClassPendingGrace) return const SizedBox.shrink();
 
     final stalled = elapsed >= kClassPendingTimeout;

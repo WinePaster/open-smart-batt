@@ -38,27 +38,41 @@ import 'product_class.dart';
 /// nothing: the pack layout is not drawn during the grace period either, so no
 /// wrong number is ever shown — the area is simply empty.
 ///
-/// Measured against the field-log corpus: across 36 connections on recent
-/// builds, exactly ONE `ready` → first `0x10` interval reached 300 ms (0.301 s
-/// — the slowest sample in that set), so roughly 1 connection in 36 (2.8 %)
-/// still sees a brief flash at this value, and 500 ms would cover all 36.
-/// Left at 300 ms on purpose: which of the two feels better is a product call,
-/// not something the distribution decides.
-const Duration kClassPendingGrace = Duration(milliseconds: 300);
+/// Which value to use was settled as a product call, not by the distribution —
+/// and it is worth recording that the distribution was ASKED first and declined
+/// to answer.
+///
+/// A 36-connection sample once made 500 ms look strictly better: its slowest
+/// `ready` → first `0x10` interval was 0.301 s, so 300 ms let roughly 1
+/// connection in 36 flash the placeholder and 500 ms covered every one of them.
+/// A later batch of 21 connections broke that reading. Its slowest interval is
+/// **43.9 s** — same link, no disconnect, keep-alive writes timing out
+/// underneath — so both thresholds score identically on it (1 of 21), and no
+/// value in the hundreds of milliseconds would have changed that. The "0 of 36"
+/// was a property of that sample, not of the constant.
+///
+/// 500 ms it is, chosen because the flash is the more annoying of the two
+/// failure modes, not because the data prefers it. What the data does say is
+/// where the real tail lives: see [kClassPendingTimeout].
+const Duration kClassPendingGrace = Duration(milliseconds: 500);
 
 /// How long [RoutingDecision.pending] must last before the placeholder stops
 /// saying "identifying" and starts offering a way out.
 ///
 /// Measured, not guessed — and deliberately far above the typical case. On
-/// recent builds `ready` → first `0x10` is fast: across the 36 connections in
-/// the field-log corpus, p50 is around 0.1 s, p95 0.240 s and p100 0.301 s —
-/// the whole distribution fits twenty times over inside this timeout.
+/// recent builds `ready` → first `0x10` is fast: across 21 connections from a
+/// single day of field logs, p50 is 0.061 s and p90 0.120 s — the typical case
+/// fits a hundred times over inside this timeout.
 /// Six seconds is kept anyway, for two things those percentiles hide:
 ///
-/// * The tail is real, not theoretical. An older build has a verified 54 s
-///   sample (the app was backgrounded and resumed four times in between), and
-///   two connections in the corpus reached `ready` and then never received
-///   `0x10` at all.
+/// * The tail is real, not theoretical, and it is not an artefact of old
+///   builds. The same 21-connection sample contains a **43.9 s** interval on a
+///   current build, over a link that never disconnected — the keep-alive writes
+///   were timing out and recovering underneath it the whole time. An older
+///   build has a verified 54 s sample, and two connections elsewhere in the
+///   corpus reached `ready` and then never received `0x10` at all. Two
+///   independent samples an order of magnitude past this timeout is not a tail
+///   anyone should trim toward.
 /// * This is a DISPLAY timeout, not a give-up — a byte arriving afterwards
 ///   still overrides everything. So the two errors cost very different
 ///   amounts: offering an escape hatch over a link that was about to resolve
