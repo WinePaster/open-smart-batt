@@ -36,7 +36,7 @@ const String kProtocolUrl =
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, this.deviceInfoPanelBuilder});
 
-  /// Optional closed-side device-info panel (design 0003 seam). NULL on the
+  /// Optional device-info panel supplied by a closed-source build. NULL on the
   /// open build, where nothing is rendered and the screen is byte-identical to
   /// before the slot existed.
   ///
@@ -87,9 +87,9 @@ class _ConnectionCard extends StatelessWidget {
               onChanged: s.setAutoReconnect,
             ),
           ),
-          // design 0008: background execution and keeping the screen on are
-          // two different things. They shared one setting while the wakelock
-          // was the only mitigation available; now they are separate.
+          // Background execution and keeping the screen on are two different
+          // things. They shared one setting while the wakelock was the only
+          // mitigation available; now they are separate.
           // Platform-split, and disabled on iOS. The switch does nothing there
           // (NoopMonitorService), yet it still flipped `monitorRunning` — which
           // is how the dashboard ended up giving iOS users Android-only advice
@@ -198,8 +198,8 @@ class _DataCardState extends State<_DataCard> {
 
   Future<void> _exportAll() async {
     if (_busy) return;
-    // design 0006: pick the unit BEFORE showing the spinner — the sheet is the
-    // user's decision point, not work.
+    // Pick the unit BEFORE showing the spinner — the sheet is the user's
+    // decision point, not work.
     final target = await chooseExportScope(context, offerSession: false);
     if (target == null || !mounted) return;
     setState(() => _busy = true);
@@ -228,7 +228,8 @@ class _DataCardState extends State<_DataCard> {
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
-      // empty (design 0009).
+      // empty, so the older `!csv.contains('\n')` test would always pass and
+      // hand the user a header-only file with no warning.
       if (csv.rows == 0) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.commonNoRecordsToExport)));
         return;
@@ -378,7 +379,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     }
     if (!mounted) return;
     // The diagnostic log is the one export where "this connection only" is
-    // useful — that is the slice we ask a reporter for (design 0006 §3.4).
+    // useful — that is the slice we ask a reporter for, since the table
+    // accumulates across every connection to every unit the phone has seen.
     final target = await chooseExportScope(context, offerSession: true);
     if (target == null || !mounted) return;
     setState(() => _busy = true);
@@ -424,8 +426,6 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     }
   }
 
-  /// `#`-prefixed preamble telling whoever receives the file which unit, which
-  /// app build and how many connections it covers (design 0006 §3.6).
   /// FB-37 (ruled 2026-07-30: disclose, do not redact). Returns true to export.
   ///
   /// `0x38` is the device reporting its own BLE address as ASCII, so a raw
@@ -513,6 +513,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     return choice == _RawLogChoice.exportAnyway;
   }
 
+  /// The `#`-prefixed preamble telling whoever receives the diagnostic log
+  /// which unit it covers, which app build produced it, how many connections it
+  /// spans and whether raw packets were being recorded at all. Without it a
+  /// recipient cannot tell a genuinely quiet capture from one the app never
+  /// wrote, and has to guess at the version — which is how an app-side bug once
+  /// got read as a hardware limitation.
   Future<List<String>> _logHeader(
     TelemetryController tele,
     AppServices services,
@@ -582,7 +588,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
               ],
             ),
           ),
-          // design 0013 Phase 2. Lives in Diagnostics rather than on the
+          // The guided capture run lives in Diagnostics rather than on the
           // dashboard because it is a deliberate procedure, not a quick action —
           // the dashboard bar covers spontaneous marking.
           SettingsLinkRow(
@@ -748,8 +754,11 @@ void _showAbout(BuildContext context) {
 /// Compact themed switch used by the settings rows.
 ///
 /// A null [onChanged] renders the switch disabled but still shows its value —
-/// used where a setting exists and is stored, but the platform cannot honour it
-/// (design 0014 §3.4).
+/// used where a setting exists and is stored, but the platform cannot honour
+/// it. Showing it disabled beats hiding it: a user who has heard of the feature
+/// and cannot find it assumes they are looking in the wrong place, whereas a
+/// greyed row with a reason is an answer. The stored value is left alone so the
+/// choice survives a move to a platform that does support it.
 class _Toggle extends StatelessWidget {
   const _Toggle({required this.value, required this.onChanged});
 

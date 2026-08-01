@@ -1,4 +1,4 @@
-// design 0009 — export provenance + completeness (FB-10 / FB-11 / FB-12).
+// Export provenance + completeness (FB-10 / FB-11 / FB-12).
 //
 // The 2026-07-28 field report could only be dated by noticing its CSV was
 // missing two columns, and it silently lost its last 37 seconds of data. Three
@@ -91,9 +91,10 @@ void main() {
     });
 
     test('keeps the diagnostic-log header shape byte-for-byte', () {
-      // The log preamble predates this refactor (design 0006 §3.6); recipients
-      // and our own triage scripts read it, so the shared helper must not have
-      // changed it.
+      // The diagnostic log had this preamble before the CSV did, and the shared
+      // helper was extracted from it; recipients and our own analysis scripts
+      // read the log's exact shape, so the extraction must not have altered a
+      // single byte of it.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
@@ -115,8 +116,9 @@ void main() {
     test('degrades to "unknown" instead of throwing', () async {
       // No plugin channel in a unit test. Neither an export nor recording may
       // fail because a version label could not be resolved. (Lives in
-      // state/build_info.dart since design 0010 — it is resolved once at
-      // startup and stamped on rows, not looked up per export.)
+      // state/build_info.dart: it is resolved once at startup and stamped on
+      // rows, not looked up per export, so the header and the rows cannot
+      // disagree.)
       final env = await resolveBuildInfo();
       expect(env.build, kUnknownEnv);
       expect(env.platform, isNotEmpty);
@@ -284,7 +286,7 @@ void main() {
         await services.dispose();
       });
 
-      // Recording is unconditional since design 0011 — no switch to turn on.
+      // Recording is unconditional — there is no longer a switch to turn on.
       ble.emitLink(BleLinkState.ready);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 

@@ -4,7 +4,8 @@
 /// reproducing the mockup's hand-built SVG gauge in a [CustomPainter]. The
 /// centre stack overlays a live value, an injectable caption and a sub-line.
 ///
-/// Design 0001 §3.5 generalises the dial to TWO modes via named constructors:
+/// The dial has TWO modes, via named constructors, because two product classes
+/// need the same instrument over different domains:
 ///   * [PvltGauge.voltage] — a voltage domain `[min,max]` (pack: 8–16 V), which
 ///     preserves the original PVLT behaviour exactly; and
 ///   * [PvltGauge.percent] — a 0–100 % domain (power-bank SOC).

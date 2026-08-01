@@ -1,4 +1,5 @@
-/// OpenSmartBatt — "which unit is being recorded right now" (design 0006 §3.2).
+/// OpenSmartBatt — "which unit is being recorded right now": the single place
+/// the device/session attribution stamped on stored rows comes from.
 ///
 /// PURE Dart (no Flutter imports) so it is trivially unit-testable. Both
 /// [ConnectionController] (link/scan events) and [TelemetryController] (packets
@@ -10,7 +11,10 @@ library;
 /// The device + connection a recorded row belongs to.
 ///
 /// [deviceId] is the BLE remote id (iOS NSUUID / Android MAC). It is a storage
-/// key only: never render it in a filename or share it (see design 0006 §3.3).
+/// key only: never render it in a filename or in anything the user shares. On
+/// Android it IS the unit's MAC address, so putting it in a file that gets
+/// mailed out leaks hardware identity; exports name a unit by serial, then by
+/// the user's alias, then by a short hash of this id — never by the id.
 class SessionContext {
   /// Unit currently being recorded, or null when disconnected.
   String? get deviceId => _deviceId;

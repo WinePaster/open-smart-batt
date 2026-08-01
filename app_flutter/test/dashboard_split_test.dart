@@ -1,11 +1,12 @@
-// Widget tests for design 0004 — the per-class control split + pack-shell body
-// routing.
+// Widget tests for the per-class control split + pack-shell body selection.
 //
 //   * controls-subset: CapacitorControls shows ONLY 檢測電容; BatteryControls
-//     shows 解除斷電 and NOT 檢測電容 (the corrected capability matrix).
-//   * pack-shell routing (option 3): PackView picks CapacitorView /
-//     BatteryView by the COSMETIC label, and the bounded fallback (union minus
-//     anti-theft) while still unclassified.
+//     shows 復電 and NOT 檢測電容. A capacitor has no run mode, so it must never
+//     be handed a cut-off control; a battery has no capacitor to self-check.
+//   * pack-shell body: PackView picks CapacitorView / BatteryView by the
+//     COSMETIC label, and the bounded fallback (union minus anti-theft) while
+//     still unclassified. All three render the SAME shell — the label chooses
+//     controls, never layout.
 //
 // Controllers are assembled via AppServices over an in-memory sqflite (ffi) DB
 // with an inert BleService (mirrors widget_test.dart), so this runs headless.
@@ -106,7 +107,7 @@ void main() {
     await tester.pump();
   }
 
-  group('controls subset (design 0004 §3.4)', () {
+  group('controls subset — each body shows only what its class has', () {
     testWidgets('CapacitorControls shows 檢測電容 but not 解除斷電',
         (tester) async {
       final s = await makeServices(tester);
@@ -139,7 +140,7 @@ void main() {
     });
   });
 
-  group('pack-shell body routing by cosmetic label (design 0004 §3.4)', () {
+  group('pack-shell body chosen by cosmetic label (gating, not routing)', () {
     testWidgets('super-capacitor label → CapacitorView', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -186,14 +187,14 @@ void main() {
 
       expect(find.byType(CapacitorView), findsNothing);
       expect(find.byType(BatteryView), findsNothing);
-      // Union of pack controls EXCEPT anti-theft (design 0004 §3.3).
+      // Union of pack controls EXCEPT anti-theft — the bounded fallback.
       expect(find.text('Check Capacitor'), findsOneWidget);
       expect(find.text('Restore Power'), findsOneWidget);
       expect(find.text('Anti-theft'), findsNothing);
     });
   });
 
-  group('advisory note is class-specific (design 0007)', () {
+  group('advisory note is class-specific', () {
     // It used to be ONE string saying "this unit is detected as a
     // Supercapacitor", rendered under all three control sets — so a battery
     // owner was told their battery was a capacitor.
@@ -238,7 +239,7 @@ void main() {
     });
   });
 
-  group('capacitor current readout (design 0007)', () {
+  group('capacitor current readout is class-gated, not data-driven', () {
     testWidgets('hidden on a capacitor even when a 0.0 A register arrives',
         (tester) async {
       final s = await makeServices(tester);

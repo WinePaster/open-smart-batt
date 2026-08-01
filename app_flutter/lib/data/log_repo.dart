@@ -87,7 +87,8 @@ class LogRepo {
   }
 
   /// Query log entries newest-first, optionally scoped to one unit and/or one
-  /// connection (design 0006).
+  /// connection. The table is a single global accumulator shared by every
+  /// device, so a scope is the only way to get "just this unit" out of it.
   Future<List<LogEntry>> queryLog({
     int? limit,
     String? deviceId,
@@ -157,7 +158,7 @@ class LogRepo {
   }
 
   /// Render the log oldest-first as a `.log` text blob (one line each),
-  /// optionally scoped to one unit and/or one connection (design 0006).
+  /// optionally scoped to one unit and/or one connection.
   ///
   /// [header] lines are emitted first, each prefixed with `# ` — they tell
   /// whoever receives the file which unit, which app version and how many
@@ -182,17 +183,18 @@ class LogRepo {
       whereArgs: args,
       orderBy: 'id ASC',
     );
-    // design 0019: the log export had no content summary at all — the CSV has
-    // had one since design 0009. Without it a recipient cannot tell a short
-    // capture from a truncated one, and cannot see that a per-device scope
-    // dropped the connect-time block (GATT dump, property flags) that lives on
-    // unattributed rows until `link: connecting`.
+    // The log export long had no content summary at all, while the CSV did.
+    // Without one a recipient cannot tell a short capture from a truncated one,
+    // and cannot see that a per-device scope dropped the connect-time block
+    // (GATT dump, property flags) that lives on unattributed rows until
+    // `link: connecting`.
     final excluded = deviceId == null ? 0 : await _countUnattributed();
-    // The other half of the same silent loss. design 0019 counted the rows with
-    // NO device, but [_scope] filters `device_id = ?`, which drops rows belonging
-    // to OTHER units just as completely — and those said nothing at all. A phone
-    // that has watched two packs exports one of them and the file reads as if the
-    // other never existed. Both numbers are reported, never summed: "recorded
+    // The other half of the same silent loss. The first pass counted the rows
+    // with NO device, but [_scope] filters `device_id = ?`, which drops rows
+    // belonging to OTHER units just as completely — and those said nothing at
+    // all. A phone that has watched two packs exports one of them and the file
+    // reads as if the other never existed.
+    // Both numbers are reported, never summed: "recorded
     // before we knew the unit" and "belongs to a different unit" are different
     // facts, and only the first one is a defect of ours.
     //
@@ -204,9 +206,9 @@ class LogRepo {
     final out = <String>[
       ...header.map((h) => '# $h'),
       if (header.isNotEmpty) '# rows: ${rows.length}',
-      // design 0013: say up front whether this file carries ground truth, and
-      // which states it covers. Whoever receives it should not have to scan ten
-      // thousand lines to find out that it has none.
+      // Say up front whether this file carries user-declared ground truth (the
+      // capture marks), and which states it covers. Whoever receives it should
+      // not have to scan ten thousand lines to find out that it has none.
       if (header.isNotEmpty) '# marks: ${_markSummary(rows)}',
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
@@ -221,7 +223,7 @@ class LogRepo {
       final e = LogEntry.fromMap(row);
       // The build is part of the key: an app update between two connections
       // that happen to share a device must start a new section, or the label
-      // would claim rows for a build that did not write them (design 0010).
+      // would claim rows for a build that did not write them.
       final key = '${e.deviceId}/${e.sessionId}/${e.appBuild}';
       if (key != lastKey) {
         lastKey = key;
@@ -242,7 +244,8 @@ class LogRepo {
   ) {
     final id = e.deviceId;
     if (id == null) {
-      // Recorded outside a connection (scan events) or before design 0006.
+      // Recorded outside a connection (scan events), or by a build that
+      // predates per-device attribution.
       return 'device=unattributed';
     }
     final label = labelFor?.call(id) ?? '';
@@ -250,8 +253,9 @@ class LogRepo {
     // up in a file the user shares. Fall back to the non-reversible digest.
     final device = 'device=${label.isEmpty ? shortDeviceHash(id) : label}';
     final session = e.sessionId == null ? '' : ' session=${e.sessionId}';
-    // Omitted entirely when unknown (pre-0010 rows), which keeps their section
-    // labels byte-identical to what they were before this field existed.
+    // Omitted entirely when unknown, which keeps the section labels of rows
+    // recorded before this field existed byte-identical to what they were —
+    // tooling that already parses the old separators does not break.
     final build = e.appBuild == null ? '' : ' app=${e.appBuild}';
     return '$device$session$build';
   }

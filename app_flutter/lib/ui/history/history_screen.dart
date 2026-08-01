@@ -141,8 +141,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _exportCsv() async {
     if (_exporting) return;
-    // design 0006: the device scope intersects with the time range already
-    // chosen on this screen.
+    // The picker chooses WHICH device to export; it does not replace the time
+    // range already chosen on this screen — the two intersect.
     final target = await chooseExportScope(context, offerSession: false);
     if (target == null || !mounted) return;
     setState(() => _exporting = true);
@@ -171,8 +171,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           scope: exportScopeLabel(target),
         ),
       );
-      // Row count, not text emptiness: the preamble means the file is never
-      // empty (design 0009).
+      // Row count, not text emptiness: every export carries a provenance
+      // preamble (app build, platform, scope, timestamp), so the file is never
+      // literally empty and testing the text would never fire.
       if (csv.rows == 0) {
         messenger.showSnackBar(SnackBar(
           duration: const Duration(milliseconds: 1600),
@@ -275,8 +276,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 tempUnit: tempUnit,
                                 status: _classify(r.sample,
                                     ov: ov, uv: uv, ot: ot),
-                                // design 0007: a capacitor streams 0x2E pinned
-                                // at 0.0 A but cannot measure current. The CSV
+                                // Class-gated, not data-driven: a capacitor
+                                // streams 0x2E pinned at 0.0 A but cannot
+                                // measure current. The CSV
                                 // already blanks it; showing it here would have
                                 // the two disagree about the same row.
                                 showCurrent: deviceClassFor(
@@ -970,9 +972,10 @@ class _HistoryRow extends StatelessWidget {
     required this.showCurrent,
   });
 
-  /// False when the row's unit cannot measure current (design 0007). Rows with
-  /// no device id (recorded before design 0006) keep whatever was stored — we
-  /// do not know their class, so we do not edit their reading.
+  /// False when the row's unit cannot measure current — i.e. a super-capacitor,
+  /// whose current register is pinned at 0.0 A. Rows with no device id (written
+  /// before history rows were attributed to a device at all) keep whatever was
+  /// stored: we do not know their class, so we do not edit their reading.
   final bool showCurrent;
 
   final TelemetrySample sample;

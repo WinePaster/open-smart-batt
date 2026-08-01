@@ -1,4 +1,4 @@
-/// OpenSmartBatt — identifiable export filenames (design 0006 §3.3).
+/// OpenSmartBatt — identifiable export filenames.
 ///
 /// PURE Dart (no Flutter imports) so every rule here is unit-testable.
 ///

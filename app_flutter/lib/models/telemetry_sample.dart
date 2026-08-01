@@ -101,9 +101,12 @@ class TelemetrySample {
   // where bit1 = Type-C, bit2 = output active, bit3 = PD input, bit5 = PD
   // output. bit0 and bit4 are still open.
   //
-  // They stay NULL because wiring them up is a UI change, not a decode change —
-  // see design 0017. Do NOT populate them piecemeal: the port shown must agree
-  // with the direction shown, and that is one decision, not four fields.
+  // They stay NULL because wiring them up is a UI change, not a decode change:
+  // the two-port card these were shaped for is being replaced by a single
+  // energy-path line, since only one path is ever live at a time and half a
+  // card spent saying "idle" states nothing. Do NOT populate them piecemeal:
+  // the port shown must agree with the direction shown, and that is one
+  // decision, not four fields.
   //
   // The fast-charge value->label table these were originally shaped around
   // (0 none / 2 PD / 4 QC2.0 / ...) came from analysis of the reference app and
@@ -145,7 +148,10 @@ class TelemetrySample {
   ///
   /// Recorded, never interpreted. The app used to treat `0x20` as a device
   /// fault flag; field captures showed that value appears ONLY on power banks
-  /// and only while charging (design 0018), so the claim was removed. What is
+  /// and only while charging — 0 occurrences across 13,535 pack samples — so
+  /// the claim was removed. The rule had come from a single capture predating
+  /// per-device attribution, where a charging power bank's 4 V reading was read
+  /// as a 12 V battery collapsing. What is
   /// left here is a faithful transcription of the byte, which is exactly what
   /// let us find the mistake in the first place.
   ///
@@ -306,8 +312,10 @@ class TelemetrySample {
         'mode': mode,
         'twf': twfRaw,
         'serial': serial,
-        // design 0006: SOC was decoded and shown on the power-bank view but never
-        // persisted, so it could not be exported. `device_id` is NOT here — that
+        // SOC was decoded and shown on the power-bank view but never persisted,
+        // so it could not be exported — a dealer asked for the charge
+        // percentage and the column simply did not exist. `device_id` is NOT
+        // here — that
         // is a storage concern the repo stamps on, not sample data.
         'soc': socPercent,
       };

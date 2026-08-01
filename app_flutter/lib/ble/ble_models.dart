@@ -121,7 +121,7 @@ bool looksLikeVendorName(String advertisedName) {
 
 /// Guards work that spans an `await` against a newer connect superseding it.
 ///
-/// FB-39 (design 0021). `_setupConnection()` reads `_device` once and then
+/// FB-39. `_setupConnection()` reads `_device` once and then
 /// awaits service discovery and CCCD enable — but everything it writes
 /// afterwards (`_writeChar`, `_notifyChar`, the link state, the keep-alive
 /// timer) is OBJECT-level state, unrelated to the local it captured. A field
@@ -150,7 +150,7 @@ class ConnectEpoch {
 
 /// Human-readable reason for a failed GATT setup, for the diagnostic log.
 ///
-/// FB-23 (design 0021). The old code rethrew out of a stream listener, where no
+/// FB-23. The old code rethrew out of a stream listener, where no
 /// caller can catch it, so a routine discovery timeout reached the user as an
 /// `Uncaught: FlutterBluePlusException` line — 101 of them in a single field
 /// capture. The exception text is kept verbatim at the end, because it is still

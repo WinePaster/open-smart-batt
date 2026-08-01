@@ -328,8 +328,8 @@ void main() {
     testWidgets('a BATTERY over its own limit now says so', (tester) async {
       // This is the defect: BatteryControls was the only body that never
       // consulted the helper, so a battery past the limits IT reported showed
-      // nothing — and after design 0018 removed the fault banner, nothing else
-      // was left either.
+      // nothing — and once the unfounded TWF fault banner was removed, nothing
+      // else was left either.
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());

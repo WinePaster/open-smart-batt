@@ -1,6 +1,6 @@
 // Device attribution starts at `connecting`, and exports admit what they hide.
 //
-// FB-21 / design 0019. `_session.begin()` used to run only on `link: ready`.
+// FB-21. `_session.begin()` used to run only on `link: ready`.
 // Notifications are subscribed before `setNotifyValue()` returns, and that call
 // can take its full 15 s timeout — so every frame in between was written with
 // `device_id = NULL`. In one field capture that was 11.3 % of history samples
@@ -9,7 +9,8 @@
 //
 // Both `_scope()` helpers filter with `device_id = ?`, which excludes NULL. So a
 // per-device export dropped all of it and said nothing — the same class of
-// silent loss design 0009 set out to end, entering through a different door.
+// silent loss the export-provenance work set out to end — a file has to be able
+// to say what it is missing — entering through a different door.
 // Worse, those orphan rows are what made the TWF misreading possible: they are
 // the "mixed units, no attribution" capture that FB-22 was derived from.
 //
@@ -130,8 +131,8 @@ void main() {
       expect(out.text, contains('(+unattributed)'));
     });
 
-    // The door design 0019 left open in the CSV exporter, mirroring the same
-    // fix in LogRepo: `_scope` filters `device_id = ?`, so ANOTHER unit's rows
+    // The door the attribution fix left open in the CSV exporter, mirroring the
+    // same fix in LogRepo: `_scope` filters `device_id = ?`, so ANOTHER unit's rows
     // were dropped and — unlike the unattributed ones — reported nowhere.
 
     test('a per-device CSV names the rows belonging to other units', () async {
@@ -216,7 +217,8 @@ void main() {
 
     test('a per-device log export names the OTHER units it dropped too',
         () async {
-      // The remaining door. design 0019 closed the NULL case and left this one:
+      // The remaining door. The attribution fix closed the NULL case and left
+      // this one:
       // `_scope()` filters `device_id = ?`, so a phone that has watched two
       // packs exported one of them and the file read as if the other had never
       // been connected. Nothing in the preamble said otherwise.

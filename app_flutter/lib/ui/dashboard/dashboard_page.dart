@@ -1,13 +1,13 @@
 /// OpenSmartBatt — dashboard screen + product-class router (mockup `#page-dash`).
 ///
 /// When no device is connected this shows [DisconnectedState] (quick-select +
-/// scan). Once online, [DashboardRouter] picks the view by the ONLY
-/// deterministic signal (design 0001 §3.1 / §3.4): a confirmed power bank
-/// (device-type 0x22) gets [PowerBankView]; a confirmed pack (super-capacitor
-/// or smart battery) gets the data-driven [PackView]; a unit that has not said
-/// what it is yet gets [ClassPendingView] and NO layout at all — every layout
-/// here asserts a class, so withholding one is the only honest option while
-/// the class is undetermined.
+/// scan). Once online, [DashboardRouter] picks the view from the device-type
+/// byte the unit reports — the ONLY deterministic signal there is: a confirmed
+/// power bank (device-type 0x22) gets [PowerBankView]; a confirmed pack
+/// (super-capacitor or smart battery) gets the data-driven [PackView]; a unit
+/// that has not said what it is yet gets [ClassPendingView] and NO layout at
+/// all — every layout here asserts a class, so withholding one is the only
+/// honest option while the class is undetermined.
 /// The cosmetic super-capacitor-vs-battery label NEVER influences this choice.
 library;
 
@@ -35,8 +35,14 @@ class DashboardPage extends StatelessWidget {
   final VoidCallback? onScanRequested;
 
   /// Switch to the Settings tab. The stale banner links there, because that is
-  /// where the platform-specific explanation now lives (design 0014 §3.3) —
-  /// the banner itself only states what is happening.
+  /// where the platform-specific explanation now lives — next to the
+  /// "background monitoring" switch it is about, with one text for Android
+  /// (exclude the app from battery optimisation) and a different one for iOS
+  /// (background monitoring does not exist there; keep the app in the
+  /// foreground). The banner itself only states what is happening, and says
+  /// nothing about how to fix it: it has no platform knowledge, and when it
+  /// tried to have some it told every iOS user to change an Android-only
+  /// setting.
   final VoidCallback? onOpenSettings;
 
   @override
@@ -61,7 +67,9 @@ class DashboardPage extends StatelessWidget {
       children: [
         if (stalled) _StaleBanner(onOpenSettings: onOpenSettings),
         const Expanded(child: DashboardRouter()),
-        // Only renders while raw logging is on (design 0013) — see the widget.
+        // Renders only while raw packet logging is on: it stamps user-supplied
+        // ground truth into the capture, and a mark with no packets beside it
+        // correlates with nothing. Rationale for the gate is in the widget.
         const CaptureMarkBar(),
       ],
     );
@@ -152,11 +160,12 @@ class _StaleBannerState extends State<_StaleBanner> {
   }
 }
 
-/// Picks the live view from the deterministic routing decision (design 0001
-/// §3.4). Reads [ConnectionController.routing] — derived from the
-/// SAME resolver that drives persistence and capability gating (single source
-/// of truth, design 0001 §3.1) — so the chosen layout can never disagree with
-/// the stored class. The cosmetic pack label is never consulted here.
+/// Picks the live view from the deterministic routing decision. Reads
+/// [ConnectionController.routing] — derived from the SAME resolver that drives
+/// persistence and capability gating, so the product class has exactly one
+/// source of truth and the chosen layout can never disagree with the stored
+/// class or with which buttons are on screen. The cosmetic pack label is never
+/// consulted here.
 ///
 /// This used to be `isPowerBank ? PowerBankView : PackView`. A bool cannot
 /// express "not yet known", so that form silently routed an unidentified unit

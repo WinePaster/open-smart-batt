@@ -1,22 +1,26 @@
-/// OpenSmartBatt — pack dashboard shell + per-class bodies (design 0004 §3.4).
+/// OpenSmartBatt — pack dashboard shell + per-class bodies.
 ///
-/// [PackView] is the pack shell the dashboard router builds for every
-/// non-power-bank unit (design 0004 §3.1: routing is by device-type; the router
-/// does `isPowerBank ? PowerBankView : PackView`). Inside the shell we pick the
-/// body by the COSMETIC pack label (routing option 3): a settled super-capacitor
-/// → [CapacitorView], a smart battery → [BatteryView], and an as-yet-unclassified
-/// pack → the bounded [PackControls] fallback. This is GATING (show/hide), NOT
-/// routing — the same layout ([PackScaffold]) is used either way, so a mid-session
-/// label flip never jumps the layout.
+/// [PackView] is the pack shell the dashboard router builds for every unit that
+/// the device-type byte has identified as NOT a power bank — routing is decided
+/// by that byte alone, never by the cosmetic label. Inside the shell we pick the
+/// body by the COSMETIC pack label: a settled super-capacitor → [CapacitorView],
+/// a smart battery → [BatteryView], and an as-yet-unclassified pack → the
+/// bounded [PackControls] fallback.
+///
+/// That split is deliberate and is the invariant to preserve here: the label may
+/// decide GATING (which buttons and readouts appear) but must never decide
+/// ROUTING (which layout is drawn). Every branch below renders the same
+/// [PackScaffold], so a label that resolves or flips mid-session swaps controls
+/// without the page jumping to a different layout under the user's finger.
 ///
 /// The shared chrome is [PackScaffold]: PVLT gauge + SVLT + temperature, plus a
 /// DVOL card gated DATA-DRIVEN on `!= null`.
 ///
-/// The CURRENT readout is gated by CLASS, not by data (design 0007). The old
-/// data-driven gate rested on "a capacitor never streams current", which the
-/// 2026-07-27 capture falsified: an owner-confirmed capacitor sends 0x2E every
-/// second with a constant payload decoding to 0.0 A. Showing a permanent 0.0 A
-/// on a unit that cannot measure current is worse than showing nothing.
+/// The CURRENT readout is the exception: it is gated by CLASS, not by data. The
+/// old data-driven gate rested on "a capacitor never streams current", and that
+/// premise is false. An owner-confirmed capacitor sends 0x2E every second with a
+/// constant payload that decodes to 0.0 A. Showing a permanent 0.0 A on a unit
+/// that cannot measure current is worse than showing nothing.
 library;
 
 import 'package:flutter/material.dart';
@@ -33,9 +37,9 @@ import 'readout_grid.dart';
 import 'dvol_bars.dart';
 import 'status_controls.dart';
 
-/// The pack shell: picks the per-class body by the cosmetic label (design 0004
-/// §3.4, routing option 3). GATING, never routing — every branch renders the
-/// same [PackScaffold] layout.
+/// The pack shell: picks the per-class body by the cosmetic label. GATING,
+/// never routing — every branch renders the same [PackScaffold] layout, so this
+/// switch only ever changes which controls sit inside it.
 class PackView extends StatelessWidget {
   const PackView({super.key});
 
@@ -75,9 +79,11 @@ class BatteryView extends StatelessWidget {
       const PackScaffold(controls: BatteryControls());
 }
 
-/// Shared pack chrome (design 0004 §3.4): cosmetic label chip + serial + PVLT
-/// gauge + data-driven readouts + DVOL card, closing with the protection card
-/// whose body is the injected class-specific [controls].
+/// Shared pack chrome: cosmetic label chip + serial + PVLT gauge + data-driven
+/// readouts + DVOL card, closing with the protection card whose body is the
+/// injected class-specific [controls]. Kept as one widget so the capacitor and
+/// battery bodies cannot drift apart in the ~70 % of the page they share, and
+/// so switching between them changes nothing but the injected controls.
 class PackScaffold extends StatelessWidget {
   const PackScaffold({super.key, required this.controls});
 
@@ -109,7 +115,7 @@ class PackScaffold extends StatelessWidget {
 
     // Centre SOH sub-line for the gauge (resolved here where l10n is available).
     //
-    // Class-gated the same way the current readout below is (design 0007): a
+    // Class-gated the same way the current readout below is: a
     // super-capacitor never sends 0x96, so this line could only ever render as
     // "SOH --". A permanent placeholder reads as "we failed to fetch it", not
     // as "this device has no such thing" — so on a capacitor it is omitted.
@@ -192,9 +198,9 @@ class PackScaffold extends StatelessWidget {
                     value: _fmt1(tele.svlt),
                     unit: 'V',
                   ),
-                  // Class-gated (design 0007): a capacitor DOES stream 0x2E, but
-                  // it is a constant 0.0 A — it cannot measure current, so the
-                  // readout is hidden rather than shown as a real zero.
+                  // Class-gated, NOT data-driven: a capacitor DOES stream 0x2E,
+                  // but it is a constant 0.0 A — it cannot measure current, so
+                  // the readout is hidden rather than shown as a real zero.
                   if (packLabel != ProductClass.supercapacitor &&
                       tele.current != null)
                     Readout(
@@ -253,9 +259,9 @@ class PackScaffold extends StatelessWidget {
   static String _fmt1(double? v) => v == null ? '--' : v.toStringAsFixed(1);
 }
 
-/// Product-class chip. The picker appears ONLY when the unit is unclassified
-/// (design 0007): when the device-type byte is recognised the class comes off
-/// the wire and a picker that silently could not change it would be a lie.
+/// Product-class chip. The picker appears ONLY when the unit is unclassified:
+/// when the device-type byte is recognised the class comes off the wire and
+/// wins, so offering a menu that silently could not change it would be a lie.
 class _PackLabelChip extends StatelessWidget {
   const _PackLabelChip({required this.label});
 
@@ -311,8 +317,10 @@ class _PackLabelChip extends StatelessWidget {
         return l10n.dashboardDeviceTypeSmartBattery;
       case ProductClass.powerBank:
       case ProductClass.unknown:
-        // No guessing left (design 0007): say it is unclassified and invite the
-        // user to pick, instead of implying detection is still in progress.
+        // Nothing here guesses any more: the telemetry-fingerprint heuristic
+        // that used to fill this in was removed after it misread a capacitor as
+        // a battery. Say "unclassified" and invite the user to pick, rather
+        // than implying an automatic detection is still running.
         return l10n.packLabelUnclassified;
     }
   }

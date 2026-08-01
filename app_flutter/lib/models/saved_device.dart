@@ -40,8 +40,10 @@ class SavedDevice {
   /// prompt a re-pick instead of the controller retrying forever.
   final bool stale;
 
-  /// The unit's resolved product class + cosmetic pack label (design 0001 §5
-  /// Phase 5). For a power bank this is [ProductClass.powerBank]; for a pack it
+  /// The unit's resolved product class + cosmetic pack label, persisted so a
+  /// reconnect can route and gate correctly before the device-type byte has had
+  /// time to arrive. For a power bank this is [ProductClass.powerBank]; for a
+  /// pack it
   /// is the inferred / user-chosen [ProductClass.supercapacitor] or
   /// [ProductClass.smartBattery]. Defaults to [ProductClass.unknown] for
   /// pre-migration rows.
@@ -78,8 +80,10 @@ class SavedDevice {
 
   // Mirrors the v4 `saved_devices` schema. `name`/`stale` were added by the
   // schemaVersion 3 migration (D.3); `product_class` by the schemaVersion 4
-  // migration (design 0001 §5 Phase 5) so the resolved class / cosmetic label
-  // persists across reconnects.
+  // migration, so the resolved class / cosmetic label persists across
+  // reconnects. Every one of these migrations is additive and nullable: rows
+  // written by an older build read back with the column absent rather than
+  // wrong.
   Map<String, Object?> toMap() => {
         'id': id,
         'alias': alias,

@@ -1,4 +1,4 @@
-// Capture state marks (design 0013).
+// Capture state marks.
 //
 // Several registers cannot be resolved from passive logs at all — nothing in
 // the stream distinguishes Type-A from Type-C, or charging from standby. A mark
@@ -81,7 +81,7 @@ void main() {
     test('end and skipped lines are distinguishable from a start', () {
       expect(CaptureMark.powerBankIn.endLogLine(), 'mark_end: pb_in');
       // "Deliberately skipped" must not read as "missing" — the same
-      // distinction design 0009 drew for exports.
+      // distinction the export headers draw when they count what they left out.
       expect(CaptureMark.skippedLogLine(CaptureMark.powerBankOutBoth),
           'mark: skipped | pb_out_a_c');
     });

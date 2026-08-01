@@ -26,7 +26,7 @@ InboundFrame decodeOne(int selector, List<int> payload) =>
 
 void main() {
   // =========================================================================
-  // ProductClass mapping + pack-label inference (design 0001 §3.1 / §3.4)
+  // ProductClass mapping — the device-type byte is the only routing signal
   // =========================================================================
   group('ProductClass.fromDeviceType', () {
     test('0x22 (34) is the ONLY power-bank code; wire byte, not the Smi-tag',
@@ -39,7 +39,7 @@ void main() {
       expect(ProductClass.unknown.isPowerBank, isFalse);
     });
 
-    test('0x17 is the super-capacitor (wire-verified 2026-07-27, design 0007)',
+    test('0x17 is the super-capacitor (wire-verified 2026-07-27)',
         () {
       expect(ProductClass.fromDeviceType(kSuperCapacitorDeviceType),
           ProductClass.supercapacitor);
@@ -66,7 +66,7 @@ void main() {
   });
 
   // =========================================================================
-  // PackClassResolver — deterministic, no guessing (design 0007)
+  // PackClassResolver — deterministic, no guessing from telemetry
   // =========================================================================
   group('PackClassResolver', () {
     final t0 = DateTime.utc(2026, 7, 27, 20, 18);
@@ -212,7 +212,7 @@ void main() {
   });
 
   // =========================================================================
-  // PvltGauge two-mode fraction math (design 0001 §3.5)
+  // PvltGauge two-mode fraction math (voltage domain vs 0–100 %)
   // =========================================================================
   group('PvltGauge fraction modes', () {
     test('voltage domain 8..16 V matches the original PVLT behaviour', () {

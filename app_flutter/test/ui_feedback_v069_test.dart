@@ -3,7 +3,7 @@
 // Two of the five items reported after v0.6.9 were behavioural, and both are
 // the kind that reappear the moment someone adds a new surface:
 //
-//   * design 0007 hid the capacitor's meaningless 0.0 A current on the
+//   * the capacitor's meaningless 0.0 A current was hidden on the
 //     dashboard, but the SAME data was still shown on the History screen, and
 //     the gauge's SOH sub-line rendered "SOH --" forever on a unit that has no
 //     SOH register at all. Gating has to hold on every surface, not one.

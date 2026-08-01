@@ -1,4 +1,4 @@
-// The telemetry-stale banner: a freshness note, not a warning (design 0014).
+// The telemetry-stale banner: a freshness note, not a warning.
 //
 // It used to render on `colorScheme.errorContainer` and carry a paragraph of
 // troubleshooting. Two problems, both confirmed in the field on 2026-07-29:

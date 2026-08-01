@@ -64,8 +64,11 @@ class ConnectionController extends ChangeNotifier {
   /// Re-evaluated on link state changes and whenever the setting toggles.
   ///
   /// Note this is only about the *display*. Background execution is
-  /// [_updateMonitor]'s job; the two were conflated under one setting until
-  /// design 0008 split them.
+  /// [_updateMonitor]'s job. The two used to share a single setting named for
+  /// background keep-alive that in fact did nothing but hold the screen on —
+  /// the name promised something no line of code delivered. They are separate
+  /// settings now because they cost the user different things (battery vs a lit
+  /// screen) and only one of them actually keeps telemetry flowing.
   void _updateWakelock() {
     final shouldKeep = isOnline && _settings.keepScreenAwake;
     // Fire-and-forget; ignore platform errors (e.g. in unit tests / unsupported
@@ -74,8 +77,10 @@ class ConnectionController extends ChangeNotifier {
   }
 
   /// Start/stop the foreground service that keeps this process at foreground
-  /// importance while connected (design 0008). Without it the OS freezes the
-  /// process once the screen goes off and the 1 Hz keep-alive stops firing.
+  /// importance while connected. Without it the OS freezes the process once the
+  /// screen goes off and the 1 Hz keep-alive stops firing — the GATT link stays
+  /// up throughout, so nothing reports a disconnect and the readings simply
+  /// stop, then arrive as a backlog burst when the process thaws.
   void _updateMonitor() {
     final shouldRun = isOnline && _settings.backgroundMonitoring;
     if (shouldRun == _monitorRunning) return;
@@ -171,8 +176,15 @@ class ConnectionController extends ChangeNotifier {
   String _notifyChannelName = '';
   String _notifyChannelDescription = '';
 
-  /// True while the foreground service is up (design 0008). Exposed so the UI
-  /// can explain a stall differently depending on whether it was even enabled.
+  /// True while the background monitor is engaged.
+  ///
+  /// ⚠️ This is NOT "a foreground service is running". It tracks the SETTING
+  /// plus the link, with no platform check, while [MonitorService.forPlatform]
+  /// hands every non-Android platform a no-op implementation — so on iOS this
+  /// reads true with nothing behind it. The stale banner used to branch on it
+  /// and consequently told iOS users to go and change an Android battery
+  /// setting; it no longer does, and no UI branches on this today. Do not
+  /// reintroduce one without adding the platform check this flag lacks.
   bool get monitorRunning => _monitorRunning;
   late final SettingsController _settings;
   late final DeviceController? _devices;
@@ -186,8 +198,11 @@ class ConnectionController extends ChangeNotifier {
   LogRepo? _logs;
   late final SessionContext _session;
 
-  /// Which unit/connection recorded rows are attributed to (design 0006).
-  /// Shared with [TelemetryController] so both stamp the same identity.
+  /// Which unit/connection recorded rows are attributed to — the `device_id` /
+  /// `session_id` pair stamped on every diagnostic-log and history row so an
+  /// export can be scoped to one unit. Shared with [TelemetryController]
+  /// (rather than each deriving its own) so the two can never disagree about
+  /// whose data a row is.
   SessionContext get session => _session;
 
   /// Record a connection/scan/error event to the diagnostic log (always on —
@@ -200,8 +215,8 @@ class ConnectionController extends ChangeNotifier {
   /// NOT open a session: the attempt has not started, and `sessionId` staying
   /// null says so honestly.
   ///
-  /// 🔴 That last sentence was FALSE from `93e967a` (design 0019, shipped in
-  /// v0.6.12) until this fix. The override was applied to `deviceId` alone while
+  /// 🔴 That last sentence was FALSE from `93e967a` (shipped in v0.6.12) until
+  /// this fix. The override was applied to `deviceId` alone while
   /// `sessionId` kept reading `_session.sessionId` — and the case the override
   /// exists for is precisely the one where a session IS live: [connect] writes
   /// `connect → X` BEFORE tearing the previous link down, so while unit Y was
@@ -232,8 +247,16 @@ class ConnectionController extends ChangeNotifier {
     ));
   }
 
-  /// Build that is recording, stamped on every row (design 0010). Null in
-  /// tests and on hosts where the plugin channel is unavailable.
+  /// Build that is RECORDING, stamped on every row.
+  ///
+  /// Per row, not per export: `diag_log` and `history` accumulate for months
+  /// and get trimmed oldest-first, so a version recorded once at the start of a
+  /// session would be the first thing deleted. The export preamble only knows
+  /// which build pressed "export", which cannot answer the question that
+  /// actually comes up — whether a missing register means the hardware does not
+  /// send it or that the build which recorded it had a bug.
+  ///
+  /// Null in tests and on hosts where the plugin channel is unavailable.
   String? _appBuild;
 
   StreamSubscription<BleLinkState>? _linkSub;
@@ -243,8 +266,11 @@ class ConnectionController extends ChangeNotifier {
   StreamSubscription<TelemetrySample>? _telemetrySub;
   StreamSubscription<void>? _monitorStopSub;
 
-  /// Product-class resolver (design 0007). Reads the class off the wire
-  /// device-type byte; holds the user's choice only for unrecognised bytes.
+  /// Product-class resolver. Reads the class off the wire device-type byte;
+  /// holds the user's choice only for unrecognised bytes. It never guesses from
+  /// telemetry — all three classes have a wire-verified byte, so the expected
+  /// value of guessing is nil while the cost of guessing wrong is offering the
+  /// wrong controls.
   final PackClassResolver _packResolver = PackClassResolver();
   ProductClass _packLabel = ProductClass.unknown;
 
@@ -344,13 +370,15 @@ class ConnectionController extends ChangeNotifier {
   /// Saved devices for the quick-select list (delegates to [DeviceController]).
   List<SavedDevice> get savedDevices => _devices?.devices ?? const [];
 
-  // ---- product class / cosmetic pack label (design 0001 §3.1 / §3.4) ----
+  // ---- product class / cosmetic pack label ----
 
   /// The DETERMINISTIC routing class: the device-type byte when we have it,
   /// else [_seedClass] — the class already stored for the device we are
-  /// connecting to. Still the ONLY class allowed to pick a layout (design 0001
-  /// §3.1) and the SINGLE source of truth shared by routing ([DashboardRouter]),
-  /// persistence ([_recomputePackLabel]) and capability gating ([capabilities]).
+  /// connecting to. Still the ONLY class allowed to pick a layout — the standing
+  /// invariant is that a layout may be chosen by wire-derived facts and by
+  /// nothing else — and the SINGLE source of truth shared by routing
+  /// ([DashboardRouter]), persistence ([_recomputePackLabel]) and capability
+  /// gating ([capabilities]).
   ///
   /// FB-43: the seed was added because the byte cannot arrive before the link is
   /// up, so a saved power bank was routed to the pack layout for the whole
@@ -383,7 +411,8 @@ class ConnectionController extends ChangeNotifier {
     );
     // The user has looked at the placeholder and asked for the readings anyway.
     // This is NOT a class assertion — it does not name a class, and the picker
-    // it hands over to still refuses to route (design 0001 §3.1). It only
+    // it hands over to still refuses to route, because a guess never picks a
+    // layout. It only
     // declines the withholding, landing on the same "unclassified" pack shell
     // whose own chip says the type is unknown. The wire byte still wins the
     // instant it arrives.
@@ -430,9 +459,16 @@ class ConnectionController extends ChangeNotifier {
   int get keepAliveFailures => _ble.keepAliveFailures;
 
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
-  /// 解除斷電 / 防盜), design 0004 §3.2. This is GATING, never routing.
+  /// 解除斷電 / 防盜).
   ///
-  /// All three classes now come off the wire (design 0007), so [packLabel] is
+  /// This is GATING — soft: show or hide a button — and never routing, which is
+  /// hard: pick a layout. The two are deliberately held to different standards
+  /// of evidence, because they fail differently: every control gated here is
+  /// read-only or auth-gated, so gating the wrong set merely shows or hides a
+  /// button, whereas routing the wrong way puts a power bank's single-cell
+  /// voltage on a 12 V pack gauge.
+  ///
+  /// All three classes come off the wire, so [packLabel] is
   /// the single input: a recognised byte gates directly, a user's choice gates
   /// an unrecognised unit, and a still-unclassified unit keeps the bounded
   /// [DeviceCapabilities.unknown] fallback (union of pack controls except
@@ -631,7 +667,7 @@ class ConnectionController extends ChangeNotifier {
 
   /// Release: mode 0x00 (normal) + auth in one 15-byte write.
   ///
-  /// 🔴 **Was 0x06 until 2026-07-30 (design 0024).** Labelled captures of two
+  /// 🔴 **Was 0x06 until 2026-07-30.** Labelled captures of two
   /// batteries actually sitting in cut-off show eight 0x06 writes — three
   /// cb/pwSum combinations across both derivation rules, plus bare mode frames
   /// with no auth at all — and `0x23` never moved once. Every real transition in
@@ -644,8 +680,12 @@ class ConnectionController extends ChangeNotifier {
   ///
   /// ⚠️ 0x00 is **not yet proven** to work — no capture holds a successful
   /// write. The evidence is elimination plus the vendor's own numbering, which
-  /// is why callers verify the result against 0x23 rather than reporting
-  /// success (design 0024 §2.2).
+  /// is why callers must not report success on a write returning. They poll the
+  /// device's own reported mode (0x23, which streams at roughly 1 Hz) for a few
+  /// seconds afterwards and say what actually happened: changed → report the
+  /// state the device now claims; unchanged → say the command went out and the
+  /// device did not move. That turns every attempt into evidence, which is the
+  /// only way this value gets confirmed at all.
   Future<void> releaseCutOff({required int cb, required int pwSum}) =>
       _ble.switchMode(ModeArg.unlock, cb: cb, pwSum: pwSum);
 
@@ -732,11 +772,11 @@ class ConnectionController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
-    // design 0006: open the recording session BEFORE logging this transition, so
-    // the `link: ready` line itself is already attributed to the unit. The
-    // session is closed further down, AFTER the disconnect line is written.
+    // Open the recording session BEFORE logging this transition, so the
+    // `link: ready` line itself is already attributed to the unit. The session
+    // is closed further down, AFTER the disconnect line is written.
     //
-    // design 0019: start at `connecting`, not at `ready`. Notifications are
+    // Start at `connecting`, not at `ready`. Notifications are
     // subscribed before `setNotifyValue` returns and that call can take up to
     // its 15 s timeout, so waiting for `ready` left every frame in between
     // unattributed — 11.3 % of history rows in one field capture, plus the
@@ -784,9 +824,11 @@ class ConnectionController extends ChangeNotifier {
         // Re-seed from the saved record. [connect] already did this for the id
         // the user picked; this covers the paths that never went through it —
         // an OS-level autoConnect recovery, or a rebound id whose record we
-        // could not find then. It is only a SEED: the wire byte overrides it a
-        // moment later (design 0007 §3.3), which is what heals a record saved
-        // wrong while the old fingerprint was guessing.
+        // could not find then. It is only a SEED: a recognised wire byte
+        // overrides a stored class every time, never the other way round, which
+        // is what heals a record saved wrong while the old fingerprint was
+        // guessing. A stored class is consulted ONLY when the byte is absent or
+        // unrecognised — that is the case where it is the user's own answer.
         final savedLabel = _devices?.deviceFor(id)?.productClass;
         if (savedLabel != null && savedLabel != ProductClass.unknown) {
           _seedClass = savedLabel;
@@ -973,10 +1015,11 @@ class ConnectionController extends ChangeNotifier {
     if (!fromResolver) next = _seedClass;
     if (next == _packLabel) return;
     _packLabel = next;
-    // Persist the class onto the saved record (design 0001 §5 Phase 5). This is
-    // also the SELF-HEAL for design 0007: a unit stored as the wrong class while
-    // the fingerprint was guessing gets corrected the moment its wire byte
-    // arrives — the user does not have to fix it by hand.
+    // Persist the class onto the saved record, so the next connect to this unit
+    // can route before its device-type byte has had time to arrive. This write
+    // is also the SELF-HEAL: a unit stored as the wrong class back when the
+    // fingerprint was guessing gets corrected the moment its wire byte arrives
+    // — the user does not have to fix it by hand.
     //
     // Guarded on [fromResolver]: a label that came from the seed came out of
     // this very record, so writing it back is a pointless round-trip, and on a
@@ -998,7 +1041,14 @@ class ConnectionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Record a capture state mark (design 0013).
+  /// Record a capture state mark — the user declaring into the log what they
+  /// just did to the hardware ("Type-C plugged in", "charging now").
+  ///
+  /// The log records what the device said; without this it records nothing
+  /// about what was happening to it, and several byte→meaning questions have no
+  /// second channel to check against, so they cannot be settled by more passive
+  /// captures however many arrive. The code is a fixed ASCII token precisely so
+  /// a hundred different reporters produce something a tool can compare.
   ///
   /// Writes through the always-on event path, the same one `link: ready` uses,
   /// so a mark cannot be lost to `rawPacketLog` being off. The UI only offers
@@ -1012,7 +1062,8 @@ class ConnectionController extends ChangeNotifier {
   }
 
   /// Close a marked interval, so the analysis side gets a span rather than a
-  /// start (design 0013 Phase 2).
+  /// start — without an end mark the next mark is the only bound, and a
+  /// capture that simply stops leaves the last state running forever.
   void markCaptureEnd(CaptureMark mark) => _event(mark.endLogLine());
 
   /// Record that a guided step was deliberately passed over. Distinct from an
@@ -1030,8 +1081,8 @@ class ConnectionController extends ChangeNotifier {
     _scanning = scanning;
     if (!scanning) {
       _event('scan done: ${_scanResults.length} device(s)');
-      // design 0015: the roster is written BEFORE any UI filtering, which is
-      // the whole point — it has to contain the entries the list hides. Without
+      // The roster is written BEFORE any UI filtering, which is the whole
+      // point — it has to contain the entries the list hides. Without
       // it, "I cannot find my device" is unanswerable: we cannot tell a
       // radio-level miss from a filter-level hide, and those need opposite
       // fixes. Logged in the controller, not BleService, because `_scanResults`

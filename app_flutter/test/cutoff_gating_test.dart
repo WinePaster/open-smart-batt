@@ -1,4 +1,5 @@
-// Design 0020 — manual cut-off (FB-35) and cut-off/release state gating (FB-34).
+// Manual cut-off and the cut-off / release state gating that sits in front of
+// both mode writes.
 //
 // THE REPORT THIS PINS DOWN. A 2026-07-30 field capture (23 hours, 63,375
 // XOR-clean frames) carries five mode-0x06 writes and a `0x23`
@@ -8,7 +9,8 @@
 // reporter's summary: the cut-off function was tried, and nothing happened.
 //
 // Two rules come out of that, and both are asserted here:
-//   1. The gate is ASYMMETRIC (design 0020 §3.1). Cut-off is offered only when
+//   1. The gate is ASYMMETRIC — the two sides are separate functions, not one
+//      bool and its negation. Cut-off is offered only when
 //      the device positively reports normal; release is refused only then. An
 //      unreadable state leaves release available — locking an owner out of a
 //      vehicle is worse than one wasted write.
@@ -73,13 +75,13 @@ void main() {
   setUpAll(sqfliteFfiInit);
 
   // =========================================================================
-  // Pure gating — the truth table from design 0020 §3.1
+  // Pure gating — the full truth table, one cell per case
   // =========================================================================
 
   // Kept although the community build renders no cut-off button: the gate and
   // its action still exist in status_controls_shared.dart for the distributor
   // build, and an untested destructive path is exactly what should not be
-  // waiting there when someone wires it up (design 0020 §9).
+  // waiting there when someone wires it up.
   group('cutOffActionEnabled — only on a provably normal pack', () {
     test('normal is the ONLY state that enables it', () {
       expect(cutOffActionEnabled(ReportedStatus.normal), isTrue);
@@ -156,7 +158,7 @@ void main() {
       expect(ModeArg.cutOff, 0x02);
     });
 
-    test('release writes NORMAL, not 0x06 (design 0024)', () {
+    test('release writes NORMAL, not the old 0x06', () {
       // Eight 0x06 writes against two batteries genuinely in cut-off — across
       // both cb derivation rules and with auth omitted entirely — moved 0x23
       // exactly zero times. The only wire sighting of 0x06 was a capacitor,
@@ -230,7 +232,7 @@ void main() {
 
   group('BatteryControls — release only in the community build', () {
     testWidgets('there is NO cut-off button, in any state', (tester) async {
-      // Owner's decision 2026-07-30 (design 0020 §9): the build that reaches
+      // Owner's decision 2026-07-30: the build that reaches
       // the general public only ever moves a pack toward normal. Both the
       // states that would have enabled it and the one that would have disabled
       // it must render nothing.
@@ -269,7 +271,7 @@ void main() {
 
       expect(buttonNamed(tester, 'Restore Power').onPressed, isNull,
           reason: 'FB-34: nothing to release on a normal pack');
-      // A greyed-out button must say why (design 0020 §3.2).
+      // A greyed-out button must say why, or it just relocates the confusion.
       expect(find.textContaining('nothing to restore'), findsOneWidget);
     });
 
@@ -305,7 +307,7 @@ void main() {
     });
   });
 
-  group('PackControls — no cut-off button at all (design 0020 §7 Q3)', () {
+  group('PackControls — no cut-off button on an unread device type', () {
     testWidgets('an unclassified pack is never offered cut-off',
         (tester) async {
       final s = await makeServices(tester);

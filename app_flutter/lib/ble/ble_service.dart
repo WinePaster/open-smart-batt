@@ -66,8 +66,9 @@ class BleService {
   bool _settingUp = false;
   bool _retryingConnect = false;
 
-  /// FB-39 (design 0021): invalidates a connection setup that a newer
-  /// connect/disconnect has superseded. See [ConnectEpoch].
+  /// FB-39: invalidates a connection setup that a newer connect/disconnect has
+  /// superseded, so a slow unit cannot bring the app online under an identity
+  /// the user has already moved away from. See [ConnectEpoch].
   final ConnectEpoch _epoch = ConnectEpoch();
 
   /// Human-readable reason for the most recent disconnect (flutter_blue_plus
@@ -143,14 +144,19 @@ class BleService {
   static int connectAttemptsFor({required bool isIOS}) => isIOS ? 1 : 3;
 
   /// Our own service-discovery timeout — deliberately SHORTER than the 15 s
-  /// flutter_blue_plus applies internally (design 0021 §3.3).
+  /// flutter_blue_plus applies internally.
   ///
   /// The point is to be the one who notices. With no timeout of our own, the
   /// plugin's fires first and arrives as an exception out of a stream listener,
   /// which is why a field capture holds 101 `Uncaught:` lines. Owning the
   /// timeout lets us retry once and write a readable line instead.
   ///
-  /// ⚠️ 8 s is an estimate, not a measured optimum — see design 0021 §7 Q2.
+  /// ⚠️ 8 s is an ESTIMATE, not a measured optimum. Its whole basis is two
+  /// facts: it has to be under the plugin's 15 s or it never fires, and one
+  /// capture showed discovery succeeding on a later attempt. Nothing here has
+  /// been calibrated against a distribution of real discovery times — treat it
+  /// as provisional and revisit it once enough field captures exist to measure
+  /// one, rather than quoting it as a verified number.
   static const Duration discoverTimeout = Duration(seconds: 8);
 
   /// Service-discovery attempts. Two, on every platform: the capture that
@@ -248,8 +254,9 @@ class BleService {
     return (scanOk && connectOk) || locationOk;
   }
 
-  /// Request POST_NOTIFICATIONS (Android 13+) for the background-monitor
-  /// notification (design 0008).
+  /// Request POST_NOTIFICATIONS (Android 13+) for the ongoing notification of
+  /// the Android foreground service — the thing that stops the OS freezing this
+  /// process (and with it the 1 Hz keep-alive) once the screen goes off.
   ///
   /// Deliberately returns void and never throws: the caller must not gate the
   /// foreground service on the outcome. Denying it hides the notification but
@@ -454,7 +461,8 @@ class BleService {
     }
   }
 
-  /// Discover services with OUR timeout, retrying once (design 0021 §3.3).
+  /// Discover services under [discoverTimeout], retrying once — two attempts of
+  /// 8 s still bound the wait tighter than the single 15 s they replace.
   ///
   /// Each timeout is logged: a capture where discovery fails and then succeeds
   /// looks identical to one where it succeeded first time, unless the failures

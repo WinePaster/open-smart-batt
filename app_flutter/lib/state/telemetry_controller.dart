@@ -46,8 +46,11 @@ class TelemetryController extends ChangeNotifier {
 
   final BleService _ble;
 
-  /// Build that is recording, stamped on every row (design 0010). Null in
-  /// tests and on hosts where the plugin channel is unavailable.
+  /// Build that is RECORDING, stamped on every row — not the build that later
+  /// exports it. A log accumulates across app versions, so without this a
+  /// missing register cannot be told apart from a bug in the build that
+  /// recorded it. Null in tests and on hosts where the plugin channel is
+  /// unavailable.
   String? _appBuild;
 
   late final SettingsController _settings;
@@ -61,8 +64,10 @@ class TelemetryController extends ChangeNotifier {
   /// The tracker, so a composition root can drain it (see `AppServices`).
   PendingWrites get pendingWrites => _pending;
 
-  /// Which unit/connection recorded rows belong to (design 0006). Shared with
-  /// [ConnectionController]; see [SessionContext].
+  /// Which unit/connection recorded rows belong to. Shared with
+  /// [ConnectionController] rather than derived here, so the two writers of the
+  /// same tables can never disagree about whose data a row is; see
+  /// [SessionContext].
   late final SessionContext _session;
 
   StreamSubscription<TelemetrySample>? _telemetrySub;
@@ -84,10 +89,12 @@ class TelemetryController extends ChangeNotifier {
       _sample.current != null;
 
   // NOTE: product class + capabilities are intentionally NOT exposed here.
-  // Design 0001 §3.1 mandates a single source of truth for "which class is
-  // this unit"; that lives on [ConnectionController] (the pack-class resolver),
-  // which drives routing, persistence AND capability gating. Deriving the class
-  // a second time from this controller's raw sample would let the two disagree.
+  // "Which class is this unit" has exactly one source of truth, and it lives on
+  // [ConnectionController] (the pack-class resolver), which drives routing,
+  // persistence AND capability gating together. Deriving the class a second
+  // time from this controller's raw sample would let the two disagree — and the
+  // visible result of that is a dashboard whose layout and whose controls
+  // belong to different products.
 
   // ---- derived gauge / readout values -----------------------------------
 
@@ -207,7 +214,9 @@ class TelemetryController extends ChangeNotifier {
   ///
   /// [labelFor] renders the human-readable `device` column; the caller supplies
   /// it because the alias/serial lookup lives in the device layer. [header]
-  /// carries the provenance preamble (design 0009); see [HistoryRepo.exportCsv]
+  /// carries the `#`-prefixed provenance preamble — which build, which
+  /// platform, which scope — so the file can be read years later without
+  /// anyone having to remember where it came from; see [HistoryRepo.exportCsv]
   /// for why the returned row count — not the text — decides "nothing to
   /// export".
   Future<({String text, int rows})> exportHistoryCsv({
@@ -235,7 +244,10 @@ class TelemetryController extends ChangeNotifier {
       _logs.queryLog(limit: limit, deviceId: deviceId);
 
   /// Diagnostic log as a `.log` text blob, optionally scoped to one unit and/or
-  /// one connection, with an optional `#`-prefixed header (design 0006 §3.6).
+  /// one connection, with an optional `#`-prefixed header. The header is
+  /// comment syntax the per-line format already ignores, so it costs existing
+  /// readers nothing while telling whoever receives the file which unit, which
+  /// build and how many connections it covers.
   Future<String> exportLog({
     String? deviceId,
     int? sessionId,
@@ -318,7 +330,7 @@ class TelemetryController extends ChangeNotifier {
   double _sPvlt = 0, _sSvlt = 0, _sTemp = 0, _sCur = 0;
   int _nPvlt = 0, _nSvlt = 0, _nTemp = 0, _nCur = 0;
 
-  /// How many telemetry snapshots this minute has folded in (design 0009).
+  /// How many telemetry snapshots this minute has folded in.
   /// Counted per snapshot, not per field, so it answers one question honestly:
   /// how much data is behind this row. A full minute lands near 900; a row
   /// flushed seconds after the bucket opened lands in the tens, and the export
@@ -327,9 +339,12 @@ class TelemetryController extends ChangeNotifier {
 
   /// Fold a sample into the current minute's bucket.
   ///
-  /// Recording is UNCONDITIONAL since design 0011. The old `autoLog` switch
-  /// gated this, which meant a user could silently turn off the one thing we
-  /// later ask them to export; retention (how long to KEEP) replaced it.
+  /// Recording is UNCONDITIONAL. An `autoLog` switch used to gate this, which
+  /// meant a user could silently turn off the one thing we would later ask them
+  /// to export, and nothing told them so. It was not even paying for itself:
+  /// one row per minute is roughly 6 MB a year, against the 5 MB cap a single
+  /// diagnostic log carries on its own. The setting the user actually needs is
+  /// how long to KEEP history, and that is what replaced it.
   void _maybeAutoLog(TelemetrySample s) {
     final t = s.timestamp;
     final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
@@ -365,7 +380,7 @@ class TelemetryController extends ChangeNotifier {
   /// Persist the minute currently being accumulated, if any.
   ///
   /// Called when the app may be about to lose control of its own execution —
-  /// backgrounded, hidden, or being torn down (design 0009 §3.2). A minute
+  /// backgrounded, hidden, or being torn down. A minute
   /// rollover and a disconnect are the *orderly* ways a bucket closes; a
   /// silent suspension is not, and until this existed the partial minute was
   /// simply lost. A 2026-07-28 field capture ended that way: the diagnostic log

@@ -31,22 +31,24 @@ class LogEntry {
   final String? note;
 
   /// Which unit this row belongs to (BLE remote id), or null when it was
-  /// recorded outside a connection (scan events) or predates design 0006.
+  /// recorded outside a connection (scan events), or was written by a build
+  /// that predates per-device attribution.
   ///
   /// NEVER put this in an exported filename — on Android it is the MAC address.
   /// Use the human-readable identity (serial / alias / short hash) instead.
   final String? deviceId;
 
   /// Monotonic connection counter, so one export can be sliced per connection.
-  /// Null for rows recorded outside a connection or predating design 0006.
+  /// Null for rows recorded outside a connection, or written before this field
+  /// existed.
   final int? sessionId;
 
-  /// The app build that WROTE this row, e.g. `0.6.8+26072812` (design 0010).
+  /// The app build that WROTE this row, e.g. `0.6.8+26072812`.
   ///
   /// Distinct from the build named in an export preamble, which is merely
   /// whoever pressed export: this table accumulates across upgrades, so one
-  /// file can hold rows from several versions. Null for rows predating
-  /// design 0010 — unknown, and not worth guessing.
+  /// file can hold rows from several versions. Null for rows written before
+  /// this field existed — unknown, and not worth guessing.
   final String? appBuild;
 
   const LogEntry({

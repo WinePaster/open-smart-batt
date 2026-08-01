@@ -124,8 +124,11 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   /// states outright — and it is the difference between a stall the user can
   /// explain and a "the app randomly stopped updating" report.
   ///
-  /// Leaving the foreground also PERSISTS the minute currently being averaged
-  /// (design 0009 §3.2). The app may not get another turn: a suspension that
+  /// Leaving the foreground also PERSISTS the minute currently being averaged.
+  /// A lifecycle event is the right hook precisely because it is the moment
+  /// control may be lost; a periodic flush would instead chop a minute into
+  /// several rows and destroy the one-row-per-minute meaning. The app may not
+  /// get another turn: a suspension that
   /// ends in the OS reclaiming the process produces no disconnect event, and
   /// the partial minute used to die with it — a 2026-07-28 capture lost its
   /// last 37 seconds exactly this way.
@@ -237,7 +240,10 @@ enum _Tab { dashboard, history, settings }
 class RootShell extends StatefulWidget {
   const RootShell({super.key, this.deviceInfoPanelBuilder});
 
-  /// Forwarded to [SettingsScreen]. Null on the open build (design 0003 seam).
+  /// Forwarded to [SettingsScreen]. Null here, and that is the design: it is an
+  /// injection point rather than a feature. A build that carries an extra
+  /// device-metadata decoder passes a panel in, so the shared front end stays
+  /// one codebase and needs no build flag to omit anything.
   final WidgetBuilder? deviceInfoPanelBuilder;
 
   @override

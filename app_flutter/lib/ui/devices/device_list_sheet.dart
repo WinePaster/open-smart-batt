@@ -295,7 +295,7 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
 
                 // ---- nearby scan ----------------------------------------
                 _ScanSectionLabel(scanning: conn.isScanning),
-                // design 0015: the toggle used to sit at the very bottom of the
+                // This toggle used to sit at the very bottom of the
                 // sheet — below the saved list and below the fold when devices
                 // were saved. A user whose unit was filtered out never learned
                 // that anything had been hidden. It belongs directly under the

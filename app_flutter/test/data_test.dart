@@ -223,8 +223,9 @@ void main() {
       expect(rebound, 'new-nsuuid');
     });
 
-    // design 0001 §5 Phase 5: the v4 schema persists the resolved product class
-    // / cosmetic pack label. Old rows default to unknown.
+    // The v4 schema persists the resolved product class / cosmetic pack label,
+    // so an identified unit does not have to be re-identified on every later
+    // connection. Old rows default to unknown.
     test('persists product_class and setProductClass updates it', () async {
       final repo = DeviceRepo(appDb.db);
       // A device saved without a class defaults to unknown (pre-migration rows).
@@ -335,8 +336,8 @@ void main() {
       expect(s.autoReconnect, isTrue);
       expect(s.pollIntervalMs, 1000);
       expect(s.keepScreenAwake, isFalse);
-      // design 0008: background monitoring defaults ON — the stall it prevents
-      // is the default experience without it.
+      // Background monitoring defaults ON — the stall it prevents is the
+      // default experience without it.
       expect(s.backgroundMonitoring, isTrue);
       // Theme defaults to light (tri-state {light, dark, auto}).
       expect(s.themeMode, AppThemeMode.light);

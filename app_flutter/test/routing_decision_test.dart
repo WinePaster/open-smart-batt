@@ -37,7 +37,8 @@ TelemetrySample decode(List<int> bytes) {
 }
 
 /// Mirrors `ConnectionController.resolvedClass`: wire byte, else the
-/// saved-record seed. A user's guess is not part of it (design 0001 §3.1).
+/// saved-record seed. A user's guess is not part of it — a layout is chosen by
+/// wire-derived facts and by nothing else.
 ProductClass resolved(PackClassResolver r, ProductClass seed) {
   final fromWire = r.deviceClass;
   return fromWire != ProductClass.unknown ? fromWire : seed;
@@ -141,7 +142,7 @@ void main() {
     });
   });
 
-  group("a user's guess still cannot pick a layout (design 0001 §3.1)", () {
+  group("a user's guess still cannot pick a layout", () {
     test('an override changes neither the class nor the route', () {
       final r = fresh()..setOverride(ProductClass.smartBattery);
       expect(r.label, ProductClass.smartBattery, reason: 'it drives the chip');

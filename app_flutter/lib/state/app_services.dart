@@ -57,9 +57,11 @@ class AppServices {
   final PendingWrites pending;
 
   /// This build (`version+buildNumber`) and OS description, resolved ONCE at
-  /// startup (design 0010). Stamped on every recorded row and reused by the
-  /// export preamble, so no export path waits on a plugin channel. Falls back
-  /// to [kUnknownEnv] where the channel is unavailable.
+  /// startup. Stamped on every recorded row and reused by the export preamble,
+  /// so no export path waits on a plugin channel — and, more importantly, so
+  /// the build named in a file's header and the build stamped on its rows can
+  /// never disagree about the same run. Falls back to [kUnknownEnv] where the
+  /// channel is unavailable; a missing version must never fail an export.
   final String appBuild;
   final String platform;
 
@@ -93,8 +95,9 @@ class AppServices {
 
     final settings = SettingsController(settingsRepo, history: historyRepo);
     final devices = DeviceController(deviceRepo);
-    // design 0006: ONE session context shared by both controllers, so the log
-    // events and the packet/history rows are attributed to the same unit. Seed
+    // ONE session context shared by both controllers, so the log events and the
+    // packet/history rows are attributed to the same unit — attribution has to
+    // come from a single place or the two writers will disagree. Seed
     // the counter from storage to keep session ids monotonic across restarts.
     final session = SessionContext()..seed(await logRepo.lastSessionId());
     // ONE tracker shared by everything that writes without awaiting, so
@@ -123,8 +126,8 @@ class AppServices {
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);
 
-    // Apply the retention window once per launch (design 0011). The window is
-    // measured in days, so there is no reason to prune more often than this —
+    // Apply the retention window once per launch. The window is measured in
+    // days, so there is no reason to prune more often than this —
     // and doing it on every write would be pure I/O for no benefit.
     pending.add(settings.pruneHistory());
 

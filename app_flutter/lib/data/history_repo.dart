@@ -62,9 +62,11 @@ class HistoryRepo {
   /// Ordered CSV/column header. Matches [TelemetrySample.toMap] keys, with
   /// `timestamp` rendered as ISO-8601 in CSV (epoch-ms in the DB).
   ///
-  /// design 0006 appended `soc` and `device` AT THE END on purpose: recipients
-  /// already have spreadsheets built on the original column order, so existing
-  /// columns must never move. `device` is the HUMAN-readable identity (serial /
+  /// STANDING RULE: new columns are appended AT THE END, never inserted, and
+  /// existing columns never move or change meaning. Recipients already have
+  /// spreadsheets built on the original column order; every column past `serial`
+  /// was added later under this rule, and it is the only reason those
+  /// spreadsheets still open. `device` is the HUMAN-readable identity (serial /
   /// alias / short hash) — never the raw `device_id` (a MAC address on Android).
   static const List<String> csvColumns = <String>[
     'timestamp',
@@ -88,15 +90,16 @@ class HistoryRepo {
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
   ///
-  /// [samples] is how many telemetry snapshots this row averaged (design 0009).
-  /// It is NOT part of [TelemetrySample]: the device never reports it, it is an
-  /// artefact of our own per-minute aggregation, and mixing the two would blur
-  /// where a number came from. Null means "unknown" — never 0, which would
-  /// claim the row averaged nothing.
+  /// [samples] is how many telemetry snapshots this row averaged. It is NOT
+  /// part of [TelemetrySample]: the device never reports it, it is an artefact
+  /// of our own per-minute aggregation, and mixing the two would blur where a
+  /// number came from. Null means "unknown" — never 0, which would claim the
+  /// row averaged nothing.
   ///
-  /// [appBuild] is the build that RECORDED the row (design 0010) — not the one
-  /// that exports it. This table accumulates across upgrades, so the two can
-  /// differ by months.
+  /// [appBuild] is the build that RECORDED the row — not the one that exports
+  /// it. This table accumulates across upgrades, so the two can differ by
+  /// months, and an export that only names the exporting build cannot say which
+  /// version produced any particular row.
   Future<int> insertSample(
     TelemetrySample sample, {
     String? deviceId,
@@ -156,7 +159,8 @@ class HistoryRepo {
   /// [TelemetrySample] deliberately carries no device id (it models what the
   /// DEVICE reported, not our attribution of it), yet the History screen has to
   /// know a row's product class to decide whether a reading is meaningful — a
-  /// super-capacitor's 0.0 A is not a measurement (design 0007). The CSV
+  /// super-capacitor streams a current register that is permanently pinned at
+  /// 0.0 A, so that zero is a placeholder, not a measurement. The CSV
   /// exporter already solves this by reading the raw row; this gives the UI the
   /// same footing instead of tempting anyone to widen the model.
   Future<List<({TelemetrySample sample, String? deviceId})>>
@@ -293,23 +297,27 @@ class HistoryRepo {
   /// (empty cell for nulls). Safe for `share_plus` / file export.
   ///
   /// [labelFor] turns a stored `device_id` into the human-readable identity for
-  /// the `device` column (design 0006 §3.5). Rows recorded before v5 have no
-  /// device id, so they get an empty cell rather than a guess.
+  /// the `device` column — never the raw id, which is a MAC address on Android
+  /// and would leak into every shared file. Rows recorded before the schema had
+  /// a device column have no device id, so they get an empty cell rather than a
+  /// guess.
   /// [classFor] resolves a stored `device_id` to its product class. It exists
   /// for one reason: a super-capacitor streams the 0x2E current register pinned
   /// at exactly 0.0 A even though it cannot measure current. The dashboard hides
-  /// that readout (design 0007), so exporting `0.0` would tell the recipient the
-  /// unit is drawing no current — a claim the device never made. Those cells get
-  /// this exporter's empty value instead (the same `null` the dvol columns
-  /// already use). Rows with no device id (pre-0006) keep whatever was recorded:
-  /// we do not know their class, so we do not edit their data.
+  /// that readout for the same reason, so exporting `0.0` would tell the
+  /// recipient the unit is drawing no current — a claim the device never made.
+  /// Those cells get this exporter's empty value instead (the same `null` the
+  /// dvol columns already use). Rows with no device id keep whatever was
+  /// recorded: we do not know their class, so we do not edit their data.
   ///
-  /// [header] lines (design 0009) are emitted first, each prefixed with `# `,
-  /// followed by a repo-computed `rows / range / devices` summary line and then
-  /// the column header. The split of duties is deliberate: the caller knows the
-  /// PROVENANCE (app build, platform, which scope the user picked) and only it
-  /// can reach `PackageInfo`; this repo knows the CONTENT and already holds the
-  /// query result, so it counts without a second trip to the database.
+  /// [header] lines are emitted first, each prefixed with `# `, followed by a
+  /// repo-computed `rows / range / devices` summary line and then the column
+  /// header. Together they let a recipient answer "where did this come from and
+  /// is any of it missing?" from the file alone. The split of duties is
+  /// deliberate: the caller knows the PROVENANCE (app build, platform, which
+  /// scope the user picked) and only it can reach `PackageInfo`; this repo knows
+  /// the CONTENT and already holds the query result, so it counts without a
+  /// second trip to the database.
   ///
   /// Returns the text together with the number of DATA rows. Callers must test
   /// `rows == 0` for "nothing to export" — with a preamble present the file is
@@ -347,15 +355,16 @@ class HistoryRepo {
             m[c],
       ]);
     }
-    // design 0019: a per-device export cannot state its own completeness from
-    // the result set — the rows it excluded are, by definition, not in it. So
-    // count them separately. `_contentSummary` can say "(+unattributed)" only
-    // for an all-devices export, which is exactly the asymmetry that let the
-    // per-device CSVs look complete while dropping 11.3 % of their samples.
+    // A per-device export cannot state its own completeness from the result set
+    // — the rows it excluded are, by definition, not in it. So count them
+    // separately. `_contentSummary` can say "(+unattributed)" only for an
+    // all-devices export, which is exactly the asymmetry that let per-device
+    // CSVs look complete while dropping 11.3 % of their samples.
     final excluded =
         deviceId == null ? 0 : await countUnattributed(since: since);
-    // The door design 0019 left open: rows attributed to a DIFFERENT unit are
-    // dropped by [_scope] and were reported nowhere. See [countOtherDevices].
+    // The other half of the same silent loss: rows attributed to a DIFFERENT
+    // unit are dropped by [_scope] and were reported nowhere. See
+    // [countOtherDevices].
     final fromOthers = deviceId == null
         ? 0
         : await countOtherDevices(deviceId, since: since);
@@ -381,8 +390,8 @@ class HistoryRepo {
   ///
   /// Public since FB-38: a device-scoped VIEW hides these exactly as a
   /// device-scoped EXPORT does, and the screen has to be able to say so. The
-  /// export has admitted it since design 0019; leaving the screen silent would
-  /// just relocate FB-21 rather than fix it.
+  /// export already admits it in its header; leaving the screen silent would
+  /// just relocate the "where did my data go?" report rather than fix it.
   Future<int> countUnattributed({DateTime? since}) async {
     final where = <String>['device_id IS NULL'];
     final args = <Object?>[];
@@ -400,11 +409,12 @@ class HistoryRepo {
   /// Rows in range belonging to some OTHER unit than [deviceId] — the other
   /// half of the same silent loss [countUnattributed] covers.
   ///
-  /// design 0019 counted the rows with NO device and stopped there, but
-  /// [_scope] filters `device_id = ?`, which drops rows belonging to a
-  /// DIFFERENT unit just as completely — and unlike the unattributed ones,
-  /// those said nothing at all. A phone that has watched two packs exports one
-  /// of them and the CSV reads as though the other had never been connected.
+  /// The first pass at export completeness counted the rows with NO device and
+  /// stopped there, but [_scope] filters `device_id = ?`, which drops rows
+  /// belonging to a DIFFERENT unit just as completely — and unlike the
+  /// unattributed ones, those said nothing at all. A phone that has watched two
+  /// packs exports one of them and the CSV reads as though the other had never
+  /// been connected.
   ///
   /// Reported separately from [countUnattributed], never summed: "recorded
   /// before we knew the unit" and "belongs to a different unit" are different
@@ -444,8 +454,8 @@ class HistoryRepo {
     final devices =
         raw.map((m) => m['device_id'] as String?).whereType<String>().toSet();
     final unattributed = raw.any((m) => m['device_id'] == null);
-    // Which build(s) RECORDED these rows (design 0010). Listed because it is
-    // routinely different from the exporting build named in the preamble, and
+    // Which build(s) RECORDED these rows. Listed because it is routinely
+    // different from the exporting build named in the preamble, and
     // a reader who conflates the two draws wrong conclusions from missing data.
     final builds = raw
         .map((m) => m['app_build'] as String?)

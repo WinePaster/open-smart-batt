@@ -13,9 +13,11 @@
 //   11:30:26.822  connected → 11:30:28.154 ready → 11:30:28.246 0x10=22
 //
 // Fix A (owner's call, 2026-07-31): let the SAVED class seed routing. The
-// design 0001 §3.1 invariant "a guess never picks a layout" survives only
-// because a stored `powerBank` cannot be a guess — see the third group below,
-// which is the test that would catch someone widening the picker.
+// standing invariant "a guess never picks a layout" survives only because a
+// stored `powerBank` cannot be a guess: the class-override picker offers pack
+// classes only, so nothing but a 0x22 wire byte can have put it there — see the
+// third group below, which is the test that would catch someone widening the
+// picker.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/protocol/protocol.dart';
@@ -93,7 +95,7 @@ void main() {
     });
   });
 
-  group("the user's guess still cannot pick a layout (design 0001 §3.1)", () {
+  group("the user's guess still cannot pick a layout", () {
     test('an override routes nowhere, however emphatic', () {
       final resolver = PackClassResolver()..markConnected(DateTime.now());
       resolver.setOverride(ProductClass.powerBank);

@@ -1,4 +1,5 @@
-/// OpenSmartBatt — which app build is running (design 0010).
+/// OpenSmartBatt — which app build is running, so every recorded row can be
+/// stamped with the version that wrote it rather than the one that exported it.
 ///
 /// Lives in `state/`, not `models/`: it depends on a Flutter plugin, and the
 /// models layer is documented as pure Dart with no Flutter imports.

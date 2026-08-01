@@ -1,4 +1,5 @@
-/// OpenSmartBatt — product-class resolver (design 0007).
+/// OpenSmartBatt — product-class resolver: what kind of unit is on the other
+/// end of this link, answered from the wire and never inferred.
 ///
 /// PURE Dart (no Flutter imports) so it is trivially unit-testable.
 ///

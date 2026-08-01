@@ -1,6 +1,6 @@
-// design 0010 — every row remembers the build that RECORDED it.
+// Every row remembers the build that RECORDED it.
 //
-// design 0009's preamble names the build that pressed export, which is a
+// The export preamble names the build that pressed export, which is a
 // different thing: these tables accumulate across upgrades. The 2026-07-27
 // field log proves the gap — its header says `app: 0.6.7+2109` while its first
 // section is a 2026-07-06 connection, recorded weeks earlier by a much older

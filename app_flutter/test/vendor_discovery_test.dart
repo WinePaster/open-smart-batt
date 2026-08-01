@@ -1,4 +1,4 @@
-// Finding vendor hardware in a crowded scan (FB-24 / FB-25, design 0015).
+// Finding vendor hardware in a crowded scan (FB-24 / FB-25).
 //
 // A dealer reported that one of his two power banks "cannot be found", while
 // the vendor's own app listed both. Our scan does not drop anything — it tags
@@ -47,8 +47,10 @@ void main() {
     });
 
     test('CJK counts as a separator, so a mixed alias still matches', () {
-      // Users rename devices; one field CSV carried 'RSPB-01行動電源'.
-      expect(looksLikeVendorName('RSPB-01行動電源'), isTrue);
+      // Users rename devices, and a field CSV has arrived with the vendor token
+      // followed by a CJK label the owner typed. The label text is irrelevant —
+      // what matters is that the boundary between them is not whitespace.
+      expect(looksLikeVendorName('RSPB-01自訂名稱'), isTrue);
     });
 
     test('does NOT match English words that merely contain "rce"', () {

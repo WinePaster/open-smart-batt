@@ -1,11 +1,16 @@
 /// OpenSmartBatt — product-class model (single source of truth for routing).
 ///
-/// PURE Dart (no Flutter imports). Design 0004 §3.1 (revising 0001 §3.1): the
-/// invariant is refined from "label never picks a layout" to **gating (soft:
-/// show/hide buttons) ≠ routing (hard: pick a layout)**.
+/// PURE Dart (no Flutter imports).
 ///
-/// Design 0007: ALL THREE device-type bytes are now wire-verified, so the class
-/// is read off the wire and never inferred:
+/// The standing invariant is **gating (soft: show/hide buttons) ≠ routing
+/// (hard: pick a layout)**. It started life as the blunter "a label never picks
+/// a layout" and was refined once the two were seen to fail differently: every
+/// gated control is read-only or auth-gated, so gating on weaker evidence is
+/// bounded, whereas routing on weaker evidence renders one product's numbers in
+/// another product's units.
+///
+/// ALL THREE device-type bytes are wire-verified, so the class is read off the
+/// wire and never inferred:
 ///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§9);
 ///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
 ///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27).
@@ -35,8 +40,10 @@ const int kSmartBatteryDeviceType = 0x02;
 /// wire-verified 2026-07-27 on a 旗艦電容 the owner confirmed by hand
 /// (a 2026-07-27 field capture: 488 `0x10` frames, payload `17`, no other value).
 ///
-/// Design 0004 §3.1 withheld this mapping "until a capacitor 0x10 capture
-/// confirms it"; design 0007 lands it because that capture now exists. Other
+/// This mapping was deliberately withheld — 0x17 was left falling through to
+/// [unknown] — under a written condition: "not until a capacitor 0x10 capture
+/// confirms it". It lands here because that capture now exists, which is the
+/// condition being met rather than waived. Other
 /// capacitor models are ASSUMED to share the byte (owner's call) — an unverified
 /// model reporting something else falls to [unknown], never to a wrong class.
 const int kSuperCapacitorDeviceType = 0x17;
@@ -47,7 +54,7 @@ enum ProductClass {
   /// view via the deterministic [isPowerBank] signal.
   powerBank,
 
-  /// Super-capacitor pack — device-type 0x17 (verified 2026-07-27, design 0007).
+  /// Super-capacitor pack — device-type 0x17 (wire-verified 2026-07-27).
   /// A DETERMINISTIC class: it gates controls (檢測電容 only) straight from the
   /// wire byte. Shares the pack shell with [smartBattery].
   supercapacitor,
@@ -58,23 +65,24 @@ enum ProductClass {
   smartBattery,
 
   /// Not yet determined: no device-type frame seen yet, or a byte this build
-  /// does not recognise. The user resolves it (design 0007) — nothing is
-  /// inferred from telemetry.
+  /// does not recognise. The user resolves it — nothing is inferred from
+  /// telemetry, because not guessing cannot guess wrong.
   unknown;
 
   /// True only for [powerBank] — the sole deterministic *routing* signal that
-  /// selects the power-bank view. (Design 0004 §3.1: [smartBattery] is also
-  /// deterministic from 0x02, but it is a pack and shares the pack shell.)
+  /// selects the power-bank view. ([smartBattery] is just as deterministic,
+  /// from 0x02, but it is a pack and shares the pack shell, so it needs no
+  /// routing signal of its own.)
   bool get isPowerBank => this == ProductClass.powerBank;
 
   /// Maps a device-type byte (selector 0x10 b4) to a class. Deterministic:
   ///   * 0x22 => [powerBank] (verified);
   ///   * 0x02 => [smartBattery] (verified on a car battery — see
   ///     [kSmartBatteryDeviceType]);
-  ///   * 0x17 => [supercapacitor] (verified 2026-07-27 — design 0007);
+  ///   * 0x17 => [supercapacitor] (wire-verified 2026-07-27);
   ///   * every other value => [unknown], which the UI presents as "unclassified"
   ///     and lets the user resolve. All three classes now have a wire-verified
-  ///     byte, so nothing is inferred from telemetry any more (design 0007).
+  ///     byte, so nothing is inferred from telemetry any more.
   static ProductClass fromDeviceType(int? deviceType) {
     switch (deviceType) {
       case kPowerBankDeviceType:
@@ -93,7 +101,8 @@ enum ProductClass {
   String get storageKey => name;
 
   /// Inverse of [storageKey]; unknown/absent keys default to [unknown] so
-  /// pre-migration rows (design 0001 §5 Phase 5) read back safely.
+  /// rows written before `saved_devices` gained a `product_class` column read
+  /// back safely.
   static ProductClass fromStorageKey(String? key) {
     for (final c in ProductClass.values) {
       if (c.name == key) return c;

@@ -1,14 +1,22 @@
 /// OpenSmartBatt — shared primitives for the split protection controls.
 ///
-/// Design 0004 §3.4 splits `StatusControls` into per-class control bodies
-/// ([CapacitorControls] / [BatteryControls]) plus the [unknown]-fallback
-/// [PackControls]. The badges, buttons, advisory note, status interpretation and
-/// the (auth-gated) action handlers are shared here so the bodies differ ONLY in
-/// which badges/buttons they compose — no chrome is duplicated.
+/// The protection card has one body per product class ([CapacitorControls] /
+/// [BatteryControls]) plus the unknown-class fallback [PackControls], because a
+/// capacitor and a battery do not have the same controls. The badges, buttons,
+/// advisory note, status interpretation and the action handlers all live here,
+/// so the bodies differ ONLY in which of them they compose — no chrome is
+/// duplicated and no body can quietly grow its own variant of a status rule.
 ///
-/// SAFETY: the destructive paths are unchanged from the pre-split widget — only
-/// documented release (mode 0x06 + auth) is auto-buildable; anti-theft is warned
-/// + user-confirmed; both go through the per-device auth dialog.
+/// SAFETY, and it is not symmetric:
+///   * 復電 ([releaseCutOff]) writes "normal" (mode 0x00) and moves a pack
+///     TOWARD running. One confirmation, no auth frame — see its doc for why
+///     the password was removed.
+///   * 斷電 ([cutOff]) and 防盜 ([antiTheft]) move a pack AWAY from running and
+///     can leave a vehicle unable to start. Both require an explicit risk
+///     confirmation and then the per-device auth dialog. In this build 斷電 has
+///     no button anywhere; see [cutOff].
+/// The gating helpers below encode the same lean: never refuse the way back,
+/// never offer the way out on a device we cannot read.
 library;
 
 import 'package:flutter/material.dart';
@@ -65,7 +73,7 @@ class RunStatus {
 /// [packRunModeOf] for why a bitmask is wrong here.
 bool isCutOffMode(int? mode) => packRunModeOf(mode) == PackRunMode.cutOff;
 
-/// May we offer 斷電 (mode 0x02)? — design 0020 §3.1 (FB-35).
+/// May we offer 斷電 (mode 0x02)?
 ///
 /// ONLY when the device positively reports normal. Every other case — cut-off,
 /// anti-theft, and a byte we cannot place in the pack space at all — is refused:
@@ -73,18 +81,19 @@ bool isCutOffMode(int? mode) => packRunModeOf(mode) == PackRunMode.cutOff;
 bool cutOffActionEnabled(int? mode) =>
     packRunModeOf(mode) == PackRunMode.normal;
 
-/// May we offer 解除斷電 (mode 0x06)? — design 0020 §3.1 (FB-34).
+/// May we offer 復電 (write "normal")?
 ///
 /// The MIRROR of [cutOffActionEnabled], and deliberately NOT its negation-plus-
 /// unknown: an unreadable state leaves release ENABLED. The asymmetry is the
 /// whole point — refusing the release on a device we cannot read risks locking
 /// an owner out of their vehicle, while the cost of the opposite mistake is one
-/// wasted write.
+/// wasted write. These are two separate functions rather than one bool and its
+/// negation precisely so that asymmetry is visible in the types and testable.
 ///
-/// FB-34: this used to be unconditional, so a battery reporting `normal` still
-/// offered a large red 解除斷電 button that could not possibly do anything, and
-/// reported "sent" when pressed. That is exactly what a field report described:
-/// the cut-off function was tried, and nothing happened.
+/// This used to be unconditional, so a battery reporting `normal` still offered
+/// a large red button that could not possibly do anything, and reported "sent"
+/// when pressed. That is exactly what a field report described: the function
+/// was tried, and nothing happened.
 bool releaseActionEnabled(int? mode) =>
     packRunModeOf(mode) != PackRunMode.normal;
 
@@ -159,12 +168,14 @@ void detectCapacitor(BuildContext context, TelemetryController tele) {
 
 /// Watch `0x23` after a mode write and report what actually happened.
 ///
-/// Design 0024 §2.2. Until today every mode write reported "sent" and stopped
-/// there, because the wire carries no acknowledgement — but `0x23` streams at
-/// roughly 1 Hz, so the device's own answer arrives within seconds if we simply
-/// look. This turns each attempt into evidence, which matters while the release
-/// code itself is unproven: eight writes of the previous code changed nothing,
-/// and nobody could tell from the app.
+/// Every mode write used to report "sent" and stop there, because the wire
+/// carries no acknowledgement — but `0x23` streams at roughly 1 Hz, so the
+/// device's own answer arrives within seconds if we simply look. Six seconds at
+/// 500 ms gives about six samples of a ~1 Hz register.
+///
+/// This turns each attempt into evidence, which matters while the release code
+/// itself is unproven: eight writes of the previous code, across two packs,
+/// changed nothing, and nobody could tell that from the app.
 ///
 /// Reports "unchanged", never "failed". A device that ignored the write and one
 /// that was never in that state look identical from here, and we do not know
@@ -259,14 +270,19 @@ Future<void> releaseCutOff(
   }
 }
 
-/// 斷電 — manual cut-off (mode 0x02 + auth). Design 0020 Phase 2 (FB-35).
+/// 斷電 — manual cut-off (mode 0x02 + auth).
 ///
-/// SAFETY: this is the app's first outbound command that can immobilise a
-/// vehicle, and the release path that would undo it is **not proven to work**
-/// (design 0020 §7 Q1 + FB-36). Two gates stand in front of it: an explicit
-/// risk confirmation that names that specific consequence, then the same
-/// per-device auth dialog anti-theft uses. The caller additionally gates the
-/// button on [cutOffActionEnabled].
+/// ⚠️ NO BUTTON IN THIS BUILD invokes this. It is kept, tested and gated so the
+/// distributor build can wire it up without anyone re-deriving a destructive
+/// path from scratch — that is how such a path comes back less careful. The
+/// public app deliberately only ever moves a pack toward normal.
+///
+/// SAFETY: this is the app's only outbound command that can immobilise a
+/// vehicle, and the release path that would undo it is **not proven to work** —
+/// no capture in hand shows any pack responding to a mode write. Two gates
+/// stand in front of it: an explicit risk confirmation naming that specific
+/// consequence, then the same per-device auth dialog anti-theft uses. A caller
+/// that adds a button must additionally gate it on [cutOffActionEnabled].
 Future<void> cutOff(BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
@@ -370,7 +386,8 @@ Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
       await conn.switchMode(ModeArg.antiTheft,
           cb: req.creds!.cb, pwSum: req.creds!.pwSum);
     }
-    // All three mode writes go through the same verification (design 0024 §2.3).
+    // All three mode writes (復電 / 斷電 / 防盜) share one verification path, so
+    // none of them can regress to reporting "sent" without looking.
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 3600),
       content: Text(await _modeWriteOutcome(l10n, tele,

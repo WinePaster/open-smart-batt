@@ -1,18 +1,21 @@
 /// OpenSmartBatt — USB dual-port status (power-bank "Command 7" frame).
 ///
-/// SCAFFOLD ONLY (design 0001 §5 Phase 4). Renders the Type-A and Type-C port
-/// tiles from the port-status fields on [TelemetrySample]
-/// ([TelemetrySample.isTypeAOutput], [TelemetrySample.isTypeCOutput],
-/// [TelemetrySample.inputFastChargeType], [TelemetrySample.outputFastChargeType]).
+/// SCAFFOLD ONLY — the widget is wired up, the decode behind it is not.
+/// Renders the Type-A and Type-C port tiles from the port-status fields on
+/// [TelemetrySample] ([TelemetrySample.isTypeAOutput],
+/// [TelemetrySample.isTypeCOutput], [TelemetrySample.inputFastChargeType],
+/// [TelemetrySample.outputFastChargeType]).
 ///
-/// TODO(design 0001 §7 Q1 / PROTOCOL.md §9.1): those fields are NOT yet
-/// populated — the exact "Command 7" SELECTOR value and the bit offsets of the
-/// supply bits + input/output fast-charge value fields are UNKNOWN pending a
-/// live `!#` capture on a power bank. The value→label tables (PD / QC / FCP / …)
-/// are certain, but the bit positions are not, so the decoder deliberately
-/// leaves these fields NULL (see TelemetryDecoder.applyPortStatus). Until the
-/// wire layout is pinned down we render a clear neutral / UNKNOWN state and do
-/// NOT fabricate supply or protocol readings.
+/// TODO (see PROTOCOL.md §9.1): those fields are NOT yet populated — the exact
+/// "Command 7" SELECTOR value and the bit offsets of the supply bits +
+/// input/output fast-charge value fields are UNKNOWN. Pinning them down needs a
+/// capture taken while different USB loads are plugged and unplugged, on a build
+/// that sends the extended `!#` poll; a power bank does not volunteer these
+/// frames otherwise. The value→label tables (PD / QC / FCP / …) are certain, but
+/// the bit positions are not, so the decoder deliberately leaves these fields
+/// NULL (see TelemetryDecoder.applyPortStatus). Until the wire layout is pinned
+/// down we render a clear neutral / UNKNOWN state and do NOT fabricate supply or
+/// protocol readings.
 library;
 
 import 'package:flutter/material.dart';
@@ -41,7 +44,7 @@ class UsbPortWidget extends StatelessWidget {
               child: _PortTile(
                 icon: Icons.usb,
                 name: l10n.usbPortTypeA,
-                // TODO(design 0001 §7 Q1): supply bit not yet decoded → null.
+                // TODO: supply bit not yet decoded → always null for now.
                 isOutput: sample.isTypeAOutput,
               ),
             ),
@@ -50,7 +53,7 @@ class UsbPortWidget extends StatelessWidget {
               child: _PortTile(
                 icon: Icons.usb_rounded,
                 name: l10n.usbPortTypeC,
-                // TODO(design 0001 §7 Q1): supply bit not yet decoded → null.
+                // TODO: supply bit not yet decoded → always null for now.
                 isOutput: sample.isTypeCOutput,
               ),
             ),

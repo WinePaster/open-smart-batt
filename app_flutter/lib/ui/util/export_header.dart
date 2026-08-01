@@ -1,4 +1,4 @@
-/// OpenSmartBatt — export provenance preamble (design 0009 §3.1).
+/// OpenSmartBatt — export provenance preamble.
 ///
 /// Every exported file should be able to answer "which build produced this,
 /// on what platform, covering what?" without the reader having to guess. The
@@ -7,9 +7,10 @@
 /// (no keep-alive write ⇒ no metadata burst) as a hardware limitation.
 ///
 /// PURE formatting only. The build/platform lookup lives in
-/// `state/build_info.dart` and is resolved once at startup by `AppServices`
-/// (design 0010), so an export never waits on a plugin channel — and the
-/// preamble names the same build the rows were stamped with.
+/// `state/build_info.dart` and is resolved once at startup by `AppServices`,
+/// so an export never waits on a plugin channel — and the preamble necessarily
+/// names the same build the rows were stamped with, rather than re-reading the
+/// plugin and possibly disagreeing with them.
 library;
 
 import 'export_scope.dart';

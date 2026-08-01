@@ -1,4 +1,4 @@
-/// OpenSmartBatt — "which unit am I exporting?" (design 0006 §3.4).
+/// OpenSmartBatt — "which unit am I exporting?"
 ///
 /// The dealer runs several units through the same phone, so an export has to
 /// say which one it covers — both in the rows it contains and in the filename.
@@ -91,7 +91,8 @@ ExportTarget? currentDeviceTarget(
 /// The stored product class for one `device_id`, or [ProductClass.unknown].
 ///
 /// Used by the CSV export to blank the current column for a super-capacitor,
-/// which reports a permanent 0.0 A it cannot actually measure (design 0007).
+/// which streams a permanent 0.0 A it cannot actually measure. Exporting that
+/// zero would state, as fact, that the unit is drawing no current.
 ProductClass deviceClassFor(DeviceController devices, String? deviceId) {
   if (deviceId == null) return ProductClass.unknown;
   return devices.deviceFor(deviceId)?.productClass ?? ProductClass.unknown;

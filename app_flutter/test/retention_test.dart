@@ -1,4 +1,4 @@
-// design 0011 — retention replaces the auto-log switch.
+// Retention replaces the auto-log switch.
 //
 // The switch's only effect was whether history rows were written at all, so the
 // people who turned it off were exactly the people who later could not produce

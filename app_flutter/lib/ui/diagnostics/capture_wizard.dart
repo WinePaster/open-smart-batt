@@ -1,4 +1,4 @@
-/// OpenSmartBatt — guided capture run (design 0013 Phase 2).
+/// OpenSmartBatt — guided capture run.
 ///
 /// Single marks (the dashboard bar) cover a spontaneous observation. This walks
 /// someone through the whole differential script instead, and its real value is
@@ -11,8 +11,8 @@
 /// the analysis side gets a span rather than a start, and writes an explicit
 /// `mark: skipped |` line for steps the user passes over. "The user skipped
 /// this" and "the data is missing" are different facts, and only one of them is
-/// a reason to ask for a re-capture (the same distinction design 0009 drew for
-/// exports).
+/// a reason to ask for a re-capture — the same distinction the export headers
+/// draw when they count the rows they left out.
 ///
 /// Raw packet logging is switched on for the duration and RESTORED afterwards:
 /// marks without packets correlate with nothing, but silently leaving a

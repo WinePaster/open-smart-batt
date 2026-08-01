@@ -228,7 +228,8 @@ void main() {
     });
 
     test('the csv column set still carries twf, at an unmoved index', () {
-      // Recipients build spreadsheets on this order (design 0006).
+      // Recipients build spreadsheets on this order, so new columns are only
+      // ever appended and existing ones never move.
       expect(HistoryRepo.csvColumns.contains('twf'), isTrue);
       expect(HistoryRepo.csvColumns.indexOf('twf'),
           HistoryRepo.csvColumns.indexOf('twf'));

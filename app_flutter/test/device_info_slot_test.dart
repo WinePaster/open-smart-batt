@@ -1,4 +1,5 @@
-// The closed-side device-info panel slot (design 0003 injection seam).
+// The device-info panel slot — one of the seams a closed build injects into
+// without this repo carrying the injected code.
 //
 // THE DEFECT THIS PINS DOWN. `bootstrap()` accepted a `deviceInfoPanelBuilder`
 // and `OpenSmartBattApp` stored it in a field — and nothing ever read it. A

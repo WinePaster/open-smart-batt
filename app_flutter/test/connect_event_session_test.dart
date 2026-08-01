@@ -1,6 +1,6 @@
 // `connect → X` must not carry the INCUMBENT connection's session id.
 //
-// Regression from `93e967a` (design 0019), shipped in v0.6.12 — confirmed with
+// Regression from `93e967a`, shipped in v0.6.12 — confirmed with
 // `git tag --contains 93e967a`. That commit gave `_event` a `deviceId` override
 // so `connect → X` and its two failure lines could name their target before a
 // session exists, and its doc comment stated the row "does NOT open a session:
@@ -207,7 +207,7 @@ void main() {
       labelFor: (id) => id == 'YY' ? 'rear-batt' : 'front-cap',
     );
     // Matched on substrings, not on whole lines: the label also carries
-    // `app=<build>` (design 0010), which is `unknown` on a test host.
+    // the recording build, which is `unknown` on a test host.
     final separators =
         out.split('\n').where((l) => l.startsWith('# ----')).toList();
     expect(separators, hasLength(2));

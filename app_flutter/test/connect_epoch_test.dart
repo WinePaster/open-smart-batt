@@ -1,4 +1,6 @@
-// Design 0021 — connection-setup timeout (FB-23) and epoch guard (FB-39).
+// Connection-setup timeout (FB-23) and epoch guard (FB-39): own the timeout
+// rather than inheriting the BLE plugin's, and make a late callback from a
+// superseded connection attempt unable to touch the current one.
 //
 // THE CAPTURE THIS PINS DOWN. A 2026-07-30 field capture, 18:15–18:17:
 //

@@ -127,13 +127,21 @@ class TelemetryDecoder {
 
   /// USB dual-port status — the power-bank "Command 7" frame (PROTOCOL.md §9.1).
   ///
-  /// TODO(design 0001 §7 Q1): the exact SELECTOR value AND the bit offsets of
-  /// the Type-A/Type-C supply bits and the input/output fast-charge value fields
-  /// are UNKNOWN pending a live `!#` capture on a power bank (the value->label
-  /// tables in PROTOCOL.md §9.1 are certain, but the bit positions are not).
-  /// We deliberately do NOT decode here — returning [base] unchanged — rather
-  /// than invent bit positions. Wire this up (and add a case in [apply]) once
-  /// the selector + bit layout is confirmed.
+  /// TODO(port-status): DEAD CODE — nothing calls this, and it is not reached
+  /// from [apply].
+  ///
+  /// It was written when neither the selector carrying port status nor its bit
+  /// offsets were known, and it deliberately decodes nothing rather than invent
+  /// bit positions. The selector question has since been answered elsewhere:
+  /// the bits live in 0x4B byte b7 (PROTOCOL.md §9.1), where bit1 = Type-C,
+  /// bit2 = output active, bit3 = PD input and bit5 = PD output; bit0 and bit4
+  /// are still open. See the USB dual-port fields on [TelemetrySample] for why
+  /// they are nonetheless still NULL — port and direction have to be decided
+  /// together, so the remaining work is a view change, not a decode change.
+  ///
+  /// Note the value->label tables in PROTOCOL.md §9.1 that these four fields
+  /// were shaped around are themselves unverified, so do not treat reaching
+  /// them as the end of the job.
   static TelemetrySample applyPortStatus(
     TelemetrySample base,
     InboundFrame f, {
@@ -241,10 +249,11 @@ class TelemetryDecoder {
           chargeV2: scaled1000(f, 6),
         );
       case Selectors.discharge:
-        // Same 4 bytes, two readings — this is the per-class register map
-        // (design 0007 made the class deterministic off the 0x10 byte, which
+        // Same 4 bytes, two readings — this selector means different things on
+        // different product classes. Gating on the class is safe because the
+        // class itself is deterministic (the 0x10 device-type byte), and 0x10
         // arrives EARLIER in the same burst than 0x4A, so the gate is settled
-        // by the time we get here).
+        // by the time we get here.
         //
         // But "earlier in the burst" is an observation, not a guarantee: a
         // truncated connect burst leaves the class unresolved, and eight such
@@ -252,8 +261,9 @@ class TelemetryDecoder {
         // below would run on a power bank and read 3955 mV / 1081 mA as
         // "3.955 / 1.081" — two numbers that look entirely reasonable. That is
         // the FB-22 failure mode exactly: a class-agnostic formula on an
-        // unattributed frame. design 0012 §5 says both 0x4A and 0x4B no-op
-        // while the class is unknown; 0x4B did and this did not.
+        // unattributed frame. The rule is that BOTH 0x4A and 0x4B no-op while
+        // the class is unknown — blank beats a plausible wrong number; 0x4B
+        // already did and this one did not.
         if (base.deviceType == null) return base;
         if (base.isPowerBank) {
           // `[u16 mV][u16 mA]`. Only the current is taken: the mV field tracks

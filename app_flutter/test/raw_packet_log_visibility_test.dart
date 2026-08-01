@@ -1,9 +1,9 @@
-// Design 0023 — make the raw-packet-log switch visible (FB-32).
+// Make the raw-packet-log switch visible (FB-32).
 //
 // THE CAPTURE THIS PINS DOWN. A 2026-07-30 field capture arrived holding one
 // line of content:
 //
-//   # ---- device=RCE鋰鐵電池 session=1 app=0.6.11+26072909 ----
+//   # ---- device=<unit> session=1 app=0.6.11+26072909 ----
 //   2026-07-30T17:54:19.088 EVT  # link: ready
 //
 // beside a CSV with 366 samples from the same minute. Telemetry was flowing;
@@ -70,7 +70,7 @@ void main() {
     });
   });
 
-  group('format compatibility (design 0023 G3)', () {
+  group('format compatibility: the preamble may only grow at the end', () {
     test('the existing four lines keep their exact order and position', () {
       // Eleven collected batches are parsed with scripts written against this
       // preamble. A new line may be appended; nothing above it may move.

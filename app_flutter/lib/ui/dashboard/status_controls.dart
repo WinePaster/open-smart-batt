@@ -1,14 +1,16 @@
 /// OpenSmartBatt — per-class protection controls (mockup 防護狀態 / 模式).
 ///
-/// Design 0004 §3.4 splits the old single `StatusControls` into class-specific
-/// bodies so a capacitor and a battery show the controls they actually have
-/// (per the project's internal device capability matrix):
+/// One `StatusControls` used to serve every pack, which meant a capacitor and a
+/// battery were handed the same buttons. They are different hardware: a
+/// capacitor has no run mode, so cut-off and anti-theft do not exist for it,
+/// while a battery has no capacitor to self-check. The control set is therefore
+/// split per class — see [DeviceCapabilities] for the authoritative matrix:
 ///   * [CapacitorControls] — capacitor-health badge + 檢測電容 (read-only).
-///   * [BatteryControls]  — cut-off badge + 解除斷電 (auth-gated) + 防盜
-///     (model-gated, warned + confirmed).
+///   * [BatteryControls]  — cut-off badge + 復電 (confirmed, no auth) + 防盜
+///     (model-gated, warned + auth-gated).
 ///   * [PackControls]     — the bounded [DeviceCapabilities.unknown] fallback
 ///     used while a pack is still being classified: the union of the two above
-///     EXCEPT anti-theft (design 0004 §3.3).
+///     EXCEPT anti-theft.
 ///
 /// The bodies are driven by an EXPLICIT widget choice (which body the pack shell
 /// builds), not by reading `caps.*` booleans — except the two genuinely
@@ -29,7 +31,7 @@ import 'status_controls_shared.dart';
 // Capacitor body: health badge + 檢測電容 (read-only).
 // ---------------------------------------------------------------------------
 
-/// Protection card body for a super-capacitor (design 0004 §3.4).
+/// Protection card body for a super-capacitor.
 class CapacitorControls extends StatelessWidget {
   const CapacitorControls({super.key});
 
@@ -98,7 +100,7 @@ class CapacitorControls extends StatelessWidget {
 // Battery body: cut-off badge + 解除斷電 + 防盜 (model-gated).
 // ---------------------------------------------------------------------------
 
-/// Protection card body for a smart battery (design 0004 §3.4).
+/// Protection card body for a smart battery.
 class BatteryControls extends StatelessWidget {
   const BatteryControls({super.key});
 
@@ -107,8 +109,11 @@ class BatteryControls extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final tele = context.watch<TelemetryController>();
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
-    // Anti-theft is genuinely model-gated (design 0004 §3.2) — the only caps.*
-    // bit this body still consults.
+    // Anti-theft is genuinely model-gated — some battery models have the
+    // hardware and some do not, and nothing on the wire says which. It is the
+    // only caps.* bit this body still consults; everything else about which
+    // controls belong here is already decided by WHICH body the pack shell
+    // built.
     final hasAntiTheft = context
         .select<ConnectionController, bool>((c) => c.capabilities.hasAntiTheft);
 
@@ -117,15 +122,18 @@ class BatteryControls extends StatelessWidget {
     // Named `isCutOff`, not `cutOff`: the latter now shadows the cut-off action
     // this body invokes.
     final isCutOff = isCutOffMode(tele.mode);
-    // Design 0020 §3.1 (FB-34). `cutOffActionEnabled` is not consulted here —
-    // this build has no cut-off button (§9).
+    // See `releaseActionEnabled` for the gate's asymmetry and why it leans the
+    // way it does. `cutOffActionEnabled` is deliberately NOT consulted here —
+    // this build ships no cut-off button at all (see the note below).
     final canRelease = releaseActionEnabled(tele.mode);
     // FB-30. This body was the ONLY one of the three that never consulted
     // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
     // over-temperature limits IT REPORTED (0x2B) said nothing at all, while a
-    // capacitor and an unclassified pack both did. The gap mattered more after
-    // design 0018 removed the device-reported fault banner: between the two,
-    // a battery had no abnormality signal of any kind left.
+    // capacitor and an unclassified pack both did. The gap widened when the
+    // device-reported fault banner was removed — the bit it fired on turned out
+    // to mean "charging" on a power bank, and had never had any supporting
+    // evidence on a pack — leaving a battery with no abnormality signal of any
+    // kind. This line is the one that remains.
     //
     // The name is historical — the helper is a threshold comparison over
     // PVLT/temperature against the device's own thresholds, and is not
@@ -164,7 +172,7 @@ class BatteryControls extends StatelessWidget {
         ),
         const SizedBox(height: 13),
         // 🔴 The community build offers RELEASE ONLY (owner's decision,
-        // 2026-07-30 — design 0020 §9). Cut-off and anti-theft both leave a
+        // 2026-07-30). Cut-off and anti-theft both leave a
         // vehicle unable to start, and the path back is still unproven, so the
         // build that reaches the general public only ever moves a pack toward
         // normal. The `cutOff()` action and its gate stay in
@@ -199,8 +207,11 @@ class BatteryControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
-        // Design 0020 §3.2 — a disabled button must say why. Greying one out
-        // silently just relocates the confusion FB-34 was opened for. Only
+        // A disabled button must say why. The gate exists because the button
+        // used to be permanently live and report "command sent" against packs
+        // that were already running normally — nothing could change, and the
+        // user was told nothing had gone wrong either. Greying it out without a
+        // reason would just move that confusion one step earlier. Only
         // shown while online: offline, everything is disabled for one obvious
         // reason and repeating it per-button is noise.
         if (online && !canRelease) ...[
@@ -221,13 +232,17 @@ class BatteryControls extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Fallback body: bounded union for an unclassified pack (design 0004 §3.3).
+// Fallback body: bounded union for an unclassified pack.
 // ---------------------------------------------------------------------------
 
 /// Protection card body for a pack that has not been classified yet: shows the
-/// UNION of pack controls EXCEPT anti-theft, gated by [DeviceCapabilities.unknown]
-/// (design 0004 §3.3). Converges to [CapacitorControls] / [BatteryControls] the
-/// moment the cosmetic label resolves.
+/// UNION of pack controls EXCEPT anti-theft, gated by
+/// [DeviceCapabilities.unknown]. Lenient rather than empty, because every
+/// control in that union is read-only or auth-gated, so the worst case is an
+/// offered button that does nothing — whereas hiding everything would leave a
+/// battery that needs 復電 with no way to ask for it. Converges to
+/// [CapacitorControls] / [BatteryControls] the moment the cosmetic label
+/// resolves.
 class PackControls extends StatelessWidget {
   const PackControls({super.key});
 
@@ -243,11 +258,11 @@ class PackControls extends StatelessWidget {
     final known = packRunModeOf(tele.mode) != null;
     final thresholdBreach = readingBreachesThreshold(tele);
     final cutOff = isCutOffMode(tele.mode);
-    // Design 0020 §3.1 applies here too. There is deliberately NO 斷電 button in
-    // this body (design 0020 §7 Q3, ruled 2026-07-30): an unclassified pack is
-    // one whose device type we could not even read, and sending it a command
-    // that can immobilise a vehicle has no justification. Release stays — it is
-    // the escape hatch, and this body already offered it.
+    // The same asymmetric gate as the battery body. There is deliberately NO
+    // 斷電 button in this body (owner's ruling, 2026-07-30): an unclassified
+    // pack is one whose device type we could not even read, and sending it a
+    // command that can immobilise a vehicle has no justification. Release
+    // stays — it is the escape hatch, and this body already offered it.
     final canRelease = releaseActionEnabled(tele.mode);
 
     return Column(

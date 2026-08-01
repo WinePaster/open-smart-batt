@@ -1,4 +1,4 @@
-// design 0006 — per-device log/history attribution + identifiable exports.
+// Per-device log/history attribution + identifiable exports.
 //
 // Covers the three things that can silently go wrong:
 //   1. the v4→v5 migration (real users upgrade in place; losing or
@@ -160,7 +160,8 @@ void main() {
     });
 
     test('a capacitor exports no current — it cannot measure one', () async {
-      // The unit streams 0x2E pinned at 0.0 A (design 0007). The dashboard
+      // The unit streams 0x2E pinned at 0.0 A even though it has no current
+      // sensor — the register's presence says nothing. The dashboard
       // hides that readout; exporting "0.0" would tell the recipient the pack
       // is drawing no current, which the device never claimed.
       final repo = HistoryRepo(appDb.db);

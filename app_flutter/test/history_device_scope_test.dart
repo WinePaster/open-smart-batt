@@ -1,4 +1,6 @@
-// Design 0022 — device scope on the History screen (FB-38).
+// Device scope on the History screen (FB-38): the chart must plot one unit at a
+// time, because samples from different product classes share a voltage axis
+// they have no business sharing.
 //
 // THE REPORT THIS PINS DOWN. A 2026-07-30 field report: after reconnecting to
 // the capacitor, the voltage history "goes wrong". The data was not corrupt —

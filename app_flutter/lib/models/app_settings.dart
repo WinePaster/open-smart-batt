@@ -13,8 +13,7 @@ enum TempUnit { celsius, fahrenheit }
 /// [light].
 enum AppThemeMode { light, dark, auto }
 
-/// How long recorded telemetry history is kept (design 0011). DEFAULT
-/// [forever].
+/// How long recorded telemetry history is kept. DEFAULT [forever].
 ///
 /// This REPLACED an "auto-log" on/off switch. That switch's only effect was
 /// whether history rows were written at all, which made it the history
@@ -51,10 +50,15 @@ class AppSettings {
   final int pollIntervalMs;
 
   /// Keep monitoring while the app is backgrounded / the screen is off, via the
-  /// Android foreground service (design 0008). Defaults ON — without it the OS
-  /// freezes the process and telemetry stops, which is the whole problem.
+  /// Android foreground service. Defaults ON — without it the OS freezes the
+  /// process and telemetry stops, which is the whole problem.
   ///
-  /// No-op on iOS, which needs a different mechanism (design 0009).
+  /// No-op on iOS: there is no foreground service there, and the equivalent
+  /// (declaring the `bluetooth-central` background mode, plus whatever the
+  /// 1 Hz keep-alive timer has to become when iOS throttles background timers)
+  /// is not implemented. The settings row is rendered disabled on iOS rather
+  /// than hidden, and the value is still stored, so the choice survives if the
+  /// user later moves to Android or we do implement it.
   final bool backgroundMonitoring;
 
   /// Keep the *screen* from turning off while connected. Handy when the phone
@@ -74,8 +78,9 @@ class AppSettings {
   final TempUnit tempUnit;
 
   // --- data ---
-  /// How long history is kept. Telemetry is ALWAYS recorded while connected
-  /// (design 0011); this only decides when old rows are pruned.
+  /// How long history is kept. Telemetry is ALWAYS recorded while connected —
+  /// there is no longer a switch that stops it — and this only decides when old
+  /// rows are pruned.
   final RetentionPolicy retention;
 
   // --- diagnostics ---

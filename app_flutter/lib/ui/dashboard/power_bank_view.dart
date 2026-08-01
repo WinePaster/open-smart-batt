@@ -1,7 +1,9 @@
 /// OpenSmartBatt — power-bank dashboard view (RSPB, device-type 0x22).
 ///
-/// Design 0001 §3.4: a power bank routes here DETERMINISTICALLY (device-type
-/// 0x22). Its instrument is a percent-mode SOC ring fed DIRECTLY by the
+/// A power bank routes here DETERMINISTICALLY, on the device-type byte alone
+/// (0x22) — never on a name, a saved label or a register fingerprint, because a
+/// guess that picks the wrong view draws a single cell's voltage on a 12 V pack
+/// dial. Its instrument is a percent-mode SOC ring fed DIRECTLY by the
 /// device-reported state-of-charge (selector 0x96 b6 — there is NO voltage→SOC
 /// curve, PROTOCOL.md §9.1), alongside temperature + single-cell voltage
 /// readouts and the (scaffolded) USB dual-port status. A power bank has NO DVOL

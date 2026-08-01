@@ -1,4 +1,4 @@
-// design 0008 — the foreground service that keeps the process alive.
+// The foreground service that keeps the process alive.
 //
 // The stall these lock down is the one recorded in keepalive_stall_test.dart:
 // with the screen off Android freezes the process, the 1 Hz keep-alive stops
@@ -257,8 +257,8 @@ void main() {
     });
 
     test('drops fields the unit does not send', () {
-      // A super-capacitor reports no SOC (design 0007). Showing "—%" for it
-      // would read as a fault rather than as "not applicable".
+      // A super-capacitor reports no SOC at all. Showing "—%" for it would read
+      // as a fault rather than as "not applicable".
       expect(formatMonitorBody(sampleAt(pvlt: 13.0)), '13.0 V');
       expect(formatMonitorBody(sampleAt()), '');
     });
@@ -282,7 +282,7 @@ void main() {
     });
   });
 
-  group('settings split (design 0008 §3.5)', () {
+  group('settings split: background monitoring vs screen-awake', () {
     test('background monitoring defaults on, screen-awake stays off', () {
       // These are different things and used to share one key. Monitoring must
       // default on (the stall is the out-of-box experience without it); the

@@ -1,16 +1,21 @@
-// Unit tests for the per-class capability gating (design 0004 §3.2/§3.3).
+// Unit tests for the per-class capability gating.
 //
-// The corrected matrix (see [DeviceCapabilities]): a super-capacitor exposes ONLY
-// 檢測電容; a smart battery exposes 解除斷電 (+ model-gated 防盜); a power bank
-// exposes none; an unclassified pack shows the bounded fallback — the union of
-// pack controls EXCEPT anti-theft. DVOL is DATA-DRIVEN, not gated here (the old
-// supportsDvol getter was removed — §3.5/Q1).
+// The matrix these pin down (see [DeviceCapabilities]): a super-capacitor
+// exposes ONLY 檢測電容; a smart battery exposes 解除斷電 (+ model-gated 防盜);
+// a power bank exposes none; an unclassified pack shows the bounded fallback —
+// the union of pack controls EXCEPT anti-theft.
+//
+// The rows matter individually. Before the split, one `!isPowerBank` flag gated
+// all three, so a capacitor was offered controls for a run mode it does not
+// have. DVOL is DATA-DRIVEN and deliberately NOT gated here — the card renders
+// only when values arrive, so a `supportsDvol` getter would have been a second,
+// untested gate in front of a gate.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/models.dart'
     show DeviceCapabilities, ProductClass;
 
 void main() {
-  group('DeviceCapabilities per-class gating (design 0004 §3.2)', () {
+  group('DeviceCapabilities per-class gating', () {
     test('power bank: no pack controls', () {
       final c = DeviceCapabilities.fromClass(ProductClass.powerBank);
       expect(c.isPowerBank, isTrue);
@@ -68,7 +73,7 @@ void main() {
           ProductClass.powerBank);
       expect(DeviceCapabilities.fromDeviceType(0x02).productClass,
           ProductClass.smartBattery);
-      // 0x17 → supercapacitor since the 2026-07-27 wire capture (design 0007).
+      // 0x17 → supercapacitor since the 2026-07-27 wire capture.
       expect(DeviceCapabilities.fromDeviceType(0x17).productClass,
           ProductClass.supercapacitor);
       // Only an absent / unrecognised byte falls back to unknown.

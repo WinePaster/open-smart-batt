@@ -147,24 +147,25 @@ void main() {
     });
   });
 
-  group('ProductClass + DeviceCapabilities (design 0004 §3.1/§3.2)', () {
+  group('ProductClass + DeviceCapabilities — class from the wire byte', () {
     test('device-type: 0x22 => powerBank, 0x02 => smartBattery, else unknown',
         () {
       expect(ProductClass.fromDeviceType(0x22), ProductClass.powerBank);
       expect(ProductClass.fromDeviceType(0x22).isPowerBank, isTrue);
-      // 0x02 is the wire-verified smart battery (design 0004 §3.1).
+      // 0x02 is the wire-verified smart battery.
       expect(ProductClass.fromDeviceType(0x02), ProductClass.smartBattery);
       expect(ProductClass.fromDeviceType(0x02).isPowerBank, isFalse);
-      // 0x17 is the wire-verified super-capacitor since 2026-07-27 (design 0007,
-      // which lands the mapping 0004 §3.1 deferred until a capture existed).
+      // 0x17 is the wire-verified super-capacitor since 2026-07-27. It was
+      // deliberately left unmapped until a capacitor capture existed to back
+      // it; that condition is now met, so all three classes come off the wire.
       expect(ProductClass.fromDeviceType(0x17), ProductClass.supercapacitor);
       // 0x44 (old Smi-tag bug) and an absent byte stay unknown.
       expect(ProductClass.fromDeviceType(0x44), ProductClass.unknown);
       expect(ProductClass.fromDeviceType(null), ProductClass.unknown);
     });
 
-    test('capabilities are gated PER CLASS (design 0004 §3.2)', () {
-      // 0x17 => supercapacitor (design 0007): 檢測電容 only. The owner confirmed
+    test('capabilities are gated PER CLASS', () {
+      // 0x17 => supercapacitor: 檢測電容 only. The owner confirmed
       // 2026-07-27 that a capacitor has no 解除斷電, so it must NOT be offered.
       final cap = DeviceCapabilities.fromDeviceType(0x17);
       expect(cap.productClass, ProductClass.supercapacitor);

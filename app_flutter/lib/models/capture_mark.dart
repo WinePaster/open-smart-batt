@@ -1,4 +1,4 @@
-/// OpenSmartBatt — capture state marks (design 0013).
+/// OpenSmartBatt — capture state marks.
 ///
 /// A diagnostic log records what the DEVICE said. It has never recorded what
 /// the USER was doing, and for several registers that is the only thing that
@@ -83,6 +83,7 @@ enum CaptureMark {
 
   /// Recorded when a guided step is deliberately passed over, so an analyst can
   /// tell "the user skipped this" from "the data is missing" — the same
-  /// distinction design 0009 drew for exports.
+  /// distinction the export headers draw when they count what they left out.
+  /// Silence is the one answer a capture must never give.
   static String skippedLogLine(CaptureMark m) => 'mark: skipped | ${m.code}';
 }

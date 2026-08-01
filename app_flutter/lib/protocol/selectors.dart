@@ -21,7 +21,7 @@ class Selectors {
   ///
   /// Decoded and recorded, never interpreted. An earlier build read value
   /// `0x20` as a device fault; field captures showed it appears ONLY on power
-  /// banks and only while charging (design 0018).
+  /// banks and only while charging, never once across 13,535 pack samples.
   ///
   /// ⚠️ It is NOT a usable charge/discharge signal either: trickle charging
   /// reports `0x00`, so the byte is incomplete. Direction comes from the
@@ -149,7 +149,7 @@ class ModeArg {
 
   /// Detect special: triggers a 10 s detect keep-alive poller after the write.
   ///
-  /// 🔴 **No longer used for release (design 0024, 2026-07-30).** The "live HCI
+  /// 🔴 **No longer used for release (2026-07-30).** The "live HCI
   /// capture uses this as the cut-off release" note this constant used to carry
   /// rested on one observation — of a **super-capacitor**, whose `0x23` reverted
   /// to `0x05`, its own status space, and which has no cut-off feature at all.

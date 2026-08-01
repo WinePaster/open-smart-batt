@@ -104,7 +104,10 @@ enum RoutingDecision {
   ///
   /// * [resolved] — the class from the wire byte, else the saved-record seed
   ///   (`ConnectionController.resolvedClass`). A user's GUESS is never part of
-  ///   this: design 0001 §3.1, still intact.
+  ///   this — the invariant that a layout is chosen by wire-derived facts and
+  ///   by nothing else has held since the routing rule was first written, and
+  ///   the seed is admissible only because a stored class is itself
+  ///   wire-derived.
   /// * [sawDeviceType] — whether a byte arrived at all, recognised or not.
   static RoutingDecision from({
     required ProductClass resolved,

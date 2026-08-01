@@ -1,4 +1,4 @@
-// design 0007 — the class comes off the wire; nothing is inferred.
+// The class comes off the wire; nothing is inferred.
 //
 // The regression this locks down: on 2026-07-27 an owner-confirmed
 // super-capacitor was shown the BATTERY body and the 解除斷電 control, because

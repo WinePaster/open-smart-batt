@@ -23,34 +23,41 @@ class Db {
   /// legacy `dark_theme` bool column is retained for migration.
   /// v3: saved_devices gained `name` (stable advertised name, the iOS NSUUID
   /// rebind key — D.3) and `stale` (failed-to-resolve flag).
-  /// v4: saved_devices gained `product_class` (resolved class + cosmetic pack
-  /// label — design 0001 §5 Phase 5); old rows default to 'unknown'.
+  /// v4: saved_devices gained `product_class` (the resolved product class plus
+  /// the cosmetic pack label); old rows default to 'unknown'.
   /// v5: history + diag_log gained `device_id` (which unit the row belongs to),
-  /// history gained `soc` and diag_log gained `session_id` — design 0006. All
-  /// nullable with NO default: pre-v5 rows keep NULL, meaning "unknown device",
-  /// because attributing them to the current unit would be a lie.
+  /// history gained `soc` and diag_log gained `session_id`. All nullable with
+  /// NO default: pre-v5 rows keep NULL, meaning "unknown device", because
+  /// attributing them to the current unit would be a lie. This is the invariant
+  /// the whole per-unit export story rests on — a recipient asking "is this all
+  /// of that battery's data?" can only be answered if attribution is either
+  /// right or absent, never guessed.
   /// v6: history gained `samples` (how many telemetry snapshots that minute's
-  /// row averaged) — design 0009. Nullable with NO default, same reasoning as
-  /// v5: pre-v6 rows genuinely do not know their sample count.
-  /// v7: history + diag_log gained `app_build` — which build WROTE the row,
-  /// as opposed to which build exported it (design 0010). Per row rather than
-  /// per session because diag_log is trimmed oldest-first: a build recorded
-  /// once at the start of a connection would be the first thing deleted.
-  /// v8: settings gained `background_monitoring` (Android foreground service —
-  /// design 0008), defaulting ON. The pre-existing `background_keep_alive`
-  /// column keeps its name but now maps to `keepScreenAwake`, which is all it
-  /// ever did; renaming it would need SQLite 3.25+ (API 30) and minSdk is 24.
+  /// row averaged). Nullable with NO default, same reasoning as v5: pre-v6 rows
+  /// genuinely do not know their sample count. Without it a full minute and a
+  /// minute truncated by a silent disconnect look identical in an export.
+  /// v7: history + diag_log gained `app_build` — which build WROTE the row, as
+  /// opposed to which build exported it. Per row rather than per session
+  /// because diag_log is trimmed oldest-first: a build recorded once at the
+  /// start of a connection would be the first thing deleted, and the rows that
+  /// survive are exactly the ones whose origin is hardest to reconstruct.
+  /// v8: settings gained `background_monitoring` (Android foreground service),
+  /// defaulting ON. The pre-existing `background_keep_alive` column keeps its
+  /// name but now maps to `keepScreenAwake`, which is all it ever did;
+  /// renaming it would need SQLite 3.25+ (API 30) and minSdk is 24.
   ///
   /// CLAIMING A NUMBER: rebase onto main FIRST and take the next free one. This
   /// list is the only registry, so two branches developed in parallel will
   /// happily claim the same version and merge without a textual conflict in the
   /// migration body — after which whoever already upgraded never runs the
-  /// loser's branch. Design 0008 was originally written as v6 while designs
-  /// 0009/0010 took v6 and v7 on main; it was renumbered to v8 on merge.
-  /// v9: settings gained `retention` (design 0011), DEFAULT 'forever'. The
-  /// `auto_log` column is DEAD from v9 on — nothing reads it. It stays because
-  /// SQLite needs 3.35+ for DROP COLUMN and minSdk 24 ships older; rebuilding
-  /// the whole settings table to reclaim four bytes is not a trade worth making.
+  /// loser's branch. That is not hypothetical: the background-monitoring work
+  /// was written as v6 while the export-provenance work took v6 and v7 on main,
+  /// and it had to be renumbered to v8 at merge time.
+  /// v9: settings gained `retention`, DEFAULT 'forever' — how long recorded
+  /// history is KEPT, replacing the old "record at all?" switch. The `auto_log`
+  /// column is DEAD from v9 on — nothing reads it. It stays because SQLite
+  /// needs 3.35+ for DROP COLUMN and minSdk 24 ships older; rebuilding the
+  /// whole settings table to reclaim four bytes is not a trade worth making.
   static const int schemaVersion = 9;
 
   /// On-disk database file name (lives under the platform databases dir).
@@ -233,16 +240,20 @@ class AppDatabase {
       );
     }
     if (from < 4) {
-      // design 0001 §5 Phase 5: persist the resolved product class / cosmetic
-      // pack label. Additive; pre-v4 rows default to 'unknown'.
+      // Persist the resolved product class / cosmetic pack label, so a unit
+      // that has been identified once does not have to be re-identified (and
+      // the dashboard does not have to guess) on every later connection.
+      // Additive; pre-v4 rows default to 'unknown'.
       await db.execute(
         "ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN product_class TEXT NOT NULL DEFAULT 'unknown'",
       );
     }
     if (from < 5) {
-      // design 0006: attribute every recorded row to a device (and each log row
-      // to one connection). Nullable with NO default — pre-v5 rows stay NULL
-      // ("unknown device") rather than being mis-attributed to the current unit.
+      // Attribute every recorded row to a device (and each log row to one
+      // connection), so that data from several units stops accumulating into
+      // one indistinguishable pile. Nullable with NO default — pre-v5 rows stay
+      // NULL ("unknown device") rather than being mis-attributed to the current
+      // unit, which would be a fabricated fact rather than a missing one.
       await db.execute(
         'ALTER TABLE ${Db.tableHistory} ADD COLUMN device_id TEXT',
       );
@@ -263,8 +274,10 @@ class AppDatabase {
       );
     }
     if (from < 6) {
-      // design 0009: how many telemetry snapshots each minute-row averaged, so
-      // a full minute and a truncated one are distinguishable in an export.
+      // How many telemetry snapshots each minute-row averaged, so a full minute
+      // and a truncated one are distinguishable in an export — a connection cut
+      // off silently leaves a short tail row that otherwise looks like any
+      // other minute.
       // Nullable with NO default — pre-v6 rows do not know their count, and a
       // fabricated one would read as fact.
       await db.execute(
@@ -272,9 +285,12 @@ class AppDatabase {
       );
     }
     if (from < 7) {
-      // design 0010: the build that RECORDED each row. Nullable with NO
-      // default — pre-v7 rows were written by a build we cannot name, and
-      // guessing one would read as fact.
+      // The build that RECORDED each row, which is not the build that exports
+      // it: both tables accumulate for months, so one export routinely spans
+      // several app versions. Without this, "was this gap a bug we already
+      // fixed, or is the hardware simply like that?" is unanswerable.
+      // Nullable with NO default — pre-v7 rows were written by a build we
+      // cannot name, and guessing one would read as fact.
       await db.execute(
         'ALTER TABLE ${Db.tableHistory} ADD COLUMN app_build TEXT',
       );
@@ -283,7 +299,7 @@ class AppDatabase {
       );
     }
     if (from < 8) {
-      // design 0008: background monitoring via the Android foreground service.
+      // Background monitoring via the Android foreground service.
       // DEFAULT 1 — existing users are exactly the ones hitting the stall, so
       // they get it on. Their `background_keep_alive` value is untouched and
       // now reads as `keepScreenAwake`, preserving that choice separately.
@@ -292,9 +308,11 @@ class AppDatabase {
       );
     }
     if (from < 9) {
-      // design 0011: history is now always recorded; this decides how long it
-      // is KEPT. DEFAULT 'forever' so that upgrading — including from a build
-      // where the user had auto-log switched off — never discards anything.
+      // History is now always recorded; this decides how long it is KEPT.
+      // DEFAULT 'forever' so that upgrading — including from a build where the
+      // user had auto-log switched off — never discards anything. Any shorter
+      // default would delete real data, irreversibly, at the moment of an
+      // upgrade the user never asked to be destructive.
       await db.execute(
         "ALTER TABLE ${Db.tableSettings} ADD COLUMN retention TEXT NOT NULL DEFAULT 'forever'",
       );

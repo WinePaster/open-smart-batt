@@ -1,4 +1,4 @@
-/// OpenSmartBatt — capture state marking bar (design 0013).
+/// OpenSmartBatt — capture state marking bar.
 ///
 /// The bar exists because several registers cannot be resolved from passive
 /// captures at all: nothing in the stream distinguishes Type-A from Type-C, or

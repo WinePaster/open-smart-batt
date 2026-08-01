@@ -1,4 +1,4 @@
-/// OpenSmartBatt — background-monitor service handle (design 0008).
+/// OpenSmartBatt — background-monitor service handle.
 ///
 /// Thin Dart side of the app's only platform channel. On Android it drives a
 /// `connectedDevice` foreground service whose sole job is to keep this process
@@ -10,8 +10,10 @@
 /// unchanged the moment the process stops being frozen. Everything here is
 /// notification plumbing.
 ///
-/// Every platform is served by [NoopMonitorService] except Android; iOS needs a
-/// different mechanism entirely (UIBackgroundModes — design 0009).
+/// Every platform is served by [NoopMonitorService] except Android. iOS has no
+/// equivalent of a foreground service: the nearest thing is declaring the
+/// `bluetooth-central` background mode, which is not the same trade-off and is
+/// not implemented here.
 library;
 
 import 'dart:async';

@@ -1,4 +1,4 @@
-/// OpenSmartBatt — locale labels for [CaptureMark] (design 0013).
+/// OpenSmartBatt — locale labels for [CaptureMark].
 ///
 /// Kept apart from the enum so the model layer stays free of Flutter, and
 /// shared by the dashboard bar and the guided run so a label can never drift
