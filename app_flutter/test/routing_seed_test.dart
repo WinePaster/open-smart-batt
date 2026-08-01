@@ -119,17 +119,17 @@ void main() {
   });
 
   group('an unclassified unit stays unclassified', () {
-    // ⚠️ This case NO LONGER reaches the pack shell. Design 0025 gave routing a
-    // fourth state so "no byte and nothing stored" draws no layout at all —
-    // see routing_decision_test.dart, where it is the headline case. What is
+    // ⚠️ This case NO LONGER reaches the pack shell. Routing gained a fourth
+    // state (`pending`) so "no byte and nothing stored" draws no layout at all
+    // — see routing_decision_test.dart, where it is the headline case. What is
     // asserted here is only the half this file owns: the CLASS stays unknown,
     // i.e. fix A invents nothing when it has nothing to seed from.
-    test('no byte and no saved class yields no class (0025: → pending)', () {
+    test('no byte and no saved class yields no class (routing: → pending)', () {
       final resolver = PackClassResolver()..markConnected(DateTime.now());
       expect(routingClass(resolver, ProductClass.unknown), ProductClass.unknown);
       expect(routingClass(resolver, ProductClass.unknown).isPowerBank, isFalse);
       expect(resolver.sawDeviceType, isFalse,
-          reason: 'the signal design 0025 routes on');
+          reason: 'the signal the pending-vs-unclassified split routes on');
     });
 
     test('an unrecognised byte falls back to the seed, not to a guess', () {

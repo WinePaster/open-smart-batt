@@ -5,7 +5,9 @@
 /// deterministic signal (design 0001 §3.1 / §3.4): a confirmed power bank
 /// (device-type 0x22) gets [PowerBankView]; a confirmed pack (super-capacitor
 /// or smart battery) gets the data-driven [PackView]; a unit that has not said
-/// what it is yet gets [ClassPendingView] and NO layout at all (design 0025).
+/// what it is yet gets [ClassPendingView] and NO layout at all — every layout
+/// here asserts a class, so withholding one is the only honest option while
+/// the class is undetermined.
 /// The cosmetic super-capacitor-vs-battery label NEVER influences this choice.
 library;
 
@@ -151,7 +153,7 @@ class _StaleBannerState extends State<_StaleBanner> {
 }
 
 /// Picks the live view from the deterministic routing decision (design 0001
-/// §3.4, design 0025). Reads [ConnectionController.routing] — derived from the
+/// §3.4). Reads [ConnectionController.routing] — derived from the
 /// SAME resolver that drives persistence and capability gating (single source
 /// of truth, design 0001 §3.1) — so the chosen layout can never disagree with
 /// the stored class. The cosmetic pack label is never consulted here.
@@ -168,9 +170,10 @@ class DashboardRouter extends StatelessWidget {
   Widget build(BuildContext context) {
     final routing =
         context.select<ConnectionController, RoutingDecision>((c) => c.routing);
-    // Exhaustive on purpose (design 0025 §7 Q3): when the pack shell is split
-    // into battery and capacitor, this switch stops compiling until every site
-    // has chosen, rather than defaulting one of them somewhere silently.
+    // Exhaustive on purpose, and that is why [RoutingDecision] is an enum: when
+    // the pack shell is split into battery and capacitor, this switch stops
+    // compiling until every site has chosen, rather than defaulting one of them
+    // somewhere silently.
     switch (routing) {
       case RoutingDecision.powerBank:
         return const PowerBankView();

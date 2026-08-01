@@ -1,4 +1,4 @@
-/// OpenSmartBatt — "we do not know what this is yet" placeholder (design 0025).
+/// OpenSmartBatt — "we do not know what this is yet" placeholder.
 ///
 /// Drawn instead of a layout while [RoutingDecision.pending] holds. It shows
 /// NOTHING that depends on the product class — no PVLT gauge, no SVLT, no DVOL

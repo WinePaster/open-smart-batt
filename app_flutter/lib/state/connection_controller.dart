@@ -256,19 +256,26 @@ class ConnectionController extends ChangeNotifier {
   /// Cleared only when the target changes or the user disconnects.
   ProductClass _seedClass = ProductClass.unknown;
 
-  /// Where [_seedClass] came from, for the design 0025 T0 diagnostic line.
+  /// Where [_seedClass] came from, for the `class-resolve:` diagnostic line.
   /// `none` / `saved` (looked up by id) / `explicit` (passed by
   /// [connectToSaved], which knows the record even when the id rebound).
   String _seedSource = 'none';
 
   /// When the link last reached `ready`, and whether the class-resolve line has
-  /// already been emitted for this connection. Together these measure the one
-  /// interval nobody has ever measured: `ready` → first device-type byte.
+  /// already been emitted for this connection. Together they time `ready` →
+  /// first device-type byte.
   ///
-  /// Design 0025 §7 Q2: the placeholder's timeout was going to be guessed at
-  /// 8 s, borrowed from an unrelated connect timeout. It is not guessed any
-  /// more — [kClassPendingTimeout] is a provisional value that this line exists
-  /// to replace with a measured one.
+  /// `ready` is the RIGHT zero point and the only defensible one for
+  /// [kClassPendingTimeout] / [kClassPendingGrace], because the placeholder is
+  /// not mounted before `ready` at all — the dashboard shows the disconnected
+  /// state until then. A threshold derived from an earlier anchor (say, from
+  /// the user's tap on connect) would fold in connect/retry churn and end up
+  /// too large to ever fire.
+  ///
+  /// It is also NOT the whole of what the user waits through, and this line
+  /// must not be read as if it were: on a retrying link the connect phase
+  /// dominates the wait by an order of magnitude, and that is a different
+  /// problem with a different fix.
   DateTime? _readyAt;
   bool _classResolveLogged = false;
 
@@ -365,7 +372,7 @@ class ConnectionController extends ChangeNotifier {
   /// that can only have come from one) — the sole deterministic routing signal.
   bool get isPowerBank => resolvedClass.isPowerBank;
 
-  /// What the dashboard should draw (design 0025). Supersedes reading
+  /// What the dashboard should draw. Supersedes reading
   /// [isPowerBank] as a bool: that collapsed "we do not know yet" into "pack",
   /// so a power bank's single-cell voltage was rendered as a 12 V pack
   /// terminal voltage for as long as the class stayed unknown.
@@ -418,7 +425,8 @@ class ConnectionController extends ChangeNotifier {
   /// cannot be written, the answer never comes — while notifications already
   /// subscribed keep streaming, so the link looks fine and the dashboard fills
   /// with numbers (PROTOCOL.md §10.2). [BleService] has tracked this all along
-  /// and only ever wrote it to the diagnostic log; design 0025 surfaces it.
+  /// and only ever wrote it to the diagnostic log; this getter is what finally
+  /// hands it to the UI.
   int get keepAliveFailures => _ble.keepAliveFailures;
 
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
@@ -564,8 +572,9 @@ class ConnectionController extends ChangeNotifier {
   /// Offered by [ClassPendingView] because it is the only action that actually
   /// addresses the cause: `0x10` answers the 1 Hz `#` poll, so a class that
   /// never resolves means the poll is not getting out, and a fresh link is what
-  /// clears that. Re-sending the poll would not — the poll is the thing failing
-  /// (design 0025 §7 Q1).
+  /// clears that. Re-sending the poll would not — the poll is the thing
+  /// failing, so a resend is a no-op in exactly the case that needs it. That
+  /// is why no automatic re-poll was built.
   Future<void> reconnectCurrent() async {
     final target = _desiredDeviceId ?? _ble.connectedDeviceId;
     if (target == null) return;
@@ -683,20 +692,23 @@ class ConnectionController extends ChangeNotifier {
 
   // ---- stream handlers --------------------------------------------------
 
-  /// design 0025 T0 — the one diagnostic line that makes class resolution
-  /// measurable. Emitted once per connection: on the first device-type byte, or
-  /// on disconnect if none ever came.
+  /// The `class-resolve:` line — the one entry that makes class resolution
+  /// measurable in a field log. Emitted once per connection: on the first
+  /// device-type byte, or on disconnect if none ever came.
   ///
   /// ```
   /// class-resolve: ready→0x10 412ms | seed=saved | kaFail=0 | class=0x22
   /// class-resolve: ready→0x10 never | seed=none  | kaFail=3 | class=none
   /// ```
   ///
-  /// Each field answers a question this project could not previously answer:
+  /// The last three fields are the point of the line: they are app-internal
+  /// state with NO substitute anywhere in a field log, whereas the interval
+  /// itself can also be recovered after the fact from the link and frame
+  /// timestamps.
   ///
-  /// * `ready→0x10` — the distribution behind [kClassPendingTimeout]. There is
-  ///   no measurement of this interval anywhere in the corpus; the timeout it
-  ///   replaces was borrowed from an unrelated connect timeout.
+  /// * `ready→0x10` — the interval behind [kClassPendingTimeout], stated
+  ///   per connection so a live build can be checked against the corpus
+  ///   distribution instead of only recomputed from it.
   /// * `seed=` — how often FB-43's seed fix (`7a0965c`) actually fires. That
   ///   fix has never shipped, so its real-world hit rate is unknown.
   /// * `kaFail=` — tests the §10.2 hypothesis directly: a class that never
@@ -756,8 +768,9 @@ class ConnectionController extends ChangeNotifier {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
       _packResolver.markConnected(DateTime.now());
-      // design 0025 T0: `ready` is the zero point for the class-resolve
-      // measurement. Anything earlier would fold in the connect/retry churn,
+      // `ready` is the zero point for the class-resolve measurement, because
+      // it is the moment the placeholder can first be shown at all.
+      // Anything earlier would fold in the connect/retry churn,
       // which is a different problem (FB-25) with a different fix.
       _readyAt = DateTime.now();
       _classResolveLogged = false;
@@ -789,9 +802,15 @@ class ConnectionController extends ChangeNotifier {
       final gone = _lastSeenDeviceId;
       if (gone != null) _touchLastSeen(gone, force: true);
       _lastSeenDeviceId = null;
-      // design 0025 T0: if the byte never arrived, say so on the way out —
-      // otherwise the connections that FAILED to resolve are exactly the ones
-      // absent from the measurement, and the distribution reads clean.
+      // If the byte never arrived, say so on the way out — otherwise the
+      // connections that FAILED to resolve are exactly the ones absent from
+      // the measurement, and the distribution reads clean.
+      //
+      // KNOWN GAP, do not read this as full coverage: [_logClassResolve]
+      // returns early when `_readyAt` is null, so an attempt that never got as
+      // far as `ready` still emits nothing here. Those are a large share of
+      // the failures in field logs, so what this line collects remains
+      // conditioned on the link having come up at least once.
       _logClassResolve(resolvedMs: null);
       _readyAt = null;
       // Drop the settling window + label so the next unit starts clean.
@@ -875,7 +894,8 @@ class ConnectionController extends ChangeNotifier {
   void _onTelemetrySample(TelemetrySample s) {
     final sawBefore = _packResolver.sawDeviceType;
     _packResolver.observe(s);
-    // design 0025 T0: fires on the FIRST device-type byte of the connection.
+    // The class-resolve line fires on the FIRST device-type byte of the
+    // connection, and only then.
     if (!sawBefore && _packResolver.sawDeviceType) {
       final since = _readyAt;
       _logClassResolve(

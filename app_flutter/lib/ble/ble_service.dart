@@ -706,8 +706,9 @@ class BleService {
 
   /// Consecutive keep-alive write failures outstanding; 0 when healthy.
   ///
-  /// Design 0025 §7 Q1: this counter already existed and was only ever written
-  /// to the diagnostic log. It is the honest explanation for a device class
+  /// Exposed rather than invented: this counter already existed and was only
+  /// ever written to the diagnostic log. It is the honest explanation for a
+  /// device class
   /// that never resolves — `0x10` answers the 1 Hz `#` poll, so a poll that
   /// cannot be written is never answered, while notifications subscribed
   /// earlier keep streaming and the link still reports ready (PROTOCOL.md

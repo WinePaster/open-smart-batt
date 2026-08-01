@@ -63,7 +63,7 @@ class PackClassResolver {
 
   /// Whether a device-type byte has been seen AT ALL this connection —
   /// ORTHOGONAL to [deviceClass], which collapses "no byte yet" and "a byte we
-  /// do not recognise" into the same [ProductClass.unknown] (design 0025 §3.1).
+  /// do not recognise" into the same [ProductClass.unknown].
   ///
   /// Those two must be told apart because only the FIRST is a transient state
   /// worth hiding behind a placeholder. The second is a legitimate resting
@@ -72,9 +72,10 @@ class PackClassResolver {
   /// the very control that resolves it.
   bool get sawDeviceType => _deviceType != null;
 
-  /// The raw device-type byte seen this connection, for diagnostics only
-  /// (design 0025 T0 logs it so an unrecognised byte is identifiable in a
-  /// field log instead of vanishing into [ProductClass.unknown]).
+  /// The raw device-type byte seen this connection, for diagnostics only: the
+  /// `class-resolve:` log line carries it, so an unrecognised value stays
+  /// identifiable in a field log instead of vanishing into
+  /// [ProductClass.unknown] along with "no byte at all".
   int? get observedDeviceType => _deviceType;
 
   /// True only for a confirmed power bank — the routing signal.

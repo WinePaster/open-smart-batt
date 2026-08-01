@@ -1,4 +1,5 @@
-/// OpenSmartBatt — dashboard routing decision (design 0025).
+/// OpenSmartBatt — dashboard routing decision: the four-state answer to "which
+/// layout, if any, may be drawn for the unit on the other end of this link?".
 ///
 /// PURE Dart (no Flutter imports) so the routing rule is unit-testable without
 /// a BLE stack or a widget tree.
@@ -36,17 +37,33 @@ import 'product_class.dart';
 /// flash on every single connect. Suppressing it below this threshold costs
 /// nothing: the pack layout is not drawn during the grace period either, so no
 /// wrong number is ever shown — the area is simply empty.
+///
+/// Measured against the field-log corpus: across 36 connections on recent
+/// builds, exactly ONE `ready` → first `0x10` interval reached 300 ms (0.301 s
+/// — the slowest sample in that set), so roughly 1 connection in 36 (2.8 %)
+/// still sees a brief flash at this value, and 500 ms would cover all 36.
+/// Left at 300 ms on purpose: which of the two feels better is a product call,
+/// not something the distribution decides.
 const Duration kClassPendingGrace = Duration(milliseconds: 300);
 
 /// How long [RoutingDecision.pending] must last before the placeholder stops
 /// saying "identifying" and starts offering a way out.
 ///
-/// ⚠️ **PROVISIONAL.** Nobody has measured `ready` → first `0x10` on real
-/// hardware; the interval does not appear anywhere in the corpus. Design 0025
-/// T0 emits a `class-resolve:` line carrying exactly that number so the next
-/// round of field logs can replace this guess with a measurement. Until then
-/// this is deliberately generous — being slow to offer an escape hatch is a
-/// far cheaper error than showing one over a link that was about to resolve.
+/// Measured, not guessed — and deliberately far above the typical case. On
+/// recent builds `ready` → first `0x10` is fast: across the 36 connections in
+/// the field-log corpus, p50 is around 0.1 s, p95 0.240 s and p100 0.301 s —
+/// the whole distribution fits twenty times over inside this timeout.
+/// Six seconds is kept anyway, for two things those percentiles hide:
+///
+/// * The tail is real, not theoretical. An older build has a verified 54 s
+///   sample (the app was backgrounded and resumed four times in between), and
+///   two connections in the corpus reached `ready` and then never received
+///   `0x10` at all.
+/// * This is a DISPLAY timeout, not a give-up — a byte arriving afterwards
+///   still overrides everything. So the two errors cost very different
+///   amounts: offering an escape hatch over a link that was about to resolve
+///   alarms the user for nothing, while offering it late only means a few
+///   more seconds of "identifying".
 const Duration kClassPendingTimeout = Duration(seconds: 6);
 
 /// What the dashboard should draw for the current link.
@@ -60,8 +77,9 @@ enum RoutingDecision {
   ///
   /// Deliberately ONE state, not two: both share the pack shell today. When
   /// they are split, add `battery` / `capacitor` here — every `switch` on this
-  /// enum is exhaustive, so the compiler will name each site that must choose.
-  /// (design 0025 §7 Q3.)
+  /// enum is exhaustive, so the compiler will name each site that must choose
+  /// rather than letting one of them default silently. Leaving that room open
+  /// costs nothing today, which is why it is left open rather than pre-built.
   pack,
 
   /// No device-type byte has arrived yet and no stored class covers the gap.

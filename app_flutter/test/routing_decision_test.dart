@@ -1,4 +1,4 @@
-// design 0025 — routing must be able to say "I do not know yet".
+// Routing must be able to say "I do not know yet".
 //
 // The predecessor of this rule was a bool:
 //
@@ -67,7 +67,7 @@ void main() {
       expect(resolved(r, ProductClass.unknown).isPowerBank, isFalse,
           reason: 'the old bool would have sent this to PackView');
       expect(route(r, ProductClass.unknown).isPending, isTrue,
-          reason: 'design 0025 withholds the layout instead');
+          reason: 'routing withholds the layout instead of guessing');
     });
   });
 
@@ -150,9 +150,9 @@ void main() {
     });
 
     test('the picker offers pack classes only — the seed premise', () {
-      // Unchanged from routing_seed_test.dart, restated because design 0025
-      // leans on it too: a stored powerBank can only have come from a 0x22
-      // byte, which is what makes seeding routing safe.
+      // Unchanged from routing_seed_test.dart, restated because the pending
+      // state leans on it too: a stored powerBank can only have come from a
+      // 0x22 byte, which is what makes seeding routing safe.
       const offered = <ProductClass>[
         ProductClass.supercapacitor,
         ProductClass.smartBattery,
