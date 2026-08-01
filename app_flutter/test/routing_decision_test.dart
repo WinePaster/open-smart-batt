@@ -98,9 +98,12 @@ void main() {
   group('an unrecognised byte is NOT pending', () {
     // The distinction this whole design turns on. Both present as
     // ProductClass.unknown; they want opposite responses.
-    test('0x18 routes to unclassified so the user can pick', () {
-      final r = fresh()..observe(decode(inbound(Selectors.deviceType, const [0x18])));
-      expect(r.deviceClass, ProductClass.unknown, reason: '0x18 is unknown to us');
+    // 0x19 stands in for "a byte this build has not been taught". It used to
+    // be 0x18 — until three units of that type were captured on 2026-08-01 and
+    // it became a super-capacitor. The example moved; the distinction did not.
+    test('0x19 routes to unclassified so the user can pick', () {
+      final r = fresh()..observe(decode(inbound(Selectors.deviceType, const [0x19])));
+      expect(r.deviceClass, ProductClass.unknown, reason: '0x19 is unknown to us');
       expect(r.sawDeviceType, isTrue, reason: 'but the unit did answer');
       expect(route(r, ProductClass.unknown), RoutingDecision.unclassified);
       expect(route(r, ProductClass.unknown).isPending, isFalse,
@@ -110,7 +113,7 @@ void main() {
     test('no byte and an unrecognised byte differ only by sawDeviceType', () {
       final never = fresh();
       final answered = fresh()
-        ..observe(decode(inbound(Selectors.deviceType, const [0x18])));
+        ..observe(decode(inbound(Selectors.deviceType, const [0x19])));
       expect(never.deviceClass, answered.deviceClass,
           reason: 'identical class — which is why the bool could not tell them apart');
       expect(never.sawDeviceType, isFalse);
@@ -180,8 +183,8 @@ void main() {
     });
 
     test('observedDeviceType keeps the raw byte for diagnostics', () {
-      final r = fresh()..observe(decode(inbound(Selectors.deviceType, const [0x18])));
-      expect(r.observedDeviceType, 0x18,
+      final r = fresh()..observe(decode(inbound(Selectors.deviceType, const [0x19])));
+      expect(r.observedDeviceType, 0x19,
           reason: 'T0 logs it so an unknown byte is identifiable in the field');
     });
   });
@@ -192,7 +195,10 @@ void main() {
     });
 
     test('the grace window is short enough to be imperceptible', () {
-      expect(kClassPendingGrace.inMilliseconds, lessThanOrEqualTo(400));
+      // Raised from 400 ms when the constant moved 300 → 500 ms. Half a second
+      // is the top of the band this is asserting: past it the empty area stops
+      // reading as "still settling" and starts reading as a broken screen.
+      expect(kClassPendingGrace.inMilliseconds, lessThanOrEqualTo(500));
     });
   });
 }

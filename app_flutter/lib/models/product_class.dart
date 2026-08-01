@@ -9,11 +9,17 @@
 /// bounded, whereas routing on weaker evidence renders one product's numbers in
 /// another product's units.
 ///
-/// ALL THREE device-type bytes are wire-verified, so the class is read off the
+/// EVERY device-type byte here is wire-verified, so the class is read off the
 /// wire and never inferred:
 ///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§9);
 ///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
-///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27).
+///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27);
+///   * `0x18` → [supercapacitor] (three independent units, 2026-08-01).
+///
+/// The list grows one measured byte at a time, and a byte nobody has measured
+/// stays out. That has a visible cost — a new hardware generation shows up as
+/// "unclassified" until someone captures it, which is exactly what `0x18` did
+/// for a day — and it is the right cost: not guessing cannot guess wrong.
 ///
 /// The telemetry fingerprint that used to guess capacitor-vs-battery is GONE.
 /// It keyed on "a current 0x2E frame means battery", which the 2026-07-27
@@ -47,13 +53,38 @@ const int kSmartBatteryDeviceType = 0x02;
 /// model reporting something else falls to [unknown], never to a wrong class.
 const int kSuperCapacitorDeviceType = 0x17;
 
+/// Device-type byte (selector 0x10 b4) for the THIRD-generation super-capacitor
+/// (advertised as `RCE-SCAP_III`) — wire-verified 2026-08-01.
+///
+/// Held to the same bar as [kSuperCapacitorDeviceType], and cleared it on three
+/// independent units at once: serials 145 / 373 / 416, three different MAC
+/// prefixes, two firmware revisions (1.02 and 1.03), reported by three
+/// unrelated people. All three answer 0x2B=402c2814, 0x42=07c8f005 and
+/// 0x27=00a802180001 byte for byte, and share NONE of those values with the
+/// four 0x17 units in the same corpus — so the difference tracks the
+/// generation, not the individual unit, which is what a per-unit quirk would
+/// have looked like. Two of the three were also caught advertising
+/// `RCE-SCAP_III` with the scan-hit id matching the id actually connected.
+///
+/// Mapped to the SAME [ProductClass.supercapacitor] rather than a class of its
+/// own: the two generations differ in the VALUES of their identity and
+/// threshold registers, all of which are read from the wire, and not in what
+/// the unit can do. A separate class would add a branch to every switch and
+/// have both branches do the same thing.
+///
+/// Until this landed, a third-generation unit fell through to [unknown] — its
+/// owner saw "unclassified" and, via the bounded fallback in
+/// `DeviceCapabilities`, was offered 解除斷電, a mode a capacitor does not have.
+const int kSuperCapacitorGen3DeviceType = 0x18;
+
 /// The product class a connected RCE unit belongs to.
 enum ProductClass {
   /// Portable power bank (RSPB) — device-type 0x22 (verified). Routes to its own
   /// view via the deterministic [isPowerBank] signal.
   powerBank,
 
-  /// Super-capacitor pack — device-type 0x17 (wire-verified 2026-07-27).
+  /// Super-capacitor pack — device-type 0x17 (wire-verified 2026-07-27) or
+  /// 0x18, its third generation (wire-verified 2026-08-01 on three units).
   /// A DETERMINISTIC class: it gates controls (檢測電容 only) straight from the
   /// wire byte. Shares the pack shell with [smartBattery].
   supercapacitor,
@@ -78,7 +109,7 @@ enum ProductClass {
   ///   * 0x22 => [powerBank] (verified);
   ///   * 0x02 => [smartBattery] (verified on a car battery — see
   ///     [kSmartBatteryDeviceType]);
-  ///   * 0x17 => [supercapacitor] (wire-verified 2026-07-27);
+  ///   * 0x17, 0x18 => [supercapacitor] (wire-verified 2026-07-27 / 2026-08-01);
   ///   * every other value => [unknown], which the UI presents as "unclassified"
   ///     and lets the user resolve. All three classes now have a wire-verified
   ///     byte, so nothing is inferred from telemetry any more.
@@ -89,6 +120,7 @@ enum ProductClass {
       case kSmartBatteryDeviceType:
         return ProductClass.smartBattery;
       case kSuperCapacitorDeviceType:
+      case kSuperCapacitorGen3DeviceType:
         return ProductClass.supercapacitor;
       default:
         return ProductClass.unknown;

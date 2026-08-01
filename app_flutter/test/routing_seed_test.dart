@@ -136,9 +136,12 @@ void main() {
 
     test('an unrecognised byte falls back to the seed, not to a guess', () {
       final resolver = PackClassResolver()..markConnected(DateTime.now());
-      resolver.observe(decode(inbound(Selectors.deviceType, const [0x18])));
+      // 0x19 replaced 0x18 here on 2026-08-01: three units answering 0x18 were
+      // captured, so it is a super-capacitor now and no longer stands for
+      // "unrecognised". Any byte outside the mapped set does this job.
+      resolver.observe(decode(inbound(Selectors.deviceType, const [0x19])));
       expect(resolver.deviceClass, ProductClass.unknown,
-          reason: '0x18 is not a class we know');
+          reason: '0x19 is not a class we know');
       expect(routingClass(resolver, ProductClass.supercapacitor),
           ProductClass.supercapacitor);
     });
