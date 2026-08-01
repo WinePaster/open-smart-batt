@@ -305,6 +305,12 @@ class ConnectionController extends ChangeNotifier {
   DateTime? _readyAt;
   bool _classResolveLogged = false;
 
+  /// True from `connecting` until the matching `disconnected` has been
+  /// accounted for. It is what lets a failed attempt be measured: `_readyAt`
+  /// cannot serve, because the attempts worth counting are exactly the ones
+  /// that never set it.
+  bool _attemptInFlight = false;
+
   BleLinkState _link = BleLinkState.disconnected;
   List<DiscoveredDevice> _scanResults = const [];
   bool _scanning = false;
@@ -733,13 +739,21 @@ class ConnectionController extends ChangeNotifier {
   // ---- stream handlers --------------------------------------------------
 
   /// The `class-resolve:` line — the one entry that makes class resolution
-  /// measurable in a field log. Emitted once per connection: on the first
-  /// device-type byte, or on disconnect if none ever came.
+  /// measurable in a field log. Emitted once per connection ATTEMPT: on the
+  /// first device-type byte, or on disconnect if none ever came.
   ///
   /// ```
   /// class-resolve: ready→0x10 412ms | seed=saved | kaFail=0 | class=0x22
   /// class-resolve: ready→0x10 never | seed=none  | kaFail=3 | class=none
+  /// class-resolve: ready=never      | seed=saved | kaFail=0 | class=none
   /// ```
+  ///
+  /// The third form is what makes the sample honest. An attempt that never
+  /// reached `ready` has no interval to state, but it is still an attempt that
+  /// failed to resolve a class — and those are common in field logs. Emitting
+  /// nothing for them would condition every distribution drawn from this line
+  /// on the link having come up at least once, which is precisely the case
+  /// where nothing went wrong.
   ///
   /// The last three fields are the point of the line: they are app-internal
   /// state with NO substitute anywhere in a field log, whereas the interval
@@ -757,13 +771,20 @@ class ConnectionController extends ChangeNotifier {
   ///   both present as [ProductClass.unknown] and want opposite responses.
   void _logClassResolve({required int? resolvedMs}) {
     if (_classResolveLogged) return;
-    if (_readyAt == null) return; // never got online; nothing to measure
+    // Nothing was attempted, so there is nothing to report. Without this an
+    // idle `disconnected` would emit a line describing no connection at all.
+    if (!_attemptInFlight) return;
     _classResolveLogged = true;
     final dt = _packResolver.observedDeviceType;
     final cls = dt == null
         ? 'none'
         : '0x${dt.toRadixString(16).padLeft(2, '0').toUpperCase()}';
-    _event('class-resolve: ready→0x10 ${resolvedMs == null ? 'never' : '${resolvedMs}ms'}'
+    // An attempt that never reached `ready` has no interval to state, but it
+    // still has to produce a line — see the note on this method's contract.
+    final interval = _readyAt == null
+        ? 'ready=never'
+        : 'ready→0x10 ${resolvedMs == null ? 'never' : '${resolvedMs}ms'}';
+    _event('class-resolve: $interval'
         ' | seed=$_seedSource'
         ' | kaFail=${_ble.keepAliveFailures}'
         ' | class=$cls');
@@ -789,9 +810,22 @@ class ConnectionController extends ChangeNotifier {
     // Attributing from `connect →` would file them under X. `connecting` is
     // safe because `connect()` awaits `disconnect()` — which cancels the notify
     // subscription — before entering this state.
+    if (s == BleLinkState.connecting) {
+      // Each attempt is measured on its own. Resetting here rather than only at
+      // `ready` is the whole point: a retry that never comes up would otherwise
+      // inherit the previous attempt's "already logged" flag and stay
+      // invisible, which is how the failures went missing.
+      _classResolveLogged = false;
+      _readyAt = null;
+    }
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
         s == BleLinkState.ready) {
+      // Any of the three means an attempt exists and owes a measurement line.
+      // Not `connecting` alone: an OS-level autoConnect recovery can surface
+      // as `ready` with no preceding transition, and that connection used to
+      // produce a line — it must keep producing one.
+      _attemptInFlight = true;
       // The handle we actually hold beats the target we last asked for: a
       // capture with two interleaved connects showed the two disagree.
       final id = _ble.connectedDeviceId ?? _desiredDeviceId;
@@ -846,14 +880,13 @@ class ConnectionController extends ChangeNotifier {
       _lastSeenDeviceId = null;
       // If the byte never arrived, say so on the way out — otherwise the
       // connections that FAILED to resolve are exactly the ones absent from
-      // the measurement, and the distribution reads clean.
-      //
-      // KNOWN GAP, do not read this as full coverage: [_logClassResolve]
-      // returns early when `_readyAt` is null, so an attempt that never got as
-      // far as `ready` still emits nothing here. Those are a large share of
-      // the failures in field logs, so what this line collects remains
-      // conditioned on the link having come up at least once.
+      // the measurement, and the distribution reads clean. That includes an
+      // attempt that never got as far as `ready`: it reports `ready=never`
+      // rather than nothing, because those are a large share of the failures
+      // in field logs and dropping them conditions the whole sample on the
+      // link having come up at least once.
       _logClassResolve(resolvedMs: null);
+      _attemptInFlight = false;
       _readyAt = null;
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();

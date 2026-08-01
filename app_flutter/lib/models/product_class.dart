@@ -32,8 +32,7 @@ const int kPowerBankDeviceType = 0x22;
 
 /// Device-type byte (selector 0x10 b4) that identifies a smart battery —
 /// verified for the car battery (`RCE-CarBatt`) via the connect-burst HCI snoop
-/// (the project's internal device notes, §智慧電池; observed "device id = 02",
-/// PROTOCOL.md §10.2).
+/// (observed as "device id = 02", PROTOCOL.md §10.2).
 const int kSmartBatteryDeviceType = 0x02;
 
 /// Device-type byte (selector 0x10 b4) that identifies a super-capacitor —
