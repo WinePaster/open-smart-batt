@@ -991,6 +991,7 @@ class ConnectionController extends ChangeNotifier {
     // The class-resolve line fires on the FIRST device-type byte of the
     // connection, and only then.
     if (!sawBefore && _packResolver.sawDeviceType) {
+      _logUnrecognisedDeviceType();
       final since = _readyAt;
       _logClassResolve(
         resolvedMs:
@@ -1004,6 +1005,34 @@ class ConnectionController extends ChangeNotifier {
     // the data rather than sitting at the connect time.
     final id = _ble.connectedDeviceId;
     if (id != null) _touchLastSeen(id);
+  }
+
+  /// Name a device-type byte this build does not map, the moment it arrives.
+  ///
+  /// The class is read off the wire and never inferred, so a byte nobody has
+  /// captured yet routes to "unclassified" by design. The cost is that we only
+  /// find out a new generation exists when an owner describes the screen. That
+  /// is how 0x18 was found: three units of a super-capacitor generation had
+  /// been answering it for weeks, and what surfaced it was a person saying
+  /// their capacitor was being offered 解除斷電.
+  ///
+  /// The disconnect-time `class-resolve:` line already carries the byte, but it
+  /// renders `class=0x19` exactly like `class=0x17` — a reader has to know the
+  /// mapped set by heart to spot which one is news. This says it in words, at
+  /// the moment it happens, so a text search over any exported log finds it.
+  ///
+  /// On the always-on event path, deliberately: the raw-packet log is OFF by
+  /// default and a capture that arrived with it off is precisely how one of
+  /// these units produced zero decodable frames. Fires once per connection —
+  /// it hangs off the first device-type byte, same trigger as `class-resolve:`.
+  void _logUnrecognisedDeviceType() {
+    final dt = _packResolver.observedDeviceType;
+    if (dt == null) return;
+    if (ProductClass.fromDeviceType(dt) != ProductClass.unknown) return;
+    final hex = '0x${dt.toRadixString(16).toUpperCase().padLeft(2, '0')}';
+    _event('device-type byte not recognised: $hex '
+        '— shown as unclassified; this build maps '
+        '0x02 (battery), 0x17/0x18 (capacitor), 0x22 (power bank)');
   }
 
   /// Record an unrecognised capacitor status byte to the diagnostic log.
