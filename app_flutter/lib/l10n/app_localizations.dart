@@ -1748,6 +1748,54 @@ abstract class AppLocalizations {
   /// **'Unclassified (tap to set)'**
   String get packLabelUnclassified;
 
+  /// No description provided for @classPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Identifying device'**
+  String get classPendingTitle;
+
+  /// No description provided for @classPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the device to report its type. Readings are hidden until then, because the same number means different things on a pack and on a power bank.'**
+  String get classPendingBody;
+
+  /// No description provided for @classPendingStalledTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection unstable'**
+  String get classPendingStalledTitle;
+
+  /// No description provided for @classPendingStalledBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{A poll has gone unanswered, so the device has not reported its type yet.} other{{count} polls have gone unanswered, so the device has not reported its type yet.}}'**
+  String classPendingStalledBody(int count);
+
+  /// No description provided for @classPendingTimeoutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device type unavailable'**
+  String get classPendingTimeoutTitle;
+
+  /// No description provided for @classPendingTimeoutBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.'**
+  String get classPendingTimeoutBody;
+
+  /// No description provided for @classPendingRevealButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Show readings anyway'**
+  String get classPendingRevealButton;
+
+  /// No description provided for @classPendingRetryButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnect'**
+  String get classPendingRetryButton;
+
   /// No description provided for @packLabelChoose.
   ///
   /// In en, this message translates to:

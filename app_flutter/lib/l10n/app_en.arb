@@ -582,6 +582,21 @@
   "settingsAboutDialogWarning": "Do not re-lock after releasing the power cut-off; the capacitor's own over-voltage / under-voltage / over-temperature protection remains active.",
   "dashboardTelemetryStalled": "Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.",
   "packLabelUnclassified": "Unclassified (tap to set)",
+  "classPendingTitle": "Identifying device",
+  "classPendingBody": "Waiting for the device to report its type. Readings are hidden until then, because the same number means different things on a pack and on a power bank.",
+  "classPendingStalledTitle": "Connection unstable",
+  "classPendingStalledBody": "{count, plural, =1{A poll has gone unanswered, so the device has not reported its type yet.} other{{count} polls have gone unanswered, so the device has not reported its type yet.}}",
+  "@classPendingStalledBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "classPendingTimeoutTitle": "Device type unavailable",
+  "classPendingTimeoutBody": "The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.",
+  "classPendingRevealButton": "Show readings anyway",
+  "classPendingRetryButton": "Reconnect",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",
   "powerBankSocSubUnknown": "Cell -- V",

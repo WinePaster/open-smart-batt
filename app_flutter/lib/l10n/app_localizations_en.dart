@@ -1022,6 +1022,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get packLabelUnclassified => 'Unclassified (tap to set)';
 
   @override
+  String get classPendingTitle => 'Identifying device';
+
+  @override
+  String get classPendingBody =>
+      'Waiting for the device to report its type. Readings are hidden until then, because the same number means different things on a pack and on a power bank.';
+
+  @override
+  String get classPendingStalledTitle => 'Connection unstable';
+
+  @override
+  String classPendingStalledBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count polls have gone unanswered, so the device has not reported its type yet.',
+      one:
+          'A poll has gone unanswered, so the device has not reported its type yet.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get classPendingTimeoutTitle => 'Device type unavailable';
+
+  @override
+  String get classPendingTimeoutBody =>
+      'The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.';
+
+  @override
+  String get classPendingRevealButton => 'Show readings anyway';
+
+  @override
+  String get classPendingRetryButton => 'Reconnect';
+
+  @override
   String get packLabelChoose => 'Set device type';
 
   @override

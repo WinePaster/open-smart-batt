@@ -256,6 +256,22 @@ class ConnectionController extends ChangeNotifier {
   /// Cleared only when the target changes or the user disconnects.
   ProductClass _seedClass = ProductClass.unknown;
 
+  /// Where [_seedClass] came from, for the design 0025 T0 diagnostic line.
+  /// `none` / `saved` (looked up by id) / `explicit` (passed by
+  /// [connectToSaved], which knows the record even when the id rebound).
+  String _seedSource = 'none';
+
+  /// When the link last reached `ready`, and whether the class-resolve line has
+  /// already been emitted for this connection. Together these measure the one
+  /// interval nobody has ever measured: `ready` → first device-type byte.
+  ///
+  /// Design 0025 §7 Q2: the placeholder's timeout was going to be guessed at
+  /// 8 s, borrowed from an unrelated connect timeout. It is not guessed any
+  /// more — [kClassPendingTimeout] is a provisional value that this line exists
+  /// to replace with a measured one.
+  DateTime? _readyAt;
+  bool _classResolveLogged = false;
+
   BleLinkState _link = BleLinkState.disconnected;
   List<DiscoveredDevice> _scanResults = const [];
   bool _scanning = false;
@@ -348,6 +364,62 @@ class ConnectionController extends ChangeNotifier {
   /// True only for a confirmed power bank (device-type 0x22, or a stored class
   /// that can only have come from one) — the sole deterministic routing signal.
   bool get isPowerBank => resolvedClass.isPowerBank;
+
+  /// What the dashboard should draw (design 0025). Supersedes reading
+  /// [isPowerBank] as a bool: that collapsed "we do not know yet" into "pack",
+  /// so a power bank's single-cell voltage was rendered as a 12 V pack
+  /// terminal voltage for as long as the class stayed unknown.
+  RoutingDecision get routing {
+    final d = RoutingDecision.from(
+      resolved: resolvedClass,
+      sawDeviceType: _packResolver.sawDeviceType,
+    );
+    // The user has looked at the placeholder and asked for the readings anyway.
+    // This is NOT a class assertion — it does not name a class, and the picker
+    // it hands over to still refuses to route (design 0001 §3.1). It only
+    // declines the withholding, landing on the same "unclassified" pack shell
+    // whose own chip says the type is unknown. The wire byte still wins the
+    // instant it arrives.
+    if (d.isPending && _revealUnclassified) return RoutingDecision.unclassified;
+    return d;
+  }
+
+  bool _revealUnclassified = false;
+
+  /// Whether the user has opted to see readings while the class is unresolved.
+  bool get revealUnclassified => _revealUnclassified;
+
+  /// Opt in to the unclassified pack shell (see [routing]). Reset on every new
+  /// connection: the next unit may be a different class, and a choice made
+  /// about one device must not silently carry to another — that is FB-25's
+  /// failure mode, and this flag would reintroduce it across a rebound id.
+  void showUnclassifiedAnyway() {
+    if (_revealUnclassified) return;
+    _revealUnclassified = true;
+    _event('class-resolve: user chose to view unclassified readings');
+    notifyListeners();
+  }
+
+  /// How long the class has been [RoutingDecision.pending], or null when it is
+  /// not pending. The placeholder uses this both to suppress itself on a fast
+  /// resolve and to escalate once it is clear the byte is not coming.
+  Duration? get pendingFor {
+    if (!routing.isPending) return null;
+    final since = _readyAt;
+    if (since == null) return null;
+    return DateTime.now().difference(since);
+  }
+
+  /// Consecutive keep-alive write failures currently outstanding, 0 when the
+  /// write path is healthy.
+  ///
+  /// This is the honest explanation for a class that never resolves. `0x10`
+  /// comes back in response to the 1 Hz `#` poll (PROTOCOL.md §2); if the poll
+  /// cannot be written, the answer never comes — while notifications already
+  /// subscribed keep streaming, so the link looks fine and the dashboard fills
+  /// with numbers (PROTOCOL.md §10.2). [BleService] has tracked this all along
+  /// and only ever wrote it to the diagnostic log; design 0025 surfaces it.
+  int get keepAliveFailures => _ble.keepAliveFailures;
 
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
   /// 解除斷電 / 防盜), design 0004 §3.2. This is GATING, never routing.
@@ -457,9 +529,11 @@ class ConnectionController extends ChangeNotifier {
     // chosen while the link is still coming up, and on a stale iOS NSUUID that
     // can take ~10 s. `seedClass` covers a rebound id whose record still lives
     // under the OLD id (connectToSaved); the lookup covers everything else.
-    _seedClass = seedClass ??
-        _devices?.deviceFor(deviceId)?.productClass ??
-        ProductClass.unknown;
+    final looked = _devices?.deviceFor(deviceId)?.productClass;
+    _seedClass = seedClass ?? looked ?? ProductClass.unknown;
+    _seedSource = seedClass != null
+        ? 'explicit'
+        : (looked != null && looked != ProductClass.unknown ? 'saved' : 'none');
     _lastError = null;
     notifyListeners();
 
@@ -482,6 +556,24 @@ class ConnectionController extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  /// Drop and re-establish the current link, keeping the same target and the
+  /// same routing seed.
+  ///
+  /// Offered by [ClassPendingView] because it is the only action that actually
+  /// addresses the cause: `0x10` answers the 1 Hz `#` poll, so a class that
+  /// never resolves means the poll is not getting out, and a fresh link is what
+  /// clears that. Re-sending the poll would not — the poll is the thing failing
+  /// (design 0025 §7 Q1).
+  Future<void> reconnectCurrent() async {
+    final target = _desiredDeviceId ?? _ble.connectedDeviceId;
+    if (target == null) return;
+    final seed = _seedClass == ProductClass.unknown ? null : _seedClass;
+    // Straight through disconnect(), which clears _desiredDeviceId and the
+    // seed; re-supply both rather than reaching around it.
+    await disconnect();
+    await connect(target, seedClass: seed);
   }
 
   /// Connect to a previously-saved device.
@@ -591,6 +683,40 @@ class ConnectionController extends ChangeNotifier {
 
   // ---- stream handlers --------------------------------------------------
 
+  /// design 0025 T0 — the one diagnostic line that makes class resolution
+  /// measurable. Emitted once per connection: on the first device-type byte, or
+  /// on disconnect if none ever came.
+  ///
+  /// ```
+  /// class-resolve: ready→0x10 412ms | seed=saved | kaFail=0 | class=0x22
+  /// class-resolve: ready→0x10 never | seed=none  | kaFail=3 | class=none
+  /// ```
+  ///
+  /// Each field answers a question this project could not previously answer:
+  ///
+  /// * `ready→0x10` — the distribution behind [kClassPendingTimeout]. There is
+  ///   no measurement of this interval anywhere in the corpus; the timeout it
+  ///   replaces was borrowed from an unrelated connect timeout.
+  /// * `seed=` — how often FB-43's seed fix (`7a0965c`) actually fires. That
+  ///   fix has never shipped, so its real-world hit rate is unknown.
+  /// * `kaFail=` — tests the §10.2 hypothesis directly: a class that never
+  ///   resolves should be accompanied by a broken write path.
+  /// * `class=` — separates "no byte" from "a byte we do not recognise", which
+  ///   both present as [ProductClass.unknown] and want opposite responses.
+  void _logClassResolve({required int? resolvedMs}) {
+    if (_classResolveLogged) return;
+    if (_readyAt == null) return; // never got online; nothing to measure
+    _classResolveLogged = true;
+    final dt = _packResolver.observedDeviceType;
+    final cls = dt == null
+        ? 'none'
+        : '0x${dt.toRadixString(16).padLeft(2, '0').toUpperCase()}';
+    _event('class-resolve: ready→0x10 ${resolvedMs == null ? 'never' : '${resolvedMs}ms'}'
+        ' | seed=$_seedSource'
+        ' | kaFail=${_ble.keepAliveFailures}'
+        ' | class=$cls');
+  }
+
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
@@ -630,6 +756,12 @@ class ConnectionController extends ChangeNotifier {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
       _packResolver.markConnected(DateTime.now());
+      // design 0025 T0: `ready` is the zero point for the class-resolve
+      // measurement. Anything earlier would fold in the connect/retry churn,
+      // which is a different problem (FB-25) with a different fix.
+      _readyAt = DateTime.now();
+      _classResolveLogged = false;
+      _revealUnclassified = false; // never carries across connections
       // Stamp last-seen on the saved entry (if any). This is only the OPENING
       // stamp; [_onTelemetrySample] keeps it moving while the link lives and
       // the disconnect branch below closes it out — see [_touchLastSeen].
@@ -645,6 +777,7 @@ class ConnectionController extends ChangeNotifier {
         final savedLabel = _devices?.deviceFor(id)?.productClass;
         if (savedLabel != null && savedLabel != ProductClass.unknown) {
           _seedClass = savedLabel;
+          if (_seedSource == 'none') _seedSource = 'saved';
         }
       }
       _recomputePackLabel();
@@ -656,6 +789,11 @@ class ConnectionController extends ChangeNotifier {
       final gone = _lastSeenDeviceId;
       if (gone != null) _touchLastSeen(gone, force: true);
       _lastSeenDeviceId = null;
+      // design 0025 T0: if the byte never arrived, say so on the way out —
+      // otherwise the connections that FAILED to resolve are exactly the ones
+      // absent from the measurement, and the distribution reads clean.
+      _logClassResolve(resolvedMs: null);
+      _readyAt = null;
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
       _packLabel = ProductClass.unknown;
@@ -735,7 +873,16 @@ class ConnectionController extends ChangeNotifier {
   final Set<int> _loggedUnknownStatus = <int>{};
 
   void _onTelemetrySample(TelemetrySample s) {
+    final sawBefore = _packResolver.sawDeviceType;
     _packResolver.observe(s);
+    // design 0025 T0: fires on the FIRST device-type byte of the connection.
+    if (!sawBefore && _packResolver.sawDeviceType) {
+      final since = _readyAt;
+      _logClassResolve(
+        resolvedMs:
+            since == null ? null : DateTime.now().difference(since).inMilliseconds,
+      );
+    }
     _recomputePackLabel();
     _updateNotificationBody(s);
     _logUnknownCapacitorStatus(s);

@@ -91,13 +91,21 @@ class PackScaffold extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final packLabel =
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
-    // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once the
-    // connect burst arrives; else the tail-only serial; else the BLE device id
-    // (MAC on Android, opaque UUID on iOS) as a placeholder.
-    final serial = tele.fullSerial ??
-        tele.serial ??
-        context.select<ConnectionController, String?>(
-            (c) => c.connectedDeviceId);
+    // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once
+    // the connect burst arrives; else the tail-only serial; else NOTHING — the
+    // row hides itself below.
+    //
+    // 🔴 There used to be a third fallback to the BLE device id. Two things were
+    // wrong with it. It is not a serial, so the label "產品序號" was false —
+    // a field screenshot shows a user's dashboard reading
+    // "產品序號: 58711753-6B00-4A4C-…", which is an iOS NSUUID. And on ANDROID
+    // that id is the MAC address: `log_entry.dart` says so in as many words
+    // ("NEVER put this in an exported filename — on Android it is the MAC
+    // address"), which is why FB-33 keeps it out of export filenames. Printing
+    // it on the main screen under a serial-number label undoes that, in a
+    // project whose whole feedback loop runs on users sending screenshots.
+    // An empty row is strictly better than a confidently wrong one.
+    final serial = tele.fullSerial ?? tele.serial;
 
     // Centre SOH sub-line for the gauge (resolved here where l10n is available).
     //

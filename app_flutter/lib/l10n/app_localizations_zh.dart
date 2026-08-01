@@ -974,6 +974,39 @@ class AppLocalizationsZh extends AppLocalizations {
   String get packLabelUnclassified => '未分類（請指定）';
 
   @override
+  String get classPendingTitle => '正在判定裝置類型';
+
+  @override
+  String get classPendingBody =>
+      '等待裝置回報自己的類型。在那之前不顯示讀數 —— 同一個數字在電池與行動電源上代表的意義並不相同。';
+
+  @override
+  String get classPendingStalledTitle => '連線不穩定';
+
+  @override
+  String classPendingStalledBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已有 $count 次輪詢沒有得到回應，裝置尚未回報類型。',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get classPendingTimeoutTitle => '無法判定裝置類型';
+
+  @override
+  String get classPendingTimeoutBody =>
+      '裝置有在送讀數，但沒有說自己是什麼。重新連線通常可以解決；你也可以手動指定類型。';
+
+  @override
+  String get classPendingRevealButton => '仍要顯示讀數（未分類）';
+
+  @override
+  String get classPendingRetryButton => '重新連線';
+
+  @override
   String get packLabelChoose => '設定裝置類型';
 
   @override

@@ -61,6 +61,22 @@ class PackClassResolver {
   /// [ProductClass.unknown] when the byte is absent/unrecognised.
   ProductClass get deviceClass => ProductClass.fromDeviceType(_deviceType);
 
+  /// Whether a device-type byte has been seen AT ALL this connection —
+  /// ORTHOGONAL to [deviceClass], which collapses "no byte yet" and "a byte we
+  /// do not recognise" into the same [ProductClass.unknown] (design 0025 §3.1).
+  ///
+  /// Those two must be told apart because only the FIRST is a transient state
+  /// worth hiding behind a placeholder. The second is a legitimate resting
+  /// state: the unit answered, this build does not know the value, and the user
+  /// is meant to pick a class by hand. Blocking that behind "判定中" would hide
+  /// the very control that resolves it.
+  bool get sawDeviceType => _deviceType != null;
+
+  /// The raw device-type byte seen this connection, for diagnostics only
+  /// (design 0025 T0 logs it so an unrecognised byte is identifiable in a
+  /// field log instead of vanishing into [ProductClass.unknown]).
+  int? get observedDeviceType => _deviceType;
+
   /// True only for a confirmed power bank — the routing signal.
   bool get isPowerBank => deviceClass.isPowerBank;
 

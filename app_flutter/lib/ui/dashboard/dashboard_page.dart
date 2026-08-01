@@ -3,9 +3,10 @@
 /// When no device is connected this shows [DisconnectedState] (quick-select +
 /// scan). Once online, [DashboardRouter] picks the view by the ONLY
 /// deterministic signal (design 0001 §3.1 / §3.4): a confirmed power bank
-/// (device-type 0x22) gets [PowerBankView]; everything else (super-capacitor /
-/// smart battery, or not-yet-identified) gets the data-driven [PackView]. The
-/// cosmetic super-capacitor-vs-battery label NEVER influences this choice.
+/// (device-type 0x22) gets [PowerBankView]; a confirmed pack (super-capacitor
+/// or smart battery) gets the data-driven [PackView]; a unit that has not said
+/// what it is yet gets [ClassPendingView] and NO layout at all (design 0025).
+/// The cosmetic super-capacitor-vs-battery label NEVER influences this choice.
 library;
 
 import 'dart:async';
@@ -14,10 +15,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../devices/device_list_sheet.dart';
 import 'capture_mark_bar.dart';
+import 'class_pending_view.dart';
 import 'disconnected_state.dart';
 import 'pack_view.dart';
 import 'power_bank_view.dart';
@@ -147,18 +150,35 @@ class _StaleBannerState extends State<_StaleBanner> {
   }
 }
 
-/// Picks the live view by the deterministic power-bank signal (design 0001
-/// §3.4). Routing reads [ConnectionController.isPowerBank] — the SAME resolver
-/// that drives persistence and capability gating (single source of truth,
-/// design 0001 §3.1) — so the chosen layout can never disagree with the stored
-/// class. The cosmetic pack label is never consulted here.
+/// Picks the live view from the deterministic routing decision (design 0001
+/// §3.4, design 0025). Reads [ConnectionController.routing] — derived from the
+/// SAME resolver that drives persistence and capability gating (single source
+/// of truth, design 0001 §3.1) — so the chosen layout can never disagree with
+/// the stored class. The cosmetic pack label is never consulted here.
+///
+/// This used to be `isPowerBank ? PowerBankView : PackView`. A bool cannot
+/// express "not yet known", so that form silently routed an unidentified unit
+/// to the pack layout — and the pack layout leads with a 12 V terminal-voltage
+/// gauge. FB-43's field screenshot is a power bank in exactly that state, its
+/// single-cell 3.79 V presented as a pack's main voltage.
 class DashboardRouter extends StatelessWidget {
   const DashboardRouter({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final isPowerBank =
-        context.select<ConnectionController, bool>((c) => c.isPowerBank);
-    return isPowerBank ? const PowerBankView() : const PackView();
+    final routing =
+        context.select<ConnectionController, RoutingDecision>((c) => c.routing);
+    // Exhaustive on purpose (design 0025 §7 Q3): when the pack shell is split
+    // into battery and capacitor, this switch stops compiling until every site
+    // has chosen, rather than defaulting one of them somewhere silently.
+    switch (routing) {
+      case RoutingDecision.powerBank:
+        return const PowerBankView();
+      case RoutingDecision.pack:
+      case RoutingDecision.unclassified:
+        return const PackView();
+      case RoutingDecision.pending:
+        return const ClassPendingView();
+    }
   }
 }

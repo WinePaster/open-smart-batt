@@ -704,6 +704,24 @@ class BleService {
   bool _keepAliveInFlight = false;
   int _keepAliveFailures = 0;
 
+  /// Consecutive keep-alive write failures outstanding; 0 when healthy.
+  ///
+  /// Design 0025 §7 Q1: this counter already existed and was only ever written
+  /// to the diagnostic log. It is the honest explanation for a device class
+  /// that never resolves — `0x10` answers the 1 Hz `#` poll, so a poll that
+  /// cannot be written is never answered, while notifications subscribed
+  /// earlier keep streaming and the link still reports ready (PROTOCOL.md
+  /// §10.2). Surfacing it lets the UI say "connection unstable, retrying"
+  /// instead of the useless "cannot determine device type".
+  ///
+  /// It also settles what NOT to build: re-sending `!#` on a stall was the
+  /// original proposal, but `!#` is itself a write, so in the only case that
+  /// needs it the resend fails too.
+  int get keepAliveFailures => _keepAliveFailures;
+
+  /// True while the keep-alive write path is known to be broken.
+  bool get keepAliveWriteFailed => _keepAliveWriteFailed;
+
   // ---------------------------------------------------------------------------
   // Outbound commands
   // ---------------------------------------------------------------------------
