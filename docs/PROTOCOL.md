@@ -114,9 +114,16 @@ times and `!#` **5** times, and the reply sets separate cleanly:
 or reading a capture:
 
 * **`!#` is not just a session opener.** Tick 1 sends it once, so a long session
-  gets the extended group *once* — but the 6th session in this capture received no
-  `!#` at all (the first one landed 9 minutes later, already inside session 2) and
-  therefore streamed **zero** frames from the second row for its entire life.
+  gets the extended group *once* — but the **1st** session in this capture received
+  no `!#` at all (the first one landed 9 minutes later, already inside session 2)
+  and therefore streamed **zero** frames from the second row for its entire life.
+  <br>🔴 **Corrected 2026-08-01.** This read "the 6th session", which contradicted
+  its own next clause — if the first `!#` lands inside session 2, the session that
+  went without it is session 1, not session 6. Re-measured on the same unit's
+  longer log (`feedback_log/2026.07.31/003`, 9 sessions, 47 h): session 1 = 0
+  `!#`, sessions 2–9 = exactly 1 each; session 6 sent its `!#` 0.06 s after
+  `link: ready`. `devices.md` had it right all along, so the two documents were
+  in open contradiction.
 * **"This device does not support X" is unprovable from a capture that wrote only
   `#`.** That is the same failure mode as §10.2, one level finer: there, a broken
   write path hid 20-odd registers; here, a *working* write path that never
@@ -516,6 +523,36 @@ argument:
 > constant within every session. `0x02` = cut-off is owner-labelled on **one**
 > unit (1441); `0x01` and `0x00` on **two**. The distributor independently gives
 > the same numbering for the write argument.
+>
+> ### ✅ `0x02` = cut-off, confirmed by the vendor's own app (2026-08-01)
+>
+> The narrowing above left `0x02` resting on a single owner label. It no longer
+> does. On 2026-07-31 a reporter photographed unit **1261** in the **original
+> iBatt app**, which rendered its own UI string `斷電模式已啟動！`
+> ("cut-off mode activated") — and our log of the same unit, from the same
+> afternoon, reads `0x23` = `0x02` on **248 of 304** frames spanning both sides
+> of that photograph. Every other field on the screen cross-checks against the
+> wire in the same window: 9.81 V ↔ `0x19`, 0 A ↔ `0x2E`, 33 °C ↔ `0x21`, and
+> per-cell 3.28/5.04/3.26/3.28 V ↔ `0x24`×VADJ **and** `0x47` native mV, all
+> three agreeing. ✅ **verified.**
+>
+> This matters because of *where* it comes from. Every prior data point was an
+> owner labelling their own export; this one is the vendor's firmware naming the
+> state, which is the escalation path this project's own landing threshold asks
+> for. `0x02` = cut-off is now attested on **two** units, and the second
+> attestation is semantic rather than circumstantial.
+>
+> ⚠️ **Two caveats, both real.** The vendor app connected over its own link, and
+> there is an **8.5-minute gap** between our last frame before the photo and our
+> first after it — the states are contiguous by inference, not by capture. And
+> this does **not** restore the withdrawn batch `010` row above: that batch's
+> mode remains unknown. This is independent evidence from a different day, not a
+> reinstatement.
+>
+> 🔲 **Still open on this unit:** the screen also said `過電壓保護中`
+> ("over-voltage protection engaged") at a pack voltage of 9.81 V, which is not
+> self-consistent, and its `SVLT − PVLT` gap of +5.1 V was **already present that
+> morning with mode `0x00`** — so the gap is not caused by cut-off. See §8.4.
 >
 > **`0x04` is not a pack state.** It appears nowhere in this corpus.
 >
@@ -1325,9 +1362,18 @@ Two further measurements from the same re-walk:
   — 813 `0x40` frames, all inside one continuous 6 min 07 s stretch on
   2026-07-05) byte 0 is `0x22` on **799** frames and `0x02` on **14**, arriving
   as four short excursions (1, 1, 11 and 1 frames) out of otherwise long `0x22`
-  runs. Across the whole corpus byte 0 takes only `0x20`, `0x22` and `0x02`, so
+  runs. Across the whole corpus byte 0 takes `0x20`, `0x22`, `0x02` and `0x00`, so
   **only bits 1 and 5 are ever used** — but bit 1 flips inside one session on one
   unit, which rules out a fixed per-unit identifier.
+  <br>🔴 **Enumeration corrected 2026-08-01.** This said "takes only `0x20`,
+  `0x22` and `0x02`". `feedback_log/2026.07.31/003` — the same identified unit,
+  extended to 47 h and 115,519 frames — carries **4 frames with byte 0 = `0x00`**,
+  all landing within 1.6 s of a `link: ready`, byte 1 unchanged across them.
+  Note the scope of the correction: only the *list* was wrong. "Only bits 1 and 5
+  are ever used" is **not** refuted — `0x00` is the fourth and last combination of
+  those two bits, so the corpus now exhibits all four and the bit-mask claim is
+  strictly better supported than before. ✅ verified (raw RX lines and per-frame
+  XOR in `feedback-analysis/2026.07.31-003.md`).
 * **On the identified unit byte 1 never exceeds `0x18`** — mask `0x1F`, 15 of the
   32 possible low-5-bit patterns, and bit 1 occurs only paired with bit 4. That is
   *consistent with* a bitfield, but a small magnitude occupies the same bits, so
