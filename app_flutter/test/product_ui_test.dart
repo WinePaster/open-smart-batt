@@ -6,8 +6,8 @@
 //   * The decoder SOC path (selector 0x96 b6 → socPercent, direct percent).
 //   * PvltGauge two-mode fraction math (voltage domain vs percent).
 //
-// CLEAN-ROOM: every expectation is derived only from docs/PROTOCOL.md and
-// docs/design/0001-*.md. No decompiled/original-app source was consulted.
+// CLEAN-ROOM: every expectation is derived only from docs/PROTOCOL.md and the
+// project's own design notes. No decompiled/original-app source was consulted.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/models/models.dart';

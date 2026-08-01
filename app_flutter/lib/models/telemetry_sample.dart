@@ -135,8 +135,10 @@ class TelemetrySample {
   /// layout is `0168` + dealer number, so it is the prefix of [fullSerial].
   final String? dealerCode;
 
-  /// Reported mode/status code (b4) — selector 0x23 (e.g. 0x05 baseline,
-  /// transient 0x06; documented status space 0/2/4).
+  /// Reported mode/status code (b4) — selector 0x23. Pack states are 0/1/2
+  /// (normal / anti-theft / cut-off); a capacitor reports its own 0x05 baseline
+  /// instead. Corrected 2026-08-01: this said "0/2/4", and `0x04` occurs
+  /// nowhere in the corpus — see [ReportedStatus] for the wire-verified set.
   final int? mode;
 
   /// Raw TWF status byte (b4) — selector 0x20. Bit semantics unverified.
@@ -199,7 +201,7 @@ class TelemetrySample {
   bool get isSmartBattery => deviceType == 0x02;
 
   /// Full product serial = **dealer code (0x27) + product serial (0x26)**, per
-  /// field feedback (`0168` + 經銷商編號 + 產品序號, e.g. `016800218000415`).
+  /// field feedback (`0168` + 經銷商編號 + 產品序號, e.g. `016812340012345`).
   /// The dealer code already carries the `0168`+dealer prefix; the product serial
   /// is zero-padded to 7 digits. Null until both source frames arrive (they come
   /// in the connect burst, §10.2). Exact pad width is unverified — confirm vs the

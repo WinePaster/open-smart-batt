@@ -1,11 +1,11 @@
 // Design 0020 — manual cut-off (FB-35) and cut-off/release state gating (FB-34).
 //
-// THE REPORT THIS PINS DOWN. A field capture (feedback_log/2026.07.30/006,
-// 23 hours, 63,375 XOR-clean frames) carries five mode-0x06 writes and a `0x23`
+// THE REPORT THIS PINS DOWN. A 2026-07-30 field capture (23 hours, 63,375
+// XOR-clean frames) carries five mode-0x06 writes and a `0x23`
 // byte that reads `0x00` on 2131/2131 frames — the battery was never cut off, so
 // "release" could not possibly do anything. The app nevertheless offered a large
 // permanently-enabled 解除斷電 button and answered every press with "sent". The
-// owner wrote: 「剛有測試斷電功能，無作動」.
+// reporter's summary: the cut-off function was tried, and nothing happened.
 //
 // Two rules come out of that, and both are asserted here:
 //   1. The gate is ASYMMETRIC (design 0020 §3.1). Cut-off is offered only when

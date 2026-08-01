@@ -1,12 +1,13 @@
 // FB-43 — a saved power bank must not be routed to the pack layout while its
 // device-type byte is still in flight.
 //
-// The field report (feedback_log/2026.07.31/001, 何先生): "連線後一開始還是換先跳
-// 未知裝置 / 重新連結才有行動電源". The byte itself is fast — 92 ms after `ready`
-// in that capture — but routing happens as soon as the dashboard builds, and a
-// stale iOS NSUUID held the link in connect/retry for TEN SECONDS first:
+// A 2026-07-31 field report: on connecting to a saved power bank the dashboard
+// first shows "unknown device", and only a reconnect brings up the power-bank
+// layout. The byte itself is fast — 92 ms after `ready` in that capture — but
+// routing happens as soon as the dashboard builds, and a stale iOS NSUUID held
+// the link in connect/retry for TEN SECONDS first:
 //
-//   11:30:16.163  connect → 0F70900B      (saved device, stale NSUUID)
+//   11:30:16.163  connect → <device id>   (saved device, stale NSUUID)
 //   11:30:24.186  connect error: fbp-code 1 | Timed out after 8s
 //   11:30:25.215  scan start
 //   11:30:26.822  connected → 11:30:28.154 ready → 11:30:28.246 0x10=22

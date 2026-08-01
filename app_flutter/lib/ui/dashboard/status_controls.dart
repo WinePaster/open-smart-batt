@@ -2,7 +2,7 @@
 ///
 /// Design 0004 §3.4 splits the old single `StatusControls` into class-specific
 /// bodies so a capacitor and a battery show the controls they actually have
-/// (docs/devices.md capability matrix):
+/// (per the project's internal device capability matrix):
 ///   * [CapacitorControls] — capacitor-health badge + 檢測電容 (read-only).
 ///   * [BatteryControls]  — cut-off badge + 解除斷電 (auth-gated) + 防盜
 ///     (model-gated, warned + confirmed).
@@ -39,8 +39,9 @@ class CapacitorControls extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
 
-    // A capacitor has NO run mode: no cut-off, no anti-theft (docs/devices.md
-    // capability matrix). The badge that used to sit here read the 0x23 byte
+    // A capacitor has NO run mode: no cut-off, no anti-theft (see the device
+    // capability matrix in [DeviceCapabilities]). The badge that used to sit
+    // here read the 0x23 byte
     // through the pack code space and rendered a healthy unit's `5` as a red
     // "cut-off" — see [packRunModeOf]. Removed, not fixed in place: the control
     // was never applicable to this class.

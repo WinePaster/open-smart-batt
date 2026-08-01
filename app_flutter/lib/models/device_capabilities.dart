@@ -2,7 +2,7 @@
 ///
 /// PURE Dart. Design 0004 §3.2 gates controls PER CLASS (replacing the old
 /// `!isPowerBank` blanket that handed a capacitor and a battery the same control
-/// set — the bug in docs/devices.md's capability matrix):
+/// set — the bug the corrected capability matrix below records):
 ///
 /// | ProductClass     | 檢測電容 | 解除斷電 | 防盜        |
 /// |------------------|:------:|:------:|:-----------|

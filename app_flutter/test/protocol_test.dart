@@ -242,9 +242,9 @@ void main() {
     });
 
     test('cbFromFieldCb parses first 8 chars in BASE 10', () {
-      // '01680104' parsed decimal -> 1680104 (NOT hex).
-      expect(CommandBuilder.cbFromFieldCb('01680104'), 1680104);
-      expect(CommandBuilder.cbFromFieldCb('01680104300001'), 1680104);
+      // '01681234' parsed decimal -> 1681234 (NOT hex, which would be 23532596).
+      expect(CommandBuilder.cbFromFieldCb('01681234'), 1681234);
+      expect(CommandBuilder.cbFromFieldCb('01681234300001'), 1681234);
     });
 
     test('cbFromFieldCb throws when shorter than 8 chars', () {
@@ -260,14 +260,14 @@ void main() {
     });
 
     test('AuthCredentials cbHi is NOT byte-masked (spec quirk)', () {
-      // field_cb '01680104' -> 1680104; cbHi = 1680104>>8 = 6562 (>255).
-      const c = AuthCredentials(cb: 1680104, pwSum: 0);
-      expect(c.cbHi, 6562);
-      expect(c.cbLo, 1680104 & 0xFF); // 0xE8
+      // field_cb '01681234' -> 1681234; cbHi = 1681234>>8 = 6567 (>255).
+      const c = AuthCredentials(cb: 1681234, pwSum: 0);
+      expect(c.cbHi, 6567);
+      expect(c.cbLo, 1681234 & 0xFF); // 0x52
       // ...but the frame builder truncates it to a byte on the wire.
       final f = const CommandBuilder().auth(c);
-      expect(f[4], 6562 & 0xFF); // 0xA2
-      expect(f[5], 0xE8);
+      expect(f[4], 6567 & 0xFF); // 0xA7
+      expect(f[5], 0x52);
     });
   });
 
@@ -474,9 +474,10 @@ void main() {
     });
 
     test('dealerCode 0x27: "%04d%02X%02X"', () {
-      // b4*256+b5 = 168 -> "0168"; b6=01 -> "01"; b7=02 -> "02"
-      final f = decodeOne(0x27, [0x00, 0xA8, 0x01, 0x02]);
-      expect(TelemetryDecoder.dealerCode(f), '01680102');
+      // b4*256+b5 = 168 -> DECIMAL "0168"; b6=0x12 -> HEX "12" (not "18");
+      // b7=0x34 -> HEX "34" (not "52").
+      final f = decodeOne(0x27, [0x00, 0xA8, 0x12, 0x34]);
+      expect(TelemetryDecoder.dealerCode(f), '01681234');
     });
 
     test('dealerCode 0x27: hex bytes upper-cased', () {
@@ -602,9 +603,9 @@ void main() {
     test('0x27 -> dealerCode', () {
       expect(
           TelemetryDecoder.apply(
-                  base, decodeOne(0x27, [0x00, 0xA8, 0x01, 0x02]), at: at)
+                  base, decodeOne(0x27, [0x00, 0xA8, 0x12, 0x34]), at: at)
               .dealerCode,
-          '01680102');
+          '01681234');
     });
 
     test('0x2B threshold read stores UT raw byte (b7)', () {

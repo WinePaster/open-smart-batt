@@ -1,6 +1,6 @@
 // Unit tests for the per-class capability gating (design 0004 §3.2/§3.3).
 //
-// The corrected matrix (docs/devices.md): a super-capacitor exposes ONLY
+// The corrected matrix (see [DeviceCapabilities]): a super-capacitor exposes ONLY
 // 檢測電容; a smart battery exposes 解除斷電 (+ model-gated 防盜); a power bank
 // exposes none; an unclassified pack shows the bounded fallback — the union of
 // pack controls EXCEPT anti-theft. DVOL is DATA-DRIVEN, not gated here (the old

@@ -1,6 +1,6 @@
 // Keep-alive robustness + telemetry stall detection.
 //
-// Field evidence (feedback_log/2026.07.27, twice; and again on 2026-07-06):
+// Field evidence (a 2026-07-27 field capture, twice; and again on 2026-07-06):
 // Android suspends the app and BOTH directions stop together for minutes, then
 // resume with a backlog burst — RX per minute went 828 → 248 → 0 → 1666 → 832,
 // with the 15 s write timeout surfacing only at the moment of resume and NO

@@ -130,7 +130,7 @@ String rebindSavedDeviceId({
   if (candidates.containsKey(savedId)) return savedId;
   // Rebind only on a UNIQUE name match. Duplicate advertised names are real,
   // not hypothetical: two distinct power banks both advertise 'RCE_RSPB-01'
-  // (feedback_log/2026.07.29/007, confirmed in the vendor app's own scan list).
+  // (a 2026-07-29 field capture, confirmed in the vendor app's own scan list).
   // Returning the first iteration hit would connect to whichever entry the map
   // happened to yield and file its telemetry under the other unit's alias —
   // silent, and indistinguishable afterwards. The caller already handles

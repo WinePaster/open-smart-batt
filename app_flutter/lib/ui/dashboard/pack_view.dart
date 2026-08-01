@@ -97,8 +97,8 @@ class PackScaffold extends StatelessWidget {
     //
     // 🔴 There used to be a third fallback to the BLE device id. Two things were
     // wrong with it. It is not a serial, so the label "產品序號" was false —
-    // a field screenshot shows a user's dashboard reading
-    // "產品序號: 58711753-6B00-4A4C-…", which is an iOS NSUUID. And on ANDROID
+    // a field screenshot shows a dashboard reading
+    // "產品序號: <8-4-4-4-12>", which is an iOS NSUUID. And on ANDROID
     // that id is the MAC address: `log_entry.dart` says so in as many words
     // ("NEVER put this in an exported filename — on Android it is the MAC
     // address"), which is why FB-33 keeps it out of export filenames. Printing

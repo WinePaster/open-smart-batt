@@ -4,8 +4,8 @@
 // id: on Android that is the MAC address, and this text ends up in a file the
 // user shares"), and `_sectionLabel` honours it. The note text did not: it is
 // rendered verbatim by `toLogLine`, so anything interpolated into it was
-// exported as-is. Two MACs were recovered from a log a user mailed us
-// (feedback_log/2026.07.27).
+// exported as-is. Two MACs were recovered from a log a reporter shared with us
+// (a 2026-07-27 field capture).
 //
 // The redaction is deliberately MAC-only. On iOS the device id is an `8-4-4-4-12`
 // NSUUID — and so is every GATT service/characteristic UUID. The GATT dump is
@@ -17,9 +17,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/models.dart';
 
 void main() {
-  // The two ids actually recovered from the shared capture.
-  const mac = '6C:79:B8:33:76:9F';
-  const otherMac = '18:45:16:AF:26:55';
+  // Two distinct placeholder ids, in the shape the shared capture carried
+  // (the real ones are not reproduced here).
+  const mac = 'AA:BB:CC:DD:EE:FF';
+  const otherMac = '11:22:33:44:55:66';
 
   group('redactMacAddresses', () {
     test('replaces a MAC with its stable digest', () {

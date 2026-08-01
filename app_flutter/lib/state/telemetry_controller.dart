@@ -264,7 +264,7 @@ class TelemetryController extends ChangeNotifier {
   // ---- stall detection ---------------------------------------------------
   // A stall is NOT a disconnect: on Android the link stays ready while the OS
   // suspends the app, so RX and TX both stop for minutes and then flush a
-  // backlog (evidenced twice in feedback_log/2026.07.27). During that window
+  // backlog (evidenced twice in a 2026-07-27 field capture). During that window
   // the dashboard kept showing the last values with no hint they were frozen.
 
   DateTime? _lastSampleAt;

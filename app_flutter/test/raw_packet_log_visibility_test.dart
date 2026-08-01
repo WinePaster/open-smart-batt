@@ -1,6 +1,6 @@
 // Design 0023 — make the raw-packet-log switch visible (FB-32).
 //
-// THE CAPTURE THIS PINS DOWN. feedback_log/2026.07.30/007 arrived holding one
+// THE CAPTURE THIS PINS DOWN. A 2026-07-30 field capture arrived holding one
 // line of content:
 //
 //   # ---- device=RCE鋰鐵電池 session=1 app=0.6.11+26072909 ----

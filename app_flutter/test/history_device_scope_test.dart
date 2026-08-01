@@ -1,7 +1,8 @@
 // Design 0022 — device scope on the History screen (FB-38).
 //
-// THE REPORT THIS PINS DOWN. feedback_log/2026.07.30/009: "等接回電容時電壓歷史
-// 就會有異常". The data was not corrupt — per-device ranges were clean (a
+// THE REPORT THIS PINS DOWN. A 2026-07-30 field report: after reconnecting to
+// the capacitor, the voltage history "goes wrong". The data was not corrupt —
+// per-device ranges were clean (a
 // capacitor 12.42–14.26 V, a power bank 3.77–4.15 V). The SCREEN had no device
 // scope: _load() called historyStats / historyBuckets / historyWithDevice with
 // no deviceId, so the chart drew 3.7 V beside 14 V and the stats strip reported

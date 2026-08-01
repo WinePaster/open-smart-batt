@@ -83,8 +83,8 @@ bool cutOffActionEnabled(int? mode) =>
 ///
 /// FB-34: this used to be unconditional, so a battery reporting `normal` still
 /// offered a large red 解除斷電 button that could not possibly do anything, and
-/// reported "sent" when pressed. That is exactly what a field report described
-/// as 「測試斷電功能，無作動」.
+/// reported "sent" when pressed. That is exactly what a field report described:
+/// the cut-off function was tried, and nothing happened.
 bool releaseActionEnabled(int? mode) =>
     packRunModeOf(mode) != PackRunMode.normal;
 

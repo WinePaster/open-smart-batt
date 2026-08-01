@@ -1,13 +1,13 @@
 // Design 0021 — connection-setup timeout (FB-23) and epoch guard (FB-39).
 //
-// THE CAPTURE THIS PINS DOWN. feedback_log/2026.07.30/009, 18:15–18:17:
+// THE CAPTURE THIS PINS DOWN. A 2026-07-30 field capture, 18:15–18:17:
 //
-//   18:15:46  connect → EF5C4BCF…            (a capacitor)
+//   18:15:46  connect → <device A>          (a capacitor)
 //   18:16:11  Uncaught: discoverServices | Timed out after 15s
 //   18:16:27  Uncaught: discoverServices | Timed out after 15s
 //   18:16:44  Uncaught: discoverServices | Timed out after 15s
 //   18:16:48  link: connected  →  18:16:49  GATT dump succeeds
-//   18:17:17  connect → 52734C70…            (the owner gives up, taps a power bank)
+//   18:17:17  connect → <device B>          (the owner gives up, taps a power bank)
 //   18:17:22  link: ready       ← attributed to the CAPACITOR, five seconds late
 //
 // So the app came online as a device the user had already moved away from, and
@@ -69,10 +69,10 @@ void main() {
     });
 
     test('two overlapping setups: only the newer one may proceed', () {
-      // The 009 sequence in miniature.
+      // The captured sequence above, in miniature.
       final e = ConnectEpoch();
-      final capacitor = e.begin(); // connect → EF5C4BCF
-      final powerBank = e.begin(); // connect → 52734C70, while the first awaits
+      final capacitor = e.begin(); // connect → device A
+      final powerBank = e.begin(); // connect → device B, while the first awaits
       expect(e.isCurrent(capacitor), isFalse,
           reason: 'the late `ready` must NOT be published');
       expect(e.isCurrent(powerBank), isTrue);

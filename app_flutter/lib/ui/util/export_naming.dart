@@ -2,8 +2,8 @@
 ///
 /// PURE Dart (no Flutter imports) so every rule here is unit-testable.
 ///
-/// The dealer services several units and used to receive files called
-/// `opensmartbatt-20260708-190410.log` — indistinguishable from each other. A
+/// A dealer services several units and used to receive files called
+/// `opensmartbatt-20260727-113000.log` — indistinguishable from each other. A
 /// name now carries the product class plus a human identity:
 ///
 ///     opensmartbatt-battery-1206-20260727-113000.log

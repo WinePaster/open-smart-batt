@@ -35,7 +35,10 @@ class Selectors {
   /// Mode register echo. b4 -> reported mode/status code.
   static const int mode = 0x23;
 
-  /// DVOL per-series cell voltages (4 cells). Gated by field_cb 0168/01690104.
+  /// DVOL per-series cell voltages (4 cells). **Not gated** on any field_cb
+  /// label — it streams unconditionally (PROTOCOL.md §5.2). The earlier claim of
+  /// a `0168…`-prefixed gate was wrong; a client that implements it never shows
+  /// per-cell voltages at all.
   static const int dvol = 0x24;
 
   /// Year (年份) — §10.2. NOT the serial high-word (earlier

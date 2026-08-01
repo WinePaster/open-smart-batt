@@ -6,8 +6,7 @@
 //   * the fallback fingerprint keyed on "a 0x2E current frame means battery",
 //     while that capacitor streams 0x2E every second pinned at 0.0 A.
 //
-// Frame payloads below are the ACTUAL bytes from
-// feedback_log/2026.07.27/opensmartbatt-20260727-214022.log.
+// Frame payloads below are the ACTUAL bytes from a 2026-07-27 field capture.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/protocol/protocol.dart';

@@ -73,7 +73,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
   String? _error;
 
   /// Best-effort cb hint from the dealer code's leading 4 digits
-  /// (e.g. dealer "01680217" → "168"). User can edit.
+  /// (e.g. dealer "01681234" → "168"). User can edit.
   static String _prefillCb(String dealer) {
     final d = dealer.trim();
     if (d.length < 4) return '';

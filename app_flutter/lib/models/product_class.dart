@@ -27,12 +27,13 @@ const int kPowerBankDeviceType = 0x22;
 
 /// Device-type byte (selector 0x10 b4) that identifies a smart battery —
 /// verified for the car battery (`RCE-CarBatt`) via the connect-burst HCI snoop
-/// (docs/devices.md §智慧電池; observed "device id = 02", §10.2).
+/// (the project's internal device notes, §智慧電池; observed "device id = 02",
+/// PROTOCOL.md §10.2).
 const int kSmartBatteryDeviceType = 0x02;
 
 /// Device-type byte (selector 0x10 b4) that identifies a super-capacitor —
 /// wire-verified 2026-07-27 on a 旗艦電容 the owner confirmed by hand
-/// (`feedback_log/2026.07.27`: 488 `0x10` frames, payload `17`, no other value).
+/// (a 2026-07-27 field capture: 488 `0x10` frames, payload `17`, no other value).
 ///
 /// Design 0004 §3.1 withheld this mapping "until a capacitor 0x10 capture
 /// confirms it"; design 0007 lands it because that capture now exists. Other
@@ -68,7 +69,8 @@ enum ProductClass {
 
   /// Maps a device-type byte (selector 0x10 b4) to a class. Deterministic:
   ///   * 0x22 => [powerBank] (verified);
-  ///   * 0x02 => [smartBattery] (verified — docs/devices.md §智慧電池);
+  ///   * 0x02 => [smartBattery] (verified on a car battery — see
+  ///     [kSmartBatteryDeviceType]);
   ///   * 0x17 => [supercapacitor] (verified 2026-07-27 — design 0007);
   ///   * every other value => [unknown], which the UI presents as "unclassified"
   ///     and lets the user resolve. All three classes now have a wire-verified

@@ -5,7 +5,7 @@
 /// bars, no USB ports, no class-gated controls.
 ///
 /// That restraint is the entire point. The field report this comes from
-/// (`feedback_log/2026.07.31/004`) is a screenshot of a power bank whose
+/// (a 2026-07-31 field capture) is a screenshot of a power bank whose
 /// SINGLE-CELL 3.79 V was drawn as a pack terminal voltage under the label
 /// "PVLT 主電壓", on a gauge whose formula pins anything that low to the
 /// bottom of its sweep. Every number on that screen was real; the screen was

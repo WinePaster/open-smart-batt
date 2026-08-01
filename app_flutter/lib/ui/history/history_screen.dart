@@ -7,7 +7,7 @@
 /// (which filters only the list, not the chart). The chart + stats are computed
 /// DB-side via [TelemetryController.historyBuckets] / [historyStats] so large
 /// ranges never load every row into Dart. Each list row is classified
-/// normal / warning / event (mode = reported status 0/2/4, PROTOCOL.md §6.2;
+/// normal / warning / event (mode = reported status 0/1/2, PROTOCOL.md §6.2;
 /// warning compared against the device's live OV/UV/OT thresholds when known).
 library;
 

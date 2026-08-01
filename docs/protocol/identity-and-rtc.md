@@ -1,0 +1,82 @@
+# Identity, housekeeping registers, and the device clock
+
+> Part of the **RCE iBatt BLE protocol specification**. Split out of
+> [`../PROTOCOL.md`](../PROTOCOL.md) on 2026-08-01 — text is verbatim, and the
+> original `§` numbering is preserved so every cross-reference in this document
+> set (and in the app source) still resolves. The index maps `§` to file.
+>
+> **Covers:** §8.2.3 Identity / housekeeping registers
+
+> This is a subsection of **§8 Telemetry parsing**; the `b[n]` notation and the
+> pack formula table live in [`telemetry-decoding.md`](telemetry-decoding.md).
+
+---
+
+### 8.2.3 Identity / housekeeping registers (decoded 2026-07-28)
+
+> 📌 **Classification note (owner ruling, 2026-07-30).** `0x25`, `0x29`, `0x38`
+> and `0x3B` were previously on this project's "engineering-build only" list.
+> They are hereby **formally declassified**: the decode below rests entirely on
+> this project's own captures (a super-capacitor recorded on Android 2026-07-27
+> and iOS 2026-07-28, agreeing byte for byte), not on any vendor tooling. The
+> project's internal boundary register has been updated to match.
+
+These arrive in the connect burst, so they only appear once the keep-alive write
+path works (§10.2). All values below come from one super-capacitor
+(device-type `0x17`, serial 7809) captured on **both** Android (2026-07-27) and
+iOS (2026-07-28) — the two captures agree byte for byte, which is what raises
+them above single-observation guesses.
+
+| Selector | LEN | Layout | Example | Reading |
+|---|---|---|---|---|
+| `0x25` | 2 | big-endian u16 | `07e4` | **2020** — manufacture year |
+| `0x29` | 2 | `[major, minor]`, **not** a u16 | `0106` | **firmware 1.06** |
+| `0x38` | 17 | **ASCII text**, not packed bytes | `41413a…4646` | `"AA:BB:CC:DD:EE:FF"` (illustrative value) — the device MAC |
+| `0x3B` | 7 | `[year_hi, year_lo, MM, DD, hh, mm, ss]` — **`MM` and `DD` are 0-based**, `hh`/`mm`/`ss` are not | `07d0 07 10 10 04 35` | 2000-**08-17** 16:04:53 — device RTC |
+
+**`0x29` is a byte pair, not a number.** `0x0106` read as a u16 would be 262;
+the unit's firmware is 1.06, independently recorded from the vendor tooling.
+
+**`0x38` is text.** Decoding it as packed bytes yields nonsense; as ASCII it is
+the MAC, and it matches the address the Android BLE stack reported for the same
+unit. (iOS never exposes a MAC to the app, so on that platform this register is
+the *only* way to obtain a stable cross-platform device identity.)
+
+**`0x3B` is a clock, and it ticks.** Over a 22-minute capture the field advanced
+16:04:53 → 16:27:16 — 22 m 23 s against 22 m 25 s of wall clock — and was
+monotonic across **1112 of 1112** consecutive frames, with the seconds field
+bounded 0–59. The *rate* is therefore verified; the *absolute value* is not
+meaningful here (year 2000, and a time-of-day unrelated to the phone's), because
+this unit's RTC was evidently never set. Do not present it to a user as a
+timestamp; it is useful for ordering and for detecting a device reset.
+
+**`MM` and `DD` are 0-based** (✅ verified, corrected 2026-08-01). `MM = 0x07` is
+**August**, `DD = 0x00` is the **1st**. Evidence, in order of weight:
+
+* Two batteries whose RTCs had been set — their `hh:mm:ss` ran a steady **+4.0 s**
+  against wall clock, so the time half was already known-good — emitted
+  `MM = 0x07, DD = 0x00` on a day that was in fact **2026-08-01**. Four poll
+  bursts across the two units: all four land exactly on the capture date under
+  0-based, and all four decode to the impossible "day 0" under 1-based. Two
+  further units, captured on two other days, likewise land on their own capture
+  date only under 0-based.
+* Whole-corpus re-walk: **3,234 frames** decode to an impossible month 0 or day 0
+  under 1-based; under 0-based **zero frames** fall outside a legal month/day.
+* Power banks with an unset clock emit `MM = DD = 0x00`, which under 0-based is
+  the boot origin **2000-01-01** — self-consistent with the same rule.
+
+> 🔴 **Superseded 2026-08-01 (was: 1-based).** The example row above previously
+> read `07d0 07 10 10 04 35` as "2000-07-16 16:04:53". Only the month and day
+> were wrong; the time fields are plain binary and are unchanged, so the tick-rate
+> verification in the paragraph above is unaffected. A client using the old
+> reading renders every date one month early and one day short — and on any
+> device reporting `DD = 0x00` it produces a date that does not exist.
+
+> 🔲 **Unsettled — power banks may not be running a calendar clock at all.** On
+> power-bank units this register has been seen restarting from the same base value
+> on three different real-world dates, and half of the units observed emit
+> `MM = DD = 0x00` for their whole session (66 observations). That is consistent
+> with "elapsed time since power-on" rather than a wall clock, but it rests on
+> one- and two-unit observation and is **not** a landed conclusion. Until it is
+> settled, treat `0x3B` on power banks as an ordering / reset signal only, and do
+> not render it as a date.

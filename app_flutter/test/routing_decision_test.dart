@@ -7,8 +7,8 @@
 // which has no way to express an undetermined class, so it routed one to the
 // pack layout. The pack layout leads with a 12 V terminal-voltage gauge, so a
 // power bank caught in that window had its SINGLE-CELL voltage rendered as a
-// pack's main voltage — `feedback_log/2026.07.31/004`, a screenshot of a real
-// user's dashboard reading "PVLT 主電壓 3.79 V" for a power bank.
+// pack's main voltage — a 2026-07-31 field capture, a dashboard screenshot
+// reading "PVLT 主電壓 3.79 V" for a power bank.
 //
 // FB-43's first fix (`7a0965c`) supplied a better guess: seed routing from the
 // class stored for that device. It is kept, and the second group below is its
