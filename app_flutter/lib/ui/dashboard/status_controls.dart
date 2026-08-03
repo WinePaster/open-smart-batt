@@ -77,20 +77,22 @@ class CapacitorControls extends StatelessWidget {
           label: l10n.controlDetectCapacitor,
           onPressed: online ? () => detectCapacitor(context, tele) : null,
         ),
-        const SizedBox(height: 11),
-        // Tell the owner what to DO about an unrecognised status, instead of
-        // showing them a hex byte they cannot act on.
-        if (health == CapacitorHealth.unknown) ...[
-          AdvisoryNote(text: l10n.statusAdvisoryCapacitorUnknown),
-          const SizedBox(height: 7),
-        ],
-        // Threshold breach is OUR computation, so it is an advisory line — it
-        // must not masquerade as the device-reported status badge above.
-        if (thresholdBreach) ...[
-          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
-          const SizedBox(height: 7),
-        ],
-        AdvisoryNote(text: l10n.statusAdvisoryNoteCapacitor),
+        // The permanent "this unit is a super-capacitor…" note was removed on
+        // 2026-08-04 (design 0034 §5.4): it fired on every render and told the
+        // owner nothing they could act on. What is left is conditional and
+        // actionable. ⚠️ The accepted consequence is that a capacitor owner
+        // now sees fewer buttons than a battery owner with NO explanation —
+        // if that turns into a question, the answer is an expandable ⓘ, not
+        // the permanent paragraph coming back.
+        ...advisoryNotes([
+          // Tell the owner what to DO about an unrecognised status, instead of
+          // showing them a hex byte they cannot act on.
+          if (health == CapacitorHealth.unknown)
+            l10n.statusAdvisoryCapacitorUnknown,
+          // Threshold breach is OUR computation, so it is an advisory line —
+          // it must not masquerade as the device-reported status badge above.
+          if (thresholdBreach) l10n.statusAdvisoryThresholdBreach,
+        ]),
       ],
     );
   }
@@ -206,26 +208,23 @@ class BatteryControls extends StatelessWidget {
             ],
           ],
         ),
-        const SizedBox(height: 11),
-        // A disabled button must say why. The gate exists because the button
-        // used to be permanently live and report "command sent" against packs
-        // that were already running normally — nothing could change, and the
-        // user was told nothing had gone wrong either. Greying it out without a
-        // reason would just move that confusion one step earlier. Only
-        // shown while online: offline, everything is disabled for one obvious
-        // reason and repeating it per-button is noise.
-        if (online && !canRelease) ...[
-          AdvisoryNote(text: l10n.releaseDisabledNote),
-          const SizedBox(height: 7),
-        ],
-        // Same treatment as the other two bodies: OUR computation from the
-        // device's own thresholds, so it is an advisory line and never a
-        // device-reported status badge.
-        if (thresholdBreach) ...[
-          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
-          const SizedBox(height: 7),
-        ],
-        AdvisoryNote(text: l10n.statusAdvisoryNoteBattery),
+        // The permanent "this unit is a smart battery…" note was removed on
+        // 2026-08-04 (design 0034 §5.4). Both survivors are conditional and
+        // both tell the reader what to do next.
+        ...advisoryNotes([
+          // A disabled button must say why. The gate exists because the button
+          // used to be permanently live and report "command sent" against packs
+          // that were already running normally — nothing could change, and the
+          // user was told nothing had gone wrong either. Greying it out without
+          // a reason would just move that confusion one step earlier. Only
+          // shown while online: offline, everything is disabled for one obvious
+          // reason and repeating it per-button is noise.
+          if (online && !canRelease) l10n.releaseDisabledNote,
+          // Same treatment as the other two bodies: OUR computation from the
+          // device's own thresholds, so it is an advisory line and never a
+          // device-reported status badge.
+          if (thresholdBreach) l10n.statusAdvisoryThresholdBreach,
+        ]),
       ],
     );
   }
@@ -325,18 +324,18 @@ class PackControls extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 11),
-        if (caps.hasCutOff && online && !canRelease) ...[
-          AdvisoryNote(text: l10n.releaseDisabledNote),
-          const SizedBox(height: 7),
-        ],
-        // Threshold breach is class-agnostic (it only needs 0x2B + a reading),
-        // so it survives the badge removal above as an advisory line.
-        if (thresholdBreach) ...[
-          AdvisoryNote(text: l10n.statusAdvisoryThresholdBreach),
-          const SizedBox(height: 7),
-        ],
-        AdvisoryNote(text: l10n.statusAdvisoryNoteUnclassified),
+        // The permanent "the device type is not recognised yet…" note was
+        // removed on 2026-08-04 (design 0034 §5.4). ⚠️ Note what it also
+        // carried: "you can set the type above" — the only pointer to the
+        // label picker in the chip. The picker itself is unchanged and still
+        // the only place a class can be chosen.
+        ...advisoryNotes([
+          if (caps.hasCutOff && online && !canRelease) l10n.releaseDisabledNote,
+          // Threshold breach is class-agnostic (it only needs 0x2B + a
+          // reading), so it survives the badge removal above as an advisory
+          // line.
+          if (thresholdBreach) l10n.statusAdvisoryThresholdBreach,
+        ]),
       ],
     );
   }

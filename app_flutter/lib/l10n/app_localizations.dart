@@ -668,24 +668,6 @@ abstract class AppLocalizations {
   /// **'Check Capacitor'**
   String get controlDetectCapacitor;
 
-  /// No description provided for @statusAdvisoryNoteCapacitor.
-  ///
-  /// In en, this message translates to:
-  /// **'This unit is a super-capacitor (from the device type it reports); only the features it supports are shown. Its own over-voltage / under-voltage / over-temperature protection stays active.'**
-  String get statusAdvisoryNoteCapacitor;
-
-  /// No description provided for @statusAdvisoryNoteBattery.
-  ///
-  /// In en, this message translates to:
-  /// **'This unit is a smart battery (from the device type it reports). Anti-theft appears only on models that support it; after releasing the cut-off, avoid re-locking.'**
-  String get statusAdvisoryNoteBattery;
-
-  /// No description provided for @statusAdvisoryNoteUnclassified.
-  ///
-  /// In en, this message translates to:
-  /// **'The device type is not recognised yet, so a wider feature set is shown for now (anti-theft excluded). You can set the type above.'**
-  String get statusAdvisoryNoteUnclassified;
-
   /// No description provided for @statusAdvisoryCapacitorUnknown.
   ///
   /// In en, this message translates to:

@@ -550,6 +550,25 @@ class ControlButton extends StatelessWidget {
   }
 }
 
+/// The advisory notes that close a control body, with their spacing.
+///
+/// Spacing lives here because the notes are CONDITIONAL: 11 px above the first
+/// one that renders, 7 px between, and nothing trailing. Each call site used to
+/// hard-code `SizedBox(height: 11)` before the block and `SizedBox(height: 7)`
+/// after every note, which was correct only because a permanent note always
+/// closed the column. Design 0034 §5.4 removed those permanent notes, so an
+/// unconditional gap would now hang off the bottom of a card whenever no note
+/// fires — which is the common case.
+///
+/// Pass the notes in display order; empty entries are omitted by the caller's
+/// own collection-`if`, and an empty list renders nothing at all.
+List<Widget> advisoryNotes(List<String> texts) => [
+      for (var i = 0; i < texts.length; i++) ...[
+        SizedBox(height: i == 0 ? 11 : 7),
+        AdvisoryNote(text: texts[i]),
+      ],
+    ];
+
 /// Amber advisory note (mockup `.note`).
 class AdvisoryNote extends StatelessWidget {
   const AdvisoryNote({super.key, required this.text});
