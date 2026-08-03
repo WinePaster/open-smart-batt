@@ -88,6 +88,23 @@ class _LinkState {
   bool keepAliveInFlight = false;
   bool keepAliveWriteFailed = false;
   int keepAliveFailures = 0;
+
+  /// FB-20 instrument: how long each SUCCESSFUL keep-alive write took.
+  ///
+  /// Only failures used to carry a duration, so the corpus could see the right
+  /// tail (>=5 s) and nothing else — the body of the distribution was inferred
+  /// from the tick quantisation instead of measured. That inference cannot tell
+  /// "every write takes ~4.2 s" (a connection-parameter story) from "most take
+  /// 1 s and one in five runs to 4.9 s" (a retransmission story), and the two
+  /// call for different fixes. A histogram costs nine ints per link and settles
+  /// it from field captures we already ask for.
+  int writeOkCount = 0;
+  int writeMsTotal = 0;
+  int writeMsMax = 0;
+  final List<int> writeMsBuckets =
+      List<int>.filled(BleService.writeStatsBucketsMs.length + 1, 0);
+  int writeStatsReported = 0;
+
   bool settingUp = false;
   bool retryingConnect = false;
 
@@ -167,6 +184,19 @@ class BleService {
   /// Keep-alive cadence (~1 Hz). The battery streams telemetry as long as it
   /// keeps receiving a poll token; exact cadence is not protocol-critical.
   static const Duration keepAliveInterval = Duration(seconds: 1);
+
+  /// Upper edges (ms) of the keep-alive write-duration histogram; a final
+  /// open-ended bucket catches everything at or past the last edge. Chosen to
+  /// straddle [keepAliveWriteTimeout]: the question FB-20 leaves open is where
+  /// the body of the distribution sits, not how far the tail goes.
+  static const List<int> writeStatsBucketsMs = [
+    100, 250, 500, 1000, 2000, 3000, 4000, 5000
+  ];
+
+  /// Emit the histogram every N successful writes. 60 is about a minute on a
+  /// healthy link and about five minutes on the slowest unit measured, so the
+  /// line is rare enough not to crowd the packet log it shares.
+  static const int writeStatsEvery = 60;
 
   /// Write timeout for a keep-alive poke.
   ///
@@ -818,8 +848,53 @@ class BleService {
     await _teardown(link, emitDisconnected: true);
   }
 
+  /// Fold one successful write's duration into [link]'s histogram, and emit the
+  /// running summary every [writeStatsEvery] writes.
+  ///
+  /// Cumulative rather than per-window: the last line of a session is then the
+  /// whole session, which is what an offline reader wants. Reading two lines
+  /// and subtracting is still possible; reconstructing a total from windows
+  /// that a disconnect may have truncated is not.
+  void _recordWriteDuration(_LinkState link, int ms) {
+    link.writeOkCount++;
+    link.writeMsTotal += ms;
+    if (ms > link.writeMsMax) link.writeMsMax = ms;
+    var i = 0;
+    while (i < writeStatsBucketsMs.length && ms >= writeStatsBucketsMs[i]) {
+      i++;
+    }
+    link.writeMsBuckets[i]++;
+    if (link.writeOkCount % writeStatsEvery == 0) _emitWriteStats(link);
+  }
+
+  /// One greppable line: `keep-alive write ms: n=… avg=… max=… [<100:0 …]`.
+  void _emitWriteStats(_LinkState link) {
+    if (link.writeOkCount == 0 ||
+        link.writeOkCount == link.writeStatsReported) {
+      return;
+    }
+    link.writeStatsReported = link.writeOkCount;
+    final b = StringBuffer();
+    for (var i = 0; i < link.writeMsBuckets.length; i++) {
+      if (i > 0) b.write(' ');
+      final edge = i < writeStatsBucketsMs.length
+          ? '<${writeStatsBucketsMs[i]}'
+          : '>=${writeStatsBucketsMs.last}';
+      b.write('$edge:${link.writeMsBuckets[i]}');
+    }
+    final avg = (link.writeMsTotal / link.writeOkCount).round();
+    _emitEvent(
+        'keep-alive write ms: n=${link.writeOkCount} avg=$avg '
+        'max=${link.writeMsMax} [$b]',
+        link: link);
+  }
+
   Future<void> _teardown(_LinkState link,
       {required bool emitDisconnected}) async {
+    // Flush the histogram before the link goes quiet: a session shorter than
+    // writeStatsEvery would otherwise report nothing at all, and short sessions
+    // are exactly the ones a slow unit produces.
+    _emitWriteStats(link);
     link.keepAlive?.cancel();
     link.keepAlive = null;
     link.keepAliveTick = 0;
@@ -883,6 +958,7 @@ class BleService {
     final sw = Stopwatch()..start();
     try {
       await _writeTo(link, token, timeout: keepAliveWriteTimeout);
+      _recordWriteDuration(link, sw.elapsedMilliseconds);
       // Recovery is as diagnostic as the failure: it bounds how long the app
       // was actually unable to poll, which a lone failure line cannot.
       if (link.keepAliveWriteFailed) {
