@@ -521,6 +521,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesConnectFailed => 'Connection failed, please try again';
 
   @override
+  String get devicesConnectFailedBluetoothOff =>
+      'Bluetooth is off — turn it on and try again';
+
+  @override
+  String get devicesConnectFailedBluetoothUnauthorized =>
+      'This app is not allowed to use Bluetooth. Enable it in Settings';
+
+  @override
+  String get devicesConnectFailedPermission =>
+      'Bluetooth permission is missing. Grant it in Settings';
+
+  @override
+  String get devicesConnectFailedStale =>
+      'This unit could not be found — scan again, then reconnect';
+
+  @override
   String get devicesRemoveTitle => 'Remove device';
 
   @override

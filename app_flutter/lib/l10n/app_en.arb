@@ -363,6 +363,10 @@
   "releaseDialogWarnBox": "After releasing, do not re-lock; the capacitor's own over-voltage / under-voltage / over-temperature protection stays active.",
   "releaseDialogConfirm": "Confirm Release",
   "devicesConnectFailed": "Connection failed, please try again",
+  "devicesConnectFailedBluetoothOff": "Bluetooth is off — turn it on and try again",
+  "devicesConnectFailedBluetoothUnauthorized": "This app is not allowed to use Bluetooth. Enable it in Settings",
+  "devicesConnectFailedPermission": "Bluetooth permission is missing. Grant it in Settings",
+  "devicesConnectFailedStale": "This unit could not be found — scan again, then reconnect",
   "devicesRemoveTitle": "Remove device",
   "devicesRemoveBody": "Remove \"{alias}\" from your saved list? (The device itself is unaffected.)",
   "@devicesRemoveBody": {

@@ -902,6 +902,30 @@ abstract class AppLocalizations {
   /// **'Connection failed, please try again'**
   String get devicesConnectFailed;
 
+  /// No description provided for @devicesConnectFailedBluetoothOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth is off — turn it on and try again'**
+  String get devicesConnectFailedBluetoothOff;
+
+  /// No description provided for @devicesConnectFailedBluetoothUnauthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'This app is not allowed to use Bluetooth. Enable it in Settings'**
+  String get devicesConnectFailedBluetoothUnauthorized;
+
+  /// No description provided for @devicesConnectFailedPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth permission is missing. Grant it in Settings'**
+  String get devicesConnectFailedPermission;
+
+  /// No description provided for @devicesConnectFailedStale.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit could not be found — scan again, then reconnect'**
+  String get devicesConnectFailedStale;
+
   /// No description provided for @devicesRemoveTitle.
   ///
   /// In en, this message translates to:

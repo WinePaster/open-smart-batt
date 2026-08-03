@@ -29,7 +29,9 @@ import 'dart:async';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
+import 'dart:ui' show Locale;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -321,4 +323,34 @@ void main() {
       expect(r, isNot(contains('notify')));
     });
   });
+
+  // FB-44's third symptom: the classifier can tell the codes apart, but until
+  // 2026-08-03 every one of them reached the user as the same sentence. The
+  // whole complaint is being given the WRONG INSTRUCTION — "try again" when
+  // what has to happen is switching Bluetooth on — so the mapping existing at
+  // all is the fix, and these pin that it stays a mapping rather than
+  // collapsing back to one string.
+  group('FB-44 - every classified code says something different', () {
+    for (final locale in const <Locale>[Locale('zh'), Locale('en')]) {
+      test('${locale.languageCode}: four codes, four distinct instructions',
+          () async {
+        final l10n = await AppLocalizations.delegate.load(locale);
+        final byCode = {
+          'bluetooth_off': l10n.devicesConnectFailedBluetoothOff,
+          'bluetooth_unauthorized':
+              l10n.devicesConnectFailedBluetoothUnauthorized,
+          'permission_denied': l10n.devicesConnectFailedPermission,
+          'device_stale': l10n.devicesConnectFailedStale,
+        };
+        for (final e in byCode.entries) {
+          expect(e.value, isNotEmpty, reason: '${e.key} has no message');
+          expect(e.value, isNot(l10n.devicesConnectFailed),
+              reason: '${e.key} fell back to the generic line');
+        }
+        expect(byCode.values.toSet().length, byCode.length,
+            reason: 'two codes share a message - the user cannot act on that');
+      });
+    }
+  });
+
 }

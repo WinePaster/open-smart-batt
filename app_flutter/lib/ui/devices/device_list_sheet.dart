@@ -116,7 +116,18 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     setState(() => _connectingId = d.id);
     try {
       await conn.connectToSaved(d);
-      if (mounted) Navigator.of(context).pop();
+      // A refused connect RETURNS rather than throws — `bluetooth_off` and
+      // `permission_denied` are answers, not exceptions (the radio being off is
+      // not an error condition of ours). Popping the sheet on that path would
+      // dismiss the one surface able to say why, so the completion is only
+      // treated as success when the controller has no complaint to make.
+      if (!mounted) return;
+      if (conn.lastError != null) {
+        setState(() => _connectingId = null);
+        _showError();
+        return;
+      }
+      Navigator.of(context).pop();
     } catch (_) {
       if (mounted) {
         setState(() => _connectingId = null);
@@ -132,7 +143,14 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     setState(() => _connectingId = d.id);
     try {
       await conn.connect(d.id);
-      if (mounted) Navigator.of(context).pop(d.id);
+      if (!mounted) return;
+      // Same as _connectSaved: a refused connect returns instead of throwing.
+      if (conn.lastError != null) {
+        setState(() => _connectingId = null);
+        _showError();
+        return;
+      }
+      Navigator.of(context).pop(d.id);
     } catch (_) {
       if (mounted) {
         setState(() => _connectingId = null);
@@ -141,12 +159,39 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
     }
   }
 
+  /// Say WHY the connect failed, not just that it did.
+  ///
+  /// FB-44's third symptom is the one the classifier alone does not fix: the
+  /// controller has known the difference between "the radio is off" and "this
+  /// saved id no longer resolves" since `connectFailureError`, but every one of
+  /// them arrived here as the same sentence — "connection failed, please try
+  /// again". Telling someone to retry, when what they have to do is switch
+  /// Bluetooth on, is the wrong instruction, which is the whole complaint.
+  ///
+  /// Unknown codes (a raw platform exception, `reconnect_exhausted`) keep the
+  /// generic line on purpose: a wrong specific instruction is worse than a
+  /// vague correct one, and this is the branch that catches everything we have
+  /// not classified yet.
   void _showError() {
     final l10n = AppLocalizations.of(context);
+    final code = context.read<ConnectionController>().lastError;
+    final message = switch (code) {
+      'bluetooth_off' => l10n.devicesConnectFailedBluetoothOff,
+      'bluetooth_unauthorized' =>
+        l10n.devicesConnectFailedBluetoothUnauthorized,
+      'permission_denied' => l10n.devicesConnectFailedPermission,
+      'device_stale' => l10n.devicesConnectFailedStale,
+      _ => l10n.devicesConnectFailed,
+    };
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        duration: const Duration(milliseconds: 1600),
-        content: Text(l10n.devicesConnectFailed),
+        // The specific lines are longer and carry an instruction; 1.6 s is not
+        // enough to read one. The generic line keeps its original duration.
+        duration: Duration(
+            milliseconds: code == null || message == l10n.devicesConnectFailed
+                ? 1600
+                : 3200),
+        content: Text(message),
       ),
     );
   }

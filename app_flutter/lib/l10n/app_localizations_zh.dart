@@ -497,6 +497,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesConnectFailed => '連線失敗，請再試一次';
 
   @override
+  String get devicesConnectFailedBluetoothOff => '藍牙已關閉，請先開啟藍牙';
+
+  @override
+  String get devicesConnectFailedBluetoothUnauthorized =>
+      '本 App 沒有藍牙權限，請到系統設定開啟';
+
+  @override
+  String get devicesConnectFailedPermission => '缺少藍牙權限，請到系統設定授權';
+
+  @override
+  String get devicesConnectFailedStale => '找不到這台裝置，請重新掃描後再連一次';
+
+  @override
   String get devicesRemoveTitle => '移除裝置';
 
   @override
