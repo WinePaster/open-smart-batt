@@ -18,6 +18,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
+import 'display_modules.dart';
 import 'pvlt_gauge.dart';
 import 'live_trend_chart.dart';
 import 'readout_grid.dart';
@@ -32,6 +33,11 @@ class PowerBankView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tele = context.watch<TelemetryController>();
+    // This view is only ever built for a confirmed power bank, so the class is
+    // a constant here rather than a lookup on a label. Going through the
+    // registry anyway is what keeps the declaration honest: an entry that no
+    // code reads is an entry nothing can contradict (design 0034 Phase 0).
+    const modules = DisplayModules.powerBank;
 
     final soc = tele.socPercent;
     // Sub-line under the SOC value: the single-cell voltage (PVLT is the cell
@@ -92,31 +98,34 @@ class PowerBankView extends StatelessWidget {
               // charging bank simply reads 0.00 A, which is what the readout
               // beside it says too.
               tracks: [
-                TrendTrack(
-                  field: TrendField.current,
-                  label: l10n.powerBankTrackCurrent,
-                  unit: 'A',
-                  color: AppColors.cyan,
-                  decimals: 2,
-                  spanZero: true,
-                  minSpan: 1,
-                  height: 92,
-                ),
-                TrendTrack(
-                  field: TrendField.svlt,
-                  label: l10n.powerBankTrackOutput,
-                  unit: 'V',
-                  color: AppColors.amber,
-                  decimals: 2,
-                  minSpan: 0.5,
-                ),
-                TrendTrack(
-                  field: TrendField.soc,
-                  label: l10n.powerBankTrackSoc,
-                  unit: '%',
-                  color: AppColors.good,
-                  minSpan: 5,
-                ),
+                if (modules.hasTrack(TrendField.current))
+                  TrendTrack(
+                    field: TrendField.current,
+                    label: l10n.powerBankTrackCurrent,
+                    unit: 'A',
+                    color: AppColors.cyan,
+                    decimals: 2,
+                    spanZero: true,
+                    minSpan: 1,
+                    height: 92,
+                  ),
+                if (modules.hasTrack(TrendField.svlt))
+                  TrendTrack(
+                    field: TrendField.svlt,
+                    label: l10n.powerBankTrackOutput,
+                    unit: 'V',
+                    color: AppColors.amber,
+                    decimals: 2,
+                    minSpan: 0.5,
+                  ),
+                if (modules.hasTrack(TrendField.soc))
+                  TrendTrack(
+                    field: TrendField.soc,
+                    label: l10n.powerBankTrackSoc,
+                    unit: '%',
+                    color: AppColors.good,
+                    minSpan: 5,
+                  ),
               ],
               items: [
                 Readout(
@@ -146,7 +155,7 @@ class PowerBankView extends StatelessWidget {
                 // Magnitude, no direction — the register's charge/discharge
                 // attribution is unresolved (see Selectors.discharge), so the
                 // label deliberately says "Current", not "Output"/"Charge".
-                if (tele.current != null)
+                if (modules.showsCurrentReadout && tele.current != null)
                   Readout(
                     icon: Icons.electric_bolt,
                     label: l10n.powerBankCurrentLabel,

@@ -21,6 +21,13 @@
 /// premise is false. An owner-confirmed capacitor sends 0x2E every second with a
 /// constant payload that decodes to 0.0 A. Showing a permanent 0.0 A on a unit
 /// that cannot measure current is worse than showing nothing.
+///
+/// Every one of those CLASS conditions now comes from `display_modules.dart`
+/// (design 0034 Phase 0) — six `packLabel` comparisons used to be spread down
+/// this file and had to be read together before anyone could state what a
+/// capacitor shows. DATA conditions stayed here, where the telemetry is: the
+/// registry declares that a readout is class-gated, the `!= null` beside it
+/// still decides whether there is anything to draw.
 library;
 
 import 'package:flutter/material.dart';
@@ -32,6 +39,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
 import '../widgets/pending_note.dart';
+import 'display_modules.dart';
 import 'pvlt_gauge.dart';
 import 'live_trend_chart.dart';
 import 'readout_grid.dart';
@@ -99,6 +107,11 @@ class PackScaffold extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final packLabel =
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
+    // Everything this shell does differently per class comes from here.
+    // NOTE the lookup is `forPackShell`, not `forClass`: a stray `powerBank`
+    // label reaches this shell (see [PackView] above) and has always drawn the
+    // unclassified set here — see the doc on that method.
+    final modules = DisplayModules.forPackShell(packLabel);
     // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once
     // the connect burst arrives; else the tail-only serial; else NOTHING — the
     // row hides itself below.
@@ -115,19 +128,15 @@ class PackScaffold extends StatelessWidget {
     // An empty row is strictly better than a confidently wrong one.
     final serial = tele.fullSerial ?? tele.serial;
 
-    // Centre SOH sub-line for the gauge (resolved here where l10n is available).
+    // Centre SOH sub-line for the gauge.
     //
     // Class-gated the same way the current readout below is: a
     // super-capacitor never sends 0x96, so this line could only ever render as
     // "SOH --". A permanent placeholder reads as "we failed to fetch it", not
     // as "this device has no such thing" — so on a capacitor it is omitted.
-    final soh = tele.sohBucket;
-    final showSoh = packLabel != ProductClass.supercapacitor;
-    final sohText = !showSoh
-        ? null
-        : soh == null
-            ? l10n.gaugeSohUnknown
-            : l10n.gaugeSohValue(soh, _sohLabel(l10n, soh));
+    // Both the gate AND the wording are the registry's (design 0034 §12.3 #2:
+    // the per-class difference here is content, not just presence).
+    final sohText = modules.sohGaugeLine?.call(l10n, tele.sohBucket);
 
     return Center(
       child: ConstrainedBox(
@@ -191,7 +200,7 @@ class PackScaffold extends StatelessWidget {
               // leaving it out. Voltage and temperature do move on a capacitor,
               // so the chart is still offered, just without that track.
               tracks: [
-                if (packLabel != ProductClass.supercapacitor)
+                if (modules.hasTrack(TrendField.current))
                   TrendTrack(
                     field: TrendField.current,
                     label: l10n.dashboardTrackCurrent,
@@ -206,15 +215,17 @@ class PackScaffold extends StatelessWidget {
                     minSpan: 10,
                     height: 92,
                   ),
-                TrendTrack(
-                  field: TrendField.pvlt,
-                  label: l10n.dashboardTrackPvlt,
-                  unit: 'V',
-                  color: AppColors.amber,
-                  decimals: 2,
-                  minSpan: 0.5,
-                ),
-                if (packLabel == ProductClass.supercapacitor)
+                if (modules.hasTrack(TrendField.pvlt))
+                  TrendTrack(
+                    field: TrendField.pvlt,
+                    label: l10n.dashboardTrackPvlt,
+                    unit: 'V',
+                    color: AppColors.amber,
+                    decimals: 2,
+                    minSpan: 0.5,
+                  ),
+                // A capacitor has one track MORE than a battery, not fewer.
+                if (modules.hasTrack(TrendField.svlt))
                   TrendTrack(
                     field: TrendField.svlt,
                     label: l10n.capacitorTrackSvlt,
@@ -223,17 +234,16 @@ class PackScaffold extends StatelessWidget {
                     decimals: 2,
                     minSpan: 0.5,
                   ),
-                TrendTrack(
-                  field: TrendField.temperature,
-                  label: l10n.dashboardTrackTemperature,
-                  unit: '\u00b0C',
-                  color: AppColors.good,
-                  minSpan: 4,
-                ),
+                if (modules.hasTrack(TrendField.temperature))
+                  TrendTrack(
+                    field: TrendField.temperature,
+                    label: l10n.dashboardTrackTemperature,
+                    unit: '\u00b0C',
+                    color: AppColors.good,
+                    minSpan: 4,
+                  ),
               ],
-              chartFootnote: packLabel == ProductClass.supercapacitor
-                  ? l10n.capacitorChartNoCurrentNote
-                  : null,
+              chartFootnote: modules.chartFootnote?.call(l10n),
               items: [
                 Readout(
                   icon: Icons.thermostat,
@@ -247,18 +257,19 @@ class PackScaffold extends StatelessWidget {
                   value: _fmt1(tele.svlt),
                   unit: 'V',
                 ),
-                // Class-gated, NOT data-driven: a capacitor DOES stream 0x2E,
-                // but it is a constant 0.0 A — it cannot measure current, so
-                // the readout is hidden rather than shown as a real zero.
-                if (packLabel != ProductClass.supercapacitor &&
-                    tele.current != null)
+                // Class gate from the registry, data gate right here — the two
+                // are different questions and are answered in different places
+                // (design 0034 §12.3 #2). A capacitor DOES stream 0x2E, but it
+                // is a constant 0.0 A, so the readout is hidden rather than
+                // shown as a real zero.
+                if (modules.showsCurrentReadout && tele.current != null)
                   Readout(
                     icon: Icons.electric_bolt,
                     label: l10n.dashboardReadoutCurrentLabel,
                     value: _fmt1(tele.current),
                     unit: 'A',
                   ),
-                if (showSoh && tele.sohBucket != null)
+                if (modules.showsSohReadout && tele.sohBucket != null)
                   Readout(
                     icon: Icons.monitor_heart_outlined,
                     label: l10n.dashboardReadoutSohLabel,
@@ -294,13 +305,6 @@ class PackScaffold extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// SOH bucket → localized health label (Good / Fair / Degraded).
-  static String _sohLabel(AppLocalizations l10n, int soh) {
-    if (soh >= 80) return l10n.gaugeSohLabelGood;
-    if (soh >= 50) return l10n.gaugeSohLabelFair;
-    return l10n.gaugeSohLabelDegraded;
   }
 
   static String _fmtInt(double? v) => v == null ? '--' : v.round().toString();
