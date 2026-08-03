@@ -130,10 +130,19 @@ void main() {
 
   /// Puts the controller in the gap: an auto-reconnect is SCHEDULED, the link
   /// is `disconnected`, and no attempt is in flight.
+  ///
+  /// The `connected` in the middle is load-bearing since FB-53: the backoff
+  /// ladder now serves connections that existed, so a link that never once
+  /// reached `connected` reports its failure instead of retrying. That is a
+  /// policy change, not a change to what these screens draw — the gap they are
+  /// about is still the gap, and it is still entered by the case it was always
+  /// about (a link that came up and then went away).
   Future<void> enterBackoffGap(WidgetTester tester, AppServices s) async {
     await tester.runAsync(() async {
       await s.connection.connect('AA'); // sets the reconnect target
       ble.emitLink(BleLinkState.connecting);
+      await Future<void>.delayed(Duration.zero);
+      ble.emitLink(BleLinkState.connected);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.disconnected);
       await Future<void>.delayed(const Duration(milliseconds: 20));
