@@ -14,7 +14,11 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show BluetoothAdapterState, FlutterBluePlusException;
+    show
+        BluetoothAdapterState,
+        ErrorPlatform,
+        FbpErrorCode,
+        FlutterBluePlusException;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
@@ -707,15 +711,69 @@ class ConnectionController extends ChangeNotifier {
   ///
   /// Returns null when there is nothing specific to say (a non-iOS failure with
   /// the radio up), leaving the caller's own message in place.
+  ///
+  /// FB-53: [error] narrows the iOS fallback. `device_stale` used to absorb
+  /// every failure the adapter state did not explain, including the commonest
+  /// one of all — a unit that is simply not in range. See [fbpErrorCodeOf] for
+  /// why the plugin's exception is read by type and code and never by message.
   static String? connectFailureError({
     required BluetoothAdapterState adapter,
     required bool isIOS,
+    Object? error,
   }) {
     if (adapter == BluetoothAdapterState.unauthorized) {
       return 'bluetooth_unauthorized';
     }
     if (adapter == BluetoothAdapterState.off) return 'bluetooth_off';
+    switch (fbpErrorCodeOf(error)) {
+      // The radio went down between the preflight above and the connect. Same
+      // fact, later arrival — and the adapter-state stream will catch up.
+      case FbpErrorCode.adapterIsOff:
+        return 'bluetooth_off';
+      // The connect ran out its budget with nothing on the other end. That is
+      // an out-of-range or powered-off unit, not a saved id that no longer
+      // resolves: on a stale iOS NSUUID CoreBluetooth never answers either, so
+      // the two used to be indistinguishable here and the more alarming label
+      // won. The remedy differs — one says "walk over to it", the other says
+      // "scan again" — which is the whole reason to split them.
+      case FbpErrorCode.timeout:
+        return 'device_unreachable';
+      // WE cancelled it: the FB-53 watchdog is the first thing in this app that
+      // does. Blaming the device for our own decision would be a lie, and
+      // `lastError` is already whatever the canceller set.
+      case FbpErrorCode.connectionCanceled:
+        return null;
+      case _:
+        break;
+    }
     return isIOS ? 'device_stale' : null;
+  }
+
+  /// The plugin's OWN error code behind [error], or null when the failure did
+  /// not originate in flutter_blue_plus's own logic.
+  ///
+  /// FB-53 R6. `FlutterBluePlusException.code` is two different numbers wearing
+  /// one field: on the paths the plugin raises itself it is an index into
+  /// [FbpErrorCode] (`utils.dart:19`, `bluetooth_device.dart:157`), and on the
+  /// paths that merely relay the platform it is the native disconnect reason
+  /// carrying the same small integers with entirely different meanings
+  /// (`bluetooth_device.dart:169-172`, thrown with `platform: _nativeError`).
+  /// Reading the code without checking `platform` first would read an Android
+  /// GATT status 1 as `timeout`. The range check covers a future plugin
+  /// version growing the enum past what this build knows.
+  ///
+  /// Typed on purpose, and FB-44 is why: the classifier it replaces matched on
+  /// message text, and ten `CBManagerStatePoweredOff` episodes in one 40-hour
+  /// capture were shown to the user as hardware that no longer existed. A
+  /// human-readable description is not an API.
+  static FbpErrorCode? fbpErrorCodeOf(Object? error) {
+    if (error is! FlutterBluePlusException) return null;
+    if (error.platform != ErrorPlatform.fbp) return null;
+    final code = error.code;
+    if (code == null || code < 0 || code >= FbpErrorCode.values.length) {
+      return null;
+    }
+    return FbpErrorCode.values[code];
   }
 
   Future<void> connect(String deviceId,
@@ -831,7 +889,12 @@ class ConnectionController extends ChangeNotifier {
       // adapter state has not caught up with the radio yet. The `(stale?)`
       // marker travels with the label rather than with the platform, because
       // that marker is what the stale-NSUUID counts are grepped from.
-      final reason = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
+      //
+      // FB-53: and the exception itself now gets a vote. Passing it is what
+      // keeps `(stale?)` off the line — and out of the counts — for a unit that
+      // was merely out of range, which the timeout says in so many words.
+      final reason = connectFailureError(
+          adapter: _adapter, isIOS: Platform.isIOS, error: e);
       final stale = reason == 'device_stale';
       if (reason != null) _lastError = reason;
       _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');

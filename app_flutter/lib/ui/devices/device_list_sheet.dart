@@ -181,6 +181,12 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
         l10n.devicesConnectFailedBluetoothUnauthorized,
       'permission_denied' => l10n.devicesConnectFailedPermission,
       'device_stale' => l10n.devicesConnectFailedStale,
+      // FB-53: the connect ran its budget out with nothing answering. Told to
+      // scan again — the `device_stale` instruction this used to collapse into
+      // — the user finds the unit is not in the scan either, and learns
+      // nothing. Telling them to go and check it is nearby and switched on is
+      // an instruction that can actually succeed.
+      'device_unreachable' => l10n.devicesConnectFailedUnreachable,
       _ => l10n.devicesConnectFailed,
     };
     ScaffoldMessenger.of(context).showSnackBar(

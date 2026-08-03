@@ -346,6 +346,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get disconnectedStalledRetry => 'Try again';
 
   @override
+  String get disconnectedGaveUpTitle => 'Could not connect to this device';
+
+  @override
+  String get disconnectedGaveUpBody =>
+      'Several attempts went by without a connection, so it has stopped trying.';
+
+  @override
+  String get disconnectedGaveUpHint =>
+      'Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.';
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }
@@ -551,6 +562,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get devicesConnectFailedStale =>
       'This unit could not be found — scan again, then reconnect';
+
+  @override
+  String get devicesConnectFailedUnreachable =>
+      'This device could not be found. Check it is nearby and switched on';
 
   @override
   String get devicesRemoveTitle => 'Remove device';

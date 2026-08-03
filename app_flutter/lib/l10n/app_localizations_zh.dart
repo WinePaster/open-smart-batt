@@ -333,6 +333,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disconnectedStalledRetry => '重新連線';
 
   @override
+  String get disconnectedGaveUpTitle => '連不上這台裝置';
+
+  @override
+  String get disconnectedGaveUpBody => '試了幾次都沒有連上，已經停止嘗試。';
+
+  @override
+  String get disconnectedGaveUpHint =>
+      '接下來不會再自動重試。請確認裝置在附近、電源正常，再試一次 —— 或用下面的按鈕重新掃描。';
+
+  @override
   String quickPickLastValue(String value) {
     return '上次 $value V';
   }
@@ -523,6 +533,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get devicesConnectFailedStale => '找不到這台裝置，請重新掃描後再連一次';
+
+  @override
+  String get devicesConnectFailedUnreachable => '找不到這台裝置，請確認它在附近並已開機';
 
   @override
   String get devicesRemoveTitle => '移除裝置';
