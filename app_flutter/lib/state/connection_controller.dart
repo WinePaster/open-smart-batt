@@ -328,6 +328,51 @@ class ConnectionController extends ChangeNotifier {
   /// surface within seconds instead of an endless reconnect loop.
   static const int maxReconnectAttempts = 5;
 
+  /// Consecutive connections that reached `connected` and left without ever
+  /// reaching `ready`. FB-52, design 0031 §3.1.
+  ///
+  /// [_reconnectAttempts] cannot answer this question and should not be made to.
+  /// It counts how many times the AUTO-RECONNECT LOOP has gone round, which is
+  /// why [connect] resets it: a fresh manual connect is the user restating their
+  /// intent, and the backoff has no business carrying over. But nothing was
+  /// counting the thing the user actually experiences — how many times this
+  /// device has come up and then failed to say anything.
+  ///
+  /// `2026.08.03/003` is the whole argument. Fourteen minutes, thirteen
+  /// connections, zero `ready`, and `auto-reconnect gave up` appears **zero
+  /// times** — because the user tapped connect twelve times, and between any two
+  /// taps the loop only ever got to three. The cap was real and never once had
+  /// the chance to fire. So this counter is deliberately NOT reset by a manual
+  /// connect to the same unit.
+  int _setupFailuresSinceReady = 0;
+
+  /// Consecutive failed setups before the app stops trying and says so.
+  ///
+  /// Three, not one. A single `gatt setup failed` happens on healthy hardware —
+  /// across the corpus 5 of 51 were rescued by the next attempt — so firing on
+  /// the first would cry wolf. Three puts the honest answer in front of the user
+  /// inside the first minute, against the forty they actually waited.
+  ///
+  /// ⚠️ Calibrated on n=51 failures. If a capture ever shows a setup succeeding
+  /// on the fourth consecutive try, this number is wrong and should move.
+  static const int maxSetupFailures = 3;
+
+  /// Whether this link has connected repeatedly without ever coming up.
+  ///
+  /// The UI uses this to draw a failure that STAYS, and [_scheduleReconnect]
+  /// uses it to stop. Spinning for another forty minutes buys nothing: the field
+  /// capture ran fourteen and never once recovered on its own.
+  bool get isSetupStalled => _setupFailuresSinceReady >= maxSetupFailures;
+
+  /// How many consecutive setups have failed — shown to the user, so that
+  /// "we really did try" is a number and not a claim.
+  int get setupFailures => _setupFailuresSinceReady;
+
+  /// True once this attempt got as far as `connected`. Distinguishes a setup
+  /// that failed from a connect that never landed — the latter is already
+  /// handled by [maxReconnectAttempts] and must not be counted twice.
+  bool _reachedConnected = false;
+
   // ---- exposed state ----------------------------------------------------
 
   /// Underlying link lifecycle.
@@ -630,6 +675,11 @@ class ConnectionController extends ChangeNotifier {
       {Duration? timeout, ProductClass? seedClass}) async {
     _reconnectTimer?.cancel();
     _reconnectAttempts = 0; // fresh manual connect resets the backoff
+    // FB-52: but the SETUP-failure run only resets when the target changes.
+    // Tapping connect again on the same unit is the user retrying the thing
+    // that just failed three times; treating it as a clean slate is exactly how
+    // `2026.08.03/003` kept the give-up path out of reach for fourteen minutes.
+    if (_desiredDeviceId != deviceId) _setupFailuresSinceReady = 0;
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
     // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
@@ -899,7 +949,9 @@ class ConnectionController extends ChangeNotifier {
       // invisible, which is how the failures went missing.
       _classResolveLogged = false;
       _readyAt = null;
+      _reachedConnected = false;
     }
+    if (s == BleLinkState.connected) _reachedConnected = true;
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
         s == BleLinkState.ready) {
@@ -923,6 +975,10 @@ class ConnectionController extends ChangeNotifier {
     if (s == BleLinkState.ready) {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
+      // FB-52: `ready` is the ONLY thing that clears this one. Not a manual
+      // connect, not a new attempt — coming up is the only evidence that the
+      // run of failures has actually ended.
+      _setupFailuresSinceReady = 0;
       _packResolver.markConnected(DateTime.now());
       // `ready` is the zero point for the class-resolve measurement, because
       // it is the moment the placeholder can first be shown at all.
@@ -969,6 +1025,29 @@ class ConnectionController extends ChangeNotifier {
       // link having come up at least once.
       _logClassResolve(resolvedMs: null);
       _attemptInFlight = false;
+      // FB-52: count a connection that came up and said nothing. Read `_readyAt`
+      // BEFORE the line below clears it — that field is the only record that
+      // this particular attempt ever reached `ready`.
+      if (_reachedConnected && _readyAt == null) {
+        _setupFailuresSinceReady++;
+        if (isSetupStalled) {
+          // Cancel the retry the PREVIOUS failure already armed. Refusing to
+          // schedule a new one is not enough — the backoff timer from round two
+          // is still pending when round three decides to stop, so without this
+          // the app fires one more attempt after telling the user it had given
+          // up, and `isRetrying` keeps the spinner on top of the message.
+          _reconnectTimer?.cancel();
+          _lastError = 'gatt_setup_stalled';
+          // A greppable line, because the copy this drives is meant to become
+          // rare: if the disconnect added by FB-51 (e) works, the user stops
+          // seeing the message and we lose the only way to count how often the
+          // fault still happens. The log has to keep saying it.
+          _event('gatt setup stalled: $_setupFailuresSinceReady consecutive '
+              'connections reached `connected` but never `ready` '
+              '— auto-reconnect stopped');
+        }
+      }
+      _reachedConnected = false;
       _readyAt = null;
       // Drop the settling window + label so the next unit starts clean.
       _packResolver.reset();
@@ -978,8 +1057,14 @@ class ConnectionController extends ChangeNotifier {
       // attributed — it belongs to the connection that just ended).
       _session.end();
       // Unexpected drop while we still want this device → try to reconnect.
+      //
+      // FB-52 (design 0031 Q3): unless the link has already come up several
+      // times and said nothing. Retrying that is not recovery, it is the
+      // fourteen-minute loop the field capture recorded — and it costs battery
+      // and log volume to learn nothing. The user gets a button instead.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
+          !isSetupStalled &&
           _desiredDeviceId != null) {
         if (wasOnline && Platform.isIOS) {
           // B: iOS hands a dropped HEALTHY link to CoreBluetooth autoConnect for

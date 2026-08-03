@@ -602,6 +602,30 @@ abstract class AppLocalizations {
   /// **'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.'**
   String get disconnectedRetryingBody;
 
+  /// No description provided for @disconnectedStalledTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected, but the device is not answering'**
+  String get disconnectedStalledTitle;
+
+  /// No description provided for @disconnectedStalledBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth linked up, but no data came back. Tried {attempts} times.'**
+  String disconnectedStalledBody(int attempts);
+
+  /// No description provided for @disconnectedStalledHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.'**
+  String get disconnectedStalledHint;
+
+  /// No description provided for @disconnectedStalledRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get disconnectedStalledRetry;
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:

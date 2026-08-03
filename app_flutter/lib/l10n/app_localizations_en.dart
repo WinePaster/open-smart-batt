@@ -330,6 +330,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.';
 
   @override
+  String get disconnectedStalledTitle =>
+      'Connected, but the device is not answering';
+
+  @override
+  String disconnectedStalledBody(int attempts) {
+    return 'Bluetooth linked up, but no data came back. Tried $attempts times.';
+  }
+
+  @override
+  String get disconnectedStalledHint =>
+      'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.';
+
+  @override
+  String get disconnectedStalledRetry => 'Try again';
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }

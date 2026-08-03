@@ -215,6 +215,17 @@
     }
   },
   "disconnectedRetryingBody": "The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.",
+  "disconnectedStalledTitle": "Connected, but the device is not answering",
+  "disconnectedStalledBody": "Bluetooth linked up, but no data came back. Tried {attempts} times.",
+  "@disconnectedStalledBody": {
+    "placeholders": {
+      "attempts": {
+        "type": "int"
+      }
+    }
+  },
+  "disconnectedStalledHint": "Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.",
+  "disconnectedStalledRetry": "Try again",
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {

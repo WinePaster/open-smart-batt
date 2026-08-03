@@ -46,9 +46,20 @@ class DisconnectedState extends StatelessWidget {
     final retrying = conn.isRetrying;
     final working = conn.isBusy || retrying;
 
+    // FB-52: the link has come up several times and never said anything. This
+    // has to outrank the plain "not connected" copy — the user watched the
+    // spinner and was told nothing, for forty minutes, in the capture that
+    // motivated it. It is gated on `!working` so a manual retry still shows
+    // progress: `connect()` clears `lastError`, so the failure only comes back
+    // once the retry has failed too.
+    final stalled = !working && conn.lastError == 'gatt_setup_stalled';
+
     final String title;
     final String body;
-    if (retrying) {
+    if (stalled) {
+      title = l10n.disconnectedStalledTitle;
+      body = l10n.disconnectedStalledBody(conn.setupFailures);
+    } else if (retrying) {
       title = l10n.disconnectedRetrying(
           conn.reconnectAttempts, ConnectionController.maxReconnectAttempts);
       body = l10n.disconnectedRetryingBody;
@@ -98,6 +109,20 @@ class DisconnectedState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 26),
+
+            if (stalled) ...[
+              _StalledCard(
+                hint: l10n.disconnectedStalledHint,
+                retryLabel: l10n.disconnectedStalledRetry,
+                // `reconnectCurrent` is the right entry point rather than a bare
+                // `connect`: it keeps the routing seed, which is the difference
+                // between coming back to the same layout and coming back to an
+                // unclassified one.
+                onRetry: () => unawaited(
+                    conn.reconnectCurrent().catchError((Object _) {})),
+              ),
+              const SizedBox(height: 26),
+            ],
 
             if (devices.isNotEmpty) ...[
               Align(
@@ -160,6 +185,80 @@ class DisconnectedState extends StatelessWidget {
 }
 
 /// Quick-reconnect row (mockup `.qpick`).
+/// FB-52: the failure that STAYS on screen.
+///
+/// Deliberately not a SnackBar. FB-44 gives the connect failures a snackbar and
+/// that is right for them — they resolve in seconds. This one does not: the
+/// capture behind it ran fourteen minutes inside a forty-minute episode, and a
+/// 3.2 s toast shown once at minute one is worth nothing to someone still
+/// staring at the screen at minute thirty.
+///
+/// The instruction is the blunt one on purpose (design 0031 Q4, ruled
+/// 2026-08-03). "Close the app completely and open it again" is the only action
+/// with field evidence behind it — it is what the reporter did, unprompted, and
+/// it worked. Telling them to wait would be worse than saying nothing, because
+/// waiting is precisely what was already tried for forty minutes.
+class _StalledCard extends StatelessWidget {
+  const _StalledCard({
+    required this.hint,
+    required this.retryLabel,
+    required this.onRetry,
+  });
+
+  final String hint;
+  final String retryLabel;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: context.colors.panel2,
+          border: Border.all(color: context.colors.line),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              hint,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.7,
+                color: context.colors.text,
+              ),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              onTap: onRetry,
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.amber,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                ),
+                child: Text(
+                  retryLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.onAmber,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickPick extends StatelessWidget {
   const _QuickPick({
     required this.device,

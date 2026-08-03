@@ -318,6 +318,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disconnectedRetryingBody => '裝置沒有回應，正在等待下一次嘗試。剛斷線時這是正常的。';
 
   @override
+  String get disconnectedStalledTitle => '已連上，但這台裝置沒有回應';
+
+  @override
+  String disconnectedStalledBody(int attempts) {
+    return '藍牙確實連上了，但讀不到資料。已經試過 $attempts 次。';
+  }
+
+  @override
+  String get disconnectedStalledHint =>
+      '請把 App 完全關掉再重新打開 —— 目前唯一實測有效的做法就是這個。乾等沒有用：同樣的狀況曾經持續 40 分鐘都沒自己好。';
+
+  @override
+  String get disconnectedStalledRetry => '重新連線';
+
+  @override
   String quickPickLastValue(String value) {
     return '上次 $value V';
   }
