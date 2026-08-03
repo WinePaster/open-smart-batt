@@ -25,6 +25,7 @@ library;
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -259,19 +260,76 @@ class BleService {
   /// which is why a field capture holds 101 `Uncaught:` lines. Owning the
   /// timeout lets us retry once and write a readable line instead.
   ///
-  /// ⚠️ 8 s is an ESTIMATE, not a measured optimum. Its whole basis is two
-  /// facts: it has to be under the plugin's 15 s or it never fires, and one
-  /// capture showed discovery succeeding on a later attempt. Nothing here has
-  /// been calibrated against a distribution of real discovery times — treat it
-  /// as provisional and revisit it once enough field captures exist to measure
-  /// one, rather than quoting it as a verified number.
+  /// 8 s is now MEASURED, not guessed. It used to say "an ESTIMATE, not a
+  /// measured optimum ... revisit once enough field captures exist"; they do.
+  ///
+  /// Every successful discovery leaves `link: connected` → `GATT dump:` in the
+  /// capture log, and that interval IS the discovery time. 168 of them across
+  /// the corpus, deduplicated by absolute timestamp because a rolling log
+  /// re-exports the same event under several batch numbers. The 89 from
+  /// `<=0.6.12` are the ones worth quoting: this timeout did not exist yet, so
+  /// they are NOT censored at 8 s.
+  ///
+  ///     p50 1.26 s | p90 4.83 s | p95 6.21 s
+  ///     <=2 s 74.2% | <=5 s 91.0% | <=8 s 96.6% | <=12 s 98.9% | <=15 s 98.9%
+  ///
+  /// So raising it buys almost nothing: 8 -> 10 s recovers 0.00 pp (no
+  /// successful discovery ever landed between 8 and 10 s), 8 -> 12 s recovers
+  /// 2.25 pp for four extra seconds on every attempt that is going to fail
+  /// anyway. Only three samples exceeded 8 s (10.08, 10.99, 21.03 s) and the
+  /// last is not real — it outruns the plugin's own 15 s, so it can only be an
+  /// iOS-backgrounded capture whose Dart timers were frozen.
+  ///
+  /// ⚠️ Read that as "8 s is not the problem", NOT as "discovery is reliable".
+  /// `2026.08.03/003` holds thirteen consecutive connections on one phone where
+  /// discovery never answered at all — 26 attempts, 0 successes, healed only by
+  /// restarting the app. A threshold cannot fix a call that never returns; see
+  /// `docs/feedback-analysis/2026.08.03-003.md`.
+  ///
+  /// The other constraint is unchanged and still binding: it has to be under
+  /// the plugin's 15 s or it never fires, and the plugin's arrives as an
+  /// exception out of a stream listener — which is why one field capture holds
+  /// 101 `Uncaught:` lines.
   static const Duration discoverTimeout = Duration(seconds: 8);
 
-  /// Service-discovery attempts. Two, on every platform: the capture that
-  /// motivated this showed discovery failing three times and then succeeding,
-  /// so one shot throws away a link that was about to work. 2 × 8 s still
-  /// bounds the wait tighter than the single 15 s it replaces.
-  static int discoverAttemptsFor({required bool isIOS}) => 2;
+  /// Service-discovery attempts. **One** — FB-51, design 0031 §4.2.
+  ///
+  /// It was two, on the reasoning that a capture had shown discovery failing and
+  /// then succeeding, so one shot throws away a link that was about to work.
+  /// That reasoning was measured and did not survive: the second attempt cannot
+  /// do what it claims. [withTimeoutRetry] abandons the first call without
+  /// CANCELLING it, and `discoverServices` holds flutter_blue_plus's `"global"`
+  /// FIFO mutex — one lock for every GATT operation on every device, not one per
+  /// device — until its own 15 s expires. So attempt 2 spends its whole 8 s
+  /// queued in `mtx.take()` and never reaches the platform at all.
+  ///
+  /// The field logs show precisely that shape. In `2026.08.03/003` attempt 2
+  /// failed 8.001–8.002 s after attempt 1 in eleven of twelve rounds, with no
+  /// variance worth the name — the signature of a wait on a lock, not of a radio
+  /// being asked anything. Across the corpus a second attempt rescued 5 setups
+  /// against 51 that failed anyway.
+  ///
+  /// So the retry is now the RECONNECT, not a second call on a link whose
+  /// discovery is already wedged: one attempt, then [_setupConnection] drops the
+  /// link for real (see the `catch` there) and the controller's backoff decides
+  /// whether to come back. That also halves the round — 8 s instead of 16 s.
+  ///
+  /// ⚠️ Do not put this back to 2 without reading design 0031 §4.2. The other
+  /// half of the fix — giving the plugin the deadline via
+  /// `discoverServices(timeout:)`, so its own `finally` releases the mutex — is
+  /// deliberately NOT done yet: it moves the CCCD path that FB-45 shares, and it
+  /// changes the exception type the whole corpus greps for.
+  static int discoverAttemptsFor({required bool isIOS}) => 1;
+
+  /// How long to wait for the "you are disconnected" confirmation when tearing
+  /// down a link whose GATT setup just failed.
+  ///
+  /// flutter_blue_plus defaults to 35 s. On a failure path that is nonsense:
+  /// nothing downstream needs the confirmation, and the user is already looking
+  /// at a spinner. 5 s is the number this app already uses for "a BLE operation
+  /// that has not come back is not coming back" ([keepAliveWriteTimeout]);
+  /// reusing that judgement beats minting a second one.
+  static const Duration setupFailureDisconnectTimeout = Duration(seconds: 5);
 
   /// Our own CCCD-enable timeout — again SHORTER than the plugin's 15 s.
   ///
@@ -769,12 +827,55 @@ class BleService {
       // reconnect path.
       _emitEvent('gatt setup failed: ${gattSetupFailureReason(e)}', link: link);
       if (link.epoch.isCurrent(epoch)) {
+        await _releaseAfterSetupFailure(link, device);
         await _teardown(link, emitDisconnected: true);
       }
     } finally {
       link.settingUp = false;
     }
   }
+
+  /// Actually drop the link after a failed GATT setup — FB-51 (e), design 0031.
+  ///
+  /// [_teardown] never did this. It cancels subscriptions and sets
+  /// `link.device = null`, and `connect()`'s opening `await disconnect()` bails
+  /// on `if (device == null) return` — which is the field it was just handed.
+  /// So NOTHING in this app ever asked the platform to drop a link whose setup
+  /// had failed. `2026.08.03/003` is what that looks like from outside: thirteen
+  /// connections, no `ready`, no frames, for fourteen minutes, and the only
+  /// thing that recovered it was the user killing the app — which is also the
+  /// only thing that tears down the CBCentralManager.
+  ///
+  /// `queue: false` is REQUIRED here, not a tuning choice. The default takes the
+  /// same `"global"` mutex the abandoned discovery is still holding, so the
+  /// cancel would queue behind the very call it is cancelling and wait out the
+  /// plugin's 15 s. flutter_blue_plus documents the flag for exactly this:
+  /// "skipping to the front of the fbp operation queue, which is useful to
+  /// cancel an in-progress connection attempt".
+  ///
+  /// Failure is swallowed on purpose: this runs on the way out of a path that
+  /// has already failed, and every caller's next move is [_teardown] regardless.
+  Future<void> _releaseAfterSetupFailure(
+      _LinkState link, BluetoothDevice device) async {
+    try {
+      await dropLink(device);
+    } catch (e) {
+      _emitEvent('setup-failure disconnect failed: $e', link: link);
+    }
+  }
+
+  /// The platform call [_releaseAfterSetupFailure] makes, on its own so a test
+  /// can stand in for it — a real `disconnect` needs a radio, and the thing
+  /// worth locking down is that the failure path does not rethrow.
+  ///
+  /// ⚠️ The two arguments are the whole point and neither is a default:
+  /// `queue: false` skips the mutex the abandoned discovery still holds, and the
+  /// timeout replaces a 35 s wait nobody is left to care about.
+  @visibleForTesting
+  Future<void> dropLink(BluetoothDevice device) => device.disconnect(
+        queue: false,
+        timeout: setupFailureDisconnectTimeout.inSeconds,
+      );
 
   /// Handle a notification chunk from [link]'s notify characteristic.
   void _onNotify(_LinkState link, List<int> chunk) {

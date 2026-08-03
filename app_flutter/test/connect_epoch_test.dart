@@ -128,11 +128,27 @@ void main() {
           lessThan(const Duration(seconds: 15)));
     });
 
-    test('discovery is retried, on both platforms', () {
-      // The capture showed discovery failing three times and then succeeding,
-      // so a single attempt discards a link that was about to work.
-      expect(BleService.discoverAttemptsFor(isIOS: true), greaterThan(1));
-      expect(BleService.discoverAttemptsFor(isIOS: false), greaterThan(1));
+    test('discovery gets ONE attempt, on both platforms', () {
+      // ⚠️ This assertion is the REVERSE of what it said until 2026-08-03, and
+      // the reversal is the finding. It used to read `greaterThan(1)`, on the
+      // reasoning that "the capture showed discovery failing three times and
+      // then succeeding, so a single attempt discards a link that was about to
+      // work". The premise was true; the conclusion did not follow, because the
+      // second attempt could not do the thing it was being credited with.
+      //
+      // `withTimeoutRetry` abandons the first `discoverServices` without
+      // cancelling it, and that call holds flutter_blue_plus's `"global"` FIFO
+      // mutex — one lock for every GATT operation on every device — until its
+      // own 15 s expires. So attempt 2 spends its entire 8 s budget queued in
+      // `mtx.take()` and never reaches the radio. `2026.08.03/003` shows the
+      // signature plainly: attempt 2 failing 8.001-8.002 s after attempt 1 in
+      // eleven rounds of twelve, a variance far too small for anything that
+      // actually asked a peripheral a question.
+      //
+      // The retry is now the RECONNECT (FB-51 (b), design 0031 §4.2), which
+      // also halves the round from 16 s to 8 s. See test/setup_stall_test.dart.
+      expect(BleService.discoverAttemptsFor(isIOS: true), 1);
+      expect(BleService.discoverAttemptsFor(isIOS: false), 1);
     });
 
     test('the total discovery budget still beats the single 15 s it replaces',
