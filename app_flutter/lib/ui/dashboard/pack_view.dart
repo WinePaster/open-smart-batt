@@ -33,7 +33,9 @@ import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
 import '../widgets/pending_note.dart';
 import 'pvlt_gauge.dart';
+import 'live_trend_chart.dart';
 import 'readout_grid.dart';
+import 'readouts_card.dart';
 import 'dvol_bars.dart';
 import 'status_controls.dart';
 
@@ -181,43 +183,89 @@ class PackScaffold extends StatelessWidget {
             ),
 
             // ---- readouts: TEMP + SVLT always; current only if present ---
-            IndustrialCard(
-              heading: l10n.dashboardReadoutsHeading,
-              headingIcon: Icons.speed,
-              child: ReadoutGrid(
-                items: [
-                  Readout(
-                    icon: Icons.thermostat,
-                    label: l10n.dashboardReadoutTemperatureLabel,
-                    value: _fmtInt(tele.temperatureDisplay),
-                    unit: tele.temperatureUnitLabel,
+            ReadoutsCard(
+              buffer: tele.trend,
+              // Same class gate as the current readout below: a capacitor
+              // streams 0x2E as a constant 0.0 A, so a current track would draw
+              // a flat line at zero and read as "measured 0 A" — worse than
+              // leaving it out. Voltage and temperature do move on a capacitor,
+              // so the chart is still offered, just without that track.
+              tracks: [
+                if (packLabel != ProductClass.supercapacitor)
+                  TrendTrack(
+                    field: TrendField.current,
+                    label: l10n.dashboardTrackCurrent,
+                    unit: 'A',
+                    color: AppColors.cyan,
+                    // Signed, and the axis must cross zero. 0x2E carries a sign
+                    // whose DIRECTION is still unverified, so the axis states
+                    // the number and never labels it charge/discharge — but
+                    // hiding the sign would erase the reversal that makes a
+                    // cranking load recognisable.
+                    spanZero: true,
+                    minSpan: 10,
+                    height: 92,
                   ),
-                  Readout(
-                    icon: Icons.bolt,
-                    label: l10n.dashboardReadoutSvltLabel,
-                    value: _fmt1(tele.svlt),
+                TrendTrack(
+                  field: TrendField.pvlt,
+                  label: l10n.dashboardTrackPvlt,
+                  unit: 'V',
+                  color: AppColors.amber,
+                  decimals: 2,
+                  minSpan: 0.5,
+                ),
+                if (packLabel == ProductClass.supercapacitor)
+                  TrendTrack(
+                    field: TrendField.svlt,
+                    label: l10n.capacitorTrackSvlt,
                     unit: 'V',
+                    color: AppColors.cyan,
+                    decimals: 2,
+                    minSpan: 0.5,
                   ),
-                  // Class-gated, NOT data-driven: a capacitor DOES stream 0x2E,
-                  // but it is a constant 0.0 A — it cannot measure current, so
-                  // the readout is hidden rather than shown as a real zero.
-                  if (packLabel != ProductClass.supercapacitor &&
-                      tele.current != null)
-                    Readout(
-                      icon: Icons.electric_bolt,
-                      label: l10n.dashboardReadoutCurrentLabel,
-                      value: _fmt1(tele.current),
-                      unit: 'A',
-                    ),
-                  if (showSoh && tele.sohBucket != null)
-                    Readout(
-                      icon: Icons.monitor_heart_outlined,
-                      label: l10n.dashboardReadoutSohLabel,
-                      value: tele.sohBucket!.toString(),
-                      unit: '%',
-                    ),
-                ],
-              ),
+                TrendTrack(
+                  field: TrendField.temperature,
+                  label: l10n.dashboardTrackTemperature,
+                  unit: '\u00b0C',
+                  color: AppColors.good,
+                  minSpan: 4,
+                ),
+              ],
+              chartFootnote: packLabel == ProductClass.supercapacitor
+                  ? l10n.capacitorChartNoCurrentNote
+                  : null,
+              items: [
+                Readout(
+                  icon: Icons.thermostat,
+                  label: l10n.dashboardReadoutTemperatureLabel,
+                  value: _fmtInt(tele.temperatureDisplay),
+                  unit: tele.temperatureUnitLabel,
+                ),
+                Readout(
+                  icon: Icons.bolt,
+                  label: l10n.dashboardReadoutSvltLabel,
+                  value: _fmt1(tele.svlt),
+                  unit: 'V',
+                ),
+                // Class-gated, NOT data-driven: a capacitor DOES stream 0x2E,
+                // but it is a constant 0.0 A — it cannot measure current, so
+                // the readout is hidden rather than shown as a real zero.
+                if (packLabel != ProductClass.supercapacitor &&
+                    tele.current != null)
+                  Readout(
+                    icon: Icons.electric_bolt,
+                    label: l10n.dashboardReadoutCurrentLabel,
+                    value: _fmt1(tele.current),
+                    unit: 'A',
+                  ),
+                if (showSoh && tele.sohBucket != null)
+                  Readout(
+                    icon: Icons.monitor_heart_outlined,
+                    label: l10n.dashboardReadoutSohLabel,
+                    value: tele.sohBucket!.toString(),
+                    unit: '%',
+                  ),
+              ],
             ),
 
             // ---- DVOL per-cell bars: ONLY when the unit streams them ------

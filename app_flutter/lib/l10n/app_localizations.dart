@@ -1909,6 +1909,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.'**
   String get usbPortPendingNote;
+
+  /// No description provided for @dashboardModeNumbers.
+  ///
+  /// In en, this message translates to:
+  /// **'Numbers'**
+  String get dashboardModeNumbers;
+
+  /// No description provided for @dashboardModeChart.
+  ///
+  /// In en, this message translates to:
+  /// **'Chart'**
+  String get dashboardModeChart;
+
+  /// No description provided for @dashboardChartWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for telemetry…'**
+  String get dashboardChartWaiting;
+
+  /// No description provided for @dashboardTrackCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Main current'**
+  String get dashboardTrackCurrent;
+
+  /// No description provided for @dashboardTrackPvlt.
+  ///
+  /// In en, this message translates to:
+  /// **'PVLT · main voltage'**
+  String get dashboardTrackPvlt;
+
+  /// No description provided for @dashboardTrackTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'Temperature'**
+  String get dashboardTrackTemperature;
+
+  /// No description provided for @powerBankTrackCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Current'**
+  String get powerBankTrackCurrent;
+
+  /// No description provided for @powerBankTrackOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Output voltage'**
+  String get powerBankTrackOutput;
+
+  /// No description provided for @powerBankTrackSoc.
+  ///
+  /// In en, this message translates to:
+  /// **'Charge level SOC'**
+  String get powerBankTrackSoc;
+
+  /// No description provided for @capacitorTrackSvlt.
+  ///
+  /// In en, this message translates to:
+  /// **'Secondary voltage SVLT'**
+  String get capacitorTrackSvlt;
+
+  /// No description provided for @capacitorChartNoCurrentNote.
+  ///
+  /// In en, this message translates to:
+  /// **'No current track: this unit reports a constant 0 A, which is not a measurement.'**
+  String get capacitorChartNoCurrentNote;
 }
 
 class _AppLocalizationsDelegate

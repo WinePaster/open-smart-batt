@@ -1066,4 +1066,37 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get usbPortPendingNote => '供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。';
+
+  @override
+  String get dashboardModeNumbers => '數值';
+
+  @override
+  String get dashboardModeChart => '圖表';
+
+  @override
+  String get dashboardChartWaiting => '等待遙測資料…';
+
+  @override
+  String get dashboardTrackCurrent => '主電流';
+
+  @override
+  String get dashboardTrackPvlt => 'PVLT · 主電壓';
+
+  @override
+  String get dashboardTrackTemperature => '溫度';
+
+  @override
+  String get powerBankTrackCurrent => '電流';
+
+  @override
+  String get powerBankTrackOutput => '輸出電壓';
+
+  @override
+  String get powerBankTrackSoc => '電量 SOC';
+
+  @override
+  String get capacitorTrackSvlt => '次電壓 SVLT';
+
+  @override
+  String get capacitorChartNoCurrentNote => '不顯示電流：本類別回報恆定 0 A，並非真實量測。';
 }

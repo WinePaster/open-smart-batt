@@ -1119,4 +1119,38 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get usbPortPendingNote =>
       'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.';
+
+  @override
+  String get dashboardModeNumbers => 'Numbers';
+
+  @override
+  String get dashboardModeChart => 'Chart';
+
+  @override
+  String get dashboardChartWaiting => 'Waiting for telemetry…';
+
+  @override
+  String get dashboardTrackCurrent => 'Main current';
+
+  @override
+  String get dashboardTrackPvlt => 'PVLT · main voltage';
+
+  @override
+  String get dashboardTrackTemperature => 'Temperature';
+
+  @override
+  String get powerBankTrackCurrent => 'Current';
+
+  @override
+  String get powerBankTrackOutput => 'Output voltage';
+
+  @override
+  String get powerBankTrackSoc => 'Charge level SOC';
+
+  @override
+  String get capacitorTrackSvlt => 'Secondary voltage SVLT';
+
+  @override
+  String get capacitorChartNoCurrentNote =>
+      'No current track: this unit reports a constant 0 A, which is not a measurement.';
 }

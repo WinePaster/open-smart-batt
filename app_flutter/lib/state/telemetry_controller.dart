@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../models/models.dart';
+import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 
@@ -119,6 +120,14 @@ class TelemetryController extends ChangeNotifier {
 
   /// Latest accumulated telemetry snapshot.
   TelemetrySample get sample => _sample;
+
+  /// Last few minutes of samples, for the dashboard's chart mode.
+  ///
+  /// Fed here rather than from its own stream subscription so it sees exactly
+  /// what the readouts see — one source, one ordering. It is memory-only and is
+  /// cleared whenever the link drops (see [_onLinkState]).
+  LiveTrendBuffer get trend => _trend;
+  final LiveTrendBuffer _trend = LiveTrendBuffer();
 
   /// True once any meaningful register has been decoded.
   bool get hasData =>
@@ -371,6 +380,7 @@ class TelemetryController extends ChangeNotifier {
     // another.
     final watch = _watchFor(_session.deviceId);
     watch.lastSampleAt = DateTime.now();
+    _trend.add(s);
     if (watch.stalled) {
       watch.stalled = false; // recovered
     }
@@ -527,6 +537,10 @@ class TelemetryController extends ChangeNotifier {
       _stalls.clear();
       // Persist every open partial minute before clearing live state.
       _flushAllBuckets();
+      // Same reason as the readouts below, but it has to be unconditional: a
+      // trace kept across a disconnect would be redrawn against the NEXT unit's
+      // axis, joining two units with a line neither of them produced.
+      _trend.clear();
       // Clear the live readouts so the dashboard doesn't show stale values.
       if (hasData) {
         _sample = TelemetrySample.empty();
@@ -541,6 +555,7 @@ class TelemetryController extends ChangeNotifier {
     _telemetrySub?.cancel();
     _packetSub?.cancel();
     _linkSub?.cancel();
+    _trend.dispose();
     super.dispose();
   }
 }

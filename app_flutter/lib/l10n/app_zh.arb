@@ -300,5 +300,16 @@
   "usbPortStateUnknown": "未知",
   "usbPortStateSupplying": "供電中",
   "usbPortStateIdle": "閒置",
-  "usbPortPendingNote": "供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。"
+  "usbPortPendingNote": "供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。",
+  "dashboardModeNumbers": "數值",
+  "dashboardModeChart": "圖表",
+  "dashboardChartWaiting": "等待遙測資料…",
+  "dashboardTrackCurrent": "主電流",
+  "dashboardTrackPvlt": "PVLT · 主電壓",
+  "dashboardTrackTemperature": "溫度",
+  "powerBankTrackCurrent": "電流",
+  "powerBankTrackOutput": "輸出電壓",
+  "powerBankTrackSoc": "電量 SOC",
+  "capacitorTrackSvlt": "次電壓 SVLT",
+  "capacitorChartNoCurrentNote": "不顯示電流：本類別回報恆定 0 A，並非真實量測。"
 }

@@ -15,6 +15,7 @@ class IndustrialCard extends StatelessWidget {
     super.key,
     this.heading,
     this.headingIcon,
+    this.headingTrailing,
     required this.child,
     this.padding = AppTheme.cardPadding,
   });
@@ -24,6 +25,13 @@ class IndustrialCard extends StatelessWidget {
 
   /// Amber leading icon for the header.
   final IconData? headingIcon;
+
+  /// Control parked at the right end of the header rule, after the fade.
+  ///
+  /// For a control that switches how THIS card presents its own contents — the
+  /// readouts' numbers/chart toggle. A control that acts on the device belongs
+  /// in the body, where it reads as an action rather than a view option.
+  final Widget? headingTrailing;
 
   /// Card body.
   final Widget child;
@@ -51,7 +59,8 @@ class IndustrialCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (heading != null) ...[
-                CardHeading(text: heading!, icon: headingIcon),
+                CardHeading(
+                    text: heading!, icon: headingIcon, trailing: headingTrailing),
                 const SizedBox(height: 13),
               ],
               child,
@@ -65,10 +74,13 @@ class IndustrialCard extends StatelessWidget {
 
 /// Section header row (mockup `.card h3` + `.hl` fading rule).
 class CardHeading extends StatelessWidget {
-  const CardHeading({super.key, required this.text, this.icon});
+  const CardHeading({super.key, required this.text, this.icon, this.trailing});
 
   final String text;
   final IconData? icon;
+
+  /// Optional control after the fade rule (see [IndustrialCard.headingTrailing]).
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +93,10 @@ class CardHeading extends StatelessWidget {
         Text(text.toUpperCase(), style: AppTextStyles.cardHeading(context)),
         const SizedBox(width: 7),
         const Expanded(child: _FadeRule()),
+        if (trailing != null) ...[
+          const SizedBox(width: 7),
+          trailing!,
+        ],
       ],
     );
   }

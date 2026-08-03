@@ -632,5 +632,16 @@
   "usbPortStateUnknown": "Unknown",
   "usbPortStateSupplying": "Supplying",
   "usbPortStateIdle": "Idle",
-  "usbPortPendingNote": "Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout."
+  "usbPortPendingNote": "Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.",
+  "dashboardModeNumbers": "Numbers",
+  "dashboardModeChart": "Chart",
+  "dashboardChartWaiting": "Waiting for telemetry…",
+  "dashboardTrackCurrent": "Main current",
+  "dashboardTrackPvlt": "PVLT · main voltage",
+  "dashboardTrackTemperature": "Temperature",
+  "powerBankTrackCurrent": "Current",
+  "powerBankTrackOutput": "Output voltage",
+  "powerBankTrackSoc": "Charge level SOC",
+  "capacitorTrackSvlt": "Secondary voltage SVLT",
+  "capacitorChartNoCurrentNote": "No current track: this unit reports a constant 0 A, which is not a measurement."
 }
