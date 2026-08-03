@@ -37,6 +37,15 @@ const _gaveUpCodes = <String>{
   'reconnect_exhausted',
   'device_stale',
   'device_unreachable',
+  // The fourth, and the one that catches the rest. Android has no equivalent of
+  // the stale-NSUUID fallback, so before this every connect failure the plugin
+  // did not raise itself — a relayed GATT 133 is the ordinary one — reached the
+  // screen as a raw exception string and matched nothing here. That was
+  // survivable only while a failed first connect still bought a minute of
+  // "Reconnecting… (attempt N of 5)"; with the ladder now reserved for links
+  // that existed, a quick-pick tap ended in a screen identical to the one
+  // before the tap. Which is the FB-53 complaint, word for word.
+  'connect_failed',
 };
 
 /// The dashboard's disconnected placeholder.
@@ -91,6 +100,12 @@ class DisconnectedState extends StatelessWidget {
       body = switch (conn.lastError) {
         'device_unreachable' => l10n.devicesConnectFailedUnreachable,
         'device_stale' => l10n.devicesConnectFailedStale,
+        // The vague one, borrowed verbatim from the device sheet's snackbar so
+        // that one code reads the same wherever it surfaces. Not
+        // `disconnectedGaveUpBody`: "several attempts went by" is a claim, and
+        // a single manual tap that failed once did not make several attempts —
+        // R3 is precisely the change that stopped it from making them.
+        'connect_failed' => l10n.devicesConnectFailed,
         _ => l10n.disconnectedGaveUpBody,
       };
     } else if (retrying) {

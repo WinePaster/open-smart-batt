@@ -119,11 +119,21 @@ void main() {
               adapter: BluetoothAdapterState.on, isIOS: true),
           'device_stale');
       // Android ids are MAC addresses and do not go stale, so there is nothing
-      // specific to claim.
+      // specific to claim. FB-53 changed what "nothing specific" is stored as:
+      // this used to be null and the caller then wrote `e.toString()` into
+      // `lastError`, which no screen matches — so the whole Android residual
+      // rendered as the plain "no device connected" empty state. It is now the
+      // generic code, which still claims nothing about the saved id.
       expect(
           ConnectionController.connectFailureError(
               adapter: BluetoothAdapterState.on, isIOS: false),
-          isNull);
+          'connect_failed');
+      expect(
+          ConnectionController.connectFailureError(
+              adapter: BluetoothAdapterState.on, isIOS: false),
+          isNot('device_stale'),
+          reason: 'the FB-44 diagnosis must not leak onto a platform whose ids '
+              'cannot go stale');
     });
 
     test('only a KNOWN-bad radio blocks a connect', () {

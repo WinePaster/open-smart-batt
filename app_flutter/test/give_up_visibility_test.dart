@@ -185,6 +185,15 @@ void main() {
         reason: 'unclassified, so it falls back — it must not be promoted to a '
             'timeout it never was',
       );
+      // And on the platform it actually comes from. GATT 133 is the ordinary
+      // Android connect failure and arrives exactly like this; leaving it null
+      // is what put a raw exception string in `lastError`, where nothing
+      // matches it.
+      expect(
+        ConnectionController.connectFailureError(
+            adapter: BluetoothAdapterState.on, isIOS: false, error: native),
+        'connect_failed',
+      );
     });
 
     test('the message text is not consulted', () {
@@ -195,8 +204,13 @@ void main() {
       expect(
         ConnectionController.connectFailureError(
             adapter: BluetoothAdapterState.on, isIOS: false, error: lookalike),
-        isNull,
+        isNot('device_unreachable'),
         reason: 'prose is not an API; the code said disconnected',
+      );
+      expect(
+        ConnectionController.connectFailureError(
+            adapter: BluetoothAdapterState.on, isIOS: true, error: lookalike),
+        isNot('device_unreachable'),
       );
     });
 
@@ -374,11 +388,55 @@ void main() {
       expect(find.text('Connecting…'), findsOneWidget);
     });
 
-    testWidgets('an unclassified error still gets the plain empty state',
+    testWidgets('a failure nobody could classify still gets a card',
         (tester) async {
-      // The give-up branch is a set, not a catch-all: a wrong specific claim is
-      // worse than a vague correct one, which is the same rule the device
-      // sheet's snackbar follows.
+      // The Android residual. `connectFailureError` has nothing specific for a
+      // GATT 133, and that used to mean it said nothing at all — which, once
+      // R3 stopped wrapping a failed first connect in a minute of
+      // "Reconnecting…", left the tap and the no-tap looking identical. A
+      // vague correct sentence is the floor; a wrong specific one is still
+      // forbidden, which is why this code gets the generic remedy and not the
+      // "scan again" or "go and look at it" ones.
+      await pump(tester);
+      conn.setError('connect_failed');
+      await tester.pump();
+
+      expect(find.text('No device connected'), findsNothing);
+      expect(find.text('Could not connect to this device'), findsOneWidget);
+      expect(find.text('Connection failed, please try again'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+      expect(
+          find.text('This unit could not be found — scan again, then reconnect'),
+          findsNothing);
+      expect(
+          find.text('This device could not be found. Check it is nearby and '
+              'switched on'),
+          findsNothing);
+    });
+
+    testWidgets('and it does not claim attempts that R3 no longer makes',
+        (tester) async {
+      // `disconnectedGaveUpBody` — "several attempts went by without a
+      // connection" — is the right report on an exhausted ladder and a lie
+      // about a single manual tap that failed once. R3 is exactly the change
+      // that stopped that tap from making several attempts, so the two cases
+      // can no longer share one sentence.
+      await pump(tester);
+      conn.setError('connect_failed');
+      await tester.pump();
+
+      expect(
+          find.text('Several attempts went by without a connection, so it has '
+              'stopped trying.'),
+          findsNothing);
+    });
+
+    testWidgets('the branch is still a set, not a catch-all', (tester) async {
+      // A wrong specific claim is worse than a vague correct one, which is the
+      // same rule the device sheet's snackbar follows — so this stays keyed on
+      // known codes rather than on "lastError is not null". The group above
+      // pins the other half of the contract: the connect paths can no longer
+      // put a raw exception string here, so nothing real falls down this hole.
       await pump(tester);
       conn.setError('PlatformException(something we have never seen)');
       await tester.pump();
@@ -442,6 +500,65 @@ void main() {
               'This device could not be found. Check it is nearby and switched '
               'on'),
           findsOneWidget);
+    });
+
+    testWidgets('and so does an Android GATT failure nobody can name',
+        (tester) async {
+      // The path the first version of this fix left silent. The plugin relays
+      // the native status rather than raising anything of its own
+      // (`platform: _nativeError`, `bluetooth_device.dart:169-172`), so there
+      // is no `FbpErrorCode` to read and no iOS stale-id fallback to land on.
+      // Every other failure on this branch reaches the screen; this one used to
+      // reach `lastError` as the exception's own `toString()` and match nothing
+      // there. With the ladder now reserved for links that existed, the tap
+      // produced no attempt count, no card, and no change on screen at all.
+      late final AppServices s;
+      late final _FakeBle ble;
+      await tester.runAsync(() async {
+        final db = await AppDatabase.open(
+          path: inMemoryDatabasePath,
+          factory: databaseFactoryFfi,
+        );
+        ble = _FakeBle()
+          ..connectError = FlutterBluePlusException(
+              ErrorPlatform.android, 'connect', 133, 'GATT_ERROR');
+        s = await AppServices.create(appDatabase: db, ble: ble);
+        await s.devices.saveNew('AA', 'Cap #1', name: 'RCE-SCAP_II');
+      });
+      addTearDown(() => tester.runAsync(s.dispose));
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+            ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+            ChangeNotifierProvider<ConnectionController>.value(
+                value: s.connection),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DisconnectedState()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Cap #1'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pump();
+
+      expect(s.connection.lastError, 'connect_failed');
+      expect(s.connection.isRetrying, isFalse,
+          reason: 'R3: a first connect that never landed does not get the '
+              'ladder, so the card is the ONLY thing left to say it failed');
+      expect(tester.takeException(), isNull);
+      expect(find.text('No device connected'), findsNothing);
+      expect(find.text('Connection failed, please try again'), findsOneWidget);
     });
   });
 

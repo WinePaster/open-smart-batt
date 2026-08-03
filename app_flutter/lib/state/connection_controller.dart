@@ -709,13 +709,23 @@ class ConnectionController extends ChangeNotifier {
   /// to justify the rebind work. A radio that is off explains the failure
   /// completely; nothing about the saved id is implicated.
   ///
-  /// Returns null when there is nothing specific to say (a non-iOS failure with
-  /// the radio up), leaving the caller's own message in place.
-  ///
   /// FB-53: [error] narrows the iOS fallback. `device_stale` used to absorb
   /// every failure the adapter state did not explain, including the commonest
   /// one of all — a unit that is simply not in range. See [fbpErrorCodeOf] for
   /// why the plugin's exception is read by type and code and never by message.
+  ///
+  /// FB-53: and every remaining failure gets `connect_failed` rather than null.
+  /// Null used to mean "a non-iOS failure with the radio up — say nothing", and
+  /// what the caller then said instead was `e.toString()`, which no screen can
+  /// render. An Android GATT 133 arrives as a `FlutterBluePlusException` the
+  /// plugin merely relayed (`platform: _nativeError`, `bluetooth_device.dart`
+  /// :169-172), so it is deliberately NOT decoded here — and with the ladder no
+  /// longer wrapping a failed first connect in a minute of "Reconnecting…", a
+  /// quick-pick tap that ended that way left the dashboard showing the words it
+  /// shows before anybody has tapped anything. Vague and correct beats silent;
+  /// the specific instructions stay with the codes that earned them.
+  ///
+  /// The one null left is the deliberate one: a connect WE cancelled.
   static String? connectFailureError({
     required BluetoothAdapterState adapter,
     required bool isIOS,
@@ -746,7 +756,7 @@ class ConnectionController extends ChangeNotifier {
       case _:
         break;
     }
-    return isIOS ? 'device_stale' : null;
+    return isIOS ? 'device_stale' : 'connect_failed';
   }
 
   /// The plugin's OWN error code behind [error], or null when the failure did
@@ -832,7 +842,15 @@ class ConnectionController extends ChangeNotifier {
     try {
       await _ble.connect(deviceId, timeout: timeout);
     } catch (e) {
-      _lastError = e.toString();
+      // FB-53: classify on the way out. This used to store `e.toString()`, and
+      // a raw exception string is a value no screen has a branch for — so the
+      // give-up card, whose "try again" button lands right back here through
+      // [reconnectCurrent], erased itself the moment the retry also failed.
+      // The classifier returns null for exactly one case, a connect we
+      // cancelled ourselves, and there the canceller's own reason stands.
+      final reason = connectFailureError(
+          adapter: _adapter, isIOS: Platform.isIOS, error: e);
+      if (reason != null) _lastError = reason;
       _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
       rethrow;
