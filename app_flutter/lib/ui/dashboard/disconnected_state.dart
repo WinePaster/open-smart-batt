@@ -15,6 +15,8 @@
 /// simply not on screen.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -117,7 +119,18 @@ class DisconnectedState extends StatelessWidget {
                 _QuickPick(
                   device: d,
                   busy: conn.isBusy && conn.connectedDeviceId == d.id,
-                  onTap: () => conn.connectToSaved(d),
+                  // FB-44: `connectToSaved` rethrows, and this tap handler
+                  // discards the future — so a failed quick-pick reached the
+                  // zone handler and was written to the diagnostic log as
+                  // `Uncaught:`, ten times in one 40-hour capture. There is
+                  // nothing for a caller to do with the exception here (the
+                  // controller has already recorded the reason in `lastError`
+                  // and in the log, and this widget rebuilds on it), so it is
+                  // absorbed deliberately rather than left to look like a
+                  // crash. The device sheet's own connect path has always
+                  // caught it; this one was simply never given a handler.
+                  onTap: () => unawaited(
+                      conn.connectToSaved(d).catchError((Object _) {})),
                 ),
               const SizedBox(height: 14),
             ],

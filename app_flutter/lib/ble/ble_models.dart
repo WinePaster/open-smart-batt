@@ -72,7 +72,20 @@ class BlePacketEvent {
   /// RX chunk, or a GATT-table dump line for an [LogDirection.event]).
   final String? note;
 
-  BlePacketEvent(this.direction, this.bytes, {DateTime? at, this.note})
+  /// The link this event crossed, as a BLE remote id — i.e. WHICH unit it came
+  /// from, not which unit happened to be "current" when it was stored.
+  ///
+  /// Null only for an event with no link to name (there are none today; the
+  /// field is nullable so a consumer keeps its old fallback rather than
+  /// inventing an attribution). The distinction matters because the recorded
+  /// `device_id` used to come from a single ambient session: while a superseded
+  /// setup was still emitting (the FB-39 window), its lines were filed under the
+  /// device the user had already moved to. That is FB-41/FB-42's disease, and
+  /// with more than one link it would be the normal case rather than a race.
+  final String? deviceId;
+
+  BlePacketEvent(this.direction, this.bytes,
+      {DateTime? at, this.note, this.deviceId})
       : at = at ?? DateTime.now();
 }
 
@@ -158,7 +171,14 @@ class ConnectEpoch {
 /// holding the source can tell the three cases apart.
 String gattSetupFailureReason(Object error) {
   if (error is TimeoutException) {
-    return 'service discovery timed out';
+    // ⚠️ This said 'service discovery timed out' until FB-45. Once the CCCD
+    // enable got a timeout of its own there are TWO steps that can raise one
+    // here, and this line cannot tell them apart — it sees the exception, not
+    // the step. Naming a step would put the WRONG one in the log roughly half
+    // the time, which is worse than naming none. The step is already named by
+    // the per-attempt line that precedes this one ('service discovery attempt
+    // n/m failed' / 'notify enable attempt n/m failed').
+    return 'GATT setup timed out';
   }
   if (error is StateError && error.message.contains('GATT characteristics')) {
     return 'required characteristics missing: ${error.message}';

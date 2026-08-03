@@ -588,6 +588,44 @@ class ConnectionController extends ChangeNotifier {
 
   /// Connect to a device by BLE id. Cancels any pending auto-reconnect, ensures
   /// permissions, and remembers the id as the auto-reconnect target.
+  /// True when the radio state is KNOWN to make a connect impossible.
+  ///
+  /// FB-44. Deliberately NOT `s != on`: on iOS the CBCentralManager starts at
+  /// `.unknown` and transitions to `.poweredOn` a few hundred ms later (D.1), so
+  /// treating "not yet on" as "off" would refuse every connect made in that
+  /// window — including the auto-reconnect armed at cold start, which is the
+  /// path a user never taps and therefore never learns to retry. Only the two
+  /// states that positively assert the radio is unusable count.
+  static bool adapterBlocksConnect(BluetoothAdapterState s) =>
+      s == BluetoothAdapterState.off ||
+      s == BluetoothAdapterState.unauthorized;
+
+  /// The `lastError` a blocked or failed connect deserves, given the radio
+  /// state. Pure + unit-testable (the Platform gate is a parameter).
+  ///
+  /// FB-44: `connectToSaved` used to label ANY caught error `device_stale` on
+  /// iOS. A 40-hour capture (`2026.07.31/002`) holds ten rounds of
+  /// `CBManagerStatePoweredOff` reaching the user as "this device may no longer
+  /// exist, pick another" — wrong advice about hardware that was sitting right
+  /// there — and, worse, writing `saved connect failed (stale?)` into the
+  /// diagnostic log ten times. That line is the signal we count stale NSUUIDs
+  /// with, so every Bluetooth-off episode was inflating the very statistic used
+  /// to justify the rebind work. A radio that is off explains the failure
+  /// completely; nothing about the saved id is implicated.
+  ///
+  /// Returns null when there is nothing specific to say (a non-iOS failure with
+  /// the radio up), leaving the caller's own message in place.
+  static String? connectFailureError({
+    required BluetoothAdapterState adapter,
+    required bool isIOS,
+  }) {
+    if (adapter == BluetoothAdapterState.unauthorized) {
+      return 'bluetooth_unauthorized';
+    }
+    if (adapter == BluetoothAdapterState.off) return 'bluetooth_off';
+    return isIOS ? 'device_stale' : null;
+  }
+
   Future<void> connect(String deviceId,
       {Duration? timeout, ProductClass? seedClass}) async {
     _reconnectTimer?.cancel();
@@ -614,6 +652,21 @@ class ConnectionController extends ChangeNotifier {
     if (!ok) {
       _lastError = 'permission_denied';
       _event('connect aborted: permission denied', deviceId: deviceId);
+      notifyListeners();
+      return;
+    }
+    // FB-44: refuse before touching BLE when the radio is known to be off or
+    // unauthorized. Handled here rather than by decoding the platform error it
+    // would otherwise throw, because the adapter state is a typed enum this
+    // controller already tracks and already uses for exactly this distinction
+    // in [startScan], whereas the error is a per-platform message string
+    // ('CBManagerStatePoweredOff') with no documented Android counterpart we
+    // have a capture for. Returning rather than throwing matches the
+    // permission branch directly above; the device sheet already shows a
+    // "Bluetooth is off" note driven by [isAdapterOn].
+    if (adapterBlocksConnect(_adapter)) {
+      _lastError = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
+      _event('connect aborted: $_lastError', deviceId: deviceId);
       notifyListeners();
       return;
     }
@@ -669,8 +722,18 @@ class ConnectionController extends ChangeNotifier {
     } catch (e) {
       // iOS: a failed connect to a saved record usually means the NSUUID is
       // stale — flag it so the UI can prompt a re-pick instead of spinning.
-      if (Platform.isIOS) _lastError = 'device_stale';
-      _event('saved connect failed${Platform.isIOS ? ' (stale?)' : ''}: $e');
+      //
+      // FB-44: "usually" is doing real work in that sentence, and the code used
+      // to ignore it. The same classifier the preflight uses decides here too,
+      // so a failure that arrives with the radio down is never labelled stale —
+      // including the residual case the preflight cannot catch, where the
+      // adapter state has not caught up with the radio yet. The `(stale?)`
+      // marker travels with the label rather than with the platform, because
+      // that marker is what the stale-NSUUID counts are grepped from.
+      final reason = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
+      final stale = reason == 'device_stale';
+      if (reason != null) _lastError = reason;
+      _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');
       notifyListeners();
       rethrow;
     }

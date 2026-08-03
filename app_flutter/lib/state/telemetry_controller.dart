@@ -17,6 +17,45 @@ import '../models/models.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 
+/// One minute of samples being accumulated for ONE unit.
+///
+/// Held per device rather than as a single set of fields, because the single
+/// set degrades SILENTLY. The old code closed the bucket whenever the recording
+/// unit changed mid-minute — correct with one link, and correct for the reason
+/// stated there (a row must never mix two units' readings). But the moment
+/// samples from two units interleave, "the unit changed" is true on nearly every
+/// sample, so nearly every sample flushes its own row: one row per minute per
+/// unit becomes one row per SAMPLE. The controller's own note on [_nSamples]
+/// puts a full minute near 900, so that is roughly a 900× write amplification —
+/// with no error, no exception and nothing on screen. The only thing that would
+/// have said so is the `samples` column reading 1 on every row.
+class _MinuteBucket {
+  DateTime? minute;
+  TelemetrySample? last;
+  double sPvlt = 0, sSvlt = 0, sTemp = 0, sCur = 0;
+  int nPvlt = 0, nSvlt = 0, nTemp = 0, nCur = 0;
+
+  /// How many telemetry snapshots this minute has folded in.
+  /// Counted per snapshot, not per field, so it answers one question honestly:
+  /// how much data is behind this row. A full minute lands near 900; a row
+  /// flushed seconds after the bucket opened lands in the tens, and the export
+  /// makes that visible instead of passing both off as "one minute".
+  int nSamples = 0;
+
+  bool get isOpen => minute != null && last != null;
+}
+
+/// Telemetry freshness for ONE unit.
+///
+/// Per device because a stall is a statement about a specific link: with one
+/// shared timestamp, any unit still sending would keep every other unit's
+/// readouts looking live while they were frozen — which is precisely the
+/// failure this detector was built to stop the dashboard doing.
+class _StallWatch {
+  DateTime? lastSampleAt;
+  bool stalled = false;
+}
+
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
 class TelemetryController extends ChangeNotifier {
   TelemetryController(
@@ -279,63 +318,82 @@ class TelemetryController extends ChangeNotifier {
   // backlog (evidenced twice in a 2026-07-27 field capture). During that window
   // the dashboard kept showing the last values with no hint they were frozen.
 
-  DateTime? _lastSampleAt;
+  /// Freshness per unit, keyed by the recording device id. The null key is the
+  /// unattributed case (telemetry arriving before any session opened) — a real
+  /// key, not an absence, so those samples keep the behaviour they had.
+  final Map<String?, _StallWatch> _stalls = <String?, _StallWatch>{};
   Timer? _stallTimer;
-  bool _stalled = false;
 
   /// Injectable so tests can exercise the real transition in milliseconds
   /// instead of waiting out the field threshold.
   late final Duration _stallThreshold;
   late final Duration _stallCheckInterval;
 
+  _StallWatch _watchFor(String? deviceId) =>
+      _stalls.putIfAbsent(deviceId, _StallWatch.new);
+
   /// True when the link reports ready but no telemetry has arrived for
   /// [BleService.telemetryStallThreshold] — the readouts on screen are stale.
-  bool get telemetryStalled => _stalled;
+  ///
+  /// Reports the unit currently being recorded, which is the one the dashboard
+  /// is showing. With a single link that is the only watch there is.
+  bool get telemetryStalled => _stalls[_session.deviceId]?.stalled ?? false;
 
   /// Age of the newest telemetry, or null before the first frame.
-  Duration? get telemetryAge {
-    final at = _lastSampleAt;
+  Duration? get telemetryAge => _ageOf(_session.deviceId);
+
+  Duration? _ageOf(String? deviceId) {
+    final at = _stalls[deviceId]?.lastSampleAt;
     return at == null ? null : DateTime.now().difference(at);
   }
 
+  /// Re-evaluate every unit being watched, not just the visible one: a unit
+  /// whose frames stopped has stalled whether or not it is the one on screen,
+  /// and a watch that is only updated while visible would report the moment it
+  /// came back into view rather than the moment it froze.
   void _evaluateStall() {
-    final age = telemetryAge;
-    final next = age != null && age > _stallThreshold;
-    if (next == _stalled) return;
-    _stalled = next;
-    notifyListeners();
+    var changed = false;
+    for (final entry in _stalls.entries) {
+      final age = _ageOf(entry.key);
+      final next = age != null && age > _stallThreshold;
+      if (next == entry.value.stalled) continue;
+      entry.value.stalled = next;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   void _onTelemetry(TelemetrySample s) {
     _sample = s;
-    _lastSampleAt = DateTime.now();
-    if (_stalled) {
-      _stalled = false; // recovered
+    // The telemetry stream carries no device id, so the recording session is
+    // the attribution — same source the history row about to be written uses,
+    // so a sample can never be counted against one unit and stored under
+    // another.
+    final watch = _watchFor(_session.deviceId);
+    watch.lastSampleAt = DateTime.now();
+    if (watch.stalled) {
+      watch.stalled = false; // recovered
     }
     notifyListeners();
     _maybeAutoLog(s);
   }
 
   // ---- per-minute aggregation -------------------------------------------
-  // History stores ONE averaged row per minute (not every poll): accumulate
-  // each minute's samples, then flush the average on minute-rollover/disconnect.
-  DateTime? _bucketMinute;
-  TelemetrySample? _bucketLast;
+  // History stores ONE averaged row per minute PER UNIT (not every poll):
+  // accumulate each minute's samples, then flush the average on
+  // minute-rollover/disconnect.
 
-  /// Unit that owns the minute currently being accumulated. Captured when the
-  /// bucket opens, NOT when it flushes: a flush triggered by a disconnect (or
-  /// after the next unit connects) would otherwise file the minute under the
-  /// wrong device — or under none at all.
-  String? _bucketDeviceId;
-  double _sPvlt = 0, _sSvlt = 0, _sTemp = 0, _sCur = 0;
-  int _nPvlt = 0, _nSvlt = 0, _nTemp = 0, _nCur = 0;
-
-  /// How many telemetry snapshots this minute has folded in.
-  /// Counted per snapshot, not per field, so it answers one question honestly:
-  /// how much data is behind this row. A full minute lands near 900; a row
-  /// flushed seconds after the bucket opened lands in the tens, and the export
-  /// makes that visible instead of passing both off as "one minute".
-  int _nSamples = 0;
+  /// Open buckets keyed by the unit that owns them. The key is captured when
+  /// the bucket opens, NOT when it flushes: a flush triggered by a disconnect
+  /// (or after the next unit connects) would otherwise file the minute under
+  /// the wrong device — or under none at all. The null key is the unattributed
+  /// case and behaves exactly as it did.
+  ///
+  /// Keying is what replaces the old "a new unit mid-minute closes the bucket"
+  /// rule. It gives the same guarantee — one row never mixes two units'
+  /// readings — without the rule's failure mode, which was to close the bucket
+  /// on EVERY sample as soon as two units interleaved (see [_MinuteBucket]).
+  final Map<String?, _MinuteBucket> _buckets = <String?, _MinuteBucket>{};
 
   /// Fold a sample into the current minute's bucket.
   ///
@@ -348,32 +406,31 @@ class TelemetryController extends ChangeNotifier {
   void _maybeAutoLog(TelemetrySample s) {
     final t = s.timestamp;
     final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
-    // A new unit mid-minute also closes the bucket, so one row never mixes two
-    // devices' readings.
     final deviceId = _session.deviceId;
-    if (_bucketMinute != null &&
-        (minute.isAfter(_bucketMinute!) || deviceId != _bucketDeviceId)) {
-      _flushBucket();
+    final b = _buckets.putIfAbsent(deviceId, _MinuteBucket.new);
+    // Only a minute rollover closes a bucket now. The unit cannot change under
+    // it: it IS the key.
+    if (b.minute != null && minute.isAfter(b.minute!)) {
+      _flushBucket(deviceId);
     }
-    _bucketMinute = minute;
-    _bucketDeviceId = deviceId;
-    _bucketLast = s;
-    _nSamples++;
+    b.minute = minute;
+    b.last = s;
+    b.nSamples++;
     if (s.pvlt != null) {
-      _sPvlt += s.pvlt!;
-      _nPvlt++;
+      b.sPvlt += s.pvlt!;
+      b.nPvlt++;
     }
     if (s.svlt != null) {
-      _sSvlt += s.svlt!;
-      _nSvlt++;
+      b.sSvlt += s.svlt!;
+      b.nSvlt++;
     }
     if (s.temperatureC != null) {
-      _sTemp += s.temperatureC!;
-      _nTemp++;
+      b.sTemp += s.temperatureC!;
+      b.nTemp++;
     }
     if (s.current != null) {
-      _sCur += s.current!;
-      _nCur++;
+      b.sCur += s.current!;
+      b.nCur++;
     }
   }
 
@@ -389,46 +446,66 @@ class TelemetryController extends ChangeNotifier {
   ///
   /// Flushing resets the bucket, so pausing and resuming inside one minute
   /// yields TWO rows for that minute. That is deliberate: each row reports its
-  /// own [_nSamples], which is more honest than silently merging them or
+  /// own `samples` count, which is more honest than silently merging them or
   /// rewriting a row already on disk.
-  void flushPendingHistory() => _flushBucket();
+  ///
+  /// Flushes EVERY open bucket: the app is about to lose control of its own
+  /// execution, and a unit whose partial minute is left behind because another
+  /// unit happened to be current is the loss this exists to prevent.
+  void flushPendingHistory() => _flushAllBuckets();
 
-  /// Write the current minute's averaged sample to history, then reset.
-  void _flushBucket() {
-    final m = _bucketMinute;
-    final last = _bucketLast;
-    if (m != null && last != null) {
-      final avg = last.copyWith(
-        timestamp: m,
-        pvlt: _nPvlt > 0 ? _sPvlt / _nPvlt : null,
-        svlt: _nSvlt > 0 ? _sSvlt / _nSvlt : null,
-        temperatureC: _nTemp > 0 ? (_sTemp / _nTemp).round() : null,
-        current: _nCur > 0 ? _sCur / _nCur : null,
+  void _flushAllBuckets() {
+    for (final deviceId in _buckets.keys.toList()) {
+      _flushBucket(deviceId);
+    }
+  }
+
+  /// Write one unit's current minute to history, then reset that bucket.
+  ///
+  /// The bucket object is reset in place rather than dropped, so a caller
+  /// holding a reference to it (see [_maybeAutoLog]) keeps writing into the
+  /// same one instead of silently filling a bucket nobody will flush.
+  void _flushBucket(String? deviceId) {
+    final b = _buckets[deviceId];
+    if (b == null) return;
+    if (b.isOpen) {
+      final avg = b.last!.copyWith(
+        timestamp: b.minute,
+        pvlt: b.nPvlt > 0 ? b.sPvlt / b.nPvlt : null,
+        svlt: b.nSvlt > 0 ? b.sSvlt / b.nSvlt : null,
+        temperatureC: b.nTemp > 0 ? (b.sTemp / b.nTemp).round() : null,
+        current: b.nCur > 0 ? b.sCur / b.nCur : null,
       );
       _pending.add(_history.insertSample(
         avg,
-        deviceId: _bucketDeviceId,
-        samples: _nSamples,
+        deviceId: deviceId,
+        samples: b.nSamples,
         appBuild: _appBuild,
       ));
     }
-    _bucketMinute = null;
-    _bucketDeviceId = null;
-    _bucketLast = null;
-    _sPvlt = _sSvlt = _sTemp = _sCur = 0;
-    _nPvlt = _nSvlt = _nTemp = _nCur = 0;
-    _nSamples = 0;
+    b.minute = null;
+    b.last = null;
+    b.sPvlt = b.sSvlt = b.sTemp = b.sCur = 0;
+    b.nPvlt = b.nSvlt = b.nTemp = b.nCur = 0;
+    b.nSamples = 0;
   }
 
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;
+    // The event names the link it crossed. Prefer that over "whichever unit is
+    // current", which is what stamped one unit's frames with another's identity
+    // whenever a superseded setup was still emitting (FB-41/FB-42), and which
+    // would stop being a race and start being the norm with two links. The
+    // session number then comes from THAT unit's session, never from the
+    // ambient one — a session id may only travel with a row that belongs to it.
+    final deviceId = e.deviceId ?? _session.deviceId;
     final entry = LogEntry.fromBytes(
       e.direction,
       e.bytes,
       at: e.at,
       note: e.note,
-      deviceId: _session.deviceId,
-      sessionId: _session.sessionId,
+      deviceId: deviceId,
+      sessionId: _session.sessionIdFor(deviceId),
       appBuild: _appBuild,
     );
     _pending.add(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
@@ -436,17 +513,20 @@ class TelemetryController extends ChangeNotifier {
 
   void _onLinkState(BleLinkState s) {
     if (s == BleLinkState.ready) {
-      _lastSampleAt = DateTime.now(); // grace period before the first frame
+      // Grace period before the first frame, for the unit that just came up.
+      _watchFor(_session.deviceId).lastSampleAt = DateTime.now();
       _stallTimer?.cancel();
       _stallTimer = Timer.periodic(_stallCheckInterval, (_) => _evaluateStall());
     }
     if (s == BleLinkState.disconnected) {
       _stallTimer?.cancel();
       _stallTimer = null;
-      _lastSampleAt = null;
-      _stalled = false;
-      // Persist the final partial minute before clearing live state.
-      _flushBucket();
+      // A disconnect has its own empty state; it is not a stall. Nothing is
+      // being watched once the last link is gone, so drop the watches rather
+      // than leaving them to report an age no link is producing.
+      _stalls.clear();
+      // Persist every open partial minute before clearing live state.
+      _flushAllBuckets();
       // Clear the live readouts so the dashboard doesn't show stale values.
       if (hasData) {
         _sample = TelemetrySample.empty();
