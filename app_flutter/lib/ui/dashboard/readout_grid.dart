@@ -103,8 +103,13 @@ class _StatTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 7),
-          RichText(
-            text: TextSpan(
+          // Text.rich, NOT RichText: the raw RichText defaults to
+          // `TextScaler.noScaling` (Flutter `basic.dart`), so this value —
+          // and the gauge readout, the other direct RichText in the app —
+          // silently ignored the OS text-size setting entirely, while the
+          // label beside it (a plain Text) honoured it.
+          Text.rich(
+            TextSpan(
               text: item.value,
               style: AppTextStyles.statValue(context),
               children: [
