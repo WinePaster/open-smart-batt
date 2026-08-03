@@ -195,12 +195,17 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           home: RootShell(
             deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
           ),
-          // Global font bump (×1.15) on top of the user's system text scale.
+          // Global font bump on top of the user's system text scale. The factor
+          // is [AppTheme.baseTextScale], not a literal, because the dashboard
+          // has to divide it back out to tell how much the USER enlarged text
+          // (see AppTheme.gaugeDiameter).
           builder: (context, child) {
             final mq = MediaQuery.of(context);
             return MediaQuery(
               data: mq.copyWith(
-                textScaler: TextScaler.linear(mq.textScaler.scale(1) * 1.15),
+                textScaler: TextScaler.linear(
+                  mq.textScaler.scale(1) * AppTheme.baseTextScale,
+                ),
               ),
               child: child!,
             );

@@ -68,7 +68,7 @@ class PowerBankView extends StatelessWidget {
             IndustrialCard(
               child: LayoutBuilder(
                 builder: (context, c) {
-                  final s = (c.maxWidth * 0.74).clamp(180.0, 240.0);
+                  final s = AppTheme.gaugeDiameter(context, c.maxWidth);
                   return Center(
                     child: PvltGauge.percent(
                       percent: soc,

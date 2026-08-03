@@ -10,6 +10,8 @@
 /// and custom-painted alike) follows the effective brightness.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Brand accent palette (mockup CSS custom properties). IDENTICAL in light and
@@ -188,6 +190,45 @@ class AppTheme {
 
   /// Standard card padding (mockup `.card { padding: 15px }`).
   static const EdgeInsets cardPadding = EdgeInsets.all(15);
+
+  /// The app's own text-size bump, applied on top of the OS setting in
+  /// `main.dart`. It has been 1.15 since the first build; naming it means the
+  /// gauge sizing below can tell "the user enlarged their system font" apart
+  /// from "the app always renders 15 % larger", which a bare literal could not.
+  static const double baseTextScale = 1.15;
+
+  /// How much the USER has enlarged text, relative to [baseTextScale].
+  /// 1.0 means they left their system font alone.
+  static double userTextScale(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(1) / baseTextScale;
+
+  /// Dial diameter for [PvltGauge] given the card's inner width.
+  ///
+  /// The centre readout sits in a `FittedBox(scaleDown)` bounded by 0.66 × this
+  /// diameter, so the dial — NOT the text scale — is what caps the headline
+  /// number. Measured 2026-08-03: with a fixed cap the readout box was
+  /// 135.96 × 24.72 px at every text scale from 1.0 to 2.0, i.e. the one number
+  /// a user most wants larger was the one number that never responded.
+  ///
+  /// So the cap grows with the user's own text scale, bounded by the width
+  /// actually available. It never SHRINKS below [gaugeMaxDiameter]: a user who
+  /// picks a smaller system font is asking for more content per screen, not for
+  /// a smaller instrument, and shrinking the dial would move the default layout
+  /// for a case nobody reported.
+  /// ⚠️ The growth multiplies BOTH the natural size and the cap. Raising only
+  /// the cap looks equivalent and is not: on a 390 pt screen the natural size
+  /// is 244.2 px, so a raised cap alone moved the dial by 4.2 px and the
+  /// readout by half a point — a change the user could not see.
+  static double gaugeDiameter(BuildContext context, double available) {
+    final growth = math.max(1.0, userTextScale(context));
+    final cap = math.min(available, gaugeMaxDiameter * growth);
+    return (available * 0.74 * growth)
+        .clamp(gaugeMinDiameter, math.max(cap, gaugeMinDiameter));
+  }
+
+  /// Dial diameter bounds (mockup dial = 206 px at a 320 px card).
+  static const double gaugeMinDiameter = 180;
+  static const double gaugeMaxDiameter = 240;
 
   /// Corner radius scale — THREE tiers, and only three.
   ///
