@@ -73,6 +73,15 @@ class TelemetrySample {
   final double? dischargeV1;
   final double? dischargeV2;
 
+  /// Power-bank charge-side current (A) from `0x49`, magnitude as reported.
+  ///
+  /// Kept beside [current] rather than folded into it because the two registers
+  /// arrive as separate frames — 0x49 first — and [current] has to be the
+  /// combination of both. Storing only the combination would make the result
+  /// depend on which frame landed last. Not exported: the CSV's `ampere` column
+  /// already carries the signed value.
+  final double? chargeCurrent;
+
   /// Raw capacity byte (b6) — selector 0x96.
   final int? capacityRaw;
 
@@ -178,6 +187,7 @@ class TelemetrySample {
     this.chargeV2,
     this.dischargeV1,
     this.dischargeV2,
+    this.chargeCurrent,
     this.capacityRaw,
     this.designCapacityMah,
     this.sohBucket,
@@ -248,6 +258,7 @@ class TelemetrySample {
     double? chargeV2,
     double? dischargeV1,
     double? dischargeV2,
+    double? chargeCurrent,
     int? capacityRaw,
     int? designCapacityMah,
     int? sohBucket,
@@ -280,6 +291,7 @@ class TelemetrySample {
       chargeV2: chargeV2 ?? this.chargeV2,
       dischargeV1: dischargeV1 ?? this.dischargeV1,
       dischargeV2: dischargeV2 ?? this.dischargeV2,
+      chargeCurrent: chargeCurrent ?? this.chargeCurrent,
       capacityRaw: capacityRaw ?? this.capacityRaw,
       designCapacityMah: designCapacityMah ?? this.designCapacityMah,
       sohBucket: sohBucket ?? this.sohBucket,

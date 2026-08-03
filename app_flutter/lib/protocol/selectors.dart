@@ -95,11 +95,39 @@ class Selectors {
   /// it is the same cell voltage and is not decoded again.
   ///
   /// Whether that current is measured cell-side or at the output port is NOT
-  /// established, and the sibling register 0x49 carries a second (voltage,
-  /// current) pair whose current field read zero across 97 frames / 4 sessions
-  /// / both output profiles. So the app publishes a MAGNITUDE and never a
-  /// direction, and 0x49 is deliberately left undecoded.
+  /// established.
+  ///
+  /// The sibling register [chargeCurrent] (0x49) carries the same shape for the
+  /// charging direction. It used to be read as "always zero" and left
+  /// undecoded; that held only because every capture examined was an output
+  /// one. With the charging captures added the pair is complementary, so the
+  /// app now publishes a SIGNED current: positive from this register,
+  /// negative from 0x49. See [chargeCurrent] for the counts.
   static const int discharge = 0x4A;
+
+  /// Charge-side current pair on a power bank: `[u16 mV][u16 mA]`, the mirror
+  /// of [discharge].
+  ///
+  /// Left undecoded until 2026-08-03 on the strength of "its mA field read zero
+  /// across 97 frames" — an observation drawn entirely from captures whose
+  /// reporter had labelled them OUTPUT. Adding the charging captures completes
+  /// it, and the two registers turn out to be cleanly complementary:
+  ///
+  /// | reporter said | 0x49 mA zero | 0x4A mA zero |
+  /// |---|---|---|
+  /// | discharging (9 captures) | 95–100 % | 0–4 % |
+  /// | charging (2 captures) | 0–3 % | 96–99 % |
+  ///
+  /// The complementarity shows up WITHIN a single capture, which is why it does
+  /// not rest on comparing units: whichever register is carrying the reading is
+  /// the direction. `0x4B`'s port bits agree independently (bit 3 set only in
+  /// the charging captures) but are not needed for this.
+  ///
+  /// ⚠️ Three physical units cover the discharging side; the charging side is
+  /// so far ONE unit. Enough to sign a live reading — a unit's own two
+  /// registers are complementary on their own — and not enough to write the
+  /// attribution into the protocol document as settled.
+  static const int chargeCurrent = 0x49;
 
   /// Power-bank capacity frame, 5 bytes:
   /// `[u16 design capacity mAh][u8 SOC %][u8 ?][u8 ?]`.

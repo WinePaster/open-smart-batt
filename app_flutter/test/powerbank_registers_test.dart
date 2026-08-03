@@ -126,17 +126,80 @@ void main() {
     });
   });
 
-  group('0x49 stays undecoded', () {
-    test('its current field read zero across the whole capture, so no field',
-        () {
-      // Verbatim: b8 49 01 04 23 cc 00 00 1b. The mV field duplicates SVLT and
-      // the mA field was 0 on 97/97 frames across both output profiles, so
-      // there is nothing here we can publish honestly.
+  group('0x49 is the charging direction', () {
+    // This group used to assert 0x49 published nothing, on the strength of "its
+    // mA field read zero across 97 frames". Every one of those frames came from
+    // a capture the reporter had labelled OUTPUT. Adding the charging captures
+    // shows the two registers are complementary: while charging, 0x49 carries
+    // up to 1875 mA and 0x4A is zero on 99 % of frames; while discharging it is
+    // the other way round. So the reading was never absent — we had only looked
+    // at the half of the corpus where it is quiet.
+    test('a lone 0x49 stores the charge side but publishes no current yet', () {
+      // Verbatim: b8 49 01 04 23 cc 00 00 1b, from an output capture.
       final s = TelemetryDecoder.apply(
           pb, decodeOne(0x49, [0x23, 0xCC, 0x00, 0x00]),
           at: at);
+      // 0x49 arrives BEFORE 0x4A in every burst. Publishing here would show a
+      // value for one frame and then have 0x4A overwrite it.
       expect(s.current, isNull);
-      expect(s.svlt, isNull);
+      expect(s.chargeCurrent, closeTo(0.0, 1e-9));
+      expect(s.svlt, isNull, reason: 'the mV field duplicates SVLT');
+    });
+
+    test('charging reads negative: 0x49 carries the mA, 0x4A is idle', () {
+      // 0x49 mV 5.160 V / mA 1875, then 0x4A idle — the shape of a charging
+      // burst in 2026.08.01/009.
+      final a = TelemetryDecoder.apply(
+          pb, decodeOne(0x49, [0x14, 0x28, 0x07, 0x53]),
+          at: at);
+      final b = TelemetryDecoder.apply(
+          a, decodeOne(0x4A, [0x0F, 0xA3, 0x00, 0x00]),
+          at: at);
+      expect(b.current, closeTo(-1.875, 1e-9));
+    });
+
+    test('discharging stays positive once the charge side is idle', () {
+      final a = TelemetryDecoder.apply(
+          pb, decodeOne(0x49, [0x14, 0x28, 0x00, 0x00]),
+          at: at);
+      final b = TelemetryDecoder.apply(
+          a, decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]),
+          at: at);
+      expect(b.current, closeTo(1.081, 1e-9),
+          reason: 'the value the unit\'s own display showed');
+    });
+
+    test('both idle is 0.0 A, not a stale reading', () {
+      final a = TelemetryDecoder.apply(
+          pb, decodeOne(0x49, [0x14, 0x28, 0x07, 0x53]),
+          at: at);
+      final b = TelemetryDecoder.apply(
+          a, decodeOne(0x4A, [0x0F, 0xA3, 0x00, 0x00]),
+          at: at);
+      final c = TelemetryDecoder.apply(
+          b, decodeOne(0x49, [0x14, 0x28, 0x00, 0x00]),
+          at: at);
+      final d = TelemetryDecoder.apply(
+          c, decodeOne(0x4A, [0x0F, 0xA3, 0x00, 0x00]),
+          at: at);
+      expect(d.current, closeTo(0.0, 1e-9));
+    });
+
+    test('a pack is untouched by 0x49', () {
+      final s = TelemetryDecoder.apply(
+          pack.copyWith(deviceType: 0x02), decodeOne(0x49, [0x14, 0x28, 0x07, 0x53]),
+          at: at);
+      expect(s.chargeCurrent, isNull);
+      expect(s.current, isNull);
+    });
+
+    test('an unattributed frame publishes nothing', () {
+      // FB-22's failure mode: a class-agnostic formula on a frame that arrived
+      // before 0x10 settled the class.
+      final s = TelemetryDecoder.apply(
+          TelemetrySample.empty(), decodeOne(0x49, [0x14, 0x28, 0x07, 0x53]),
+          at: at);
+      expect(s.chargeCurrent, isNull);
     });
   });
 

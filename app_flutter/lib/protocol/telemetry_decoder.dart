@@ -248,6 +248,16 @@ class TelemetryDecoder {
           chargeV1: scaled1000(f, 4),
           chargeV2: scaled1000(f, 6),
         );
+      case Selectors.chargeCurrent:
+        // Power banks only, and class-gated for the same reason as
+        // Selectors.discharge below: on a pack these four bytes are not this.
+        if (!base.isPowerBank) return base;
+        // Stored, not published. 0x49 arrives BEFORE 0x4A in every burst, so
+        // signing here and letting 0x4A overwrite would put the charge current
+        // on screen for a millisecond and then replace it with 0x4A's idle
+        // zero. The combination happens in 0x4A, which is the register that has
+        // always driven `current`.
+        return base.copyWith(timestamp: ts, chargeCurrent: f.u16(6) / 1000.0);
       case Selectors.discharge:
         // Same 4 bytes, two readings — this selector means different things on
         // different product classes. Gating on the class is safe because the
@@ -268,8 +278,21 @@ class TelemetryDecoder {
         if (base.isPowerBank) {
           // `[u16 mV][u16 mA]`. Only the current is taken: the mV field tracks
           // PVLT (0x19) to ±10 mV, so decoding it again would just be a second
-          // name for the same number. Magnitude only — see Selectors.discharge.
-          return base.copyWith(timestamp: ts, current: f.u16(6) / 1000.0);
+          // name for the same number.
+          //
+          // SIGNED, from both registers: this one is the discharging direction
+          // and 0x49 the charging one, and they are complementary — whichever
+          // is carrying the reading is the direction (see
+          // [Selectors.chargeCurrent] for the counts). Both idle gives 0.0 A,
+          // which is what an idle bank is. Publishing a magnitude, as this line
+          // used to, made a bank that was charging read 0.00 A forever, because
+          // the only register the app looked at is the one that goes quiet
+          // while charging.
+          final discharging = f.u16(6) / 1000.0;
+          return base.copyWith(
+            timestamp: ts,
+            current: discharging - (base.chargeCurrent ?? 0),
+          );
         }
         return base.copyWith(
           timestamp: ts,
