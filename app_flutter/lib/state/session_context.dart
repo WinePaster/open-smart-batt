@@ -51,23 +51,36 @@ class SessionContext {
     }
   }
 
-  /// Begin recording for [deviceId]; allocates the next session id.
+  /// Begin recording for [deviceId]; allocates a session id if that unit does
+  /// not already have one open.
   ///
-  /// Re-entering with the SAME device while already in a session (e.g. a
-  /// `ready` state re-emitted without an intervening disconnect) keeps the
-  /// current session rather than splitting one connection into two.
+  /// A session is ONE CONNECTION, not one attempt at connecting. Re-entering
+  /// for a unit that already has an open session (a `ready` re-emitted with no
+  /// intervening disconnect, or — once several links are alive — this unit's
+  /// turn coming round again) keeps its number and only moves the "current"
+  /// pointer. Splitting one connection into several numbered sessions is what
+  /// FB-41 looked like from the export side: section headers for connections
+  /// that never happened.
   ///
-  /// ⚠️ "the same device" still means "the same device AND it is the current
-  /// one", which is a single-connection rule. With two links alive, their
-  /// interleaved `connecting`/`connected`/`ready` transitions would re-allocate
-  /// on every alternation and one connection would become several sessions.
-  /// Loosening it to "this unit already has an open session" is NOT a free
-  /// edit: it would make `begin('AA'); begin('BB'); begin('AA')` yield two
-  /// sessions where three are pinned today, and what that count means — attempts
-  /// or connections — is a decision, not an implementation detail. Left as-is
-  /// deliberately; the per-device STORE below is what multi-device needed first.
+  /// The rule used to be narrower — "the same device AND it is the current one"
+  /// — which is only correct while at most one link exists. With two alive,
+  /// their interleaved `connecting`/`connected`/`ready` transitions re-allocate
+  /// on every alternation, so `begin('AA'); begin('BB'); begin('AA')` minted
+  /// THREE sessions for two connections. Widened deliberately (2026-08-03).
+  ///
+  /// 🔑 **A failed attempt still gets its own id, and `connections=N` still
+  /// counts attempts.** That property does not come from this method — it comes
+  /// from [end] being called on every `disconnected`, which closes the session
+  /// before the retry calls [begin] again. So attempt 1 and attempt 2 to the
+  /// same unit are bracketed and get different numbers, while two `ready`s
+  /// inside one live connection do not. The two behaviours were previously
+  /// entangled in this one condition; they are now separate, and the
+  /// begin/end/begin case is pinned by its own test.
   void begin(String deviceId) {
-    if (_currentDeviceId == deviceId && _sessions.containsKey(deviceId)) return;
+    if (_sessions.containsKey(deviceId)) {
+      _currentDeviceId = deviceId;
+      return;
+    }
     _currentDeviceId = deviceId;
     _sessions[deviceId] = _nextSession++;
   }

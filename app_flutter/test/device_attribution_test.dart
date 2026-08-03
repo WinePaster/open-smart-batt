@@ -59,17 +59,39 @@ void main() {
       expect(s.sessionId, isNull);
     });
 
-    test('session ids never repeat across attempts', () {
-      // Failed attempts now get ids too, so `connections=N` finally counts
-      // attempts rather than successes. Ids must stay unique for the export's
-      // per-session sectioning to hold.
+    test('a live session is not re-numbered when its unit comes round again',
+        () {
+      // A session is one CONNECTION, not one begin() call. Without an
+      // intervening end(), returning to a unit that still has an open session
+      // must reuse its number: with several links alive their interleaved
+      // connecting/connected/ready transitions arrive in exactly this pattern,
+      // and re-allocating would split one connection into several numbered
+      // sessions — section headers for connections that never happened (FB-41).
       final s = SessionContext();
-      final seen = <int>{};
+      final ids = <String, int>{};
       for (final id in ['AA', 'BB', 'AA', 'CC', 'AA']) {
         s.begin(id);
-        seen.add(s.sessionId!);
+        ids.putIfAbsent(id, () => s.sessionId!);
+        expect(s.sessionId, ids[id], reason: '$id was re-numbered');
       }
-      expect(seen.length, 5);
+      expect(ids.values.toSet().length, 3, reason: 'three units, three ids');
+    });
+
+    test('attempts to the same unit still get distinct ids', () {
+      // This is what makes `connections=N` count attempts rather than
+      // successes, and it does NOT come from begin(): it comes from end()
+      // running on every `disconnected`, which closes the session before the
+      // retry begins a new one. Pinned separately from the case above because
+      // the two used to be entangled in one condition — a failed attempt and a
+      // re-emitted `ready` are not the same event and must not share a rule.
+      final s = SessionContext();
+      final seen = <int>[];
+      for (var attempt = 0; attempt < 3; attempt++) {
+        s.begin('AA');
+        seen.add(s.sessionId!);
+        s.end(); // the attempt failed, or the link dropped
+      }
+      expect(seen.toSet().length, 3, reason: 'three attempts, three ids');
     });
   });
 
