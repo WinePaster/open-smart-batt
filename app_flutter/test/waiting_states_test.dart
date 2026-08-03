@@ -47,8 +47,15 @@ class _FakeBle extends BleService {
   @override
   Stream<BleLinkState> get linkState => _linkOut.stream;
 
+  /// Controllable so a test can make the unit SPEAK while its writes are
+  /// failing — the FB-20 shape, and the one case the failure counter alone
+  /// gets wrong.
+  final _telemetryOut = StreamController<TelemetrySample>.broadcast();
+
   @override
-  Stream<TelemetrySample> get telemetry => const Stream<TelemetrySample>.empty();
+  Stream<TelemetrySample> get telemetry => _telemetryOut.stream;
+
+  void emitTelemetry(TelemetrySample s) => _telemetryOut.add(s);
 
   @override
   Stream<BluetoothAdapterState> get adapterState =>
@@ -222,6 +229,37 @@ void main() {
       expect(find.text('Device type unavailable'), findsNothing);
       expect(
           find.textContaining('3 polls have gone unanswered'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox()); // dispose the repaint timer
+    });
+
+    testWidgets('a unit that is answering does not get blamed for slow writes',
+        (tester) async {
+      // FB-20. A power bank's single GATT write takes 3.96-4.95 s to complete
+      // and our write timeout is 5 s, so ~11.6 per 1000 of its writes fail
+      // while the unit is streaming 0x19/0x20/0x21/0x37 at 1.3-1.65 Hz. The
+      // failure counter is therefore non-zero on a link that is demonstrably
+      // alive, and "connection unstable" is the wrong thing to tell that user.
+      //
+      // The class cannot gate this — the view exists because the class is
+      // unknown — so the discriminator is whether any frame has arrived at all.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      ble.failures = 3;
+      await pumpUnder(tester, s, const ClassPendingView());
+      await tester.runAsync(() async {
+        ble.emitLink(BleLinkState.ready);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        ble.emitTelemetry(TelemetrySample(timestamp: DateTime.now()));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(
+          kClassPendingTimeout + const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Connection unstable'), findsNothing,
+          reason: 'the unit answered — the slow writes are not instability');
+      expect(find.text('Device type unavailable'), findsOneWidget);
       await tester.pumpWidget(const SizedBox()); // dispose the repaint timer
     });
   });

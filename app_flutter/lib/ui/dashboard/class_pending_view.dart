@@ -73,7 +73,27 @@ class _ClassPendingViewState extends State<ClassPendingView> {
     if (elapsed < kClassPendingGrace) return const SizedBox.shrink();
 
     final stalled = elapsed >= kClassPendingTimeout;
-    final failures = conn.keepAliveFailures;
+    // FB-20: a keep-alive failure count alone does NOT mean the link is
+    // unstable. A power bank's single GATT write takes 3.96-4.95 s to complete
+    // (4,029 measured intervals, four units, 0.6.11-0.6.14), and our write
+    // timeout is 5 s — so ~11.6 per 1000 of its writes cross the line while the
+    // unit is answering perfectly well. Reporting that as "connection unstable"
+    // is a misdiagnosis of the healthiest failure mode we have.
+    //
+    // The class cannot be the discriminator here: this view is drawn precisely
+    // BECAUSE the class is still unknown, so `isPowerBank` is false for the one
+    // case that needs it. What separates the two is whether anything is coming
+    // back at all — a slow-writing power bank still pushes 0x19/0x20/0x21/0x37
+    // at 1.3-1.65 Hz, while the genuinely stuck link the "unstable" copy was
+    // written for produced nothing.
+    //
+    // Note this is `hasTelemetry`, not `telemetryStalled` and not
+    // `telemetryAge`: the stall threshold is 8 s and this view gives up at 6 s,
+    // so a stall has not been declared yet when the copy is chosen — and
+    // `telemetryAge` is seeded at `ready`, so it is non-null even for a link
+    // that never spoke. Only the frame count answers the question being asked.
+    final heardFromIt = context.watch<TelemetryController>().hasTelemetry;
+    final failures = heardFromIt ? 0 : conn.keepAliveFailures;
 
     final String title;
     final String body;

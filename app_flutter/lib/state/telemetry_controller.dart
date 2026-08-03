@@ -55,6 +55,17 @@ class _MinuteBucket {
 class _StallWatch {
   DateTime? lastSampleAt;
   bool stalled = false;
+
+  /// Frames actually decoded for this unit since its link came up.
+  ///
+  /// [lastSampleAt] cannot answer "has anything arrived?" — it is SEEDED at
+  /// `ready` to give the first frame a grace period, so it is non-null from the
+  /// moment a link opens whether or not the unit has said a word. That
+  /// conflation is what let FB-20 be misread: a power bank whose writes take
+  /// 4-5 s trips the write timeout while streaming 0x19/0x20/0x21/0x37 at
+  /// 1.3-1.65 Hz, and nothing in the freshness state could tell that apart from
+  /// a link that had gone silent.
+  int samples = 0;
 }
 
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
@@ -348,6 +359,10 @@ class TelemetryController extends ChangeNotifier {
   /// is showing. With a single link that is the only watch there is.
   bool get telemetryStalled => _stalls[_session.deviceId]?.stalled ?? false;
 
+  /// Whether the unit being recorded has produced at least one frame on this
+  /// connection. False from `ready` until the first one actually lands.
+  bool get hasTelemetry => (_stalls[_session.deviceId]?.samples ?? 0) > 0;
+
   /// Age of the newest telemetry, or null before the first frame.
   Duration? get telemetryAge => _ageOf(_session.deviceId);
 
@@ -380,6 +395,7 @@ class TelemetryController extends ChangeNotifier {
     // another.
     final watch = _watchFor(_session.deviceId);
     watch.lastSampleAt = DateTime.now();
+    watch.samples++;
     _trend.add(s);
     if (watch.stalled) {
       watch.stalled = false; // recovered
@@ -524,7 +540,11 @@ class TelemetryController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     if (s == BleLinkState.ready) {
       // Grace period before the first frame, for the unit that just came up.
-      _watchFor(_session.deviceId).lastSampleAt = DateTime.now();
+      // The frame count restarts with it: "has this CONNECTION heard anything"
+      // is the question, and a previous connection's frames do not answer it.
+      _watchFor(_session.deviceId)
+        ..lastSampleAt = DateTime.now()
+        ..samples = 0;
       _stallTimer?.cancel();
       _stallTimer = Timer.periodic(_stallCheckInterval, (_) => _evaluateStall());
     }
