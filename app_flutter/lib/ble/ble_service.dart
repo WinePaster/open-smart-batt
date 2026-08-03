@@ -317,11 +317,11 @@ class BleService {
   /// On Android `connectAttemptsFor` is 3, the flag is true, and the replayed
   /// value was swallowed. On iOS it is 1, the flag is false, and the replayed
   /// value was read as a real drop that tore down the connection still being
-  /// built — every single connect, one millisecond in. `2026.08.03/004` holds
-  /// the shape: 906 `link: connecting` → `link: disconnected` pairs across the
-  /// corpus, 906 of them inside 1 ms, and a cold start where the user waited
-  /// 15.3 s for a device sitting on the desk while three phantom drops each
-  /// burned a rung of the backoff ladder.
+  /// built — every single connect, one millisecond in. The corpus holds 906
+  /// `link: connecting` → `link: disconnected` pairs, 906 of them inside 1 ms;
+  /// `2026.08.03/004` contributes 53 of them, plus a cold start where the user
+  /// waited 15.3 s for a device sitting on the desk while three phantom drops
+  /// each burned a rung of the backoff ladder.
   ///
   /// [sawConnected] is the fact `retryingConnect` was standing in for, and it
   /// says the same thing on both platforms — which is the point. Android's

@@ -749,8 +749,11 @@ class ConnectionController extends ChangeNotifier {
       case FbpErrorCode.timeout:
         return 'device_unreachable';
       // WE cancelled it: the FB-53 watchdog is the first thing in this app that
-      // does. Blaming the device for our own decision would be a lie, and
-      // `lastError` is already whatever the canceller set.
+      // does. Blaming the device for our own decision would be a lie. Note
+      // this branch is currently unreachable in practice — `connect()` cancels
+      // both the retry timer and the watchdog before touching BLE, so by the
+      // time a connect can fail there is no canceller left. It exists so that
+      // whoever adds the next canceller does not inherit a lie by default.
       case FbpErrorCode.connectionCanceled:
         return null;
       case _:
@@ -911,6 +914,13 @@ class ConnectionController extends ChangeNotifier {
       // FB-53: and the exception itself now gets a vote. Passing it is what
       // keeps `(stale?)` off the line — and out of the counts — for a unit that
       // was merely out of range, which the timeout says in so many words.
+      //
+      // A count discontinuity comes with that: on iOS a stale NSUUID ALSO
+      // surfaces as this same timeout (CoreBluetooth never answers either
+      // way), so out-of-range and stale are indistinguishable here and both
+      // now land in `device_unreachable`. `(stale?)` therefore all but
+      // vanishes from field logs at this version — a falling count means the
+      // label moved, not that stale ids stopped happening.
       final reason = connectFailureError(
           adapter: _adapter, isIOS: Platform.isIOS, error: e);
       final stale = reason == 'device_stale';
@@ -1086,7 +1096,17 @@ class ConnectionController extends ChangeNotifier {
       _readyAt = null;
       _reachedConnected = false;
     }
-    if (s == BleLinkState.connected) _reachedConnected = true;
+    if (s == BleLinkState.connected) {
+      _reachedConnected = true;
+      // FB-53: the hand-off has delivered — the OS produced a link. Whatever
+      // happens to it next (a GATT setup that stalls, a drop before `ready`)
+      // is FB-51/FB-52 territory and the ladder's to answer for. A deadline
+      // that survives the reunion would drop a link mid-setup in the 179 s
+      // window, or fire a second give-up after the ladder already reported
+      // one — pairing `autoConnect gave up` with `auto-reconnect gave up` in
+      // the very logs the FB-53 acceptance counts are grepped from.
+      _cancelAutoConnectWatchdog();
+    }
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
         s == BleLinkState.ready) {
@@ -1304,8 +1324,9 @@ class ConnectionController extends ChangeNotifier {
     // the old first line of this method was `_reconnectTimer?.cancel()`: the
     // reschedule silently killed the retry it was supposed to be adding.
     // `2026.08.03/004` has the ladder dying at rung 3 twice (20:33:14.28,
-    // 20:33:49.95) and `auto-reconnect gave up` appearing zero times in the
-    // whole 4 MB file, while the user was told "attempt 3 of 5".
+    // 20:33:49.95) and no `auto-reconnect gave up` line in either 08-03
+    // episode — the file's only three are 08-01 rolling residue — while the
+    // user was told "attempt 3 of 5".
     //
     // Returning rather than re-arming is the right way round: a pending retry
     // is already the answer to "come back later", and the caller that wants an
@@ -1317,10 +1338,17 @@ class ConnectionController extends ChangeNotifier {
     // uncapped loop would re-arm forever; after [maxReconnectAttempts] we give
     // up and surface a real error within seconds.
     if (_reconnectAttempts >= maxReconnectAttempts) {
-      _lastError = 'reconnect_exhausted';
-      _event('auto-reconnect gave up after $_reconnectAttempts attempts '
-          '(stale device?)');
-      notifyListeners();
+      // The final failure reaches here TWICE — once via the `disconnected` it
+      // emits, once via the timer callback's own catch — and unlike a mid-run
+      // rung there is no armed timer for the guard above to see. One episode,
+      // one line: `ready` and a manual connect are the only things that clear
+      // `reconnect_exhausted`, so within an episode the sentinel is exact.
+      if (_lastError != 'reconnect_exhausted') {
+        _lastError = 'reconnect_exhausted';
+        _event('auto-reconnect gave up after $_reconnectAttempts attempts '
+            '(stale device?)');
+        notifyListeners();
+      }
       return;
     }
     final delay = reconnectBackoff(_reconnectAttempts);

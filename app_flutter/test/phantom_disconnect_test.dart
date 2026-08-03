@@ -459,6 +459,42 @@ void main() {
       expect(h.conn.reconnectAttempts, 1);
       h.dispose(); // rung 1 is still armed
     });
+
+    testWidgets('the terminal rung reports once, not once per caller',
+        (tester) async {
+      // The final failure reaches the exhausted branch twice — once via the
+      // `disconnected` it emits, once via the timer callback's own catch —
+      // and there is no armed timer for the idempotency guard to see. Without
+      // a one-shot the log gets two `auto-reconnect gave up` lines for one
+      // episode, and the count of how often the ladder actually exhausts is
+      // inflated in the very capture used to verify FB-53.
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.conn.connect('AA');
+      h.ble.emitLink(BleLinkState.connecting);
+      await tester.pump();
+      h.ble.emitLink(BleLinkState.connected);
+      await tester.pump();
+      h.ble.emitLink(BleLinkState.ready);
+      await tester.pump();
+      // Walk the whole ladder: each drop arms a rung, each pump fires it.
+      for (var i = 0; i < ConnectionController.maxReconnectAttempts; i++) {
+        h.ble.emitLink(BleLinkState.disconnected);
+        await tester.pump();
+        await tester
+            .pump(reconnectBackoff(i) + const Duration(milliseconds: 1));
+      }
+      // Two terminal calls back to back — the double-caller shape.
+      h.ble.emitLink(BleLinkState.disconnected);
+      await tester.pump();
+      h.ble.emitLink(BleLinkState.disconnected);
+      await tester.pump();
+
+      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(
+          h.logs.notes.where((n) => n.startsWith('auto-reconnect gave up')),
+          hasLength(1));
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -527,6 +563,26 @@ void main() {
       expect(h.conn.isRetrying, isFalse);
       expect(h.conn.reconnectAttempts, 0);
       expect(h.conn.lastError, 'reconnect_exhausted');
+    });
+
+    testWidgets('the hand-off delivering `connected` cancels it',
+        (tester) async {
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.conn.connect('AA');
+      h.conn.armAutoConnect();
+      await tester.pump(const Duration(seconds: 30));
+      h.ble.emitLink(BleLinkState.connected);
+      await tester.pump();
+
+      await tester.pump(ConnectionController.autoConnectWatchdog +
+          const Duration(seconds: 1));
+      expect(h.ble.disconnectCalls, 0,
+          reason: 'the OS produced a link; what happens to it next is '
+              'FB-51/FB-52 territory, not a stale deadline\'s. Firing here '
+              'would drop a link mid-setup, or double-report a failure the '
+              'ladder already reported.');
+      expect(h.conn.lastError, isNull);
     });
 
     testWidgets('reaching ready cancels it', (tester) async {
