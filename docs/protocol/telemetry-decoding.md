@@ -57,7 +57,7 @@
 | **Warning OV** (V) | pack | `0x2B` | `b4 * 0.025 + 14.4` |
 | **Warning UV** (V) | pack | `0x2B` | `b5 * 0.025 + 10.4` |
 | **Warning OT** (°C) | pack | `0x2B` | `b6 + 60.0` |
-| **Charge** v1 / v2 | ⚠️ | `0x41` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **see §10.1, do not apply blind** |
+| **Charge** v1 / v2 | ⛔ | `0x41` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **do not apply.** The v2 half is now positively refuted: on device-type `0x17` the last payload byte carries the `0x21` temperature in °C, so `b6..b7` is not a millivolt word. `0x18` uses yet another layout. See §10.1 |
 | **Discharge** v1 / v2 | ⚠️ | `0x4A` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **PACK-SIDE ONLY, and never observed on any pack.** On a power bank the same 4 bytes are `[u16 mV][u16 mA]` (§9.1) |
 | **Device type** | all | `0x10` | `b4` — `0x02` battery / `0x17` capacitor / `0x22` power bank (§9) |
 | **Battery serial** | pack | `0x26` | `b4..b9` packed big-endian into a 48-bit int, `padLeft(6,'0')` |
