@@ -107,7 +107,34 @@ class _LinkState {
   int writeStatsReported = 0;
 
   bool settingUp = false;
+
+  /// True while Android is still bouncing through its three connect attempts,
+  /// so the drops BETWEEN those attempts are not reported as a lost link.
+  ///
+  /// This flag used to carry a second job it was never named for — filtering
+  /// the value flutter_blue_plus replays into a fresh `connectionState`
+  /// subscription — and [sawConnected] has taken that job over. See
+  /// [BleService.linkActionFor] for what that cost us on iOS.
   bool retryingConnect = false;
+
+  /// Whether this link has EVER been reported connected.
+  ///
+  /// FB-53. A link that has never been up cannot have gone down, which is the
+  /// whole of the test that tells a real drop from the `disconnected`
+  /// flutter_blue_plus replays into every new subscription. Written
+  /// SYNCHRONOUSLY on the `connected` event, before setup is awaited — see
+  /// [BleService._onConnectionState].
+  bool sawConnected = false;
+
+  /// When [connSub] was created — the zero point for the `sub=<n>ms` field of
+  /// the `conn-state:` diagnostic line.
+  ///
+  /// The replayed value arrives on the first microtask after `listen()`, so it
+  /// lands at 0 ms; a radio event cannot. Across the corpus every one of the
+  /// 906 `connecting` → `disconnected` pairs was inside 1 ms, and the number
+  /// that says so has to be in the log rather than reconstructed from two
+  /// timestamps by whoever reads it.
+  DateTime connSubAt = DateTime.now();
 
   final FrameReassembler reassembler = FrameReassembler();
   final TelemetryDecoder decoder;
@@ -116,6 +143,24 @@ class _LinkState {
   /// superseded, so a slow unit cannot bring the app online under an identity
   /// the user has already moved away from. See [ConnectEpoch].
   final ConnectEpoch epoch = ConnectEpoch();
+}
+
+/// What one `connectionState` event means for the link it arrived on.
+///
+/// Three outcomes, and the third is the one that did not exist before FB-53:
+/// an event we deliberately do nothing about. It is still WRITTEN DOWN (see
+/// [BleService.diagnostics]) — an ignore that leaves no trace is
+/// indistinguishable from a listener that never fired.
+enum LinkAction {
+  /// `connected`: run the GATT setup.
+  setup,
+
+  /// A real drop of a link that really was up.
+  teardown,
+
+  /// Nothing to do — a transitional state, or the cached value the plugin
+  /// replays into a subscription that has just been created.
+  ignore,
 }
 
 /// Owns the one BLE connection and exposes telemetry + control.
@@ -251,6 +296,49 @@ class BleService {
   /// timeout, retrying only multiplies the freeze); Android = 3 (connect-bounce
   /// recovery).
   static int connectAttemptsFor({required bool isIOS}) => isIOS ? 1 : 3;
+
+  /// What to do with a `connectionState` event, given what the link has seen.
+  /// Pure and static for the same reason [connectAttemptsFor] and
+  /// `reconnectBackoff` are: the policy is the thing worth testing, and a
+  /// decision table that needs a radio to exercise is a decision table nobody
+  /// checks.
+  ///
+  /// FB-53. What this replaces was one line — `if (link.retryingConnect)
+  /// return;` — doing two jobs under one name. [_LinkState.retryingConnect]
+  /// means "Android is mid-bounce, do not report the bounces". It was ALSO the
+  /// only filter on the value flutter_blue_plus replays into a brand-new
+  /// `connectionState` subscription: 1.36.8 builds that stream with
+  /// `newStreamWithInitialValue` over a cache it only ever writes
+  /// (`bluetooth_device.dart:334-348`, `flutter_blue_plus.dart:447`), so the
+  /// first thing every subscriber receives — on the first microtask after
+  /// `listen()`, before `device.connect()` has even taken the plugin's global
+  /// mutex — is the cached state, which on a cold connect is `disconnected`.
+  ///
+  /// On Android `connectAttemptsFor` is 3, the flag is true, and the replayed
+  /// value was swallowed. On iOS it is 1, the flag is false, and the replayed
+  /// value was read as a real drop that tore down the connection still being
+  /// built — every single connect, one millisecond in. `2026.08.03/004` holds
+  /// the shape: 906 `link: connecting` → `link: disconnected` pairs across the
+  /// corpus, 906 of them inside 1 ms, and a cold start where the user waited
+  /// 15.3 s for a device sitting on the desk while three phantom drops each
+  /// burned a rung of the backoff ladder.
+  ///
+  /// [sawConnected] is the fact `retryingConnect` was standing in for, and it
+  /// says the same thing on both platforms — which is the point. Android's
+  /// behaviour was only ever correct by the accident of `attempts == 3`; state
+  /// the invariant instead of relying on a constant to keep implying it.
+  static LinkAction linkActionFor(
+    BluetoothConnectionState s, {
+    required bool sawConnected,
+    required bool retryingConnect,
+  }) {
+    if (s == BluetoothConnectionState.connected) return LinkAction.setup;
+    if (s != BluetoothConnectionState.disconnected) return LinkAction.ignore;
+    // Android's retry window still wins on its own terms: mid-bounce drops are
+    // this method's caller's business only after the loop gives up.
+    if (retryingConnect) return LinkAction.ignore;
+    return sawConnected ? LinkAction.teardown : LinkAction.ignore;
+  }
 
   /// Our own service-discovery timeout — deliberately SHORTER than the 15 s
   /// flutter_blue_plus applies internally.
@@ -411,6 +499,8 @@ class BleService {
       StreamController<List<DiscoveredDevice>>.broadcast();
   final StreamController<BlePacketEvent> _packets =
       StreamController<BlePacketEvent>.broadcast();
+  final StreamController<String> _diagnostics =
+      StreamController<String>.broadcast();
 
   BleLinkState _state = BleLinkState.disconnected;
   final Map<String, DiscoveredDevice> _scanSeen = {};
@@ -432,6 +522,17 @@ class BleService {
   /// Raw TX/RX wire events for the diagnostics packet log (DEFAULT OFF — the
   /// controller decides whether to subscribe/persist).
   Stream<BlePacketEvent> get packets => _packets.stream;
+
+  /// One-line transport diagnostics for the ALWAYS-ON event log.
+  ///
+  /// FB-53. Deliberately not [packets]: that stream is the raw-packet log,
+  /// which is off by default, and the captures that most need explaining are
+  /// exactly the ones that arrive with it off. The controller forwards this
+  /// straight onto its event path, the same one `link: ready` uses — the
+  /// precedent is `_logUnrecognisedDeviceType`, for the same reason.
+  ///
+  /// Volume is a few lines per connection, not per frame.
+  Stream<String> get diagnostics => _diagnostics.stream;
 
   /// Adapter (radio) on/off/unauthorized state.
   Stream<BluetoothAdapterState> get adapterState =>
@@ -637,6 +738,11 @@ class BleService {
     _current = link;
     _setState(BleLinkState.connecting);
 
+    // Stamp the subscription's own zero point BEFORE creating it: the first
+    // value it delivers arrives one microtask later, and `sub=0ms` in the
+    // `conn-state:` line is what identifies it as the plugin's replayed cache
+    // value rather than anything the radio said.
+    link.connSubAt = DateTime.now();
     link.connSub =
         device.connectionState.listen((s) => _onConnectionState(link, s));
 
@@ -664,7 +770,10 @@ class BleService {
     // has no native connect timeout and a stale NSUUID never resolves, so a
     // single short-timeout attempt surfaces the error in seconds instead of
     // multiplying the freeze. Suppress teardown on transient drops during the
-    // (Android) retry window.
+    // (Android) retry window — and ONLY that. FB-53: this flag no longer
+    // doubles as the filter on the plugin's replayed subscription value, which
+    // is why iOS (attempts = 1) is no longer defenceless against it. See
+    // [linkActionFor].
     final isIOS = Platform.isIOS;
     final attempts = connectAttemptsFor(isIOS: isIOS);
     final effTimeout = timeout ?? connectTimeoutFor(isIOS: isIOS);
@@ -701,18 +810,62 @@ class BleService {
 
   Future<void> _onConnectionState(
       _LinkState link, BluetoothConnectionState s) async {
-    if (s == BluetoothConnectionState.connected) {
+    // Capture WHY the link dropped (A: cross-platform disconnect diagnostics)
+    // before anything decides what to do about it, and before a teardown can
+    // clear the device handle. Reading it first is also what lets the reason
+    // into the diagnostic line below — and the reason is itself evidence about
+    // which kind of event this is. A real drop carries its own; a replayed
+    // cache value carries the PREVIOUS drop's reason, or none at all
+    // (`2026.08.03/004` 20:33:00.278 — a peripheral this install had never
+    // connected to, reporting a disconnect with no code).
+    final reason = link.device?.disconnectReason;
+    final action = linkActionFor(s,
+        sawConnected: link.sawConnected, retryingConnect: link.retryingConnect);
+    _logConnectionState(link, s, reason, action);
+    if (s == BluetoothConnectionState.disconnected) {
+      _lastDisconnect = reason == null
+          ? null
+          : 'code=${reason.code} ${reason.description ?? ''}'.trim();
+    }
+    if (action == LinkAction.setup) {
+      // Synchronously, and BEFORE the await. `_setupConnection` holds this
+      // frame for the whole GATT budget (8 s discovery + 2 × 5 s CCCD enable),
+      // and a genuine drop inside that window has to still read as a drop. Set
+      // after the await, this flag would swallow one for up to ~18 s — which is
+      // the very window FB-51 exists to shorten.
+      link.sawConnected = true;
       await _setupConnection(link);
-    } else if (s == BluetoothConnectionState.disconnected) {
-      // Capture WHY the link dropped (A: cross-platform disconnect diagnostics)
-      // before teardown clears the device handle.
-      final r = link.device?.disconnectReason;
-      _lastDisconnect =
-          r == null ? null : 'code=${r.code} ${r.description ?? ''}'.trim();
-      // Ignore transient drops while still retrying the initial connect.
-      if (link.retryingConnect) return;
+    } else if (action == LinkAction.teardown) {
       await _teardown(link, emitDisconnected: true);
     }
+  }
+
+  /// One always-on line per connection-state event (FB-53 / P2 instrument):
+  ///
+  ///     conn-state: <state> reason=<code|null> sub=<n>ms decision=<action>
+  ///
+  /// It carries three things no other line in a field capture can:
+  ///
+  ///   * `sub` — how old the `connectionState` subscription was when the event
+  ///     landed. The plugin's replayed cache value arrives on the first
+  ///     microtask, so it reads 0 ms; a radio event cannot.
+  ///   * `decision` — including `ignore`, which by construction changes no
+  ///     other state and would otherwise leave the log looking like the
+  ///     listener never fired at all.
+  ///   * `reason` — the disconnect code as it stood BEFORE teardown cleared
+  ///     the handle.
+  ///
+  /// It is also the acceptance test for this whole fix: on the shipped build
+  /// the count of `decision=teardown` lines with `sub=0ms` should be zero,
+  /// against 906 in the corpus that produced the diagnosis.
+  ///
+  /// On [diagnostics], never [_emitEvent]: the latter goes to the raw-packet
+  /// log, which is off by default and therefore absent from the field.
+  void _logConnectionState(_LinkState link, BluetoothConnectionState s,
+      DisconnectReason? reason, LinkAction action) {
+    final sub = DateTime.now().difference(link.connSubAt).inMilliseconds;
+    _diagnostics.add('conn-state: ${s.name} reason=${reason?.code ?? 'null'} '
+        'sub=${sub}ms decision=${action.name}');
   }
 
   /// Discover services under [discoverTimeout], retrying once — two attempts of
@@ -1224,5 +1377,6 @@ class BleService {
     await _link.close();
     await _scan.close();
     await _packets.close();
+    await _diagnostics.close();
   }
 }
