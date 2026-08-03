@@ -80,21 +80,33 @@ Duration = 1,000,000 µs (1 s). A tick counter drives which token is written
 > Re-checked 2026-07-30 over the whole corpus: **13,444 XOR-clean `0x10` frames**,
 > still only `0x02` (7,333) / `0x17` (5,272) / `0x22` (839).
 
-> ⚠️ **One vendor claim this document does not adopt.** The distributor states
-> (2026-07-30) that the third-generation "flagship" super-capacitor is `0x18`,
-> with `0x17` reserved for the second generation. Three of the four values given
-> match the wire exactly; this one does not, and `0x18` has **never** been
-> observed — zero of 13,444 frames.
+> ✅ **`0x18` is real. Confirmed 2026-08-01 — this block previously said the opposite.**
+> The distributor stated (2026-07-30) that the third-generation "flagship"
+> super-capacitor is `0x18`, with `0x17` reserved for the second generation.
+> This document declined to adopt that claim because `0x18` had never been seen:
+> zero of 13,444 frames as of 2026-07-30.
 >
-> The conflict is specific rather than vague: the unit whose owner identified it
-> as the flagship (serial 7809, dealer `01680217`, fw 1.06) reports `0x17`
-> across 976 frames, reproduced value-for-value on iOS a day later.
+> It then landed on **three independent units at once**: serials 145 / 373 / 416,
+> firmware 1.02 and 1.03, three unrelated reporters. All three answer `0x2B` =
+> `402c2814`, `0x42` = `07c8f005` and `0x27` = `00a802180001` byte for byte, and
+> share none of those values with the four `0x17` units in the same corpus — so
+> the difference tracks the **generation**, not the unit. Two were also caught
+> advertising `RCE-SCAP_III`.
 >
-> Either that unit is a second-generation one its owner labelled wrongly, or
-> `0x18` exists on flagship units this corpus has never held, or the claim is a
-> planned value rather than a shipped one. **A client should treat an unknown
-> device-type byte as unclassified rather than guessing**, which is what leaves
-> the failure direction safe here.
+> The original doubt was reasonable and is kept here on purpose: the corpus
+> genuinely held zero examples, and the unit whose owner called it the flagship
+> (serial 7809, dealer `01680217`, fw 1.06) really does report `0x17` across 976
+> frames. That unit is a second-generation one labelled wrongly; the claim itself
+> was a shipped value this corpus simply had not met yet.
+>
+> **`0x18` and `0x17` are both the super-capacitor class.** They differ in the
+> *values* of registers read off the wire, not in which registers exist — with one
+> known exception, `0x41`'s last payload byte (see §10.1), where a decoder must
+> gate on `0x10`.
+>
+> **A client should still treat an *unknown* device-type byte as unclassified
+> rather than guessing.** That rule is what kept the failure direction safe while
+> `0x18` was unmapped, and it is unchanged.
 
 #### The two tokens get **different** answers (measured 2026-07-30)
 
