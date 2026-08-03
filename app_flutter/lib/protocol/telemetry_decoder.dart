@@ -242,12 +242,21 @@ class TelemetryDecoder {
           // keep the raw byte so the write path can preserve it (§10.2).
           warnUtByte: f.b(7),
         );
-      case Selectors.charge:
-        return base.copyWith(
-          timestamp: ts,
-          chargeV1: scaled1000(f, 4),
-          chargeV2: scaled1000(f, 6),
-        );
+      // Selectors.charge (0x41) is deliberately NOT decoded, and falls through
+      // to `default`. It used to publish chargeV1/chargeV2 by reading b4..b5 and
+      // b6..b7 as two millivolt words — the §8.2 pair formula. The v2 half is
+      // now positively refuted rather than merely unverified: on device-type
+      // 0x17 the last payload byte mirrors the 0x21 temperature in °C (seven
+      // units, 85.9-100% against the nearest-in-time 0x21, every miss off by
+      // exactly one degree), and a byte carrying degrees cannot be half of a
+      // millivolt word. On 0x18 units it is 0% and constant while 0x21 moves,
+      // so that generation uses a different layout again. See PROTOCOL.md §10.1.
+      //
+      // Nothing read chargeV1/chargeV2 — no UI, and the CSV/DB `toMap` is a
+      // whitelist that never included them — so this removes a wrong number
+      // before something started reading it, not after. The fields are gone
+      // from TelemetrySample for the same reason: a permanently-null field is
+      // an invitation to wire it up.
       case Selectors.chargeCurrent:
         // Power banks only, and class-gated for the same reason as
         // Selectors.discharge below: on a pack these four bytes are not this.

@@ -536,12 +536,20 @@ void main() {
       expect(t.warnOt, closeTo(100.0, 1e-9));
     });
 
-    test('0x41 -> chargeV1/V2, 0x4A -> dischargeV1/V2', () {
+    test('0x41 is not decoded at all, 0x4A -> dischargeV1/V2', () {
+      // 0x41 used to publish chargeV1/chargeV2 from the same b4..b5 / b6..b7
+      // pair this asserts for 0x4A. The v2 half was refuted in 2026-08: on
+      // device-type 0x17 the last payload byte carries the 0x21 temperature in
+      // degrees, so it cannot be half of a millivolt word (PROTOCOL.md §10.1).
+      // The decode was removed rather than left unread, so this pins the
+      // absence: an identical payload must change nothing on the sample.
       final c = TelemetryDecoder.apply(
           base, decodeOne(0x41, [0x04, 0xD4, 0x04, 0xCF]),
           at: at);
-      expect(c.chargeV1, closeTo(1.236, 1e-9));
-      expect(c.chargeV2, closeTo(1.231, 1e-9));
+      expect(c.dischargeV1, isNull);
+      expect(c.dischargeV2, isNull);
+      expect(c.pvlt, base.pvlt);
+      expect(c.current, base.current);
       // 0x4A is per-class (see powerbank_registers_test): the pack formula
       // only runs once 0x10 has settled the class, because on a power bank the
       // same four bytes mean millivolts and milliamps.

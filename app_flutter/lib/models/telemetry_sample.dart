@@ -65,11 +65,12 @@ class TelemetrySample {
   /// PROTOCOL.md §10.2.
   final int? warnUtByte;
 
-  /// Charge info v1 / v2 — selector 0x41.
-  final double? chargeV1;
-  final double? chargeV2;
-
   /// Discharge info v1 / v2 — selector 0x4A.
+  ///
+  /// There is no charge-side counterpart. `0x41` ("charge info" in the vendor
+  /// app) used to fill chargeV1/chargeV2 here; its v2 half was refuted in
+  /// 2026-08 when the last payload byte turned out to carry the 0x21
+  /// temperature. See TelemetryDecoder's note at Selectors.charge.
   final double? dischargeV1;
   final double? dischargeV2;
 
@@ -183,8 +184,6 @@ class TelemetrySample {
     this.warnUv,
     this.warnOt,
     this.warnUtByte,
-    this.chargeV1,
-    this.chargeV2,
     this.dischargeV1,
     this.dischargeV2,
     this.chargeCurrent,
@@ -254,8 +253,6 @@ class TelemetrySample {
     double? warnUv,
     double? warnOt,
     int? warnUtByte,
-    double? chargeV1,
-    double? chargeV2,
     double? dischargeV1,
     double? dischargeV2,
     double? chargeCurrent,
@@ -287,8 +284,6 @@ class TelemetrySample {
       warnUv: warnUv ?? this.warnUv,
       warnOt: warnOt ?? this.warnOt,
       warnUtByte: warnUtByte ?? this.warnUtByte,
-      chargeV1: chargeV1 ?? this.chargeV1,
-      chargeV2: chargeV2 ?? this.chargeV2,
       dischargeV1: dischargeV1 ?? this.dischargeV1,
       dischargeV2: dischargeV2 ?? this.dischargeV2,
       chargeCurrent: chargeCurrent ?? this.chargeCurrent,
