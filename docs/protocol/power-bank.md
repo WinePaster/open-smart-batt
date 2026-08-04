@@ -310,6 +310,40 @@ indicator from bit 0.** With nothing plugged into either port the bit reads set.
 bit 1 may be used, but it means *a Type-C cable is present*, not *the Type-C
 port is delivering power*.
 
+### Naming the Type-A path without a Type-A bit ✅
+
+*Added 2026-08-05.* There is no Type-A bit and, after the four refutations
+above, no prospect of one. The path can still be named — by **elimination**
+rather than by reading a flag:
+
+> **bit 1 clear** (no Type-C cable) **and the unit is discharging**
+> ⇒ the energy is leaving through **Type-A**.
+
+Checked against every port-marked power-bank capture in the corpus, pairing each
+`0x4B` with the `0x4A` from its own burst, and excluding the `b7 == 0x00` frames
+that the standby test decides before any port test ever runs:
+
+| | Samples |
+|---|---|
+| Derivation agrees with the operator's port label | **29,114** |
+| Derivation disagrees | **0** |
+
+Contributed by **three physically distinct units** — so unlike bit 0, this
+clears the multi-unit bar. The 46 frames that look like counterexamples are all
+one batch marked "Type-A only" in which the operator later confirmed the Type-C
+cable had never been unplugged: bit 1 was right and the label was wrong.
+
+Two limits, both load-bearing:
+
+* **Discharge only.** The check paired `0x4A`, and no capture in the corpus
+  shows charging with bit 1 clear at all. Charging with no Type-C cable stays
+  *undetermined* — if a unit ever produces it, that is new information.
+* 🔲 **The Type-C branch is now the weaker one.** bit 1 is *cable present*, so a
+  C cable sitting idle while the load is on Type-A reads as Type-C. That is the
+  same 46 frames from the other side, and nothing in the register set separates
+  the two. An implementation should not present Type-C as more certain than it
+  is.
+
 ### Class-dependent layouts that catch people out
 
 * **`0x4A`** — a pack-side reading of the same 4 bytes (§8.2) gives
@@ -378,7 +412,9 @@ collected here so an implementer does not have to reconstruct it from prose.
 | Item | Status | The capture that would settle it |
 |---|---|---|
 | `0x4B` b7 **bit 0** | 🚫 **Unknown.** Four readings tested, **all four refuted** — including "Type-A active", killed 2026-08-04 by a capture where the bit was set 7/7 with both ports empty | Separate "A cable present" from "A load present" the way bit 1 was: both ports empty → let the rail time out → plug a Type-A cable with **nothing** on the far end → let the rail restart → record 25 s |
-| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up) | A second unit run through the same cable-vs-load script; and a longer look at the ~20 s delay before the A path is dropped |
+| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
+| Which port carries the flow when **bit 1 is SET** | 🔲 bit 1 is *cable present*, so an idle C cable with the load on Type-A reads as Type-C — 46 frames in one batch are exactly that. The elimination rule only settles the bit-1-**clear** half | A capture with a C cable inserted and untouched while the load is moved between A and C, marked at each move |
+| Charging with **bit 1 clear** | 🚫 **Never observed.** The elimination rule therefore says nothing about it, and the row keeps its feedback hook there | Any capture that produces it |
 | Boost-rail auto-off delay | **32–37 s** after the last load is removed, four measurements, **one unit**. Model behaviour, not protocol | Same measurement on a second unit |
 | `0x4B` b7 **bit 4** | **Unknown.** 15 bursts, one physical unit, always as `0x12` | A second unit showing the same bit — or a firmware version readout (`0x29`) from the unit that does |
 | `0x4B` **b8** | **Not decoded.** Ruled out as the displayed temperature | A capture with a known second thermal load |

@@ -165,17 +165,38 @@ void main() {
       expect(find.text('Path undetermined'), findsNothing);
     });
 
-    testWidgets('0x05 (bit0+bit2, bit1 clear): path undetermined, never Type-A',
+    testWidgets('0x05 (bit1 clear) discharging: Type-A BY ELIMINATION',
         (tester) async {
-      // A real discharge current (> dead-band) so the direction is unambiguous;
-      // the point is the PORT, which bit1-clear leaves undetermined.
+      // A real discharge current (> dead-band) so the direction is unambiguous.
+      // With no Type-C cable and energy leaving the bank there is no other path
+      // it can take: 29,114 agree / 0 disagree over every port-marked capture,
+      // three units (feedback-analysis/2026.08.04-014.md §1).
       await pumpRow(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
 
       expect(find.text('DISCHARGING'), findsOneWidget);
-      expect(find.text('Path undetermined'), findsOneWidget);
-      // bit0 is set here and MUST NOT produce a Type-A label (§4.3 / §3.3 #2).
-      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-A'), findsOneWidget);
+      expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
+    });
+
+    testWidgets('...and bit0 is NOT what decided it', (tester) async {
+      // Same elimination with bit0 CLEAR (only bit2, the rail, is set). If this
+      // ever starts reading "path undetermined" while the case above reads
+      // Type-A, someone has quietly wired bit0 back in — the reading that four
+      // field captures refuted (§4.3).
+      await pumpRow(tester, portFlagsRaw: 0x04, current: 0.42, svlt: 5.12);
+
+      expect(find.text('Type-A'), findsOneWidget);
+    });
+
+    testWidgets('bit1 clear but NOT discharging: still undetermined',
+        (tester) async {
+      // Standby has nothing to eliminate from. The elimination is a statement
+      // about where a current is going, not about the port itself — bit1 clear
+      // on its own says only "no Type-C cable".
+      await pumpRow(tester, portFlagsRaw: 0x05, current: 0.0, svlt: 5.12);
+
+      expect(find.text('Type-A'), findsNothing);
     });
 
     testWidgets('0x00: standby (rail off), decided before any port test',
@@ -275,7 +296,12 @@ void main() {
   group('§4.8 feedback hook', () {
     testWidgets('appears on the undetermined row and records a tag once',
         (tester) async {
-      final s = await pumpRow(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.1);
+      // CHARGING with bit1 clear. Discharge is no longer hooked — it is derived
+      // as Type-A above — so what is left is the one combination the corpus has
+      // never produced: energy coming IN with no Type-C cable detected. A user
+      // who reaches it is exactly who we want to hear from.
+      final s =
+          await pumpRow(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
 
       final hook = find.text('Which port is this?');
       expect(hook, findsOneWidget);
