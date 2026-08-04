@@ -91,7 +91,15 @@ void main() {
     });
   });
 
-  group('ReadoutsCard chart mode', () {
+  // REWRITTEN 2026-08-05 (design 0034 Phase 1, implemented by design 0040).
+  // This group used to drive `_ModeToggle`: tap "Chart", assert the chart
+  // replaced the numbers, tap "Numbers", assert it went away. There is no
+  // toggle any more — the chart is [TrendChartCard], its own card, placed by
+  // the watchface. So the tests now assert what the two cards each draw
+  // STANDING ALONE, which is the property the toggle assertions were really
+  // buying: whatever chose to show the chart, the chart's own parts (tracks,
+  // waiting label, footnote) must all be there.
+  group('the two cards after the Phase 1 split', () {
     final items = [
       const Readout(icon: Icons.thermostat, label: 'TEMP', value: '31', unit: 'C'),
     ];
@@ -106,55 +114,63 @@ void main() {
 
     // The readout value is a RichText whose spans compose to "<value> <unit>",
     // so the finder both has to look inside RichText and match the whole run.
-    testWidgets('starts on numbers and switches to the chart', (tester) async {
+    testWidgets('the readouts card is numbers only — no chart, no toggle',
+        (tester) async {
+      await tester.pumpWidget(_host(ReadoutsCard(items: items)));
+      expect(find.text('31 C', findRichText: true), findsOneWidget);
+      expect(find.byType(LiveTrendChart), findsNothing);
+      // The two labels the segmented control used to carry. Their l10n keys are
+      // gone as well (pinned in watchface_ui_test.dart's T5).
+      expect(find.text('Chart'), findsNothing);
+      expect(find.text('Numbers'), findsNothing);
+    });
+
+    testWidgets('the chart card draws the chart, and no readouts',
+        (tester) async {
       final buffer = LiveTrendBuffer(capacity: 8)
         ..add(_s(t0, current: -29))
         ..add(_s(t0.add(const Duration(seconds: 1)), current: 8));
 
-      await tester.pumpWidget(_host(
-          ReadoutsCard(items: items, buffer: buffer, tracks: tracks)));
-      expect(find.text('31 C', findRichText: true), findsOneWidget);
-      expect(find.byType(LiveTrendChart), findsNothing);
-
-      await tester.tap(find.text('Chart'));
-      await tester.pump();
+      await tester
+          .pumpWidget(_host(TrendChartCard(buffer: buffer, tracks: tracks)));
       expect(find.byType(LiveTrendChart), findsOneWidget);
+      expect(find.text('Live Trend'.toUpperCase()), findsOneWidget,
+          reason: 'the split gave the chart a heading of its own');
       expect(find.text('31 C', findRichText: true), findsNothing);
-
-      await tester.tap(find.text('Numbers'));
-      await tester.pump();
-      expect(find.byType(LiveTrendChart), findsNothing);
-    });
-
-    testWidgets('no tracks means no toggle at all', (tester) async {
-      await tester.pumpWidget(_host(ReadoutsCard(
-          items: items, buffer: LiveTrendBuffer(capacity: 4), tracks: const [])));
-      expect(find.text('Chart'), findsNothing);
-      expect(find.text('31 C', findRichText: true), findsOneWidget);
     });
 
     testWidgets('an empty buffer says it is waiting rather than drawing a flat line',
         (tester) async {
-      await tester.pumpWidget(_host(ReadoutsCard(
-          items: items, buffer: LiveTrendBuffer(capacity: 4), tracks: tracks)));
-      await tester.tap(find.text('Chart'));
-      await tester.pump();
+      await tester.pumpWidget(_host(TrendChartCard(
+          buffer: LiveTrendBuffer(capacity: 4), tracks: tracks)));
+      // A WAITING state, not an absent card: design 0040 Q3 kept `chart` out of
+      // `dataGated` for exactly this reason, so the card must still be here.
+      expect(find.byType(TrendChartCard), findsOneWidget);
       expect(find.text('Waiting for telemetry…'), findsOneWidget);
     });
 
-    testWidgets('a footnote explains an absent series', (tester) async {
+    testWidgets('a footnote explains an absent series, and rides the CHART card',
+        (tester) async {
+      // The regression this pins: the footnote used to be a parameter of the
+      // readouts card, and the capacitor's copy of it ("no current track: this
+      // unit reports a constant 0 A") is the only thing stopping an owner
+      // reading a missing series as a failed fetch. Splitting the cards is
+      // precisely the change that could have left it on the wrong one.
       final buffer = LiveTrendBuffer(capacity: 8)
         ..add(_s(t0, current: 1))
         ..add(_s(t0.add(const Duration(seconds: 1)), current: 2));
-      await tester.pumpWidget(_host(ReadoutsCard(
-        items: items,
+      await tester.pumpWidget(_host(TrendChartCard(
         buffer: buffer,
         tracks: tracks,
         chartFootnote: 'no current here',
       )));
-      await tester.tap(find.text('Chart'));
-      await tester.pump();
-      expect(find.text('no current here'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TrendChartCard),
+          matching: find.text('no current here'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

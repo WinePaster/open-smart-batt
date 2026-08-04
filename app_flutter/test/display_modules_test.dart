@@ -202,9 +202,22 @@ void main() {
       ]) {
         expect(DisplayModules.forClass(c).dataGated, {DisplayModule.cells});
       }
-      // The SOC ring renders `--` rather than vanishing, and the USB card is
-      // unconditional today, so nothing on a power bank is presence-gated.
+      // The SOC ring renders `--` rather than vanishing, and the energy-path
+      // row is unconditional, so nothing on a power bank is presence-gated.
       expect(DisplayModules.powerBank.dataGated, isEmpty);
+
+      // design 0040 Q3: the CHART is not data-gated on any class either, and
+      // that is a ruling rather than an oversight. An empty chart draws its own
+      // `dashboardChartWaiting` label — "nothing has arrived yet", which is a
+      // WAITING state, the same reading design 0035 §4.6 gave the energy-path
+      // row. A data gate would instead make the card vanish and reappear as
+      // samples come and go, which is the flicker `dataGated` exists to avoid
+      // for cards that genuinely have nothing to say.
+      for (final c in ProductClass.values) {
+        expect(DisplayModules.forClass(c).isDataGated(DisplayModule.chart),
+            isFalse,
+            reason: 'chart must stay out of dataGated on $c');
+      }
 
       // Whatever is data-gated must first be available at all.
       for (final c in ProductClass.values) {

@@ -59,8 +59,17 @@ enum DisplayModule {
   /// The numbers grid. Always available; its CONTENTS differ per class.
   readouts,
 
-  /// The live trend chart. Available whenever [DisplayModules.chartTracks] is
-  /// non-empty — a chart with no tracks is worse than no chart.
+  /// The live trend chart ([TrendChartCard]). Available whenever
+  /// [DisplayModules.chartTracks] is non-empty — a chart with no tracks is
+  /// worse than no chart.
+  ///
+  /// ⚠️ Placeable only since design 0040 (design 0034 Phase 1). Before it the
+  /// chart was a MODE of the readouts card, so no watchface listed it and the
+  /// export preamble's `modules=` never contained `chart`. Comparing `modules=`
+  /// across that boundary therefore needs the same care as the `usb` →
+  /// `energyPath` rename below: the same `face=standard` names a DIFFERENT set
+  /// of cards before and after (design 0040 §5). Storage is unaffected —
+  /// `DisplayLayout` stores only the face slug, never a module name.
   chart,
 
   /// Per-cell DVOL bars. Pack classes only, and data-gated: a power bank does

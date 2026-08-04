@@ -168,12 +168,18 @@ void main() {
   ReadoutsCard readoutsCard(WidgetTester tester) =>
       tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
 
+  /// The chart is its own card since design 0040 (design 0034 Phase 1), so the
+  /// track list is read off [TrendChartCard], not off the readouts card it used
+  /// to be a mode of.
+  TrendChartCard chartCard(WidgetTester tester) =>
+      tester.widget<TrendChartCard>(find.byType(TrendChartCard));
+
   PvltGauge gauge(WidgetTester tester) =>
       tester.widget<PvltGauge>(find.byType(PvltGauge));
 
   /// The SVLT chart-track legend, which still follows the direction after the
   /// voltage READOUT tile moved to the energy-path row.
-  String? svltTrackLabel(WidgetTester tester) => readoutsCard(tester)
+  String? svltTrackLabel(WidgetTester tester) => chartCard(tester)
       .tracks
       .firstWhere((t) => t.field == TrendField.svlt)
       .label;
@@ -294,7 +300,7 @@ void main() {
       (tester) async {
     await pumpBank(tester, current: -0.43);
 
-    final current = readoutsCard(tester)
+    final current = chartCard(tester)
         .tracks
         .firstWhere((t) => t.field == TrendField.current);
     expect(current.spanZero, isTrue,

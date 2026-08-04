@@ -176,15 +176,40 @@ void main() {
           reason: 'a pack compact still drops its extra card');
     });
 
-    test('the chart is not placeable while Phase 1 is locked', () {
-      // It is still a MODE of the readouts card (`_ModeToggle`), and that mode
-      // is not persisted. Offering it as an orderable card would advertise
-      // control the user does not have.
+    // INVERTED 2026-08-05 (design 0034 Phase 1, implemented by design 0040).
+    // This used to assert the chart was placeable on NO face, because it was
+    // still a mode of the readouts card behind an unpersisted `_ModeToggle`.
+    // Phase 1 landed; the toggle is gone, so the chart must now have a home —
+    // and the assertion is inverted rather than deleted, because "the chart is
+    // on no face at all" is now a silent way to make it unreachable.
+    test('the chart is placeable, and on exactly the faces design 0040 §3.3 '
+        'names', () {
       for (final cls in ProductClass.values) {
-        for (final face in Watchface.values) {
-          expect(watchfaceModules(cls, face),
-              isNot(contains(DisplayModule.chart)));
-        }
+        // Q4: an unclassified unit is drawn with the standard face whatever is
+        // stored, but watchfaceModules itself answers per (class, face) — the
+        // Q4 remap happens in effectiveWatchface, tested separately below.
+        expect(watchfaceModules(cls, Watchface.standard),
+            contains(DisplayModule.chart),
+            reason: 'design 0040 Q1: removing the toggle means standard must '
+                'carry the chart, or the live curve becomes unreachable');
+        expect(watchfaceModules(cls, Watchface.diagnostic),
+            contains(DisplayModule.chart));
+        expect(watchfaceModules(cls, Watchface.compact),
+            isNot(contains(DisplayModule.chart)),
+            reason: 'compact is the one-screenful face; a stack of tracks is '
+                'the first thing it drops');
+      }
+    });
+
+    test('standard keeps the chart LAST, so the first screen is unchanged '
+        '(design 0040 §3.2)', () {
+      // G4's literal wording ("nothing changes") could not survive Phase 1 in
+      // both directions at once — see the ruling recorded in watchfaces.dart.
+      // What IS preserved is the first screen, and that reduces to one fact:
+      // the chart is appended, never inserted.
+      for (final cls in ProductClass.values) {
+        expect(watchfaceModules(cls, Watchface.standard).last,
+            DisplayModule.chart);
       }
     });
 

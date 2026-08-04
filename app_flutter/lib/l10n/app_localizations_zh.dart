@@ -1159,10 +1159,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get dashboardModeNumbers => '數值';
-
-  @override
-  String get dashboardModeChart => '圖表';
+  String get dashboardChartHeading => '即時曲線';
 
   @override
   String get dashboardChartWaiting => '等待遙測資料…';

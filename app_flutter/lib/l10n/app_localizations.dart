@@ -2078,17 +2078,11 @@ abstract class AppLocalizations {
   /// **'Reported: {tag}'**
   String powerPathTagSaved(String tag);
 
-  /// No description provided for @dashboardModeNumbers.
+  /// No description provided for @dashboardChartHeading.
   ///
   /// In en, this message translates to:
-  /// **'Numbers'**
-  String get dashboardModeNumbers;
-
-  /// No description provided for @dashboardModeChart.
-  ///
-  /// In en, this message translates to:
-  /// **'Chart'**
-  String get dashboardModeChart;
+  /// **'Live Trend'**
+  String get dashboardChartHeading;
 
   /// No description provided for @dashboardChartWaiting.
   ///

@@ -89,10 +89,12 @@ class PowerBankView extends StatelessWidget {
     final order = watchfaceModules(ProductClass.powerBank,
         effectiveWatchface(ProductClass.powerBank, stored.watchface));
 
-    /// One module → one card. The SOC and readouts cards are unconditional: a
-    /// missing SOC renders as `--` inside the ring rather than removing it. The
-    /// old USB card is gone (design 0035); its `usb` slot renders nothing until
-    /// Phase 2 places the energy-path row here.
+    /// One module → one card. Every card here is unconditional — nothing on a
+    /// power bank is in `dataGated`. A missing SOC renders as `--` inside the
+    /// ring, the energy-path row renders "waiting for device" before its first
+    /// `0x4B` (design 0035 §4.6), and the chart renders its own waiting label
+    /// until a track has points (design 0040 Q3). All three are WAITING states,
+    /// which is why none of them removes a card.
     Widget? cardFor(DisplayModule m) {
       switch (m) {
         case DisplayModule.gaugeSoc:
@@ -120,8 +122,8 @@ class PowerBankView extends StatelessWidget {
               },
             ),
           );
-        case DisplayModule.readouts:
-          return ReadoutsCard(
+        case DisplayModule.chart:
+          return TrendChartCard(
             buffer: tele.trend,
             // A power bank's current has its direction spread over two
             // registers — 0x49 while charging, 0x4A while discharging — and
@@ -144,10 +146,12 @@ class PowerBankView extends StatelessWidget {
               if (modules.hasTrack(TrendField.svlt))
                 TrendTrack(
                   field: TrendField.svlt,
-                  // Same relabel as the readout beside it. The chart is the
-                  // OTHER face of this one card (a toggle, not another page),
-                  // so a legend that still said "output" while the tile said
-                  // "input" would be visibly self-contradictory.
+                  // Direction-aware, exactly like the energy-path row's own
+                  // voltage label. The two are now separate CARDS on the same
+                  // page (design 0040 split the chart out of the readouts
+                  // card), which makes this matter more, not less: a legend
+                  // reading "output voltage" a few centimetres below a row
+                  // reading "input" is self-contradictory on one screen.
                   label: flow == PowerFlow.charging
                       ? l10n.powerBankTrackInput
                       : l10n.powerBankTrackOutput,
@@ -165,6 +169,9 @@ class PowerBankView extends StatelessWidget {
                   minSpan: 5,
                 ),
             ],
+          );
+        case DisplayModule.readouts:
+          return ReadoutsCard(
             items: [
               // Order (design 0035 §6, Q5+Q12): SOC, temperature, design
               // capacity. The 0037 "output voltage" and "current" tiles are
@@ -206,7 +213,6 @@ class PowerBankView extends StatelessWidget {
           // grid above (Q5+Q12: the same number must not appear twice).
           return const PowerPathRow();
         case DisplayModule.gaugeVoltage:
-        case DisplayModule.chart:
         case DisplayModule.cells:
           // Not cards of this view, and unreachable through [order] — it is
           // built from this class's own registry entry. Listed explicitly so

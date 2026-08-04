@@ -67,7 +67,8 @@ void main() {
           cls: ProductClass.smartBattery, layout: DisplayLayout.defaults);
       final lines = header(layout: v);
       expect(lines.where((l) => l.startsWith('layout: ')), hasLength(1));
-      expect(lines.last, 'layout: face=standard modules=gaugeVoltage,readouts,cells');
+      expect(lines.last,
+          'layout: face=standard modules=gaugeVoltage,readouts,cells,chart');
     });
 
     test('the parameter is required, so no call site can drop it', () {
@@ -82,7 +83,7 @@ void main() {
 
   group('T10 constraint 3: its own line, never folded into another', () {
     test('scope: and exported: are untouched and carry no layout text', () {
-      final lines = header(layout: 'face=compact modules=gaugeSoc,readouts');
+      final lines = header(layout: 'face=compact modules=gaugeSoc,energyPath');
       final scope = lines.firstWhere((l) => l.startsWith('scope: '));
       final exported = lines.firstWhere((l) => l.startsWith('exported: '));
       expect(scope, 'scope: device=battery/1206');
@@ -145,7 +146,7 @@ void main() {
       expect(
         exportLayoutValue(
             cls: ProductClass.smartBattery, layout: DisplayLayout.defaults),
-        'face=standard modules=gaugeVoltage,readouts,cells',
+        'face=standard modules=gaugeVoltage,readouts,cells,chart',
       );
     });
 
@@ -155,7 +156,7 @@ void main() {
           cls: ProductClass.powerBank,
           layout: const DisplayLayout(watchface: Watchface.diagnostic),
         ),
-        'face=diagnostic modules=readouts,energyPath,gaugeSoc',
+        'face=diagnostic modules=readouts,energyPath,chart,gaugeSoc',
       );
     });
 
@@ -175,7 +176,7 @@ void main() {
           cls: ProductClass.unknown,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=standard modules=gaugeVoltage,readouts,cells',
+        'face=standard modules=gaugeVoltage,readouts,cells,chart',
         reason: 'the stored face is not applied to an unclassified unit, so '
             'the preamble must not claim it was',
       );
@@ -206,6 +207,70 @@ void main() {
     });
   });
 
+  // ===========================================================================
+  // T6 (design 0040 §6) — the whole table, in one snapshot.
+  // ===========================================================================
+  //
+  // Every (class, face) the preamble can print, written out literally. Two jobs:
+  //
+  //  1. it is the machine-readable statement of design 0040 §3.3, so a change to
+  //     `watchfaceModules` cannot land without someone editing the exact strings
+  //     that will appear in the field captures we analyse;
+  //  2. ⚠️ it records the COMPATIBILITY BREAK. Before design 0040 the chart was
+  //     not a placeable module, so `modules=` never contained `chart` and
+  //     `face=standard` on a battery read `gaugeVoltage,readouts,cells`. The
+  //     same face name now names a different set of cards. Anyone diffing
+  //     `modules=` across the v0.7.2 boundary needs this table, in the same way
+  //     the `usb` → `energyPath` rename (design 0035 §5.3 / R4) needed its own
+  //     note. `ProductClass.unknown` is absent by design — Q4 forces it onto the
+  //     standard face, which the group above already pins.
+  group('T6: the exported module list, class by class and face by face', () {
+    const expected = <ProductClass, Map<Watchface, String>>{
+      ProductClass.smartBattery: {
+        Watchface.standard: 'face=standard '
+            'modules=gaugeVoltage,readouts,cells,chart',
+        Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
+        Watchface.diagnostic: 'face=diagnostic '
+            'modules=readouts,cells,chart,gaugeVoltage',
+      },
+      ProductClass.supercapacitor: {
+        Watchface.standard: 'face=standard '
+            'modules=gaugeVoltage,readouts,cells,chart',
+        Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
+        Watchface.diagnostic: 'face=diagnostic '
+            'modules=readouts,cells,chart,gaugeVoltage',
+      },
+      ProductClass.powerBank: {
+        Watchface.standard: 'face=standard '
+            'modules=gaugeSoc,readouts,energyPath,chart',
+        // No `readouts` here, and that is design 0040 Q2, not an omission: a
+        // one-screenful power-bank layout keeps the direction row and drops the
+        // grid — which also drops temperature (R3), accepted knowingly.
+        Watchface.compact: 'face=compact modules=gaugeSoc,energyPath',
+        Watchface.diagnostic: 'face=diagnostic '
+            'modules=readouts,energyPath,chart,gaugeSoc',
+      },
+    };
+
+    expected.forEach((cls, byFace) {
+      byFace.forEach((face, value) {
+        test('${cls.name} / ${face.slug}', () {
+          expect(
+            exportLayoutValue(cls: cls, layout: DisplayLayout(watchface: face)),
+            value,
+          );
+        });
+      });
+    });
+
+    test('and the table itself covers every face of every listed class', () {
+      // A new face must be added here, not silently default to untested.
+      for (final byFace in expected.values) {
+        expect(byFace.keys.toSet(), Watchface.values.toSet());
+      }
+    });
+  });
+
   group('end to end: the line reaches the exported file', () {
     test('a CSV export carries it, commented, after the other preamble lines',
         () async {
@@ -231,7 +296,7 @@ void main() {
       final lines = out.text.split(RegExp(r'\r?\n'));
       final layoutLine = lines.firstWhere((l) => l.contains('layout: '));
       expect(layoutLine,
-          '# layout: face=diagnostic modules=readouts,cells,gaugeVoltage');
+          '# layout: face=diagnostic modules=readouts,cells,chart,gaugeVoltage');
       // Still inside the commented preamble, above the column header.
       expect(lines.indexOf(layoutLine),
           lessThan(lines.indexWhere((l) => !l.startsWith('#'))));

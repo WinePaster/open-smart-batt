@@ -28,9 +28,17 @@ class IndustrialCard extends StatelessWidget {
 
   /// Control parked at the right end of the header rule, after the fade.
   ///
-  /// For a control that switches how THIS card presents its own contents — the
-  /// readouts' numbers/chart toggle. A control that acts on the device belongs
-  /// in the body, where it reads as an action rather than a view option.
+  /// For a control that switches how THIS card presents its own contents. A
+  /// control that acts on the device belongs in the body, where it reads as an
+  /// action rather than a view option.
+  ///
+  /// ⚠️ No caller passes one today. Its only user was the readouts card's
+  /// numbers/chart toggle, retired by design 0034 Phase 1 (design 0040 §3.4):
+  /// once the chart became a card of its own, a per-card view switch was a
+  /// second, weaker mechanism for a question the watchface already answers.
+  /// The slot is kept because [CardHeading] still renders it and the layout
+  /// (fade rule, then the control) is the part that would be hard to
+  /// reconstruct — not because a new one is expected.
   final Widget? headingTrailing;
 
   /// Card body.

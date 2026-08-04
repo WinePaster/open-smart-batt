@@ -700,8 +700,7 @@
       }
     }
   },
-  "dashboardModeNumbers": "Numbers",
-  "dashboardModeChart": "Chart",
+  "dashboardChartHeading": "Live Trend",
   "dashboardChartWaiting": "Waiting for telemetry…",
   "dashboardTrackCurrent": "Main current",
   "dashboardTrackPvlt": "PVLT · main voltage",

@@ -1221,10 +1221,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get dashboardModeNumbers => 'Numbers';
-
-  @override
-  String get dashboardModeChart => 'Chart';
+  String get dashboardChartHeading => 'Live Trend';
 
   @override
   String get dashboardChartWaiting => 'Waiting for telemetry…';

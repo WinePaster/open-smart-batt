@@ -9,12 +9,20 @@
 ///
 /// ## Only the CARDS that exist today are placeable
 ///
-/// [DisplayModule.chart] is deliberately absent from every face. Design 0034
-/// Phase 1 (splitting the chart out of [ReadoutsCard] into a card of its own)
-/// is NOT unlocked: the chart is still a mode of the readouts card, toggled by
-/// `_ModeToggle`, and that toggle's state is not persisted at all. Listing it
-/// as a placeable module would advertise an ordering the user cannot control.
-/// It re-enters these lists the day Phase 1 lands, and not before.
+/// Historical note: until design 0040 (2026-08-05) [DisplayModule.chart] was
+/// absent from every list below, because the chart was still a MODE of the
+/// readouts card behind a header toggle whose state was not persisted —
+/// listing it would have advertised an ordering the user could not control.
+/// Design 0034 Phase 1 has now landed: the chart is [TrendChartCard], the
+/// toggle is gone, and the chart is placed by these lists like any other card.
+///
+/// That unlock is also what fixed the defect design 0040 was written for. With
+/// the chart withheld, a power bank had exactly two placeable cards after the
+/// always-present energy-path row (design 0035 Q2), so `standard` and `compact`
+/// returned IDENTICAL lists — three menu entries, two outcomes. The owner's
+/// field report on v0.7.2 was literally "I tapped through all three and they
+/// are all the same". [watchfaceModules] is now pairwise different on EVERY
+/// product class, and that is pinned by test T2 rather than left to review.
 ///
 /// ## The control card is not here, and cannot be
 ///
@@ -46,26 +54,41 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
   final extra =
       isPowerBank ? DisplayModule.energyPath : DisplayModule.cells;
   switch (face) {
-    // Card for card, in order, exactly what the dashboard drew before design
-    // 0034 existed. This IS the implementation of G4 ("a user who never opens
-    // the setting sees no change"), which is why it is written as the first
-    // case and pinned by test T1 rather than left implicit.
+    // Everything this class has, with the FIRST THREE cards exactly what the
+    // dashboard drew before design 0034 existed. That prefix is the
+    // implementation of G4 ("a user who never opens the setting sees no
+    // change") and is pinned by test T1.
+    //
+    // ⚠️ The trailing `chart` is a deliberate, reviewed trade-off against G4's
+    // LITERAL wording, not an oversight (design 0040 §3.2 / Q1, ruled by the
+    // owner). Removing the numbers/chart toggle takes away the only way a user
+    // could ever reach the live curve, so after Phase 1 it must have a default
+    // home; "standard has no chart" would be a feature disappearing, which is a
+    // bigger change than a card appearing. Placing it LAST keeps the first
+    // screen — gauge plus readouts — pixel-identical to v0.7.2, and the first
+    // screen is what G4 actually protects. The new card is below the fold.
     case Watchface.standard:
-      return [gauge, DisplayModule.readouts, extra];
-    // Instrument and numbers — and, on a power bank, the energy-path row too
-    // (design 0035 Q2: it rides EVERY face, compact included). A pack still
-    // drops its extra (a half-height DVOL chart would be a new widget, and this
-    // release adds none); the power bank keeps its one line because that line
-    // IS the answer to "which way is it charging", not an optional detail.
+      return [gauge, DisplayModule.readouts, extra, DisplayModule.chart];
+    // One screenful, no scrolling: the fewest cards that still answer the
+    // question this class is usually asked.
+    //
+    // A pack drops its DVOL card and keeps the numbers. A power bank does the
+    // OPPOSITE — it drops the numbers and keeps the energy-path row — because
+    // design 0035 Q2's reason for that row ("it IS the answer to which way it
+    // is charging") gets STRONGER as the layout gets shorter, not weaker. The
+    // cost, accepted knowingly (design 0040 Q2 / R3): a power bank's compact
+    // face shows no temperature at all. Anyone who wants temperature has two
+    // other faces, both of which carry the readouts grid.
     case Watchface.compact:
       return isPowerBank
-          ? [gauge, DisplayModule.readouts, extra]
+          ? [gauge, extra]
           : [gauge, DisplayModule.readouts];
-    // Detail first. The numbers grid and the per-cell / port card are what a
-    // reporter is asked to screenshot; the instrument is the thing they can
-    // read at a glance anyway, so it goes to the bottom rather than away.
+    // Detail first. The numbers grid, the per-cell / port card and the curve
+    // are what a reporter is asked to screenshot; the instrument is the thing
+    // they can read at a glance anyway, so it goes to the bottom rather than
+    // away.
     case Watchface.diagnostic:
-      return [DisplayModule.readouts, extra, gauge];
+      return [DisplayModule.readouts, extra, DisplayModule.chart, gauge];
   }
 }
 
