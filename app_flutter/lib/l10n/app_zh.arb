@@ -313,6 +313,10 @@
   "powerBankSocReadoutLabel": "電量 SOC",
   "powerBankCellVoltageLabel": "電芯電壓",
   "powerBankOutputVoltageLabel": "輸出電壓",
+  "powerBankInputVoltageLabel": "輸入電壓",
+  "powerBankDirectionCharging": "充電中",
+  "powerBankDirectionDischarging": "放電中",
+  "powerBankDirectionIdle": "閒置",
   "usbPortsHeading": "USB 埠",
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
@@ -329,6 +333,7 @@
   "dashboardTrackTemperature": "溫度",
   "powerBankTrackCurrent": "電流",
   "powerBankTrackOutput": "輸出電壓",
+  "powerBankTrackInput": "輸入電壓",
   "powerBankTrackSoc": "電量 SOC",
   "capacitorTrackSvlt": "次電壓 SVLT",
   "capacitorChartNoCurrentNote": "不顯示電流：本類別回報恆定 0 A，並非真實量測。"

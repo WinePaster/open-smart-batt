@@ -1982,6 +1982,30 @@ abstract class AppLocalizations {
   /// **'Output Voltage'**
   String get powerBankOutputVoltageLabel;
 
+  /// No description provided for @powerBankInputVoltageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Input Voltage'**
+  String get powerBankInputVoltageLabel;
+
+  /// No description provided for @powerBankDirectionCharging.
+  ///
+  /// In en, this message translates to:
+  /// **'CHARGING'**
+  String get powerBankDirectionCharging;
+
+  /// No description provided for @powerBankDirectionDischarging.
+  ///
+  /// In en, this message translates to:
+  /// **'DISCHARGING'**
+  String get powerBankDirectionDischarging;
+
+  /// No description provided for @powerBankDirectionIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'IDLE'**
+  String get powerBankDirectionIdle;
+
   /// No description provided for @usbPortsHeading.
   ///
   /// In en, this message translates to:
@@ -2071,6 +2095,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Output voltage'**
   String get powerBankTrackOutput;
+
+  /// No description provided for @powerBankTrackInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Input voltage'**
+  String get powerBankTrackInput;
 
   /// No description provided for @powerBankTrackSoc.
   ///

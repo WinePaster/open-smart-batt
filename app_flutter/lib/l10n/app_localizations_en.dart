@@ -1168,6 +1168,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankOutputVoltageLabel => 'Output Voltage';
 
   @override
+  String get powerBankInputVoltageLabel => 'Input Voltage';
+
+  @override
+  String get powerBankDirectionCharging => 'CHARGING';
+
+  @override
+  String get powerBankDirectionDischarging => 'DISCHARGING';
+
+  @override
+  String get powerBankDirectionIdle => 'IDLE';
+
+  @override
   String get usbPortsHeading => 'USB Ports';
 
   @override
@@ -1212,6 +1224,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get powerBankTrackOutput => 'Output voltage';
+
+  @override
+  String get powerBankTrackInput => 'Input voltage';
 
   @override
   String get powerBankTrackSoc => 'Charge level SOC';

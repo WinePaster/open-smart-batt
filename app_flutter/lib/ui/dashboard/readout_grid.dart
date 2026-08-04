@@ -15,6 +15,8 @@ class Readout {
     required this.label,
     required this.value,
     this.unit,
+    this.badge,
+    this.badgeColor,
   });
 
   final IconData icon;
@@ -25,6 +27,19 @@ class Readout {
 
   /// Optional unit suffix (mockup `.v .u`).
   final String? unit;
+
+  /// Optional pill under the value, for a fact the NUMBER cannot carry on its
+  /// own. Added for FB-47: a power bank's current is signed (design 0030 —
+  /// discharge positive, charge negative), and a bare `-0.43 A` was read as a
+  /// defect by the owner who ruled on the sign convention. The word beside it
+  /// is what makes the minus a direction rather than an error.
+  ///
+  /// Null means "nothing to add" — never an empty pill, which would read as a
+  /// missing value.
+  final String? badge;
+
+  /// Accent of [badge] (border + text). Falls back to the muted tone.
+  final Color? badgeColor;
 }
 
 /// The four-up readout grid.
@@ -125,7 +140,48 @@ class _StatTile extends StatelessWidget {
               ],
             ),
           ),
+          if (item.badge != null) ...[
+            const SizedBox(height: 6),
+            _BadgePill(text: item.badge!, accent: item.badgeColor),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// Small pill under a readout value (mockup `.badge`, tile scale).
+///
+/// Sits UNDER the value rather than beside the label: the grid is two columns
+/// on a phone, and a pill on the label row pushes the label into an ellipsis
+/// exactly when the tile matters most.
+class _BadgePill extends StatelessWidget {
+  const _BadgePill({required this.text, this.accent});
+
+  final String text;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final tone = accent ?? colors.muted;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          border: Border.all(color: tone),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+            color: tone,
+          ),
+        ),
       ),
     );
   }

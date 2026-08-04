@@ -664,6 +664,10 @@
   "powerBankSocReadoutLabel": "Charge SOC",
   "powerBankCellVoltageLabel": "Cell Voltage",
   "powerBankOutputVoltageLabel": "Output Voltage",
+  "powerBankInputVoltageLabel": "Input Voltage",
+  "powerBankDirectionCharging": "CHARGING",
+  "powerBankDirectionDischarging": "DISCHARGING",
+  "powerBankDirectionIdle": "IDLE",
   "usbPortsHeading": "USB Ports",
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
@@ -679,6 +683,7 @@
   "dashboardTrackTemperature": "Temperature",
   "powerBankTrackCurrent": "Current",
   "powerBankTrackOutput": "Output voltage",
+  "powerBankTrackInput": "Input voltage",
   "powerBankTrackSoc": "Charge level SOC",
   "capacitorTrackSvlt": "Secondary voltage SVLT",
   "capacitorChartNoCurrentNote": "No current track: this unit reports a constant 0 A, which is not a measurement."
