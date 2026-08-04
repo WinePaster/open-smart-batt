@@ -59,6 +59,9 @@ const _gaveUpCodes = <String>{
   // that existed, a quick-pick tap ended in a screen identical to the one
   // before the tap. Which is the FB-53 complaint, word for word.
   'connect_failed',
+  // The autoConnect watchdog. Split out of `reconnect_exhausted`, which is a
+  // count and belongs to the ladder — this one made no attempts to count.
+  'autoconnect_timeout',
   // The three that never reach BLE at all. They are refusals, not failures:
   // `connect()` returns without throwing, so the quick-pick tap handler sees a
   // clean future and there is nothing anywhere else to report them.
@@ -131,6 +134,10 @@ class DisconnectedState extends StatelessWidget {
       body = switch (conn.lastError) {
         'device_unreachable' => l10n.devicesConnectFailedUnreachable,
         'device_stale' => l10n.devicesConnectFailedStale,
+        // Not `disconnectedGaveUpBody` — see the note on the code itself. The
+        // hand-off makes no attempts of ours, so "several attempts went by"
+        // would be inventing work.
+        'autoconnect_timeout' => l10n.disconnectedGaveUpAutoConnect,
         // The three refusals. Same strings the device sheet's snackbar shows
         // for the same codes — deliberately, so that "Bluetooth is off" reads
         // identically whichever screen the user happened to be on. Minting a

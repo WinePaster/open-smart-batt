@@ -1346,7 +1346,15 @@ class ConnectionController extends ChangeNotifier {
     // that is the event that starts the backoff ladder. Giving up must not be
     // the thing that starts trying again.
     _autoConnectGaveUp = true;
-    _lastError = 'reconnect_exhausted';
+    // Its own code, not the ladder's. `reconnect_exhausted` is a count — "five
+    // attempts went by without a connection", which is what
+    // `disconnectedGaveUpBody` then says on screen. This is one 180 s hand-off
+    // to the OS: no attempt of ours was made, none was counted, and reporting
+    // it as several would be a claim about work nobody did. It also collapsed
+    // two different diagnoses into one string in the field logs — the ladder
+    // exhausting says the device refused five connects, the watchdog expiring
+    // says the device never advertised at all.
+    _lastError = 'autoconnect_timeout';
     _event('auto-reconnect: autoConnect gave up after '
         '${autoConnectWatchdog.inSeconds}s with no `ready` — pending connect '
         'cancelled');

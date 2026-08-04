@@ -529,6 +529,7 @@ void main() {
       // The scan is only as good as its ability to find anything at all.
       expect(codes, containsAll(<String>{
         'reconnect_exhausted',
+        'autoconnect_timeout',
         'gatt_setup_stalled',
         'permission_denied',
         'bluetooth_off',
@@ -634,13 +635,50 @@ void main() {
         ),
       );
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      for (final code in ['device_unreachable', 'device_stale',
-        'connect_failed', 'reconnect_exhausted']) {
+      for (final code in [
+        'device_unreachable',
+        'device_stale',
+        'connect_failed',
+        'reconnect_exhausted',
+        'autoconnect_timeout',
+      ]) {
         conn.setError(code);
         await tester.pump();
         expect(find.text(l10n.disconnectedGaveUpHint), findsOneWidget,
             reason: '`$code` is about the device, not the radio');
       }
+    });
+
+    testWidgets('the watchdog does not borrow the ladder\'s report',
+        (tester) async {
+      // `reconnect_exhausted` renders "several attempts went by without a
+      // connection", which is a count. The watchdog is one 180 s hand-off to
+      // the OS: no attempt of ours was made and none was counted, so the two
+      // cannot share a sentence any more than they can share a code.
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ConnectionController>.value(
+          value: conn,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DisconnectedState()),
+          ),
+        ),
+      );
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      conn.setError('autoconnect_timeout');
+      await tester.pump();
+      expect(find.text(l10n.disconnectedGaveUpAutoConnect), findsOneWidget);
+      expect(find.text(l10n.disconnectedGaveUpBody), findsNothing);
+
+      conn.setError('reconnect_exhausted');
+      await tester.pump();
+      expect(find.text(l10n.disconnectedGaveUpBody), findsOneWidget,
+          reason: 'the ladder really did make five attempts, and that sentence '
+              'is the right report on them');
     });
   });
 

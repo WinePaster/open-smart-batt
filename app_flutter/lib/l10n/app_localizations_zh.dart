@@ -343,6 +343,9 @@ class AppLocalizationsZh extends AppLocalizations {
       '接下來不會再自動重試。請確認裝置在附近、電源正常，再試一次 —— 或用下面的按鈕重新掃描。';
 
   @override
+  String get disconnectedGaveUpAutoConnect => '已經在等這台裝置自己回來，但它一直沒有再出現，所以停止等待了。';
+
+  @override
   String get disconnectedGaveUpRadioHint =>
       '接下來不會再自動重試。請先把上面說的藍牙問題處理好 —— 在那之前，連線和掃描都一樣不會成功。';
 

@@ -543,7 +543,12 @@ void main() {
       expect(h.conn.lastError, isNull);
 
       await tester.pump(const Duration(seconds: 2));
-      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(h.conn.lastError, 'autoconnect_timeout',
+          reason: 'not the ladder\'s code. `reconnect_exhausted` is a count, '
+              'and this is one 180 s hand-off to the OS during which no '
+              'attempt of ours was made — so "several attempts went by" would '
+              'be a claim about work nobody did, and the field logs would show '
+              'one string for two different diagnoses');
       expect(h.ble.disconnectCalls, 1,
           reason: 'the first place in this app that actually CANCELS a '
               'connect — everywhere else an abandoned one stays in flight '
@@ -629,7 +634,7 @@ void main() {
       await tester.pump();
       expect(h.conn.isRetrying, isFalse);
       expect(h.conn.reconnectAttempts, 0);
-      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(h.conn.lastError, 'autoconnect_timeout');
     });
 
     testWidgets('the hand-off delivering `connected` cancels it',
