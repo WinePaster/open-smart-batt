@@ -91,6 +91,7 @@
   "disconnectedGaveUpTitle": "連不上這台裝置",
   "disconnectedGaveUpBody": "試了幾次都沒有連上，已經停止嘗試。",
   "disconnectedGaveUpHint": "接下來不會再自動重試。請確認裝置在附近、電源正常，再試一次 —— 或用下面的按鈕重新掃描。",
+  "disconnectedGaveUpRadioHint": "接下來不會再自動重試。請先把上面說的藍牙問題處理好 —— 在那之前，連線和掃描都一樣不會成功。",
   "quickPickLastValue": "上次 {value} V",
   "statusBadgeRunModeLabel": "運行模式",
   "statusBadgeCapacitorLabel": "電容狀態",

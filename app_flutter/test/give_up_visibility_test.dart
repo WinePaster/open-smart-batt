@@ -28,6 +28,7 @@
 // CLEAN-ROOM: expectations derive from this project's own source, the published
 // flutter_blue_plus sources, and this project's own field captures.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
@@ -125,6 +126,61 @@ class _ErrorConn extends ConnectionController {
     error = e;
     notifyListeners();
   }
+}
+
+/// Where the codes live. Read at test time on purpose — see [controllerErrorCodes].
+const _controllerSource = 'lib/state/connection_controller.dart';
+
+/// Every `lastError` value [ConnectionController] can produce, read off its own
+/// source rather than listed by hand.
+///
+/// A hand-written list is the thing that failed. `_gaveUpCodes` WAS a
+/// hand-written list of what the controller produces, it was written correct,
+/// and it went stale the moment somebody added a code — which is how
+/// `bluetooth_off` spent a release setting `lastError` to a value no screen had
+/// a branch for. A second hand-written list here would go stale the same way
+/// and would then agree with the first, which is worse than not testing it.
+///
+/// So the source is the input. Two shapes carry a code:
+///
+///   1. `_lastError = '<code>'` — the direct assignments.
+///   2. `connectFailureError`'s own `return` literals, which reach `_lastError`
+///      through the three `_lastError = connectFailureError(...)` call sites.
+///
+/// Comment lines are stripped first: prose in this file is full of apostrophes
+/// and a pair of them would read as a string literal.
+///
+/// NOT covered, deliberately: `_lastError = e.toString()` in [startScan]'s
+/// generic catch. That one is an arbitrary platform string by construction, and
+/// the screen's refusal to render arbitrary strings is a separate, deliberate
+/// rule with its own test ("the branch is still a set, not a catch-all").
+Set<String> controllerErrorCodes() {
+  final file = File(_controllerSource);
+  expect(file.existsSync(), isTrue,
+      reason: '$_controllerSource is the input to this test; if it moved, '
+          'point this at the new path rather than deleting the test');
+  final src = file
+      .readAsLinesSync()
+      .where((l) => !l.trimLeft().startsWith('//'))
+      .join('\n');
+
+  final codes = <String>{};
+  for (final m in RegExp("_lastError\\s*=\\s*'([a-z_]+)'").allMatches(src)) {
+    codes.add(m.group(1)!);
+  }
+
+  const signature = 'static String? connectFailureError({';
+  final start = src.indexOf(signature);
+  expect(start, isNot(-1),
+      reason: 'the classifier is the other producer of these codes; if it was '
+          'renamed, rename it here too');
+  final end = src.indexOf('\n  }\n', start);
+  expect(end, greaterThan(start));
+  for (final m
+      in RegExp("'([a-z_]+)'").allMatches(src.substring(start, end))) {
+    codes.add(m.group(1)!);
+  }
+  return codes;
 }
 
 void main() {
@@ -443,6 +499,148 @@ void main() {
 
       expect(find.text('No device connected'), findsOneWidget);
       expect(find.text('Could not connect to this device'), findsNothing);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('FB-53 follow-up — no code the controller sets is left off screen', () {
+    late _FakeBle ble;
+    late SettingsController settings;
+    late _ErrorConn conn;
+
+    setUp(() {
+      ble = _FakeBle();
+      settings = SettingsController(_StubSettingsRepo());
+      conn = _ErrorConn(ble, settings: settings);
+    });
+
+    tearDown(() {
+      conn.dispose();
+      unawaited(ble.dispose());
+    });
+
+    testWidgets('every one of them, enumerated from the controller source',
+        (tester) async {
+      // The shape this is written in: add an eighth code to the controller,
+      // forget this screen, and THIS test goes red naming the code — rather
+      // than the user finding out by tapping connect with the radio off and
+      // getting back the words that were already there.
+      final codes = controllerErrorCodes();
+      // The scan is only as good as its ability to find anything at all.
+      expect(codes, containsAll(<String>{
+        'reconnect_exhausted',
+        'gatt_setup_stalled',
+        'permission_denied',
+        'bluetooth_off',
+        'bluetooth_unauthorized',
+        'device_stale',
+        'device_unreachable',
+        'connect_failed',
+      }));
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ConnectionController>.value(
+          value: conn,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DisconnectedState()),
+          ),
+        ),
+      );
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      // The floor: the idle copy is what the screen shows before anybody has
+      // tapped anything, so a code still on it is a code that reported nothing.
+      conn.setError(null);
+      await tester.pump();
+      expect(find.text(l10n.disconnectedTitle), findsOneWidget);
+
+      for (final code in codes) {
+        conn.setError(code);
+        await tester.pump();
+        expect(find.text(l10n.disconnectedTitle), findsNothing,
+            reason: '`$code` reaches `lastError` and falls through every '
+                'branch, so the screen reports the failure with the same '
+                'words it showed before the attempt — FB-53, again');
+        // …and it says something, rather than merely not saying the wrong
+        // thing: the advice card is the part carrying the way out.
+        expect(find.text(l10n.disconnectedStalledRetry), findsOneWidget,
+            reason: '`$code` renders no advice card, so there is nothing to '
+                'act on');
+      }
+    });
+
+    testWidgets('and the three refusals carry their own instruction',
+        (tester) async {
+      // The bug in one test. Turning Bluetooth off and tapping a saved device
+      // short-circuits inside `connect()` — the preflight and the permission
+      // check both RETURN rather than throw — so `lastError` is set, nothing
+      // is thrown for the tap handler to notice, and this screen was the only
+      // possible reporter.
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ConnectionController>.value(
+          value: conn,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DisconnectedState()),
+          ),
+        ),
+      );
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+
+      const expected = <String, String>{
+        'bluetooth_off': 'Bluetooth is off — turn it on and try again',
+        'bluetooth_unauthorized':
+            'This app is not allowed to use Bluetooth. Enable it in Settings',
+        'permission_denied':
+            'Bluetooth permission is missing. Grant it in Settings',
+      };
+      for (final entry in expected.entries) {
+        conn.setError(entry.key);
+        await tester.pump();
+        expect(find.text(entry.value), findsOneWidget,
+            reason: 'the remedy is the phone, and it has to be named');
+        // The standing hint is three instructions that cannot work with the
+        // radio down, and its last one sends the user to a scan that fails for
+        // the same reason.
+        expect(find.text(l10n.disconnectedGaveUpHint), findsNothing);
+        expect(find.text(l10n.disconnectedGaveUpRadioHint), findsOneWidget);
+        expect(find.text(l10n.disconnectedGaveUpBody), findsNothing,
+            reason: '"several attempts went by" is false — nothing was '
+                'attempted, the connect was refused before it began');
+      }
+    });
+
+    testWidgets('a device-side give-up keeps the device-side hint',
+        (tester) async {
+      // The narrowing must not take the standing hint away from the codes it
+      // was written for.
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ConnectionController>.value(
+          value: conn,
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DisconnectedState()),
+          ),
+        ),
+      );
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      for (final code in ['device_unreachable', 'device_stale',
+        'connect_failed', 'reconnect_exhausted']) {
+        conn.setError(code);
+        await tester.pump();
+        expect(find.text(l10n.disconnectedGaveUpHint), findsOneWidget,
+            reason: '`$code` is about the device, not the radio');
+      }
     });
   });
 

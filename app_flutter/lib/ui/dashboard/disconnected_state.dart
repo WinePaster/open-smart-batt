@@ -30,14 +30,27 @@ import '../devices/signal_bars.dart';
 /// coming" — as opposed to the ones a retry is already under way for.
 ///
 /// Named here rather than inlined because this set is the contract between the
-/// controller and this screen: a fourth give-up code added to
-/// [ConnectionController] and not to this set goes back to being invisible,
-/// which is the whole FB-53 complaint.
+/// controller and this screen: a give-up code added to [ConnectionController]
+/// and not to this set goes back to being invisible, which is the whole FB-53
+/// complaint.
+///
+/// 🔴 That is not a hypothetical. The set shipped with four of the seven codes
+/// the controller can actually produce, and the three it left out are the three
+/// a user meets FIRST: turning Bluetooth off and then tapping a quick-pick
+/// short-circuits in `connect()`'s preflight (`bluetooth_off`,
+/// `bluetooth_unauthorized`) or in its permission check (`permission_denied`),
+/// none of which throws — so the tap set `lastError`, returned quietly, and the
+/// screen fell straight back to "No device connected". Which is FB-53's
+/// original report, still reproducible after FB-53 shipped.
+///
+/// `give_up_visibility_test.dart` now derives the controller's codes from its
+/// source and fails if any of them lands nowhere, so the next one added cannot
+/// repeat this.
 const _gaveUpCodes = <String>{
   'reconnect_exhausted',
   'device_stale',
   'device_unreachable',
-  // The fourth, and the one that catches the rest. Android has no equivalent of
+  // The one that catches the rest. Android has no equivalent of
   // the stale-NSUUID fallback, so before this every connect failure the plugin
   // did not raise itself — a relayed GATT 133 is the ordinary one — reached the
   // screen as a raw exception string and matched nothing here. That was
@@ -46,6 +59,24 @@ const _gaveUpCodes = <String>{
   // that existed, a quick-pick tap ended in a screen identical to the one
   // before the tap. Which is the FB-53 complaint, word for word.
   'connect_failed',
+  // The three that never reach BLE at all. They are refusals, not failures:
+  // `connect()` returns without throwing, so the quick-pick tap handler sees a
+  // clean future and there is nothing anywhere else to report them.
+  'bluetooth_off',
+  'bluetooth_unauthorized',
+  'permission_denied',
+};
+
+/// The subset of [_gaveUpCodes] whose remedy is the phone, not the device.
+///
+/// They need their own hint because the standing one — "check the unit is
+/// nearby and powered, then try again — or scan for it below" — is three
+/// instructions that cannot work with the radio down, and the last of them
+/// sends the user to a scan that will fail for the same reason.
+const _radioCodes = <String>{
+  'bluetooth_off',
+  'bluetooth_unauthorized',
+  'permission_denied',
 };
 
 /// The dashboard's disconnected placeholder.
@@ -100,6 +131,15 @@ class DisconnectedState extends StatelessWidget {
       body = switch (conn.lastError) {
         'device_unreachable' => l10n.devicesConnectFailedUnreachable,
         'device_stale' => l10n.devicesConnectFailedStale,
+        // The three refusals. Same strings the device sheet's snackbar shows
+        // for the same codes — deliberately, so that "Bluetooth is off" reads
+        // identically whichever screen the user happened to be on. Minting a
+        // second wording per code is how two screens end up disagreeing about
+        // what one state means.
+        'bluetooth_off' => l10n.devicesConnectFailedBluetoothOff,
+        'bluetooth_unauthorized' =>
+          l10n.devicesConnectFailedBluetoothUnauthorized,
+        'permission_denied' => l10n.devicesConnectFailedPermission,
         // The vague one, borrowed verbatim from the device sheet's snackbar so
         // that one code reads the same wherever it surfaces. Not
         // `disconnectedGaveUpBody`: "several attempts went by" is a claim, and
@@ -163,7 +203,9 @@ class DisconnectedState extends StatelessWidget {
               _AdviceCard(
                 hint: stalled
                     ? l10n.disconnectedStalledHint
-                    : l10n.disconnectedGaveUpHint,
+                    : _radioCodes.contains(conn.lastError)
+                        ? l10n.disconnectedGaveUpRadioHint
+                        : l10n.disconnectedGaveUpHint,
                 retryLabel: l10n.disconnectedStalledRetry,
                 // `reconnectCurrent` is the right entry point rather than a bare
                 // `connect`: it keeps the routing seed, which is the difference
