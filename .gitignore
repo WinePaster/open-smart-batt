@@ -41,3 +41,9 @@ phone_db/
 .DS_Store
 *.swp
 .vscode/
+
+# Agent scratch. `.claude/worktrees/` holds full checkouts of this repo —
+# hundreds of MB of working trees and build output that must never be staged.
+# It was untracked but NOT ignored, which is one `git add -A` away from a mess;
+# the same gap that let `raw/` sit outside this file for weeks (see CLAUDE.md).
+.claude/
