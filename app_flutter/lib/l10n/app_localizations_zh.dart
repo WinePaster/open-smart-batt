@@ -1015,7 +1015,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dashboardTelemetryStalled =>
-      'Readings have stopped updating (the link is still up). This happens while the system suspends the app; turning on \"Keep monitoring in the background\" avoids it.';
+      '讀數已經停止更新（連線還在）。系統把 App 凍結時就會這樣；開啟「背景持續監看」可以避免。';
 
   @override
   String get packLabelUnclassified => '未分類（請指定）';

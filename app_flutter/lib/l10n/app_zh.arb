@@ -312,6 +312,7 @@
   "usbPortStateSupplying": "供電中",
   "usbPortStateIdle": "閒置",
   "usbPortPendingNote": "供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。",
+  "dashboardTelemetryStalled": "讀數已經停止更新（連線還在）。系統把 App 凍結時就會這樣；開啟「背景持續監看」可以避免。",
   "dashboardModeNumbers": "數值",
   "dashboardModeChart": "圖表",
   "dashboardChartWaiting": "等待遙測資料…",
