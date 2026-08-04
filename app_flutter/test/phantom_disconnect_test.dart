@@ -657,6 +657,37 @@ void main() {
       expect(h.conn.lastError, isNull);
     });
 
+    testWidgets('a hand-off that arrives LATE un-gives-up', (tester) async {
+      // The ordering the old code could not come back from: the watchdog fires
+      // at 180 s, and only then does the OS hand the connection over — and it
+      // gets no further than `connected` (a stalled GATT setup, which is what
+      // FB-51/FB-52 are about). `ready` never arrives, so the clear at `ready`
+      // never runs, and `_autoConnectGaveUp` stayed true for the rest of the
+      // app's life: every subsequent drop of that device was refused a
+      // reconnect by a flag whose stated reason — "the device never came
+      // back" — had been disproved by the device coming back.
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.conn.connect('AA');
+      h.conn.armAutoConnect();
+      await tester.pump(ConnectionController.autoConnectWatchdog +
+          const Duration(seconds: 1));
+      expect(h.conn.lastError, 'autoconnect_timeout');
+
+      // Late, and only as far as `connected`.
+      h.ble.emitLink(BleLinkState.connected);
+      await tester.pump();
+      h.ble.emitLink(BleLinkState.disconnected);
+      await tester.pump();
+
+      expect(h.conn.isRetrying, isTrue,
+          reason: 'the device is demonstrably still there; refusing to '
+              'reconnect to it on the strength of a give-up it has already '
+              'disproved is a dead app until the user notices');
+      expect(h.conn.reconnectAttempts, 1);
+      h.dispose(); // rung 1 is still armed
+    });
+
     testWidgets('reaching ready cancels it', (tester) async {
       final h = _Harness();
       addTearDown(h.dispose);

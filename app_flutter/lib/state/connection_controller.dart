@@ -1106,6 +1106,17 @@ class ConnectionController extends ChangeNotifier {
       // one — pairing `autoConnect gave up` with `auto-reconnect gave up` in
       // the very logs the FB-53 acceptance counts are grepped from.
       _cancelAutoConnectWatchdog();
+      // And the give-up itself is spent, not just its deadline. The flag
+      // exists to stop the drop that giving up CAUSES from restarting the
+      // ladder; a `connected` afterwards is the device saying the premise was
+      // wrong — it did come back. Cancelling the timer alone left the flag set
+      // for good in the one ordering that matters: the watchdog fires at 180 s,
+      // the OS hands the connection over a moment later, and it only reaches
+      // `connected` (a stalled GATT setup, FB-51/FB-52). `ready` never arrives,
+      // so the clear at `ready` never runs, and from then on every drop of that
+      // device is refused a reconnect by the guard below — permanently, until
+      // the user connects or disconnects by hand.
+      _autoConnectGaveUp = false;
     }
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
