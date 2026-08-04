@@ -15,6 +15,7 @@ import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/session_context.dart';
 import 'package:open_smart_batt/ui/util/export_naming.dart';
+import 'package:open_smart_batt/ui/util/export_scope.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -370,6 +371,31 @@ void main() {
         ),
         'opensmartbatt-history-20260727-113000.csv',
       );
+    });
+  });
+
+  // The sheet is on-screen text, not a filename: it must agree with the device
+  // filter sitting right above it, which shows the name the user chose.
+  group('export scope sheet label', () {
+    test('leads with the name and keeps the serial as confirmation', () {
+      expect(
+        exportScopeDeviceLabel(name: '阿明的機車', ident: '12061F0A'),
+        '阿明的機車 · 12061F0A',
+      );
+    });
+
+    test('unnamed unit reads exactly as before (identity fragment alone)', () {
+      expect(exportScopeDeviceLabel(name: '', ident: '12061F0A'), '12061F0A');
+      expect(exportScopeDeviceLabel(ident: '12061F0A'), '12061F0A');
+      // Never named AND never connected long enough for a serial: the caller
+      // passes the hash as the fragment, and it must survive to the sheet.
+      expect(exportScopeDeviceLabel(name: '  ', ident: 'a3f1c2d4'), 'a3f1c2d4');
+    });
+
+    test('never prints the same string twice', () {
+      expect(exportScopeDeviceLabel(name: '1206', ident: '1206'), '1206');
+      expect(exportScopeDeviceLabel(name: 'front', ident: ''), 'front');
+      expect(exportScopeDeviceLabel(name: 'front'), 'front');
     });
   });
 }

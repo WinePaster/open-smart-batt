@@ -226,6 +226,9 @@
   },
   "disconnectedStalledHint": "Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.",
   "disconnectedStalledRetry": "Try again",
+  "disconnectedGaveUpTitle": "Could not connect to this device",
+  "disconnectedGaveUpBody": "Several attempts went by without a connection, so it has stopped trying.",
+  "disconnectedGaveUpHint": "Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.",
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {
@@ -378,6 +381,7 @@
   "devicesConnectFailedBluetoothUnauthorized": "This app is not allowed to use Bluetooth. Enable it in Settings",
   "devicesConnectFailedPermission": "Bluetooth permission is missing. Grant it in Settings",
   "devicesConnectFailedStale": "This unit could not be found — scan again, then reconnect",
+  "devicesConnectFailedUnreachable": "This device could not be found. Check it is nearby and switched on",
   "devicesRemoveTitle": "Remove device",
   "devicesRemoveBody": "Remove \"{alias}\" from your saved list? (The device itself is unaffected.)",
   "@devicesRemoveBody": {

@@ -303,52 +303,106 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ---- pieces -----------------------------------------------------------
 
+  /// Gap between the range control and the actions, and between the actions.
+  static const double _kToolbarGap = 8;
+  static const double _kToolbarActionGap = 7;
+
+  /// Range picker + warning filter + export, on one line where that fits and
+  /// on two where it does not.
+  ///
+  /// Measured 2026-08-03: on a 320 pt phone the one-line form needs 184.1 px
+  /// for the three zh labels but only gets 175.7 — and the overflow was
+  /// SILENT (the control clips), so the third range was simply missing. The
+  /// breakpoint is therefore measured from the actual labels at the actual
+  /// text scale rather than hard-coded: a pixel constant would go stale the
+  /// moment a label, a language or the OS text size changed.
   Widget _toolbar() {
     final l10n = AppLocalizations.of(context);
+    final ranges = <({HistoryRange value, String label})>[
+      (value: HistoryRange.today, label: l10n.historyRangeToday),
+      (value: HistoryRange.week, label: l10n.historyRangeWeek),
+      (value: HistoryRange.all, label: l10n.historyRangeAll),
+    ];
+
+    final segmented = SegmentedControl<HistoryRange>(
+      selected: _range,
+      onChanged: _setRange,
+      options: ranges,
+    );
+    final warning = FilterChip2(
+      label: l10n.historyFilterWarning,
+      icon: Icons.warning_amber_rounded,
+      selected: _warningOnly,
+      onTap: _toggleWarning,
+    );
+    final export = _exporting
+        ? const SizedBox(
+            width: 28,
+            height: 28,
+            child: Center(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.amber),
+              ),
+            ),
+          )
+        : FilterChip2(
+            label: l10n.historyExportCsv,
+            icon: Icons.file_download_outlined,
+            filled: true,
+            selected: true,
+            onTap: _exportCsv,
+          );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 8, 15, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: SegmentedControl<HistoryRange>(
-              selected: _range,
-              onChanged: _setRange,
-              options: [
-                (value: HistoryRange.today, label: l10n.historyRangeToday),
-                (value: HistoryRange.week, label: l10n.historyRangeWeek),
-                (value: HistoryRange.all, label: l10n.historyRangeAll),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final needed = segmentedControlNaturalWidth(
+                context,
+                [for (final r in ranges) r.label],
+              ) +
+              _kToolbarGap +
+              filterChipNaturalWidth(context, l10n.historyFilterWarning,
+                  hasIcon: true) +
+              _kToolbarActionGap +
+              (_exporting
+                  ? 28
+                  : filterChipNaturalWidth(context, l10n.historyExportCsv,
+                      hasIcon: true));
+
+          if (needed <= c.maxWidth) {
+            return Row(
+              children: [
+                Expanded(child: segmented),
+                const SizedBox(width: _kToolbarGap),
+                warning,
+                const SizedBox(width: _kToolbarActionGap),
+                export,
               ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilterChip2(
-            label: l10n.historyFilterWarning,
-            icon: Icons.warning_amber_rounded,
-            selected: _warningOnly,
-            onTap: _toggleWarning,
-          ),
-          const SizedBox(width: 7),
-          _exporting
-              ? const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.amber),
-                    ),
-                  ),
-                )
-              : FilterChip2(
-                  label: l10n.historyExportCsv,
-                  icon: Icons.file_download_outlined,
-                  filled: true,
-                  selected: true,
-                  onTap: _exportCsv,
-                ),
-        ],
+            );
+          }
+          // Two lines: the range control keeps the full width (its labels are
+          // the ones that were being cut), the actions sit under it, still
+          // right-aligned as they are in the one-line form.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              segmented,
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  warning,
+                  const SizedBox(width: _kToolbarActionGap),
+                  export,
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

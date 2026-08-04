@@ -626,6 +626,24 @@ abstract class AppLocalizations {
   /// **'Try again'**
   String get disconnectedStalledRetry;
 
+  /// No description provided for @disconnectedGaveUpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not connect to this device'**
+  String get disconnectedGaveUpTitle;
+
+  /// No description provided for @disconnectedGaveUpBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Several attempts went by without a connection, so it has stopped trying.'**
+  String get disconnectedGaveUpBody;
+
+  /// No description provided for @disconnectedGaveUpHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.'**
+  String get disconnectedGaveUpHint;
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:
@@ -949,6 +967,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This unit could not be found — scan again, then reconnect'**
   String get devicesConnectFailedStale;
+
+  /// No description provided for @devicesConnectFailedUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not be found. Check it is nearby and switched on'**
+  String get devicesConnectFailedUnreachable;
 
   /// No description provided for @devicesRemoveTitle.
   ///

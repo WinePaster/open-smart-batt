@@ -100,12 +100,40 @@ ProductClass deviceClassFor(DeviceController devices, String? deviceId) {
 
 String deviceLabelFor(DeviceController devices, String? deviceId) {
   if (deviceId == null) return '';
+  final named = deviceNameFor(devices, deviceId);
+  if (named.isNotEmpty) return named;
+  return shortDeviceHash(deviceId);
+}
+
+/// The name the USER gave one `device_id` (their alias, else the advertised
+/// name), or '' when the unit was never named. No hash fallback: callers that
+/// need a never-blank string use [deviceLabelFor], while the scope sheet has to
+/// be able to tell "unnamed" apart from "named a3f1c2d4".
+String deviceNameFor(DeviceController devices, String? deviceId) {
+  if (deviceId == null) return '';
   final saved = devices.deviceFor(deviceId);
   final alias = saved?.alias ?? '';
   if (alias.isNotEmpty) return alias;
-  final name = saved?.name ?? '';
-  if (name.isNotEmpty) return name;
-  return shortDeviceHash(deviceId);
+  return saved?.name ?? '';
+}
+
+/// Label for the "this device only" row of the scope sheet.
+///
+/// Deliberately NOT [deviceIdentFragment] alone. That one is filename-first, so
+/// it prefers the serial — which left the sheet saying `1206` on the very same
+/// screen whose device filter (history `_deviceBar`) was already saying the
+/// user's own name for the unit, with nothing to say they were one and the same
+/// unit. The sheet is on-screen text under no filesystem constraint, so the
+/// name leads and the serial trails as the confirmation.
+///
+/// Falls back to [ident] alone when the unit was never named, so an unnamed
+/// unit reads exactly as it did before.
+String exportScopeDeviceLabel({String? name, String? ident}) {
+  final n = name?.trim() ?? '';
+  final i = ident?.trim() ?? '';
+  if (n.isEmpty) return i;
+  if (i.isEmpty || i == n) return n;
+  return '$n · $i';
 }
 
 /// Ask the user what the export should cover.
@@ -122,7 +150,10 @@ Future<ExportTarget?> chooseExportScope(
   final sessionTarget =
       offerSession ? currentDeviceTarget(context, sessionOnly: true) : null;
   final l10n = AppLocalizations.of(context);
-  final label = current.ident ?? '';
+  final label = exportScopeDeviceLabel(
+    name: deviceNameFor(context.read<DeviceController>(), current.deviceId),
+    ident: current.ident,
+  );
 
   return showModalBottomSheet<ExportTarget>(
     context: context,

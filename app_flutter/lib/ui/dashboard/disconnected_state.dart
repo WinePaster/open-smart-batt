@@ -26,6 +26,28 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../devices/signal_bars.dart';
 
+/// The `lastError` codes that mean "we have stopped, and nothing else is
+/// coming" — as opposed to the ones a retry is already under way for.
+///
+/// Named here rather than inlined because this set is the contract between the
+/// controller and this screen: a fourth give-up code added to
+/// [ConnectionController] and not to this set goes back to being invisible,
+/// which is the whole FB-53 complaint.
+const _gaveUpCodes = <String>{
+  'reconnect_exhausted',
+  'device_stale',
+  'device_unreachable',
+  // The fourth, and the one that catches the rest. Android has no equivalent of
+  // the stale-NSUUID fallback, so before this every connect failure the plugin
+  // did not raise itself — a relayed GATT 133 is the ordinary one — reached the
+  // screen as a raw exception string and matched nothing here. That was
+  // survivable only while a failed first connect still bought a minute of
+  // "Reconnecting… (attempt N of 5)"; with the ladder now reserved for links
+  // that existed, a quick-pick tap ended in a screen identical to the one
+  // before the tap. Which is the FB-53 complaint, word for word.
+  'connect_failed',
+};
+
 /// The dashboard's disconnected placeholder.
 class DisconnectedState extends StatelessWidget {
   const DisconnectedState({super.key, this.onScanRequested});
@@ -54,11 +76,38 @@ class DisconnectedState extends StatelessWidget {
     // once the retry has failed too.
     final stalled = !working && conn.lastError == 'gatt_setup_stalled';
 
+    // FB-53: the three ways an attempt can END, which this screen used to sit
+    // through in silence. The backoff ladder runs its 60 s, `lastError` is set,
+    // `isRetrying` goes false — and the copy falls back to "no device
+    // connected", the same words shown before anyone had tapped anything. So
+    // the app stopped trying and the only way to find out was that the spinner
+    // was gone. Same `!working` gate as `stalled`, for the same reason: a
+    // manual retry has to look like progress, and `connect()` clears
+    // `lastError`, so the message only returns once the retry has failed too.
+    final gaveUp = !working && _gaveUpCodes.contains(conn.lastError);
+
     final String title;
     final String body;
     if (stalled) {
       title = l10n.disconnectedStalledTitle;
       body = l10n.disconnectedStalledBody(conn.setupFailures);
+    } else if (gaveUp) {
+      title = l10n.disconnectedGaveUpTitle;
+      // One title, three reasons — because the remedy is what differs, and the
+      // remedy is the only part worth reading. `device_unreachable` is the one
+      // FB-53 split out of `device_stale`: "walk over to it" and "scan again"
+      // are different instructions, and the alarming one used to win by default.
+      body = switch (conn.lastError) {
+        'device_unreachable' => l10n.devicesConnectFailedUnreachable,
+        'device_stale' => l10n.devicesConnectFailedStale,
+        // The vague one, borrowed verbatim from the device sheet's snackbar so
+        // that one code reads the same wherever it surfaces. Not
+        // `disconnectedGaveUpBody`: "several attempts went by" is a claim, and
+        // a single manual tap that failed once did not make several attempts —
+        // R3 is precisely the change that stopped it from making them.
+        'connect_failed' => l10n.devicesConnectFailed,
+        _ => l10n.disconnectedGaveUpBody,
+      };
     } else if (retrying) {
       title = l10n.disconnectedRetrying(
           conn.reconnectAttempts, ConnectionController.maxReconnectAttempts);
@@ -110,9 +159,11 @@ class DisconnectedState extends StatelessWidget {
             ),
             const SizedBox(height: 26),
 
-            if (stalled) ...[
-              _StalledCard(
-                hint: l10n.disconnectedStalledHint,
+            if (stalled || gaveUp) ...[
+              _AdviceCard(
+                hint: stalled
+                    ? l10n.disconnectedStalledHint
+                    : l10n.disconnectedGaveUpHint,
                 retryLabel: l10n.disconnectedStalledRetry,
                 // `reconnectCurrent` is the right entry point rather than a bare
                 // `connect`: it keeps the routing seed, which is the difference
@@ -154,6 +205,15 @@ class DisconnectedState extends StatelessWidget {
                   // absorbed deliberately rather than left to look like a
                   // crash. The device sheet's own connect path has always
                   // caught it; this one was simply never given a handler.
+                  //
+                  // FB-53: absorbed, but no longer silent. `connectToSaved`
+                  // classifies the failure into `lastError` before it rethrows
+                  // and the give-up branch above renders those codes, so
+                  // swallowing the exception now costs the user nothing. It did
+                  // cost them something while this screen had nowhere to show
+                  // it: R3 stopped wrapping a failed first connect in 108 s of
+                  // "Reconnecting…", which would have left the tap looking like
+                  // it did nothing at all.
                   onTap: () => unawaited(
                       conn.connectToSaved(d).catchError((Object _) {})),
                 ),
@@ -184,22 +244,25 @@ class DisconnectedState extends StatelessWidget {
   }
 }
 
-/// Quick-reconnect row (mockup `.qpick`).
-/// FB-52: the failure that STAYS on screen.
+/// The failure that STAYS on screen, with the one thing left to do about it.
+///
+/// FB-52 built this for the stalled-setup case; FB-53 gives it the three
+/// give-up codes as well, because they end the same way — nothing further will
+/// happen unless the user does something.
 ///
 /// Deliberately not a SnackBar. FB-44 gives the connect failures a snackbar and
-/// that is right for them — they resolve in seconds. This one does not: the
-/// capture behind it ran fourteen minutes inside a forty-minute episode, and a
-/// 3.2 s toast shown once at minute one is worth nothing to someone still
+/// that is right for them — they resolve in seconds. These do not: the capture
+/// behind the stalled case ran fourteen minutes inside a forty-minute episode,
+/// and a 3.2 s toast shown once at minute one is worth nothing to someone still
 /// staring at the screen at minute thirty.
 ///
-/// The instruction is the blunt one on purpose (design 0031 Q4, ruled
-/// 2026-08-03). "Close the app completely and open it again" is the only action
-/// with field evidence behind it — it is what the reporter did, unprompted, and
-/// it worked. Telling them to wait would be worse than saying nothing, because
-/// waiting is precisely what was already tried for forty minutes.
-class _StalledCard extends StatelessWidget {
-  const _StalledCard({
+/// The stalled instruction is the blunt one on purpose (ruled 2026-08-03).
+/// "Close the app completely and open it again" is the only action with field
+/// evidence behind it — it is what the reporter did, unprompted, and it worked.
+/// Telling them to wait would be worse than saying nothing, because waiting is
+/// precisely what was already tried for forty minutes.
+class _AdviceCard extends StatelessWidget {
+  const _AdviceCard({
     required this.hint,
     required this.retryLabel,
     required this.onRetry,

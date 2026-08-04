@@ -14,7 +14,11 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show BluetoothAdapterState, FlutterBluePlusException;
+    show
+        BluetoothAdapterState,
+        ErrorPlatform,
+        FbpErrorCode,
+        FlutterBluePlusException;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
@@ -51,6 +55,9 @@ class ConnectionController extends ChangeNotifier {
     _scanningSub = _ble.scanning.listen(_onScanning);
     _adapterSub = _ble.adapterState.listen(_onAdapterState);
     _telemetrySub = _ble.telemetry.listen(_onTelemetrySample);
+    // FB-53: the transport's own diagnostics, straight onto the always-on
+    // event path. Subscribed unconditionally — see [_onDiagnostic].
+    _diagnosticsSub = _ble.diagnostics.listen(_onDiagnostic);
     _monitorStopSub = _monitor.onStopRequested.listen((_) => _onMonitorStop());
     _settings.addListener(_onSettingsChanged);
   }
@@ -264,7 +271,16 @@ class ConnectionController extends ChangeNotifier {
   StreamSubscription<bool>? _scanningSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
   StreamSubscription<TelemetrySample>? _telemetrySub;
+  StreamSubscription<String>? _diagnosticsSub;
   StreamSubscription<void>? _monitorStopSub;
+
+  /// Forward one [BleService.diagnostics] line to the diagnostic log.
+  ///
+  /// Always on, deliberately, on the precedent of [_logUnrecognisedDeviceType]:
+  /// the raw-packet log is off by default, and a capture that arrives with it
+  /// off is precisely the one where these lines are the only account of what
+  /// the transport did. The volume is a handful of lines per connection.
+  void _onDiagnostic(String line) => _event(line);
 
   /// Product-class resolver. Reads the class off the wire device-type byte;
   /// holds the user's choice only for unrecognised bytes. It never guesses from
@@ -319,6 +335,18 @@ class ConnectionController extends ChangeNotifier {
   String? _desiredDeviceId; // device we want to stay connected to
   bool _manualDisconnect = false;
   Timer? _reconnectTimer;
+
+  /// Deadline on an armed autoConnect (FB-53 / [autoConnectWatchdog]).
+  Timer? _autoConnectTimer;
+
+  /// True once the watchdog has given up on an armed autoConnect, until the
+  /// user asks for something new.
+  ///
+  /// Giving up means dropping the link, and dropping the link emits
+  /// `disconnected` — which is the event that starts the backoff ladder.
+  /// Without this flag the act of giving up would immediately start trying
+  /// again, which is the opposite of what it was for.
+  bool _autoConnectGaveUp = false;
   String? _lastError;
   bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
   int _reconnectAttempts = 0;
@@ -327,6 +355,29 @@ class ConnectionController extends ChangeNotifier {
   /// a cap a stale iOS NSUUID would re-arm forever; capping lets the error
   /// surface within seconds instead of an endless reconnect loop.
   static const int maxReconnectAttempts = 5;
+
+  /// How long an armed OS-level autoConnect may stay pending before this app
+  /// stops waiting for it.
+  ///
+  /// FB-53. [_armAutoConnect] hands a dropped healthy link to CoreBluetooth and
+  /// returns; from that moment nothing in this app had a deadline. That was
+  /// survivable only by accident — the phantom `disconnected` the plugin
+  /// replayed into the fresh subscription tore the pending connect down within
+  /// a millisecond, so the bug was also the terminator. With that value now
+  /// correctly ignored, an autoConnect to a peripheral that never comes back
+  /// would wait forever behind a UI that says "connecting…" and a log that says
+  /// nothing at all.
+  ///
+  /// 180 s, and both constraints are stated rather than tuned. It must be
+  /// LONGER than the app-level ladder it is preferred over — 2+4+8+16+30 s = 60 s
+  /// — or the seamless path would give up sooner than the path it replaced. And
+  /// it must be BOUNDED: "seamless" is a promise about a device that comes back,
+  /// not a licence to wait out the afternoon with no way for the user to learn
+  /// that nothing is happening. Three minutes is one comfortable order above the
+  /// ladder and still inside what somebody will sit through. Adjustable — no
+  /// field capture measures how long a real reappearance takes, because until
+  /// this fix no armed autoConnect ever survived long enough to be measured.
+  static const Duration autoConnectWatchdog = Duration(seconds: 180);
 
   /// Consecutive connections that reached `connected` and left without ever
   /// reaching `ready`. FB-52, design 0031 §3.1.
@@ -658,22 +709,93 @@ class ConnectionController extends ChangeNotifier {
   /// to justify the rebind work. A radio that is off explains the failure
   /// completely; nothing about the saved id is implicated.
   ///
-  /// Returns null when there is nothing specific to say (a non-iOS failure with
-  /// the radio up), leaving the caller's own message in place.
+  /// FB-53: [error] narrows the iOS fallback. `device_stale` used to absorb
+  /// every failure the adapter state did not explain, including the commonest
+  /// one of all — a unit that is simply not in range. See [fbpErrorCodeOf] for
+  /// why the plugin's exception is read by type and code and never by message.
+  ///
+  /// FB-53: and every remaining failure gets `connect_failed` rather than null.
+  /// Null used to mean "a non-iOS failure with the radio up — say nothing", and
+  /// what the caller then said instead was `e.toString()`, which no screen can
+  /// render. An Android GATT 133 arrives as a `FlutterBluePlusException` the
+  /// plugin merely relayed (`platform: _nativeError`, `bluetooth_device.dart`
+  /// :169-172), so it is deliberately NOT decoded here — and with the ladder no
+  /// longer wrapping a failed first connect in a minute of "Reconnecting…", a
+  /// quick-pick tap that ended that way left the dashboard showing the words it
+  /// shows before anybody has tapped anything. Vague and correct beats silent;
+  /// the specific instructions stay with the codes that earned them.
+  ///
+  /// The one null left is the deliberate one: a connect WE cancelled.
   static String? connectFailureError({
     required BluetoothAdapterState adapter,
     required bool isIOS,
+    Object? error,
   }) {
     if (adapter == BluetoothAdapterState.unauthorized) {
       return 'bluetooth_unauthorized';
     }
     if (adapter == BluetoothAdapterState.off) return 'bluetooth_off';
-    return isIOS ? 'device_stale' : null;
+    switch (fbpErrorCodeOf(error)) {
+      // The radio went down between the preflight above and the connect. Same
+      // fact, later arrival — and the adapter-state stream will catch up.
+      case FbpErrorCode.adapterIsOff:
+        return 'bluetooth_off';
+      // The connect ran out its budget with nothing on the other end. That is
+      // an out-of-range or powered-off unit, not a saved id that no longer
+      // resolves: on a stale iOS NSUUID CoreBluetooth never answers either, so
+      // the two used to be indistinguishable here and the more alarming label
+      // won. The remedy differs — one says "walk over to it", the other says
+      // "scan again" — which is the whole reason to split them.
+      case FbpErrorCode.timeout:
+        return 'device_unreachable';
+      // WE cancelled it: the FB-53 watchdog is the first thing in this app that
+      // does. Blaming the device for our own decision would be a lie. Note
+      // this branch is currently unreachable in practice — `connect()` cancels
+      // both the retry timer and the watchdog before touching BLE, so by the
+      // time a connect can fail there is no canceller left. It exists so that
+      // whoever adds the next canceller does not inherit a lie by default.
+      case FbpErrorCode.connectionCanceled:
+        return null;
+      case _:
+        break;
+    }
+    return isIOS ? 'device_stale' : 'connect_failed';
+  }
+
+  /// The plugin's OWN error code behind [error], or null when the failure did
+  /// not originate in flutter_blue_plus's own logic.
+  ///
+  /// FB-53 R6. `FlutterBluePlusException.code` is two different numbers wearing
+  /// one field: on the paths the plugin raises itself it is an index into
+  /// [FbpErrorCode] (`utils.dart:19`, `bluetooth_device.dart:157`), and on the
+  /// paths that merely relay the platform it is the native disconnect reason
+  /// carrying the same small integers with entirely different meanings
+  /// (`bluetooth_device.dart:169-172`, thrown with `platform: _nativeError`).
+  /// Reading the code without checking `platform` first would read an Android
+  /// GATT status 1 as `timeout`. The range check covers a future plugin
+  /// version growing the enum past what this build knows.
+  ///
+  /// Typed on purpose, and FB-44 is why: the classifier it replaces matched on
+  /// message text, and ten `CBManagerStatePoweredOff` episodes in one 40-hour
+  /// capture were shown to the user as hardware that no longer existed. A
+  /// human-readable description is not an API.
+  static FbpErrorCode? fbpErrorCodeOf(Object? error) {
+    if (error is! FlutterBluePlusException) return null;
+    if (error.platform != ErrorPlatform.fbp) return null;
+    final code = error.code;
+    if (code == null || code < 0 || code >= FbpErrorCode.values.length) {
+      return null;
+    }
+    return FbpErrorCode.values[code];
   }
 
   Future<void> connect(String deviceId,
       {Duration? timeout, ProductClass? seedClass}) async {
     _reconnectTimer?.cancel();
+    // FB-53: a manual connect supersedes an armed autoConnect and its deadline
+    // — the user has just restated, by hand, what they want to be connected to.
+    _cancelAutoConnectWatchdog();
+    _autoConnectGaveUp = false;
     _reconnectAttempts = 0; // fresh manual connect resets the backoff
     // FB-52: but the SETUP-failure run only resets when the target changes.
     // Tapping connect again on the same unit is the user retrying the thing
@@ -723,7 +845,15 @@ class ConnectionController extends ChangeNotifier {
     try {
       await _ble.connect(deviceId, timeout: timeout);
     } catch (e) {
-      _lastError = e.toString();
+      // FB-53: classify on the way out. This used to store `e.toString()`, and
+      // a raw exception string is a value no screen has a branch for — so the
+      // give-up card, whose "try again" button lands right back here through
+      // [reconnectCurrent], erased itself the moment the retry also failed.
+      // The classifier returns null for exactly one case, a connect we
+      // cancelled ourselves, and there the canceller's own reason stands.
+      final reason = connectFailureError(
+          adapter: _adapter, isIOS: Platform.isIOS, error: e);
+      if (reason != null) _lastError = reason;
       _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
       rethrow;
@@ -780,7 +910,19 @@ class ConnectionController extends ChangeNotifier {
       // adapter state has not caught up with the radio yet. The `(stale?)`
       // marker travels with the label rather than with the platform, because
       // that marker is what the stale-NSUUID counts are grepped from.
-      final reason = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
+      //
+      // FB-53: and the exception itself now gets a vote. Passing it is what
+      // keeps `(stale?)` off the line — and out of the counts — for a unit that
+      // was merely out of range, which the timeout says in so many words.
+      //
+      // A count discontinuity comes with that: on iOS a stale NSUUID ALSO
+      // surfaces as this same timeout (CoreBluetooth never answers either
+      // way), so out-of-range and stale are indistinguishable here and both
+      // now land in `device_unreachable`. `(stale?)` therefore all but
+      // vanishes from field logs at this version — a falling count means the
+      // label moved, not that stale ids stopped happening.
+      final reason = connectFailureError(
+          adapter: _adapter, isIOS: Platform.isIOS, error: e);
       final stale = reason == 'device_stale';
       if (reason != null) _lastError = reason;
       _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');
@@ -795,6 +937,9 @@ class ConnectionController extends ChangeNotifier {
     _desiredDeviceId = null;
     _seedClass = ProductClass.unknown; // no target ⇒ nothing to route for
     _reconnectTimer?.cancel();
+    // FB-53: an armed autoConnect outlives its target unless someone says so.
+    _cancelAutoConnectWatchdog();
+    _autoConnectGaveUp = false;
     await _ble.disconnect();
   }
 
@@ -951,7 +1096,17 @@ class ConnectionController extends ChangeNotifier {
       _readyAt = null;
       _reachedConnected = false;
     }
-    if (s == BleLinkState.connected) _reachedConnected = true;
+    if (s == BleLinkState.connected) {
+      _reachedConnected = true;
+      // FB-53: the hand-off has delivered — the OS produced a link. Whatever
+      // happens to it next (a GATT setup that stalls, a drop before `ready`)
+      // is FB-51/FB-52 territory and the ladder's to answer for. A deadline
+      // that survives the reunion would drop a link mid-setup in the 179 s
+      // window, or fire a second give-up after the ladder already reported
+      // one — pairing `autoConnect gave up` with `auto-reconnect gave up` in
+      // the very logs the FB-53 acceptance counts are grepped from.
+      _cancelAutoConnectWatchdog();
+    }
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
         s == BleLinkState.ready) {
@@ -975,6 +1130,11 @@ class ConnectionController extends ChangeNotifier {
     if (s == BleLinkState.ready) {
       _lastError = null;
       _reconnectAttempts = 0; // healthy link clears the backoff counter
+      // FB-53: the link came up, so whatever was waiting for it can stand down
+      // — including an armed autoConnect's deadline, whose whole job was to
+      // notice that this never happened.
+      _cancelAutoConnectWatchdog();
+      _autoConnectGaveUp = false;
       // FB-52: `ready` is the ONLY thing that clears this one. Not a manual
       // connect, not a new attempt — coming up is the only evidence that the
       // run of failures has actually ended.
@@ -1009,6 +1169,10 @@ class ConnectionController extends ChangeNotifier {
       }
       _recomputePackLabel();
     } else if (s == BleLinkState.disconnected) {
+      // Read once, up here: the field is cleared further down, and BOTH the
+      // FB-52 counter and the FB-53 backoff policy have to see what this
+      // attempt actually achieved.
+      final reachedConnected = _reachedConnected;
       // Close out last-seen at the moment the unit stopped being reachable.
       // Without this the stored value would be the moment we CONNECTED, so a
       // device monitored for six hours would report "last seen 6 hours ago"
@@ -1028,7 +1192,7 @@ class ConnectionController extends ChangeNotifier {
       // FB-52: count a connection that came up and said nothing. Read `_readyAt`
       // BEFORE the line below clears it — that field is the only record that
       // this particular attempt ever reached `ready`.
-      if (_reachedConnected && _readyAt == null) {
+      if (reachedConnected && _readyAt == null) {
         _setupFailuresSinceReady++;
         if (isSetupStalled) {
           // Cancel the retry the PREVIOUS failure already armed. Refusing to
@@ -1065,6 +1229,7 @@ class ConnectionController extends ChangeNotifier {
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
           !isSetupStalled &&
+          !_autoConnectGaveUp &&
           _desiredDeviceId != null) {
         if (wasOnline && Platform.isIOS) {
           // B: iOS hands a dropped HEALTHY link to CoreBluetooth autoConnect for
@@ -1072,7 +1237,20 @@ class ConnectionController extends ChangeNotifier {
           // *initial* connect (not wasOnline) still uses the capped backoff path
           // so a stale NSUUID surfaces fast (D.4).
           _armAutoConnect();
-        } else {
+        } else if (reachedConnected || _reconnectAttempts > 0) {
+          // FB-53: the ladder serves connections that EXISTED. A manual connect
+          // that never once reached `connected` has failed at the first step,
+          // and the exception path has already put a real reason in
+          // `lastError`; wrapping that in 2+4+8+16+30 s of "Reconnecting…
+          // (attempt N of 5)" replaces an honest answer in seconds with a
+          // wrong-sounding one after a minute and a half. The out-of-range
+          // device in `2026.08.03/004` is the case: today ~8 s to a message,
+          // and with the reducer fix but no policy change it would have been
+          // 108 s.
+          //
+          // The second term keeps a ladder ALREADY under way moving: a rung
+          // that fails also never reaches `connected`, and stopping there would
+          // strand the retry sequence after its first attempt.
           _scheduleReconnect();
         }
       }
@@ -1090,22 +1268,87 @@ class ConnectionController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     final id = _desiredDeviceId;
     if (id == null) return;
+    _autoConnectGaveUp = false;
     _event('auto-reconnect: autoConnect armed (iOS)');
+    // FB-53: and give it a deadline. See [autoConnectWatchdog] for why an
+    // unbounded hand-off only looked safe while the phantom disconnect was
+    // silently ending it.
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer =
+        Timer(autoConnectWatchdog, () => _onAutoConnectExpired(id));
     unawaited(_ble.connect(id, autoConnect: true).catchError((Object _) {}));
   }
 
+  /// Expose the iOS hand-off to tests.
+  ///
+  /// The only caller is gated on `Platform.isIOS`, which is false on every test
+  /// host, so without this the watchdog — the one thing standing between an
+  /// armed autoConnect and a permanently silent "connecting…" — could not be
+  /// exercised at all.
+  @visibleForTesting
+  void armAutoConnect() => _armAutoConnect();
+
+  /// The armed autoConnect ran out of time (FB-53 / [autoConnectWatchdog]).
+  void _onAutoConnectExpired(String id) {
+    // Anything that made this stale answers for itself: the link came up, the
+    // user disconnected, or the user pointed at a different unit.
+    if (isOnline || _manualDisconnect || _desiredDeviceId != id) return;
+    // Set BEFORE dropping the link: the drop below emits `disconnected`, and
+    // that is the event that starts the backoff ladder. Giving up must not be
+    // the thing that starts trying again.
+    _autoConnectGaveUp = true;
+    _lastError = 'reconnect_exhausted';
+    _event('auto-reconnect: autoConnect gave up after '
+        '${autoConnectWatchdog.inSeconds}s with no `ready` — pending connect '
+        'cancelled');
+    // The first place in this app that actually CANCELS a connect. Everywhere
+    // else an abandoned `device.connect()` is simply forgotten: teardown nulls
+    // the handle, so the `disconnect()` at the head of the next `connect()`
+    // returns early and the old attempt stays in flight inside the plugin.
+    // Two of them landing a millisecond apart is on record
+    // (`2026-08-01T11:39:36.517/.519`, fbp-code 1 and 10).
+    unawaited(_ble.disconnect().catchError((Object _) {}));
+    notifyListeners();
+  }
+
+  void _cancelAutoConnectWatchdog() {
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer = null;
+  }
+
   void _scheduleReconnect() {
-    _reconnectTimer?.cancel();
+    // FB-53: idempotent. A failed rung used to schedule the next one from TWO
+    // places — here, reached via the `disconnected` the failure emits, and the
+    // timer callback's own `catch` — so one failure burned two rungs. Worse,
+    // the second call arrived while the first had already armed the timer and
+    // the old first line of this method was `_reconnectTimer?.cancel()`: the
+    // reschedule silently killed the retry it was supposed to be adding.
+    // `2026.08.03/004` has the ladder dying at rung 3 twice (20:33:14.28,
+    // 20:33:49.95) and no `auto-reconnect gave up` line in either 08-03
+    // episode — the file's only three are 08-01 rolling residue — while the
+    // user was told "attempt 3 of 5".
+    //
+    // Returning rather than re-arming is the right way round: a pending retry
+    // is already the answer to "come back later", and the caller that wants an
+    // EARLIER one does not exist.
+    if (_reconnectTimer?.isActive ?? false) return;
     final id = _desiredDeviceId;
     if (id == null) return;
     // D.4: cap the auto-reconnect loop. A stale (iOS) id never resolves, so an
     // uncapped loop would re-arm forever; after [maxReconnectAttempts] we give
     // up and surface a real error within seconds.
     if (_reconnectAttempts >= maxReconnectAttempts) {
-      _lastError = 'reconnect_exhausted';
-      _event('auto-reconnect gave up after $_reconnectAttempts attempts '
-          '(stale device?)');
-      notifyListeners();
+      // The final failure reaches here TWICE — once via the `disconnected` it
+      // emits, once via the timer callback's own catch — and unlike a mid-run
+      // rung there is no armed timer for the guard above to see. One episode,
+      // one line: `ready` and a manual connect are the only things that clear
+      // `reconnect_exhausted`, so within an episode the sentinel is exact.
+      if (_lastError != 'reconnect_exhausted') {
+        _lastError = 'reconnect_exhausted';
+        _event('auto-reconnect gave up after $_reconnectAttempts attempts '
+            '(stale device?)');
+        notifyListeners();
+      }
       return;
     }
     final delay = reconnectBackoff(_reconnectAttempts);
@@ -1362,7 +1605,9 @@ class ConnectionController extends ChangeNotifier {
       unawaited(_monitor.stop());
     }
     _reconnectTimer?.cancel();
+    _cancelAutoConnectWatchdog();
     _linkSub?.cancel();
+    _diagnosticsSub?.cancel();
     _scanSub?.cancel();
     _scanningSub?.cancel();
     _adapterSub?.cancel();

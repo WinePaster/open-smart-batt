@@ -180,8 +180,12 @@ class _CenterReadout extends StatelessWidget {
           // it inside the ring regardless of text scale / value width.
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: RichText(
-              text: TextSpan(
+            // Text.rich, NOT RichText — see readout_grid.dart. Note this alone
+            // changes nothing HERE: the FittedBox below is already saturated
+            // (measured 2026-08-03: the box is 135.96 × 24.72 at every scale
+            // from 1.0 to 2.0), so the number cannot grow until the dial does.
+            child: Text.rich(
+              TextSpan(
                 text: value == null
                     ? '--'
                     : value!.toStringAsFixed(fractionDigits),
