@@ -1276,7 +1276,56 @@ class ConnectionController extends ChangeNotifier {
     _autoConnectTimer?.cancel();
     _autoConnectTimer =
         Timer(autoConnectWatchdog, () => _onAutoConnectExpired(id));
-    unawaited(_ble.connect(id, autoConnect: true).catchError((Object _) {}));
+    unawaited(_ble.connect(id, autoConnect: true)
+        .catchError((Object e) => _onArmAutoConnectFailed(id, e)));
+  }
+
+  /// The hand-off could not even be armed.
+  ///
+  /// This used to be `.catchError((Object _) {})` — swallowed whole. The cost
+  /// was 180 s of a blank screen: `_ble.connect` throwing means its own
+  /// teardown emits `disconnected`, and by the time that event reaches
+  /// [_onLinkState] the R3 condition is false on BOTH terms — `_reachedConnected`
+  /// was cleared by the drop that got us here, and `_reconnectAttempts` is 0
+  /// because the hand-off path never touches the ladder. So nothing was
+  /// scheduled, nothing was recorded, and the only thing left with an opinion
+  /// was a watchdog waiting on a connect that was never registered.
+  ///
+  /// POLICY: fall back to the ordinary backoff ladder rather than giving up on
+  /// the spot. [_armAutoConnect] is reached only from `wasOnline && isIOS` — a
+  /// link that was healthy and dropped — which is exactly the population R3
+  /// reserves the ladder for, and the population the ladder served on every
+  /// other platform all along. The hand-off is PREFERRED over the ladder (see
+  /// [autoConnectWatchdog]); a hand-off that does not exist is not something to
+  /// prefer. Giving up immediately would make an iOS device the only one that
+  /// gets no recovery attempt at all after a drop, on the strength of an error
+  /// raised before any attempt was made.
+  ///
+  /// The watchdog goes first, unconditionally: it is a deadline on a pending
+  /// connect, and there is no pending connect. Leaving it armed would fire
+  /// `autoconnect_timeout` three minutes into a ladder that has long since
+  /// finished, and drop whatever link the ladder had by then established.
+  void _onArmAutoConnectFailed(String id, Object error) {
+    _cancelAutoConnectWatchdog();
+    // Classify before anything else can overwrite it. A radio that went down
+    // between the drop and this call explains everything and the ladder is
+    // about to fail five times for that one reason; naming it now means the
+    // give-up card at the end of the ladder has something true to show.
+    final reason =
+        connectFailureError(adapter: _adapter, isIOS: Platform.isIOS, error: error);
+    if (reason != null) _lastError = reason;
+    _event('auto-reconnect: autoConnect could not be armed '
+        '(${reason ?? 'cancelled'}) — falling back to the backoff ladder: $error');
+    // The same guards the call site applies, re-read: this runs a microtask
+    // later and the user may have moved on.
+    if (!_manualDisconnect &&
+        _settings.autoReconnect &&
+        !isSetupStalled &&
+        !_autoConnectGaveUp &&
+        _desiredDeviceId == id) {
+      _scheduleReconnect();
+    }
+    notifyListeners();
   }
 
   /// Expose the iOS hand-off to tests.
