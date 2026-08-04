@@ -163,6 +163,101 @@ void main() {
       await appDb.close();
     });
 
+    // A 0.6.x user can be on ANY schema from v1 up. from=1 exercises the WHOLE
+    // cumulative chain (every `if (from < N)` block, 2→11), which — unlike the
+    // v10 case — ALTERs all four base tables. This is the regression that proves
+    // "will 0.6.x users fail to migrate?" is answered NO. The v1 DDL below is the
+    // current schema MINUS every column the migrations add; running them re-adds
+    // exactly those, ending at v11.
+    Future<void> createV1() async {
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) async {
+            // history v1 = current minus soc/device_id(v5), samples(v6), app_build(v7)
+            await db.execute('''
+              CREATE TABLE history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                pvlt REAL, svlt REAL, ampere REAL, temperature INTEGER,
+                dvol1 REAL, dvol2 REAL, dvol3 REAL, dvol4 REAL,
+                soh INTEGER, mode INTEGER, twf INTEGER, serial TEXT
+              )
+            ''');
+            // saved_devices v1 = minus name/stale(v3), product_class(v4),
+            // display_layout(v10), mac/serial(v11)
+            await db.execute('''
+              CREATE TABLE saved_devices (
+                id TEXT PRIMARY KEY,
+                alias TEXT NOT NULL DEFAULT '',
+                last_seen INTEGER, last_value REAL
+              )
+            ''');
+            // settings v1 = minus theme_mode(v2), background_monitoring(v8), retention(v9)
+            await db.execute('''
+              CREATE TABLE settings (
+                id INTEGER PRIMARY KEY,
+                auto_reconnect INTEGER NOT NULL DEFAULT 1,
+                poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
+                background_keep_alive INTEGER NOT NULL DEFAULT 0,
+                dark_theme INTEGER NOT NULL DEFAULT 1,
+                lang TEXT NOT NULL DEFAULT 'zhHant',
+                temp_unit TEXT NOT NULL DEFAULT 'celsius',
+                auto_log INTEGER NOT NULL DEFAULT 1,
+                raw_packet_log INTEGER NOT NULL DEFAULT 0,
+                log_max_bytes INTEGER NOT NULL DEFAULT 20971520
+              )
+            ''');
+            // diag_log v1 = minus device_id/session_id(v5), app_build(v7)
+            await db.execute('''
+              CREATE TABLE diag_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                direction TEXT NOT NULL, hex TEXT NOT NULL, note TEXT
+              )
+            ''');
+          },
+        ),
+      );
+      await db.insert('saved_devices', {'id': 'ANCIENT', 'alias': '古早電池'});
+      await db.insert('history', {'timestamp': 1000, 'serial': 'S1'});
+      await db.close();
+    }
+
+    Future<Set<String>> columnsOf(Database db, String table) async {
+      final rows = await db.rawQuery('PRAGMA table_info($table)');
+      return {for (final r in rows) r['name'] as String};
+    }
+
+    test('a v1 (0.6.x-era) DB migrates through EVERY step to v11, no failure',
+        () async {
+      await createV1();
+      // The whole point: opening at v11 must not throw, i.e. every ALTER in the
+      // 2→11 chain applied cleanly on the four v1 tables.
+      final appDb =
+          await AppDatabase.open(path: path, factory: databaseFactoryFfi);
+      final db = appDb.db;
+
+      // Every migration-added column is now present ⇒ the full chain ran.
+      expect(await columnsOf(db, 'saved_devices'),
+          containsAll(['name', 'stale', 'product_class', 'display_layout', 'mac', 'serial']));
+      expect(await columnsOf(db, 'settings'),
+          containsAll(['theme_mode', 'background_monitoring', 'retention']));
+      expect(await columnsOf(db, 'history'),
+          containsAll(['device_id', 'soc', 'samples', 'app_build']));
+      expect(await columnsOf(db, 'diag_log'),
+          containsAll(['device_id', 'session_id', 'app_build']));
+
+      // The ancient row survived the whole climb; new columns read back NULL.
+      final old = await DeviceRepo(appDb.db).getDevice('ANCIENT');
+      expect(old, isNotNull);
+      expect(old!.alias, '古早電池');
+      expect(old.mac, isNull);
+      expect(old.serial, isNull);
+      await appDb.close();
+    });
+
     test('the new columns exist and round-trip mac/serial', () async {
       await createV10();
       final appDb =
