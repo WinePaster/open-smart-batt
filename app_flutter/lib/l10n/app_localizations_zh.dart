@@ -366,18 +366,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get controlDetectCapacitor => '檢測電容';
 
   @override
-  String get statusAdvisoryNoteCapacitor =>
-      '本機為「超級電容」（依裝置回報的型別判定），僅顯示其支援的功能。電容本身的過壓／低壓／過溫保護仍持續作用。';
-
-  @override
-  String get statusAdvisoryNoteBattery =>
-      '本機為「智慧電池」（依裝置回報的型別判定）。防盜模式僅在支援的型號出現；解除斷電後建議勿再上鎖。';
-
-  @override
-  String get statusAdvisoryNoteUnclassified =>
-      '尚未辨識出裝置型別，因此暫時顯示較寬鬆的功能集（不含防盜）。可於上方自行指定型別。';
-
-  @override
   String get statusAdvisoryCapacitorUnknown =>
       '本機回報了 App 尚未認得的狀態，未必代表異常。請到「設定」匯出診斷日誌並回報給我們 —— 判斷所需的細節都在日誌裡。';
 

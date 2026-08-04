@@ -194,11 +194,25 @@ void main() {
     });
   });
 
-  group('advisory note is class-specific', () {
-    // It used to be ONE string saying "this unit is detected as a
-    // Supercapacitor", rendered under all three control sets — so a battery
-    // owner was told their battery was a capacitor.
-    testWidgets('a battery is never told it is a capacitor', (tester) async {
+  // REWRITTEN 2026-08-04 (design 0034 §5.4 ruling, Phase 2). This group used
+  // to assert that each body renders its own permanent "this unit is a …"
+  // note, and those three notes have now been removed — they fired on every
+  // render and told the owner nothing they could act on.
+  //
+  // Rewritten rather than deleted, because the bug the group was built for is
+  // still reachable. Before the notes were split per class there was ONE
+  // string saying "this unit is detected as a Supercapacitor", rendered under
+  // all three control sets, so a battery owner was told their battery was a
+  // capacitor. Deleting the copy removes today's instance of that bug; it does
+  // not remove the way back to it, since the next line of copy added to a
+  // shared helper lands in all three bodies again.
+  //
+  // So the assertion is INVERTED: a body must never render the other class's
+  // vocabulary. That holds now (nothing names a class at all) and keeps
+  // holding the day any class-specific copy returns — which is the protection
+  // the original tests were really providing.
+  group('no control body speaks another class\'s vocabulary', () {
+    testWidgets('a battery body never says capacitor', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -207,11 +221,15 @@ void main() {
 
       await pumpUnder(tester, s, const BatteryControls());
 
-      expect(find.textContaining('smart battery'), findsOneWidget);
-      expect(find.textContaining('super-capacitor'), findsNothing);
+      // The body did render — otherwise "no capacitor text" would be vacuous.
+      expect(find.text('Restore Power'), findsOneWidget);
+      // Nothing capacitor-flavoured, in any casing: this body has no capacitor
+      // control and no capacitor status to report.
+      expect(find.textContaining(RegExp('capacitor', caseSensitive: false)),
+          findsNothing);
     });
 
-    testWidgets('a capacitor says capacitor', (tester) async {
+    testWidgets('a capacitor body never says battery', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -220,10 +238,12 @@ void main() {
 
       await pumpUnder(tester, s, const CapacitorControls());
 
-      expect(find.textContaining('super-capacitor'), findsOneWidget);
+      expect(find.text('Check Capacitor'), findsOneWidget);
+      expect(find.textContaining(RegExp('battery', caseSensitive: false)),
+          findsNothing);
     });
 
-    testWidgets('an unclassified pack says so instead of naming a class',
+    testWidgets('the unclassified fallback claims neither class',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -233,9 +253,16 @@ void main() {
 
       await pumpUnder(tester, s, const PackControls());
 
-      expect(find.textContaining('not recognised yet'), findsOneWidget);
-      expect(find.textContaining('super-capacitor'), findsNothing);
-      expect(find.textContaining('smart battery'), findsNothing);
+      // This body legitimately OFFERS both classes' controls — that is what
+      // "bounded union" means — so the check here is narrower: it may hand you
+      // a capacitor button, but it may never assert which class the unit is.
+      expect(find.text('Check Capacitor'), findsOneWidget);
+      expect(find.text('Restore Power'), findsOneWidget);
+      expect(
+          find.textContaining(
+              RegExp('super-capacitor|smart battery', caseSensitive: false)),
+          findsNothing);
+      expect(find.textContaining('This unit is'), findsNothing);
     });
   });
 
