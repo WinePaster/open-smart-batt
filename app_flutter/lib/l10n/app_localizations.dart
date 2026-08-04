@@ -1961,14 +1961,8 @@ abstract class AppLocalizations {
   /// No description provided for @powerBankSocSubUnknown.
   ///
   /// In en, this message translates to:
-  /// **'Cell -- V'**
+  /// **'NO READING'**
   String get powerBankSocSubUnknown;
-
-  /// No description provided for @powerBankCellSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Cell {volts} V'**
-  String powerBankCellSub(String volts);
 
   /// No description provided for @powerBankCurrentLabel.
   ///
@@ -1987,12 +1981,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Charge SOC'**
   String get powerBankSocReadoutLabel;
-
-  /// No description provided for @powerBankCellVoltageLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Cell Voltage'**
-  String get powerBankCellVoltageLabel;
 
   /// No description provided for @powerBankOutputVoltageLabel.
   ///
@@ -2017,6 +2005,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'DISCHARGING'**
   String get powerBankDirectionDischarging;
+
+  /// No description provided for @powerBankDirectionIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'STANDBY'**
+  String get powerBankDirectionIdle;
 
   /// No description provided for @usbPortTypeA.
   ///

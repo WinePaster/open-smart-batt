@@ -62,11 +62,22 @@ class PowerBankView extends StatelessWidget {
     // claims a direction below reads this variable, so the icon, the badge and
     // the SVLT label cannot end up telling three different stories.
     final flow = powerFlowOf(tele.current);
-    // Sub-line under the SOC value: the single-cell voltage (PVLT is the cell
-    // voltage on a power bank, PROTOCOL.md §9.1) or a placeholder.
-    final subText = tele.pvlt == null
-        ? l10n.powerBankSocSubUnknown
-        : l10n.powerBankCellSub(tele.pvlt!.toStringAsFixed(2));
+    // Sub-line under the SOC value: the DIRECTION, which is what the caption
+    // above it has always promised ("電量 · 充電狀態" / "CHARGE · STATE").
+    //
+    // It used to be the single-cell voltage, and that was wrong twice over: the
+    // caption named a charging state the dial never drew, and the same `pvlt`
+    // was printed a second time in the readouts grid below — the duplication
+    // this file's own Q5+Q12 note forbids for current and port voltage. Both
+    // were reported from the field on v0.7.2 (feedback_log/2026.08.04/014).
+    // `unknown` is the absence of a reading, not a fourth state, so it renders
+    // as a placeholder rather than a word.
+    final subText = switch (flow) {
+      PowerFlow.charging => l10n.powerBankDirectionCharging,
+      PowerFlow.discharging => l10n.powerBankDirectionDischarging,
+      PowerFlow.idle => l10n.powerBankDirectionIdle,
+      PowerFlow.unknown => l10n.powerBankSocSubUnknown,
+    };
 
     // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
     // against the connected unit (Q3), so both providers are read: the id moves
@@ -94,6 +105,14 @@ class PowerBankView extends StatelessWidget {
                     percent: soc,
                     caption: l10n.powerBankSocCaption,
                     subText: subText,
+                    // Same glyph as the type chip above (this file's
+                    // [_flowIcon]) and the same colour as the energy-path row
+                    // below ([powerFlowColor]) — one direction, three places,
+                    // no chance of them disagreeing.
+                    subIcon: flow == PowerFlow.unknown ? null : _flowIcon(flow),
+                    subColor: flow == PowerFlow.unknown
+                        ? null
+                        : powerFlowColor(context, flow),
                     size: s,
                   ),
                 );
@@ -146,12 +165,17 @@ class PowerBankView extends StatelessWidget {
                 ),
             ],
             items: [
-              // Order (design 0035 §6, Q5+Q12): SOC, temperature, cell voltage,
-              // design capacity. The 0037 "output voltage" and "current" tiles
-              // are GONE from here — the energy-path row carries both now, so
+              // Order (design 0035 §6, Q5+Q12): SOC, temperature, design
+              // capacity. The 0037 "output voltage" and "current" tiles are
+              // GONE from here — the energy-path row carries both now, so
               // showing them again would print the same number twice. The
               // capacity tile still collapses when absent; the surviving order
               // holds.
+              //
+              // The CELL VOLTAGE tile is gone too (2026-08-05, owner's call on
+              // feedback_log/2026.08.04/014 §4.2). On a 1S bank it duplicated
+              // the dial's sub-line, and the sub-line is now the direction. If
+              // it ever comes back it belongs in ONE place, not two.
               Readout(
                 icon: _flowIcon(flow),
                 label: l10n.powerBankSocReadoutLabel,
@@ -163,12 +187,6 @@ class PowerBankView extends StatelessWidget {
                 label: l10n.dashboardReadoutTemperatureLabel,
                 value: _fmtInt(tele.temperatureDisplay),
                 unit: tele.temperatureUnitLabel,
-              ),
-              Readout(
-                icon: Icons.battery_5_bar,
-                label: l10n.powerBankCellVoltageLabel,
-                value: _fmt2(tele.pvlt),
-                unit: 'V',
               ),
               if (tele.sample.designCapacityMah != null)
                 Readout(
@@ -239,7 +257,6 @@ class PowerBankView extends StatelessWidget {
   }
 
   static String _fmtInt(double? v) => v == null ? '--' : v.round().toString();
-  static String _fmt2(double? v) => v == null ? '--' : v.toStringAsFixed(2);
 }
 
 // ---------------------------------------------------------------------------

@@ -34,6 +34,8 @@ class PvltGauge extends StatelessWidget {
     required this.fraction,
     required this.caption,
     required this.subText,
+    this.subIcon,
+    this.subColor,
     this.unit = 'V',
     this.fractionDigits = 2,
     this.size = 206,
@@ -67,6 +69,8 @@ class PvltGauge extends StatelessWidget {
     required num? percent,
     required String caption,
     required String? subText,
+    IconData? subIcon,
+    Color? subColor,
     double size = 206,
   }) =>
       PvltGauge(
@@ -75,6 +79,8 @@ class PvltGauge extends StatelessWidget {
         fraction: percentFraction(percent),
         caption: caption,
         subText: subText,
+        subIcon: subIcon,
+        subColor: subColor,
         unit: '%',
         fractionDigits: 0,
         size: size,
@@ -89,8 +95,21 @@ class PvltGauge extends StatelessWidget {
   /// Centre caption line (e.g. "PVLT · Primary Voltage" or "SOC · Charge").
   final String caption;
 
-  /// Sub-line under the caption (e.g. SOH / health / cell-voltage text).
+  /// Sub-line under the caption (e.g. SOH / health, or a power bank's direction).
   final String? subText;
+
+  /// Optional glyph drawn before [subText].
+  ///
+  /// Exists because the power-bank dial's caption PROMISES a charging state
+  /// ("電量 · 充電狀態") and, until design 0035 §7, drew none — the direction
+  /// lived only in two 14 px icons elsewhere on the page, so the caption named
+  /// something the dial did not show. A word alone would fix the honesty but
+  /// not the glanceability, which is the whole point of a dial.
+  final IconData? subIcon;
+
+  /// Colour for [subIcon] and [subText]. Null keeps the muted default, which is
+  /// what every non-directional sub-line (SOH, health) still wants.
+  final Color? subColor;
 
   /// Unit suffix rendered beside the value ("V" or "%").
   final String unit;
@@ -140,6 +159,8 @@ class PvltGauge extends StatelessWidget {
             fractionDigits: fractionDigits,
             caption: caption,
             subText: subText,
+            subIcon: subIcon,
+            subColor: subColor,
             maxWidth: size * 0.66,
           ),
         ],
@@ -156,6 +177,8 @@ class _CenterReadout extends StatelessWidget {
     required this.fractionDigits,
     required this.caption,
     required this.subText,
+    required this.subIcon,
+    required this.subColor,
     required this.maxWidth,
   });
 
@@ -164,6 +187,8 @@ class _CenterReadout extends StatelessWidget {
   final int fractionDigits;
   final String caption;
   final String? subText;
+  final IconData? subIcon;
+  final Color? subColor;
 
   /// Inner-ring width the centre stack must stay within (so the value never
   /// collides with the tick ring at large dial sizes / high text scale).
@@ -217,16 +242,32 @@ class _CenterReadout extends StatelessWidget {
           ),
           if (subText != null) ...[
             const SizedBox(height: 10),
-            Text(
-              subText!,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                letterSpacing: 1,
-                color: AppColors.cyan,
-              ),
+            // The glyph shares the sub-line's colour and rides inside the same
+            // FittedBox-free row: at high text scale the row must ellipsize the
+            // WORD, never drop the icon — the icon is the part that survives a
+            // glance.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (subIcon != null) ...[
+                  Icon(subIcon, size: 13, color: subColor ?? AppColors.cyan),
+                  const SizedBox(width: 5),
+                ],
+                Flexible(
+                  child: Text(
+                    subText!,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 1,
+                      color: subColor ?? AppColors.cyan,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],

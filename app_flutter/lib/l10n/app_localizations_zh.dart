@@ -1095,12 +1095,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankSocCaption => '電量 · 充電狀態';
 
   @override
-  String get powerBankSocSubUnknown => '電芯 -- V';
-
-  @override
-  String powerBankCellSub(String volts) {
-    return '電芯 $volts V';
-  }
+  String get powerBankSocSubUnknown => '尚無讀數';
 
   @override
   String get powerBankCurrentLabel => '電流';
@@ -1110,9 +1105,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get powerBankSocReadoutLabel => '電量 SOC';
-
-  @override
-  String get powerBankCellVoltageLabel => '電芯電壓';
 
   @override
   String get powerBankOutputVoltageLabel => '輸出電壓';
@@ -1125,6 +1117,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get powerBankDirectionDischarging => '放電中';
+
+  @override
+  String get powerBankDirectionIdle => '待機';
 
   @override
   String get usbPortTypeA => 'Type-A';

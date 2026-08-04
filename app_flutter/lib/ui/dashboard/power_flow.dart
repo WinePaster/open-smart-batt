@@ -13,6 +13,10 @@
 /// prevents.
 library;
 
+import 'package:flutter/widgets.dart';
+
+import '../../theme/app_theme.dart';
+
 /// Which way energy is moving through a power bank.
 ///
 /// [unknown] is NOT a fourth state to render — it is the absence of a reading
@@ -37,3 +41,15 @@ PowerFlow powerFlowOf(double? current) {
   if (current.abs() < kPowerFlowDeadbandA) return PowerFlow.idle;
   return current < 0 ? PowerFlow.charging : PowerFlow.discharging;
 }
+
+/// The colour a direction is drawn in, wherever it is drawn.
+///
+/// Lives beside [powerFlowOf] for the same reason the derivation does: the SOC
+/// gauge's sub-line and the energy-path row now both name a direction, and a
+/// second copy of this table is how "charging" ends up green on one line and
+/// amber on the line below it.
+Color powerFlowColor(BuildContext context, PowerFlow flow) => switch (flow) {
+      PowerFlow.charging => AppColors.good,
+      PowerFlow.discharging => AppColors.amber,
+      PowerFlow.idle || PowerFlow.unknown => context.colors.muted,
+    };

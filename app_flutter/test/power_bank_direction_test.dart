@@ -20,8 +20,15 @@
 //     direction (it is the other face of the readouts card);
 //   * the signed, zero-spanning current TRACK, deliberately NOT direction-
 //     switched — a sign flip mid-window is how a start-up load is read;
-//   * the surviving 4-tile grid order (SOC, temp, cell, [capacity]) and the
-//     ABSENCE of the two moved tiles (the Q5+Q12 de-duplication guard).
+//   * the surviving grid order (SOC, temp, [capacity]) and the ABSENCE of the
+//     moved/removed tiles (the Q5+Q12 de-duplication guard);
+//   * the DIAL's direction sub-line (2026-08-05). The dial's caption has always
+//     read "SOC · State of Charge" / "電量 · 充電狀態" while the dial drew no
+//     state at all — the sub-line under it was the cell voltage, which was ALSO
+//     printed as a grid tile. Reported from the field on v0.7.2
+//     (feedback_log/2026.08.04/014 §4.1 / §4.2). The cell tile is gone and the
+//     sub-line now carries the direction, which is why every flow-glyph count
+//     below went up by exactly one.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -37,6 +44,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
+import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readout_grid.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -160,6 +168,9 @@ void main() {
   ReadoutsCard readoutsCard(WidgetTester tester) =>
       tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
 
+  PvltGauge gauge(WidgetTester tester) =>
+      tester.widget<PvltGauge>(find.byType(PvltGauge));
+
   /// The SVLT chart-track legend, which still follows the direction after the
   /// voltage READOUT tile moved to the energy-path row.
   String? svltTrackLabel(WidgetTester tester) => readoutsCard(tester)
@@ -203,8 +214,10 @@ void main() {
   });
 
   // =========================================================================
-  // The type-chip + SOC-tile glyph still follows the flow (FB-47 symptom 1).
-  // Two flow glyphs remain (chip + SOC tile) now that the current tile is gone.
+  // The type-chip + SOC-tile + DIAL glyph all follow the flow (FB-47 symptom
+  // 1). THREE flow glyphs now: chip, SOC tile, and the dial's sub-line. They
+  // read one derivation (`powerFlowOf`) and one glyph table (`_flowIcon`), so
+  // the count is the assertion that they cannot drift apart.
   //
   // NB (design 0035 Phase 2): the energy-path row is now wired into this page,
   // and the class DOES resolve to power bank off the 0x22 wire byte, so the row
@@ -215,10 +228,10 @@ void main() {
   // neither of those.
   // =========================================================================
   group('the glyph follows the flow', () {
-    testWidgets('charging draws the charging battery (chip + SOC tile)',
+    testWidgets('charging draws the charging battery (chip + SOC tile + dial)',
         (tester) async {
       await pumpBank(tester, current: -0.43);
-      expect(iconCount(tester, Icons.battery_charging_full), 2);
+      expect(iconCount(tester, Icons.battery_charging_full), 3);
       // The lone bolt is the energy-path row's (waiting) heading, not a flow
       // glyph — charging draws no discharge glyph on chip or SOC tile.
       expect(iconCount(tester, Icons.bolt), 1);
@@ -230,20 +243,24 @@ void main() {
       // FB-47 symptom 1, pinned: NOTHING here may show a charging battery while
       // the bank is being drained.
       expect(iconCount(tester, Icons.battery_charging_full), 0);
-      // chip + SOC tile + the energy-path row's heading = 3.
-      expect(iconCount(tester, Icons.bolt), 3);
+      // chip + SOC tile + dial sub-line + the energy-path row's heading = 4.
+      expect(iconCount(tester, Icons.bolt), 4);
     });
 
     testWidgets('idle draws neither', (tester) async {
       await pumpBank(tester, current: 0.0);
-      expect(iconCount(tester, Icons.pause_circle_outline), 2);
+      expect(iconCount(tester, Icons.pause_circle_outline), 3);
       expect(iconCount(tester, Icons.battery_charging_full), 0);
     });
 
     testWidgets('no reading keeps the status-quo glyph (chip + SOC tile)',
         (tester) async {
       await pumpBank(tester, current: null);
+      // Still 2, NOT 3: `unknown` is the absence of a reading, so the dial
+      // draws no glyph rather than guessing one. Its sub-line says so in words.
       expect(iconCount(tester, Icons.battery_charging_full), 2);
+      expect(gauge(tester).subIcon, isNull);
+      expect(gauge(tester).subText, 'NO READING');
     });
   });
 
@@ -285,16 +302,49 @@ void main() {
   });
 
   // =========================================================================
-  // Readout order after Q5+Q12: SOC, temperature, cell voltage, [capacity].
-  // Classified by icon/unit so l10n wording can change freely.
+  // Readout order after Q5+Q12 and the 2026-08-05 cell-tile removal:
+  // SOC, temperature, [capacity]. Classified by icon/unit so l10n wording can
+  // change freely.
   // =========================================================================
-  testWidgets('readout tiles are in the design-0035 4-tile order',
-      (tester) async {
+  testWidgets('readout tiles are in the surviving grid order', (tester) async {
     await pumpBank(tester, current: 1.2); // pumpBank registers its own teardown
 
     // designCapacityMah is unset in this snapshot, so the capacity tile is
-    // absent; the surviving three must be in order, with current + voltage gone.
-    expect(readoutsCard(tester).items.map(kind).toList(),
-        ['soc', 'temp', 'cell']);
+    // absent; the surviving two must be in order, with current, port voltage
+    // and cell voltage all gone.
+    expect(readoutsCard(tester).items.map(kind).toList(), ['soc', 'temp']);
+  });
+
+  // =========================================================================
+  // The dial says what its caption promises (feedback_log/2026.08.04/014 §4.1).
+  // =========================================================================
+  group('the dial sub-line carries the direction', () {
+    testWidgets('charging', (tester) async {
+      await pumpBank(tester, current: -0.43);
+      expect(gauge(tester).subText, 'CHARGING');
+      expect(gauge(tester).subIcon, Icons.battery_charging_full);
+    });
+
+    testWidgets('discharging', (tester) async {
+      await pumpBank(tester, current: 1.2);
+      expect(gauge(tester).subText, 'DISCHARGING');
+      expect(gauge(tester).subIcon, Icons.bolt);
+    });
+
+    testWidgets('in-band current is standby, not a direction', (tester) async {
+      await pumpBank(tester, current: 0.0);
+      expect(gauge(tester).subText, 'STANDBY');
+    });
+
+    testWidgets('the cell voltage is printed exactly zero times', (tester) async {
+      // It used to appear twice on one screen: the dial sub-line AND a grid
+      // tile, both reading `tele.pvlt`. Owner's call was to drop it, not to
+      // de-duplicate it — a 1S bank's cell voltage is the pack voltage the SOC
+      // ring already stands for.
+      await pumpBank(tester, current: 1.2);
+      expect(readoutsCard(tester).items.map(kind).toList(),
+          isNot(contains('cell')));
+      expect(find.byIcon(Icons.battery_5_bar), findsNothing);
+    });
   });
 }

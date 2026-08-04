@@ -113,9 +113,9 @@ class _PowerPathRowState extends State<PowerPathRow> {
     if (word != null) {
       children
         ..add(_dot(context))
-        ..add(_flowIcon(flow, _flowColor(context, flow)))
+        ..add(_flowIcon(flow, powerFlowColor(context, flow)))
         ..add(Text(word,
-            style: TextStyle(fontSize: 12.5, color: _flowColor(context, flow))));
+            style: TextStyle(fontSize: 12.5, color: powerFlowColor(context, flow))));
     }
     return Wrap(
       spacing: 7,
@@ -155,7 +155,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
       ));
     } else {
       final word = _directionWord(l10n, flow);
-      final color = _flowColor(context, flow);
+      final color = powerFlowColor(context, flow);
       row
         ..add(_flowIcon(flow, color))
         ..add(Text(word ?? '--',
@@ -322,12 +322,6 @@ class _PowerPathRowState extends State<PowerPathRow> {
     };
     return Icon(icon, size: 15, color: color);
   }
-
-  Color _flowColor(BuildContext context, PowerFlow flow) => switch (flow) {
-        PowerFlow.charging => AppColors.good,
-        PowerFlow.discharging => AppColors.amber,
-        PowerFlow.idle || PowerFlow.unknown => context.colors.muted,
-      };
 
   Widget _portBadge(BuildContext context, AppLocalizations l10n, bool isTypeC,
       bool active) {
