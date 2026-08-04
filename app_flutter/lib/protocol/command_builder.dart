@@ -132,6 +132,22 @@ class CommandBuilder {
         auth(creds, flag: 0x01),
       ]);
 
+  /// Read-back / poll frame for a selector: `[B8, sel, 0x01, 0x00, XOR, 0x26]`.
+  ///
+  /// Live HCI capture (2026-08-04): the engineering app sends this immediately
+  /// after every mode write to poll the selector — the `flag=0x01, count=0`
+  /// variant, with a constant trailing `0x26` terminator. Our own single
+  /// mode+auth write was observed to be intermittent (FB 2026.08.04/003), and
+  /// replicating the eng-app's mode-write ++ read-back pairing is the candidate
+  /// fix (design 0036 §10).
+  Uint8List readBack(int selector) => Uint8List.fromList([
+        ...buildFrame(selector, const [], flag: 0x01),
+        0x26,
+      ]);
+
+  /// Read-back frame for the mode selector (`0x23`).
+  Uint8List modeReadBack() => readBack(Commands.modeSet);
+
   /// Threshold-set frame from raw bytes:
   /// `[B8, 2B, flag, 04, ovByte, uvByte, otByte, trailing, XOR]`.
   Uint8List thresholdsRaw(

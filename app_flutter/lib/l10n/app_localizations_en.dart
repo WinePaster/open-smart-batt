@@ -450,6 +450,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String modeUnchangedRetriedSnack(String action, int count, String status) {
+    return '$action sent $count×, but the device still reports: $status. It can take a few tries or a reconnect — please try again shortly.';
+  }
+
+  @override
   String get cutOffDialogTitle => 'Send Cut-off Command';
 
   @override

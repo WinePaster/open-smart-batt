@@ -782,6 +782,12 @@ abstract class AppLocalizations {
   /// **'{action} sent without auth (experimental); the device state did not change (still: {status}).'**
   String modeUnchangedNoAuthSnack(String action, String status);
 
+  /// No description provided for @modeUnchangedRetriedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} sent {count}×, but the device still reports: {status}. It can take a few tries or a reconnect — please try again shortly.'**
+  String modeUnchangedRetriedSnack(String action, int count, String status);
+
   /// No description provided for @cutOffDialogTitle.
   ///
   /// In en, this message translates to:

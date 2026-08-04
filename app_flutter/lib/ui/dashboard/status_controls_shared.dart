@@ -203,6 +203,20 @@ Future<String> _modeWriteOutcome(
       : l10n.modeUnchangedSnack(action, status);
 }
 
+/// Polls `0x23` for up to [window] and returns whether it moved off [before].
+/// The bool form the release retry loop needs — [_modeWriteOutcome] is the
+/// message form used by the single-shot cut-off / anti-theft actions.
+Future<bool> _modeChangedWithin(
+    TelemetryController tele, int? before, Duration window) async {
+  const step = Duration(milliseconds: 500);
+  final deadline = DateTime.now().add(window);
+  while (DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(step);
+    if (tele.mode != before) return true;
+  }
+  return false;
+}
+
 /// Resolve release auth WITHOUT asking the user (design 0036 §4.2):
 ///   * `cb`    — from the device's own dealer code (selector 0x27), via
 ///     [CommandBuilder.cbFromFieldCb] (the wire-confirmed 4-char rule:
@@ -229,6 +243,11 @@ AuthCredentials? releaseAuthFromDealerCode(String? dealerCode) {
   }
 }
 
+/// Release retries the mode+auth ++ read-back pair this many times, watching
+/// `0x23` for [_releaseWindow] after each, before it reports (design 0036 §10).
+const int _releaseAttempts = 3;
+const Duration _releaseWindow = Duration(seconds: 3);
+
 /// 復電 — write "normal" (mode 0x00) bundled with the auth frame.
 ///
 /// Owner's decision 2026-08-04 (design 0036): the release always carries auth
@@ -240,9 +259,13 @@ AuthCredentials? releaseAuthFromDealerCode(String? dealerCode) {
 /// When the dealer code has not streamed yet, falls back to the manual auth
 /// dialog so an owner who knows their code can still proceed.
 ///
-/// [_modeWriteOutcome] reads `0x23` back and reports what actually happened, so
-/// a wrong assumption (e.g. a different dealer's password) surfaces as "state
-/// unchanged" rather than a false success.
+/// Each attempt writes the mode+auth frame, then the `0x23` read-back poll
+/// ([ConnectionController.pollMode]) — the pairing the engineering app uses —
+/// and watches `0x23`. A single write was observed to be intermittent (an
+/// identical frame failed at 15:58 and succeeded at 16:17 on the same pack,
+/// FB 2026.08.04/003), so we retry the pair up to [_releaseAttempts] times
+/// before reporting. `0x23` back-reads make a wrong assumption (e.g. a different
+/// dealer's password) surface as "unchanged" rather than a false success.
 ///
 /// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
 /// hence the control is no longer named after cut-off alone.
@@ -288,11 +311,18 @@ Future<void> releaseCutOff(
     creds = req.creds!;
   }
   try {
-    await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum);
+    var changed = false;
+    for (var i = 0; i < _releaseAttempts && !changed; i++) {
+      await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
+      await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
+      changed = await _modeChangedWithin(tele, before, _releaseWindow);
+    }
+    final status = runStatusOf(l10n, tele.mode).label;
     messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 3600),
-      content: Text(await _modeWriteOutcome(l10n, tele,
-          action: action, before: before, skipAuth: false)),
+      duration: const Duration(milliseconds: 4200),
+      content: Text(changed
+          ? l10n.modeChangedSnack(action, status)
+          : l10n.modeUnchangedRetriedSnack(action, _releaseAttempts, status)),
     ));
   } catch (e) {
     messenger.showSnackBar(

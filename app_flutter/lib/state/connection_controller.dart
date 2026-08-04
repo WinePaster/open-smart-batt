@@ -1046,6 +1046,15 @@ class ConnectionController extends ChangeNotifier {
   /// EXPERIMENTAL release with no auth (mode 0x00 only). See [switchModeOnly].
   Future<void> releaseCutOffModeOnly() => switchModeOnly(ModeArg.unlock);
 
+  /// Send the `0x23` read-back/poll frame (`b8 23 01 00 9a 26`).
+  ///
+  /// The engineering app emits this right after every mode write (live HCI
+  /// capture); a lone mode+auth write was observed to be intermittent
+  /// (FB 2026.08.04/003), so [releaseCutOff] now pairs each write with this poll
+  /// to match the known-good sequence (design 0036 §10).
+  Future<void> pollMode() =>
+      writeCommand(const CommandBuilder().modeReadBack());
+
   /// Standalone verify-auth (9-byte auth frame).
   Future<void> sendAuth({required int cb, required int pwSum}) =>
       _ble.sendAuth(cb: cb, pwSum: pwSum);

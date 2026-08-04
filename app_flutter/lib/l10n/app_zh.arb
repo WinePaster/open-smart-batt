@@ -114,6 +114,7 @@
   "modeChangedSnack": "{action}完成 —— 裝置現在回報：{status}。",
   "modeUnchangedSnack": "已送出{action}指令，但裝置狀態沒有變更（仍為：{status}）。",
   "modeUnchangedNoAuthSnack": "已送出{action}（實驗：未帶驗證），裝置狀態沒有變更（仍為：{status}）。",
+  "modeUnchangedRetriedSnack": "已送出{action}共 {count} 次，裝置仍回報：{status}。有時需多試幾次或重新連線後才生效，請稍後再試。",
   "cutOffDialogTitle": "送出斷電指令",
   "cutOffDialogBody": "斷電會讓電池切斷輸出，車輛將無法啟動。\n\n解除斷電這條路徑目前尚未被證實可用。我們手上沒有任何一次擷取顯示裝置對模式指令有回應，認證值的推導方式也還在查證中。如果解除失敗，本 App 無法讓這顆電池復電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。",
   "cutOffDialogConfirm": "我了解，仍要送出",

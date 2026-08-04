@@ -433,6 +433,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String modeUnchangedRetriedSnack(String action, int count, String status) {
+    return '已送出$action共 $count 次，裝置仍回報：$status。有時需多試幾次或重新連線後才生效，請稍後再試。';
+  }
+
+  @override
   String get cutOffDialogTitle => '送出斷電指令';
 
   @override

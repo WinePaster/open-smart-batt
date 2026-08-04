@@ -44,4 +44,10 @@ void main() {
     final bytes = const CommandBuilder().switchMode(ModeArg.unlock, creds);
     expect(_hex(bytes), 'b8230001009ab82a010400a801e4da');
   });
+
+  test('mode read-back frame == the captured eng-app poll (golden)', () {
+    // The pairing partner conn.pollMode() sends after each release write
+    // (design 0036 §10): B8 23 01 00 <xor=9a> 26.
+    expect(_hex(const CommandBuilder().modeReadBack()), 'b82301009a26');
+  });
 }
