@@ -68,12 +68,12 @@ void main() {
       expect(m.chartFootnote!(l10n), l10n.capacitorChartNoCurrentNote);
     });
 
-    test('power bank: SOC ring, USB card, no DVOL, no SOH', () {
+    test('power bank: SOC ring, energy-path row, no DVOL, no SOH', () {
       const m = DisplayModules.powerBank;
 
       expect(m.has(DisplayModule.gaugeSoc), isTrue);
       expect(m.has(DisplayModule.gaugeVoltage), isFalse);
-      expect(m.has(DisplayModule.usb), isTrue);
+      expect(m.has(DisplayModule.energyPath), isTrue);
       expect(m.has(DisplayModule.cells), isFalse);
       // power_bank_view.dart's sub-line is the single-cell voltage, not SOH.
       expect(m.sohGaugeLine, isNull);
@@ -153,8 +153,8 @@ void main() {
         ProductClass.powerBank: false,
         ProductClass.unknown: true,
       },
-      // usb — power bank only.
-      DisplayModule.usb: {
+      // energyPath (formerly usb) — power bank only.
+      DisplayModule.energyPath: {
         ProductClass.smartBattery: false,
         ProductClass.supercapacitor: false,
         ProductClass.powerBank: true,

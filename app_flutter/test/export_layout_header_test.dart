@@ -155,7 +155,7 @@ void main() {
           cls: ProductClass.powerBank,
           layout: const DisplayLayout(watchface: Watchface.diagnostic),
         ),
-        'face=diagnostic modules=readouts,usb,gaugeSoc',
+        'face=diagnostic modules=readouts,energyPath,gaugeSoc',
       );
     });
 

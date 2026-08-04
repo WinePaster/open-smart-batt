@@ -67,8 +67,17 @@ enum DisplayModule {
   /// not stream DVOL at all.
   cells,
 
-  /// USB dual-port status. Power bank only.
-  usb,
+  /// The power-bank energy-path row ([PowerPathRow], design 0035): one line
+  /// answering which way energy moves, through which port, on what protocol, at
+  /// what voltage/current. Power bank only.
+  ///
+  /// ⚠️ Renamed from `usb` (design 0035 Q4). The export preamble's `modules=`
+  /// list therefore reads `energyPath` where captures before this build read
+  /// `usb` — the two name the SAME registry slot. The analysis side must map
+  /// old `usb` → new `energyPath` when comparing `modules=` across builds
+  /// (design 0035 §5.3 / R4); storage is unaffected, `DisplayLayout` stores only
+  /// the face slug, never a module name.
+  energyPath,
 }
 
 /// Resolves the gauge's SOH sub-line for a class, given the live bucket.
@@ -180,18 +189,20 @@ class DisplayModules {
     chartFootnote: _capacitorChartFootnote,
   );
 
-  /// Power bank: a different shell entirely ([PowerBankView]) — SOC ring, USB
-  /// card, no DVOL, no protection controls.
+  /// Power bank: a different shell entirely ([PowerBankView]) — SOC ring,
+  /// energy-path row, no DVOL, no protection controls.
   static const DisplayModules powerBank = DisplayModules(
     modules: {
       DisplayModule.gaugeSoc,
       DisplayModule.readouts,
       DisplayModule.chart,
-      DisplayModule.usb,
+      DisplayModule.energyPath,
     },
     // The SOC ring renders whether or not a value has arrived (a missing SOC
-    // shows as `--`), and the USB card is unconditional today, so no module of
-    // this class disappears on data.
+    // shows as `--`). The energy-path row is likewise unconditional: before its
+    // first `0x4B` it shows "waiting for device" rather than disappearing
+    // (design 0035 §4.6 / §5.2), so it is a WAITING state, not a data gate —
+    // hence still absent from dataGated.
     dataGated: <DisplayModule>{},
     chartTracks: {TrendField.current, TrendField.svlt, TrendField.soc},
     // The gauge sub-line here is the single-cell voltage, not SOH; it is not a

@@ -1,4 +1,5 @@
-// FB-47 — the power-bank page has to SAY which way the energy is going.
+// FB-47 / design 0037 / design 0035 Phase 2 — direction awareness on the
+// power-bank page, AFTER the current + voltage readouts left the grid.
 //
 // Since FB-46 `current` is signed (design 0030: discharge positive, charge
 // negative). The sign alone was not enough: a 9.15 V PD charge drew `-0.43 A`
@@ -6,18 +7,21 @@
 // the owner who ruled on the sign convention read his own device as broken
 // (`feedback-analysis/2026.08.04-002.md`).
 //
-// What is pinned here is the CONTRACT, not the styling: for each of the three
-// directions, what the page says in words, which glyph it draws, and — for the
-// two cases where saying nothing is the honest answer — that it says nothing.
+// design 0037 first fixed the READOUTS (magnitude + charge/discharge badge,
+// ±0.05 A dead-band). design 0035 Phase 2 (Q5+Q12) then MOVED those two
+// readouts — the current tile and the "output/input voltage" tile — OFF this
+// grid and onto the energy-path row, so the same number is not printed twice.
+// Their per-direction wording is now pinned in `power_path_row_test.dart`.
 //
-// Updated for design 0037: the current READOUT now shows the MAGNITUDE plus a
-// charge/discharge badge (the ±0.05 A dead-band shows the number but names no
-// state); the signed, zero-spanning chart TRACK is untouched (bottom test).
-//
-// NOT pinned, deliberately: the signed, zero-spanning current TRACK. A sign
-// flip mid-window is how a start-up load is recognised, so that axis stays as
-// it is whatever the instantaneous direction is; the test at the bottom is
-// there to stop a future "make the chart consistent too" from removing it.
+// What THIS file still owns after that move:
+//   * the type-chip glyph, which follows the flow (charging battery only while
+//     charging — FB-47 symptom 1);
+//   * the chart's SVLT track legend, which still relabels input/output by
+//     direction (it is the other face of the readouts card);
+//   * the signed, zero-spanning current TRACK, deliberately NOT direction-
+//     switched — a sign flip mid-window is how a start-up load is read;
+//   * the surviving 4-tile grid order (SOC, temp, cell, [capacity]) and the
+//     ABSENCE of the two moved tiles (the Q5+Q12 de-duplication guard).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -153,192 +157,144 @@ void main() {
   int iconCount(WidgetTester tester, IconData icon) =>
       tester.widgetList(find.byIcon(icon)).length;
 
+  ReadoutsCard readoutsCard(WidgetTester tester) =>
+      tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
+
+  /// The SVLT chart-track legend, which still follows the direction after the
+  /// voltage READOUT tile moved to the energy-path row.
+  String? svltTrackLabel(WidgetTester tester) => readoutsCard(tester)
+      .tracks
+      .firstWhere((t) => t.field == TrendField.svlt)
+      .label;
+
+  String kind(Readout r) {
+    if (r.unit == '%') return 'soc';
+    if (r.unit == 'A') return 'current';
+    if (r.icon == Icons.thermostat) return 'temp';
+    if (r.icon == Icons.usb) return 'svlt';
+    if (r.icon == Icons.battery_5_bar) return 'cell';
+    return 'other';
+  }
+
   // =========================================================================
-  // Charging — the case that produced the report
+  // The grid no longer carries current or voltage (design 0035 Q5+Q12).
+  // These are the de-duplication guards: the two moved tiles must be ABSENT so
+  // the energy-path row is the only place that number appears.
   // =========================================================================
-  group('charging (current < 0)', () {
-    testWidgets('says CHARGING, keeps the minus, relabels 0x37 as input',
+  group('Q5+Q12 — current and voltage tiles are gone from the grid', () {
+    testWidgets('no current tile and no voltage tile, either direction',
         (tester) async {
       await pumpBank(tester, current: -0.43);
+      final items = readoutsCard(tester).items.map(kind).toList();
+      expect(items, isNot(contains('current')),
+          reason: 'the current readout now lives on the energy-path row');
+      expect(items, isNot(contains('svlt')),
+          reason: 'the port-voltage readout now lives on the energy-path row');
+    });
 
-      // The word. Without it the minus sign is the whole explanation, which is
-      // precisely what was not enough.
-      expect(find.text('CHARGING'), findsOneWidget);
-      expect(find.text('DISCHARGING'), findsNothing);
-      expect(find.text('IDLE'), findsNothing);
+    testWidgets('the moved numbers do not print as grid tiles', (tester) async {
+      // The magnitude/voltage strings used to be tiles here; they must not be
+      // (the energy-path row is a separate widget, tested elsewhere, and is not
+      // even built in this harness — the class is not overridden to powerBank).
+      await pumpBank(tester, current: -0.43);
+      // No Icons.usb tile (that was the voltage readout's icon).
+      expect(find.byIcon(Icons.usb), findsNothing);
+    });
+  });
 
-      // Magnitude only (design 0037 supersedes FB-47's signed readout): the
-      // badge carries the direction, the number does not. The chart track keeps
-      // its sign — that is the bottom test, and it must stay.
-      expect(find.text('0.43 A'), findsOneWidget);
-      expect(find.text('-0.43 A'), findsNothing);
-
-      // 0x37 reads the port-side voltage: 9.15 V here is what is coming IN.
-      expect(find.text('INPUT VOLTAGE'), findsOneWidget);
-      expect(find.text('OUTPUT VOLTAGE'), findsNothing);
-
-      // Charging is the one direction for which the old hardwired glyph was
-      // right, so it stays — on the type chip, the SOC tile and the current
-      // tile alike.
-      expect(iconCount(tester, Icons.battery_charging_full), 3);
-      expect(iconCount(tester, Icons.bolt), 0);
+  // =========================================================================
+  // The type-chip + SOC-tile glyph still follows the flow (FB-47 symptom 1).
+  // Two flow glyphs remain (chip + SOC tile) now that the current tile is gone.
+  //
+  // NB (design 0035 Phase 2): the energy-path row is now wired into this page,
+  // and the class DOES resolve to power bank off the 0x22 wire byte, so the row
+  // renders. With no `0x4B` in these snapshots it sits in its "waiting" state —
+  // a card whose HEADING draws one extra `Icons.bolt`. That single bolt is the
+  // proof the row is on the page; the flow glyphs (battery_charging_full /
+  // pause_circle_outline) are the clean FB-47 signal because the row draws
+  // neither of those.
+  // =========================================================================
+  group('the glyph follows the flow', () {
+    testWidgets('charging draws the charging battery (chip + SOC tile)',
+        (tester) async {
+      await pumpBank(tester, current: -0.43);
+      expect(iconCount(tester, Icons.battery_charging_full), 2);
+      // The lone bolt is the energy-path row's (waiting) heading, not a flow
+      // glyph — charging draws no discharge glyph on chip or SOC tile.
+      expect(iconCount(tester, Icons.bolt), 1);
       expect(iconCount(tester, Icons.pause_circle_outline), 0);
     });
 
-    testWidgets('zh-Hant says 充電中 / 輸入電壓', (tester) async {
-      await pumpBank(tester, current: -0.43, locale: 'zh');
-
-      expect(find.text('充電中'), findsOneWidget);
-      expect(find.text('輸入電壓'), findsOneWidget);
-      expect(find.text('輸出電壓'), findsNothing);
-    });
-  });
-
-  // =========================================================================
-  // Discharging — the direction that used to draw a charging icon
-  // =========================================================================
-  group('discharging (current > 0)', () {
-    testWidgets('says DISCHARGING and stops drawing a charging battery',
-        (tester) async {
+    testWidgets('discharging stops drawing a charging battery', (tester) async {
       await pumpBank(tester, current: 1.2);
-
-      expect(find.text('DISCHARGING'), findsOneWidget);
-      expect(find.text('CHARGING'), findsNothing);
-      expect(find.text('1.20 A'), findsOneWidget);
-
-      // Symptom 1 of FB-47, pinned: NOTHING on this page may show a charging
-      // battery while the bank is being drained.
+      // FB-47 symptom 1, pinned: NOTHING here may show a charging battery while
+      // the bank is being drained.
       expect(iconCount(tester, Icons.battery_charging_full), 0);
+      // chip + SOC tile + the energy-path row's heading = 3.
       expect(iconCount(tester, Icons.bolt), 3);
-
-      // Output really is output here, so the original wording is correct and
-      // must not be "fixed" too.
-      expect(find.text('OUTPUT VOLTAGE'), findsOneWidget);
-      expect(find.text('INPUT VOLTAGE'), findsNothing);
     });
 
-    testWidgets('zh-Hant says 放電中 and keeps 輸出電壓', (tester) async {
-      await pumpBank(tester, current: 1.2, locale: 'zh');
-
-      expect(find.text('放電中'), findsOneWidget);
-      expect(find.text('輸出電壓'), findsOneWidget);
-      expect(find.text('輸入電壓'), findsNothing);
-    });
-  });
-
-  // =========================================================================
-  // Idle — and the -0.00 that started it
-  // =========================================================================
-  group('idle (|current| below the ±0.05 deadband, design 0037)', () {
-    testWidgets('a flat zero shows the magnitude but names NO state',
-        (tester) async {
+    testWidgets('idle draws neither', (tester) async {
       await pumpBank(tester, current: 0.0);
-
-      // Design 0037: inside the band there is no direction to name, so the
-      // badge drops — but the reading itself still shows.
-      expect(find.text('CHARGING'), findsNothing);
-      expect(find.text('DISCHARGING'), findsNothing);
-      expect(find.text('0.00 A'), findsOneWidget);
-      expect(iconCount(tester, Icons.pause_circle_outline), 3);
+      expect(iconCount(tester, Icons.pause_circle_outline), 2);
       expect(iconCount(tester, Icons.battery_charging_full), 0);
-      expect(find.text('OUTPUT VOLTAGE'), findsOneWidget);
     });
 
-    testWidgets('a non-zero draw inside the band shows its magnitude, no badge',
+    testWidgets('no reading keeps the status-quo glyph (chip + SOC tile)',
         (tester) async {
-      // 30 mA — real, but below the ±0.05 direction threshold. The user asked
-      // that this still display the number (just without a charge/discharge
-      // state).
-      await pumpBank(tester, current: 0.03);
-
-      expect(find.text('0.03 A'), findsOneWidget);
-      expect(find.text('CHARGING'), findsNothing);
-      expect(find.text('DISCHARGING'), findsNothing);
-    });
-
-    testWidgets('a 2 mA trickle shows 0.00 (absolute), NOT -0.00', (tester) async {
-      // current == -0.002. The old signed path read "-0.00"; the absolute
-      // value removes the sign entirely.
-      await pumpBank(tester, current: -0.002);
-
-      expect(find.text('0.00 A'), findsOneWidget);
-      expect(find.text('-0.00 A'), findsNothing);
-      expect(find.text('CHARGING'), findsNothing);
-    });
-
-    testWidgets('just past ±0.05 is a direction, shown as magnitude + badge',
-        (tester) async {
-      await pumpBank(tester, current: -0.06);
-
-      expect(find.text('CHARGING'), findsOneWidget);
-      expect(find.text('0.06 A'), findsOneWidget);
-      expect(find.text('-0.06 A'), findsNothing);
-    });
-  });
-
-  // =========================================================================
-  // Unknown — where the honest answer is to say nothing
-  // =========================================================================
-  group('direction unknown (no current reading)', () {
-    testWidgets('no badge, no relabel, no guess', (tester) async {
       await pumpBank(tester, current: null);
-
-      // No current reading → no current tile at all (its own pre-existing
-      // gate), and therefore no badge to be wrong.
-      expect(find.text('CHARGING'), findsNothing);
-      expect(find.text('DISCHARGING'), findsNothing);
-      expect(find.text('IDLE'), findsNothing);
-      expect(find.text('CURRENT'), findsNothing);
-
-      // The label stays as it was. "Input" would be a guess dressed as a fix.
-      expect(find.text('OUTPUT VOLTAGE'), findsOneWidget);
-      expect(find.text('INPUT VOLTAGE'), findsNothing);
-
-      // Status quo on the glyph too — two of them, the chip and the SOC tile,
-      // since there is no current tile.
       expect(iconCount(tester, Icons.battery_charging_full), 2);
     });
   });
 
   // =========================================================================
-  // The chart track this fix must NOT touch
+  // The SVLT chart-track legend still relabels input/output by direction — it
+  // is the OTHER face of the readouts card, and this is the surviving
+  // direction relabel now that the voltage tile has moved.
+  // =========================================================================
+  group('the chart SVLT legend follows the direction', () {
+    testWidgets('charging → input', (tester) async {
+      await pumpBank(tester, current: -0.43);
+      expect(svltTrackLabel(tester), 'Input voltage');
+    });
+
+    testWidgets('discharging → output', (tester) async {
+      await pumpBank(tester, current: 1.2);
+      expect(svltTrackLabel(tester), 'Output voltage');
+    });
+
+    testWidgets('no reading keeps output (relabel would be a guess)',
+        (tester) async {
+      await pumpBank(tester, current: null);
+      expect(svltTrackLabel(tester), 'Output voltage');
+    });
+  });
+
+  // =========================================================================
+  // The chart current track this fix must NOT touch
   // =========================================================================
   testWidgets('the current track stays signed and zero-spanning while charging',
       (tester) async {
     await pumpBank(tester, current: -0.43);
 
-    final card = tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
-    final current =
-        card.tracks.firstWhere((t) => t.field == TrendField.current);
+    final current = readoutsCard(tester)
+        .tracks
+        .firstWhere((t) => t.field == TrendField.current);
     expect(current.spanZero, isTrue,
         reason: 'a sign flip mid-window is how a start-up load is read');
-
-    // The SVLT track legend, by contrast, DOES follow the direction: it is the
-    // other face of the same card, so it cannot disagree with the tile.
-    final svlt = card.tracks.firstWhere((t) => t.field == TrendField.svlt);
-    expect(svlt.label, 'Input voltage');
   });
 
   // =========================================================================
-  // Readout order (design 0037): SOC, temp, output voltage, current, cell V,
-  // [capacity]. Classified by icon/unit so l10n wording can change freely.
+  // Readout order after Q5+Q12: SOC, temperature, cell voltage, [capacity].
+  // Classified by icon/unit so l10n wording can change freely.
   // =========================================================================
-  testWidgets('readout tiles are in the design-0037 order', (tester) async {
+  testWidgets('readout tiles are in the design-0035 4-tile order',
+      (tester) async {
     await pumpBank(tester, current: 1.2); // pumpBank registers its own teardown
-    final card = tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
-
-    String kind(Readout r) {
-      if (r.unit == '%') return 'soc';
-      if (r.unit == 'A') return 'current';
-      if (r.icon == Icons.thermostat) return 'temp';
-      if (r.icon == Icons.usb) return 'svlt';
-      if (r.icon == Icons.battery_5_bar) return 'cell';
-      return 'other';
-    }
 
     // designCapacityMah is unset in this snapshot, so the capacity tile is
-    // absent; the surviving five must still be in order.
-    expect(card.items.map(kind).toList(),
-        ['soc', 'temp', 'svlt', 'current', 'cell']);
+    // absent; the surviving three must be in order, with current + voltage gone.
+    expect(readoutsCard(tester).items.map(kind).toList(),
+        ['soc', 'temp', 'cell']);
   });
 }

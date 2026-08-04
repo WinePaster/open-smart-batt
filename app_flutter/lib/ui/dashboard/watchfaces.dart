@@ -39,12 +39,12 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
   final gauge = cls == ProductClass.powerBank
       ? DisplayModule.gaugeSoc
       : DisplayModule.gaugeVoltage;
-  // The class's own "extra" card: per-cell voltages on a pack, the dual-port
-  // status on a power bank. Reading it off the registry rather than writing it
+  // The class's own "extra" card: per-cell voltages on a pack, the energy-path
+  // row on a power bank. Reading it off the registry rather than writing it
   // out per class is what keeps §4.3 true by construction.
-  final extra = cls == ProductClass.powerBank
-      ? DisplayModule.usb
-      : DisplayModule.cells;
+  final isPowerBank = cls == ProductClass.powerBank;
+  final extra =
+      isPowerBank ? DisplayModule.energyPath : DisplayModule.cells;
   switch (face) {
     // Card for card, in order, exactly what the dashboard drew before design
     // 0034 existed. This IS the implementation of G4 ("a user who never opens
@@ -52,11 +52,15 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // case and pinned by test T1 rather than left implicit.
     case Watchface.standard:
       return [gauge, DisplayModule.readouts, extra];
-    // Instrument and numbers, nothing else — the shortest honest page. Drops
-    // the extra card rather than shrinking it: a half-height DVOL chart would
-    // be a new widget, and this release adds none.
+    // Instrument and numbers — and, on a power bank, the energy-path row too
+    // (design 0035 Q2: it rides EVERY face, compact included). A pack still
+    // drops its extra (a half-height DVOL chart would be a new widget, and this
+    // release adds none); the power bank keeps its one line because that line
+    // IS the answer to "which way is it charging", not an optional detail.
     case Watchface.compact:
-      return [gauge, DisplayModule.readouts];
+      return isPowerBank
+          ? [gauge, DisplayModule.readouts, extra]
+          : [gauge, DisplayModule.readouts];
     // Detail first. The numbers grid and the per-cell / port card are what a
     // reporter is asked to screenshot; the instrument is the thing they can
     // read at a glance anyway, so it goes to the bottom rather than away.

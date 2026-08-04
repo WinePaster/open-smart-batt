@@ -285,7 +285,7 @@ class PackScaffold extends StatelessWidget {
           return null;
         case DisplayModule.gaugeSoc:
         case DisplayModule.chart:
-        case DisplayModule.usb:
+        case DisplayModule.energyPath:
           // Not cards of the pack shell, and unreachable through [order] — it
           // is built from this class's own registry entry. Listed explicitly so
           // that a NEW module fails to compile here rather than silently

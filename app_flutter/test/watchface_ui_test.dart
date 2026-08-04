@@ -228,8 +228,10 @@ void main() {
 
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
-      // design 0035 Phase 1: the two-port USB card is gone; its `usb` slot
-      // renders nothing until Phase 2 places the energy-path row there.
+      // design 0035 Phase 2: the two-port USB card is gone and its slot now
+      // holds the energy-path row [PowerPathRow]. That row renders nothing here
+      // (this harness leaves the class un-overridden, so it is not a power bank
+      // to the row's own gate), so the pinned order is the surviving two cards.
     });
 
     testWidgets('an unclassified pack keeps the standard order even with a '
@@ -297,9 +299,10 @@ void main() {
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
       await pumpUnder(tester, s, const PowerBankView());
 
-      // Diagnostic leads with the readouts and ends with the SOC ring. The USB
-      // slot renders nothing in design 0035 Phase 1 (energy-path row lands in
-      // Phase 2), so the pinned order is the surviving two.
+      // Diagnostic leads with the readouts and ends with the SOC ring. The
+      // energy-path row (design 0035 Phase 2) renders nothing in this harness
+      // (the class is not overridden to power bank), so the pinned order is the
+      // surviving two.
       expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(PvltGauge))));
     });

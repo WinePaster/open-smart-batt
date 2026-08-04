@@ -6,8 +6,10 @@
 /// dial. Its instrument is a percent-mode SOC ring fed DIRECTLY by the
 /// device-reported state-of-charge (selector 0x96 b6 — there is NO voltage→SOC
 /// curve, PROTOCOL.md §9.1), alongside temperature + single-cell voltage
-/// readouts. The old USB dual-port card is retired (design 0035); the
-/// energy-path row that replaces it lands in Phase 2. A power bank has NO DVOL
+/// readouts. The old USB dual-port card is retired (design 0035) and its slot
+/// now holds the [PowerPathRow] energy-path line — which is also why the
+/// current and port-voltage tiles are gone from the grid here (Q5+Q12: the row
+/// carries them, and one number must not print twice). A power bank has NO DVOL
 /// per-cell card and NO cut-off / anti-theft controls — those live on the pack
 /// page, which a power bank never navigates to.
 ///
@@ -17,9 +19,11 @@
 /// happened when nothing on screen said so: a 9.15 V PD charge showed as a bare
 /// `-0.43 A` under a hardwired charging icon, and the owner who ruled on the
 /// convention read his own device as broken. Everything direction-aware in this
-/// file hangs off [PowerFlow] for that reason — one derivation (now shared with
-/// the energy-path row via `power_flow.dart`, design 0035 §6), used by the icon,
-/// the badge and the SVLT label, so they cannot disagree with each other.
+/// file hangs off [PowerFlow] for that reason — one derivation (shared with the
+/// energy-path row via `power_flow.dart`, design 0035 §6), used by the type-chip
+/// glyph and the chart's input/output voltage legend, so they cannot disagree.
+/// The current and voltage READOUTS themselves now live on the energy-path row
+/// (design 0035 Phase 2), not in this grid.
 library;
 
 import 'package:flutter/material.dart';
@@ -34,6 +38,7 @@ import 'display_modules.dart';
 import 'pvlt_gauge.dart';
 import 'live_trend_chart.dart';
 import 'power_flow.dart';
+import 'power_path_row.dart';
 import 'readout_grid.dart';
 import 'readouts_card.dart';
 import 'watchfaces.dart';
@@ -57,14 +62,6 @@ class PowerBankView extends StatelessWidget {
     // claims a direction below reads this variable, so the icon, the badge and
     // the SVLT label cannot end up telling three different stories.
     final flow = powerFlowOf(tele.current);
-    // 0x37 is the port-side voltage: it reads 9.14–9.16 V during a 9 V PD
-    // charge (`feedback-analysis/2026.08.04-002.md` §2), i.e. the INPUT. Only
-    // the charging case is relabelled — idle, discharging and "no reading at
-    // all" keep the original wording, because relabelling those would be a
-    // guess rather than a correction.
-    final svltLabel = flow == PowerFlow.charging
-        ? l10n.powerBankInputVoltageLabel
-        : l10n.powerBankOutputVoltageLabel;
     // Sub-line under the SOC value: the single-cell voltage (PVLT is the cell
     // voltage on a power bank, PROTOCOL.md §9.1) or a placeholder.
     final subText = tele.pvlt == null
@@ -149,9 +146,12 @@ class PowerBankView extends StatelessWidget {
                 ),
             ],
             items: [
-              // Order (design 0037): SOC, temperature, output voltage, current,
-              // cell voltage, design capacity. The conditional cards (current,
-              // capacity) collapse when absent; the surviving order still holds.
+              // Order (design 0035 §6, Q5+Q12): SOC, temperature, cell voltage,
+              // design capacity. The 0037 "output voltage" and "current" tiles
+              // are GONE from here — the energy-path row carries both now, so
+              // showing them again would print the same number twice. The
+              // capacity tile still collapses when absent; the surviving order
+              // holds.
               Readout(
                 icon: _flowIcon(flow),
                 label: l10n.powerBankSocReadoutLabel,
@@ -164,24 +164,6 @@ class PowerBankView extends StatelessWidget {
                 value: _fmtInt(tele.temperatureDisplay),
                 unit: tele.temperatureUnitLabel,
               ),
-              Readout(
-                icon: Icons.usb,
-                label: svltLabel,
-                value: _fmt1(tele.svlt),
-                unit: 'V',
-              ),
-              // Magnitude, with the direction in the badge (design 0037,
-              // superseding FB-47's signed number). Inside the dead-band the
-              // magnitude still shows but the badge drops — no direction to name.
-              if (modules.showsCurrentReadout && tele.current != null)
-                Readout(
-                  icon: _flowIcon(flow),
-                  label: l10n.powerBankCurrentLabel,
-                  value: _fmtCurrent(tele.current!),
-                  unit: 'A',
-                  badge: _flowBadge(l10n, flow),
-                  badgeColor: _flowColor(flow),
-                ),
               Readout(
                 icon: Icons.battery_5_bar,
                 label: l10n.powerBankCellVoltageLabel,
@@ -197,15 +179,13 @@ class PowerBankView extends StatelessWidget {
                 ),
             ],
           );
-        case DisplayModule.usb:
-          // design 0035 Phase 1: the two-port "USB" card is gone (its halves
-          // permanently said "unknown"). Its replacement — the standalone
-          // energy-path row [PowerPathRow] — exists and is tested, but is NOT
-          // placed here yet: doing so has to happen TOGETHER with removing the
-          // duplicate 0037 voltage+current tiles above (Q5+Q12: the same number
-          // must not appear twice), which is Phase 2. Until then this slot
-          // renders nothing rather than show a stale card or a doubled reading.
-          return null;
+        case DisplayModule.energyPath:
+          // design 0035 Phase 2: the two-port "USB" card (whose halves
+          // permanently said "unknown") is replaced by the energy-path row.
+          // It carries the port-side voltage AND the current, which is why the
+          // 0037 "output voltage" and "current" tiles were removed from the
+          // grid above (Q5+Q12: the same number must not appear twice).
+          return const PowerPathRow();
         case DisplayModule.gaugeVoltage:
         case DisplayModule.chart:
         case DisplayModule.cells:
@@ -259,20 +239,16 @@ class PowerBankView extends StatelessWidget {
   }
 
   static String _fmtInt(double? v) => v == null ? '--' : v.round().toString();
-  static String _fmt1(double? v) => v == null ? '--' : v.toStringAsFixed(1);
   static String _fmt2(double? v) => v == null ? '--' : v.toStringAsFixed(2);
 }
 
 // ---------------------------------------------------------------------------
 // Direction (FB-47) — the [PowerFlow] derivation itself lives in
 // `power_flow.dart` (shared with the energy-path row, design 0035 §6). What
-// stays here is only how THIS page's tiles present it.
+// stays here is only how THIS page's tiles present it: since design 0035
+// Phase 2 the current/voltage tiles moved to the energy-path row, so all that
+// remains here is the glyph on the type chip and the SOC tile.
 // ---------------------------------------------------------------------------
-
-/// Current magnitude — the sign never reaches the readout (design 0037); the
-/// badge carries the charge/discharge direction instead. Inside the dead-band
-/// the true magnitude still shows (e.g. `0.03`), only the badge drops.
-String _fmtCurrent(double v) => v.abs().toStringAsFixed(2);
 
 /// Glyph for [f]. [PowerFlow.unknown] keeps the icon this page has always drawn:
 /// with no direction to show, a different glyph would be a different guess,
@@ -282,22 +258,4 @@ IconData _flowIcon(PowerFlow f) => switch (f) {
       PowerFlow.discharging => Icons.bolt,
       PowerFlow.idle => Icons.pause_circle_outline,
       PowerFlow.unknown => Icons.battery_charging_full,
-    };
-
-/// Badge wording, or null when there is no direction to name.
-String? _flowBadge(AppLocalizations l10n, PowerFlow f) => switch (f) {
-      PowerFlow.charging => l10n.powerBankDirectionCharging,
-      PowerFlow.discharging => l10n.powerBankDirectionDischarging,
-      // Idle names no state (design 0037): inside the dead-band the direction is
-      // noise, so the magnitude shows but the badge drops.
-      PowerFlow.idle => null,
-      PowerFlow.unknown => null,
-    };
-
-/// Badge accent. Idle and unknown fall through to the tile's muted tone —
-/// "nothing is happening" does not deserve a colour.
-Color? _flowColor(PowerFlow f) => switch (f) {
-      PowerFlow.charging => AppColors.good,
-      PowerFlow.discharging => AppColors.amber,
-      PowerFlow.idle || PowerFlow.unknown => null,
     };

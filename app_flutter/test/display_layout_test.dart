@@ -145,8 +145,8 @@ void main() {
       }
     });
 
-    test('a power bank has no DVOL card on any face, and packs have no USB '
-        'card', () {
+    test('a power bank has no DVOL card on any face, and packs have no '
+        'energy-path card', () {
       for (final face in Watchface.values) {
         expect(watchfaceModules(ProductClass.powerBank, face),
             isNot(contains(DisplayModule.cells)));
@@ -156,9 +156,24 @@ void main() {
           ProductClass.unknown,
         ]) {
           expect(watchfaceModules(pack, face),
-              isNot(contains(DisplayModule.usb)));
+              isNot(contains(DisplayModule.energyPath)));
         }
       }
+    });
+
+    test('the energy-path row rides EVERY power-bank face, compact included '
+        '(design 0035 Q2)', () {
+      // Unlike a pack's DVOL card, which compact drops, the energy-path row is
+      // the answer to "which way is it charging" — not an optional detail — so
+      // it stays on all three faces. A pack's compact still drops its extra.
+      for (final face in Watchface.values) {
+        expect(watchfaceModules(ProductClass.powerBank, face),
+            contains(DisplayModule.energyPath),
+            reason: '${face.slug} must keep the energy-path row');
+      }
+      expect(watchfaceModules(ProductClass.smartBattery, Watchface.compact),
+          isNot(contains(DisplayModule.cells)),
+          reason: 'a pack compact still drops its extra card');
     });
 
     test('the chart is not placeable while Phase 1 is locked', () {
