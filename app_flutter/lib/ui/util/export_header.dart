@@ -20,12 +20,19 @@ import 'export_scope.dart';
 ///
 /// Optional fields are omitted entirely rather than rendered empty — a line
 /// that says `connections=` tells the reader nothing and looks like a bug.
+/// [layout] is the exception: it is REQUIRED, so that no call site can quietly
+/// stop emitting it. See the line itself for why.
+///
+/// The shape is a fixed head (four lines, positions relied on by the ingest
+/// scripts), an optional middle, and a fixed tail. New optional lines join the
+/// middle; the layout line stays last.
 List<String> exportHeaderLines({
   required String title,
   required DateTime exportedAt,
   required String appBuild,
   required String platform,
   required String scope,
+  required String layout,
   int? connections,
   bool? rawPacketLog,
 }) {
@@ -54,6 +61,22 @@ List<String> exportHeaderLines({
     // saw the export dialog.
     if (rawPacketLog == true)
       'note: raw frames include the device\'s own BLE address (selector 0x38)',
+    // Design 0034 §8. Our problem-reading runs on screenshots: every entry in
+    // `feedback-attachments/our-app.md` is a field read off a picture, and
+    // sentences like "SOC shows --" or "four DVOL bars of similar length" are
+    // only evidence because we knew what that screen was supposed to look like.
+    // A customisable dashboard makes "there is no charge reading on screen"
+    // mean two different things — the data never came, or that card is not on
+    // their page — and we would find out the slow way, months later, from a
+    // capture we could no longer interpret.
+    //
+    // Required rather than optional, and emitted even for the default layout,
+    // for the FB-32 reason: if only a customised layout were written, a missing
+    // line would mean both "they kept the default" and "an older build wrote
+    // this". Last, on its own line, and never merged into `scope:` — the ingest
+    // regexes anchor on those prefixes. The value itself carries no `: `,
+    // because the analysis recipes read it with a greedy `sed 's/.*: //'`.
+    'layout: $layout',
   ];
 }
 

@@ -63,6 +63,7 @@ void main() {
 
   group('exportHeaderLines (pure)', () {
     final at = DateTime.utc(2026, 7, 28, 18, 11, 54);
+    const layout = 'face=standard modules=gaugeVoltage,readouts,cells';
 
     test('renders build, platform and scope', () {
       final lines = exportHeaderLines(
@@ -71,6 +72,7 @@ void main() {
         appBuild: '0.6.8+26072812',
         platform: 'ios 18.5',
         scope: 'device=battery/1206',
+        layout: layout,
       );
       expect(lines.first, 'OpenSmartBatt history export');
       expect(lines, contains('exported: ${at.toIso8601String()}'));
@@ -86,6 +88,7 @@ void main() {
         appBuild: 'b',
         platform: 'p',
         scope: 'all devices',
+        layout: layout,
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
     });
@@ -95,12 +98,19 @@ void main() {
       // helper was extracted from it; recipients and our own analysis scripts
       // read the log's exact shape, so the extraction must not have altered a
       // single byte of it.
+      //
+      // Design 0034 §8 APPENDS one line here. The whole-list equality is kept
+      // (not relaxed to a `containsAll`) precisely so that the next change to
+      // this preamble has to be written down here too — the four original lines
+      // are still asserted verbatim, in position, and the new one is asserted
+      // verbatim as the last.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
         appBuild: '0.6.8+26072812',
         platform: 'android 15',
         scope: 'device=capacitor/7809 session=3',
+        layout: layout,
         connections: 2,
       );
       expect(lines, <String>[
@@ -108,6 +118,7 @@ void main() {
         'exported: ${at.toIso8601String()}',
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
+        'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);
     });
   });

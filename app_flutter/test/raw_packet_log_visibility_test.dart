@@ -19,12 +19,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
 
 void main() {
+  // The layout line (design 0034 §8) is REQUIRED and is therefore part of
+  // every call here. It is pinned as the preamble's trailer below.
+  const kLayout = 'face=standard modules=gaugeVoltage,readouts,cells';
+
   List<String> header({bool? rawPacketLog}) => exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: DateTime.utc(2026, 7, 30, 17, 55),
         appBuild: '0.6.12+1',
         platform: 'ios 26.6',
         scope: 'all devices',
+        layout: kLayout,
         connections: 1,
         rawPacketLog: rawPacketLog,
       );
@@ -70,10 +75,19 @@ void main() {
     });
   });
 
-  group('format compatibility: the preamble may only grow at the end', () {
+  // The contract this group states was, until design 0034, "the preamble may
+  // only grow at the end". It now has a pinned TRAILER as well — the layout
+  // line, which §8 requires to be last — so the contract is restated as a
+  // fixed HEAD, an optional MIDDLE and a fixed TAIL. That is a change to what
+  // is asserted and is made deliberately, not by loosening: every position the
+  // old group nailed down is still nailed down, and the new line is nailed
+  // down too. Ingest scripts match these lines by PREFIX, never by index past
+  // the head, which is why appending inside the middle stays safe.
+  group('format compatibility: fixed head, optional middle, pinned trailer',
+      () {
     test('the existing four lines keep their exact order and position', () {
       // Eleven collected batches are parsed with scripts written against this
-      // preamble. A new line may be appended; nothing above it may move.
+      // preamble. Nothing in the head may move, ever.
       final h = header(rawPacketLog: false);
       expect(h[0], 'OpenSmartBatt diagnostic log');
       expect(h[1], startsWith('exported: '));
@@ -81,8 +95,11 @@ void main() {
       expect(h[3], startsWith('app: '));
     });
 
-    test('the new line is appended last, not inserted', () {
-      expect(header(rawPacketLog: false).last, 'raw packet log: off');
+    test('the raw-log line follows the head immediately, and layout closes',
+        () {
+      final h = header(rawPacketLog: false);
+      expect(h[4], 'raw packet log: off');
+      expect(h.last, 'layout: $kLayout');
     });
 
     test('the four original lines survive the FB-37 note too', () {
@@ -92,14 +109,30 @@ void main() {
       expect(h[2], startsWith('scope: '));
       expect(h[3], startsWith('app: '));
       expect(h[4], 'raw packet log: on');
+      expect(h.last, 'layout: $kLayout');
     });
 
     test('adding it changes nothing else about the preamble', () {
       final without = header();
       final with_ = header(rawPacketLog: true);
-      expect(with_.sublist(0, without.length), without);
-      // `raw packet log: on` plus the FB-37 disclosure line.
+      // Head unchanged, trailer unchanged, and exactly two lines inserted
+      // between them: `raw packet log: on` plus the FB-37 disclosure. The
+      // `+2` count is the same assertion it always was.
+      expect(with_.take(4), without.take(4));
+      expect(with_.last, without.last);
       expect(with_.length, without.length + 2);
+      // Nothing was inserted BEFORE the head, either — the old
+      // `sublist(0, without.length)` check covered that implicitly and it must
+      // not be lost with it.
+      expect(with_.indexWhere((l) => l.startsWith('app: ')), 3);
+    });
+
+    test('the trailer is emitted even with every optional field absent', () {
+      // Design 0034 §8, and the FB-32 reason: if the line only appeared when
+      // something was customised, its absence would mean both "default layout"
+      // and "written by a build that predates the line".
+      expect(header().last, 'layout: $kLayout');
+      expect(header().where((l) => l.startsWith('layout: ')), hasLength(1));
     });
 
     test('no line carries its own comment prefix — the writer adds it', () {

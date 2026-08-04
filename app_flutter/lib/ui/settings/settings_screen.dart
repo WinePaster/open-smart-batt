@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../dashboard/capture_mark_labels.dart';
+import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -214,6 +215,10 @@ class _DataCardState extends State<_DataCard> {
     ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
+    // The dashboard layout in force right now (design 0034 §8). Captured here
+    // with the other context reads — by the time the CSV is built this screen
+    // may be gone.
+    final layout = currentExportLayoutValue(context);
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
@@ -225,6 +230,7 @@ class _DataCardState extends State<_DataCard> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          layout: layout,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
@@ -391,11 +397,14 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
+    // The dashboard layout in force right now (design 0034 §8), captured with
+    // the other context reads for the same reason.
+    final layout = currentExportLayoutValue(context);
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final header = await _logHeader(tele, services, target, rawLog);
+      final header = await _logHeader(tele, services, target, rawLog, layout);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -527,6 +536,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    String layout,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
@@ -537,6 +547,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       appBuild: services.appBuild,
       platform: services.platform,
       scope: exportScopeLabel(target),
+      layout: layout,
       connections: sessions,
       rawPacketLog: rawPacketLog,
     );

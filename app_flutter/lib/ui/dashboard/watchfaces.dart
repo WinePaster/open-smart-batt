@@ -25,7 +25,11 @@
 /// no control card at all and does not grow an empty one (§6 rule 3).
 library;
 
+import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
+
 import '../../models/models.dart';
+import '../../state/state.dart';
 import 'display_modules.dart';
 
 /// The ordered cards a [Watchface] draws for a product class, top to bottom.
@@ -74,3 +78,56 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
 /// rejected here. Neither is left to the UI to remember.
 Watchface effectiveWatchface(ProductClass cls, Watchface stored) =>
     cls == ProductClass.unknown ? Watchface.standard : stored;
+
+/// Machine-readable summary of the layout in force, for the export preamble
+/// (design 0034 §8 / Q7).
+///
+/// Six hard constraints, all of them load-bearing:
+///
+///  1. it goes LAST in `exportHeaderLines()`;
+///  2. it is emitted UNCONDITIONALLY, default layout included — if only a
+///     non-default layout were written, a missing line would mean both "they
+///     kept the default" and "an older build wrote this", the exact ambiguity
+///     FB-32's `raw packet log: on` exists to avoid;
+///  3. it is its own line, never appended to `scope:` or `exported:` — the
+///     ingest regexes match those two by prefix and would silently swallow it;
+///  4. the VALUE contains no `: ` — collected batches are read with a greedy
+///     `sed 's/.*: //'`, which would eat everything up to the last one;
+///  5. it is not localized — the person who receives a capture is not the
+///     person whose phone exported it (same rule as [exportScopeLabel]);
+///  6. one line, never wrapped.
+///
+/// Q7 ruled the MODULE LIST rather than the face name alone: a face is a
+/// definition that can change between releases, so `face=compact` recorded a
+/// year ago no longer resolves to what it resolved to then. The names are
+/// [DisplayModule] identifiers, not labels.
+///
+/// The list is what the LAYOUT says, not what happened to render: a face that
+/// includes `cells` reports `cells` even on a session where DVOL never
+/// arrived. That is the whole point — the reader is trying to tell "the data
+/// was missing" apart from "the card was not on the page".
+String exportLayoutValue({
+  required ProductClass? cls,
+  required DisplayLayout? layout,
+}) {
+  // Nothing connected: no unit's layout was in force, and there is no
+  // phone-wide one to fall back on (Q3 bound the setting to the device). Say
+  // so with the same `-` this project already uses for an absent ident in
+  // `exportScopeLabel`, rather than printing a default nobody chose.
+  if (cls == null || layout == null) return 'face=- modules=-';
+  final face = effectiveWatchface(cls, layout.watchface);
+  final modules = watchfaceModules(cls, face).map((m) => m.name).join(',');
+  return 'face=${face.slug} modules=$modules';
+}
+
+/// [exportLayoutValue] for whatever is on screen at this instant.
+///
+/// Reads with `context.read`: every caller is an export handler responding to a
+/// tap, not a builder, and must capture this BEFORE its first `await` — by the
+/// time the file is written the screen may be gone. Same rule as `labelFor` in
+/// the same handlers.
+String currentExportLayoutValue(BuildContext context) {
+  final conn = context.read<ConnectionController>();
+  if (!conn.isOnline) return exportLayoutValue(cls: null, layout: null);
+  return exportLayoutValue(cls: conn.displayClass, layout: conn.displayLayout);
+}
