@@ -866,6 +866,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsThemeAuto => 'Auto';
 
   @override
+  String get settingsWatchfaceLabel => 'Watchface';
+
+  @override
+  String get settingsWatchfaceSub =>
+      'Which cards the dashboard shows for the connected device, and in what order.';
+
+  @override
+  String get settingsWatchfaceSubNoDevice =>
+      'This setting belongs to a device. Connect one and save it, then it can be changed here.';
+
+  @override
+  String get watchfaceStandard => 'Standard';
+
+  @override
+  String get watchfaceCompact => 'Compact';
+
+  @override
+  String get watchfaceDiagnostic => 'Diagnostic';
+
+  @override
+  String get settingsRestoreDisplayLabel => 'Restore default display';
+
+  @override
+  String get settingsRestoreDisplayDone => 'Restored the standard watchface.';
+
+  @override
   String get settingsTempUnitLabel => 'Temperature unit';
 
   @override

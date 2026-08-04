@@ -538,6 +538,20 @@
   "settingsThemeLight": "Light",
   "settingsThemeDark": "Dark",
   "settingsThemeAuto": "Auto",
+  "settingsWatchfaceLabel": "Watchface",
+  "settingsWatchfaceSub": "Which cards the dashboard shows for the connected device, and in what order.",
+  "@settingsWatchfaceSub": {
+    "description": "design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'."
+  },
+  "settingsWatchfaceSubNoDevice": "This setting belongs to a device. Connect one and save it, then it can be changed here.",
+  "@settingsWatchfaceSubNoDevice": {
+    "description": "Shown while the row is disabled. The row is kept visible rather than hidden, following the background-monitoring row on iOS: a user who has heard of the feature needs to see WHY it is unavailable."
+  },
+  "watchfaceStandard": "Standard",
+  "watchfaceCompact": "Compact",
+  "watchfaceDiagnostic": "Diagnostic",
+  "settingsRestoreDisplayLabel": "Restore default display",
+  "settingsRestoreDisplayDone": "Restored the standard watchface.",
   "settingsTempUnitLabel": "Temperature unit",
   "settingsLanguageLabel": "Language",
   "settingsLanguageSub": "Interface language (System: follow device)",

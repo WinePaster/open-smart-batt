@@ -98,6 +98,29 @@ class DeviceController extends ChangeNotifier {
     await load();
   }
 
+  /// The dashboard layout stored for [id].
+  ///
+  /// An unsaved device — and an id of `null` — has no layout of its own and
+  /// gets [DisplayLayout.defaults], which draws today's screen. The dashboard
+  /// therefore never has to special-case "not saved yet".
+  DisplayLayout layoutFor(String? id) =>
+      id == null ? DisplayLayout.defaults : deviceFor(id)?.displayLayout ?? DisplayLayout.defaults;
+
+  /// Persist the dashboard layout for [id] (design 0034 Q3: bound to the
+  /// device). No-op if the device is not saved or already at [value].
+  ///
+  /// Saving is NOT done implicitly here. A device the user declined to name is
+  /// one they declined to remember, and quietly adding it to the saved list as
+  /// a side effect of changing a watchface would put a row in the device
+  /// picker that they never asked for. The settings row disables itself
+  /// instead, and says why.
+  Future<void> setDisplayLayout(String id, DisplayLayout value) async {
+    final existing = deviceFor(id);
+    if (existing == null || existing.displayLayout == value) return;
+    await _repo.setDisplayLayout(id, value);
+    await load();
+  }
+
   /// Forget a saved device, then reload.
   Future<void> remove(String id) async {
     await _repo.deleteSavedDevice(id);

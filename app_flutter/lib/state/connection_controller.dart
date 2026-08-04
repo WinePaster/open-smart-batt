@@ -630,6 +630,36 @@ class ConnectionController extends ChangeNotifier {
   bool get isUnclassified =>
       isOnline && _packLabel == ProductClass.unknown;
 
+  /// The class whose DISPLAY MODULES are in force on screen right now (design
+  /// 0034). Not a fourth class signal — a projection of the two that exist.
+  ///
+  /// A confirmed power bank is drawn by [PowerBankView], so it answers
+  /// [ProductClass.powerBank] regardless of the cosmetic label. Everything else
+  /// is drawn by the pack shell, which resolves a stray `powerBank` LABEL to
+  /// the unclassified module set (see `DisplayModules.forPackShell`), and this
+  /// getter reports the same thing the shell will draw rather than the raw
+  /// label — otherwise the export preamble would name a set that is not on the
+  /// screen it is describing.
+  ProductClass get displayClass {
+    if (isPowerBank) return ProductClass.powerBank;
+    return _packLabel == ProductClass.powerBank
+        ? ProductClass.unknown
+        : _packLabel;
+  }
+
+  /// The stored layout of the unit currently connected (design 0034 Q3).
+  ///
+  /// [DisplayLayout.defaults] when nothing is connected, when the unit is not
+  /// in the saved list, or when the stored value cannot be parsed — all three
+  /// draw today's screen, so the dashboard has one path, not four.
+  ///
+  /// Reads through [DeviceController] and does NOT notify on its own: the
+  /// writer is that controller, and a widget that must repaint when the layout
+  /// changes watches it directly. Duplicating the value here would give the two
+  /// notifiers a chance to disagree.
+  DisplayLayout get displayLayout =>
+      _devices?.layoutFor(connectedDeviceId) ?? DisplayLayout.defaults;
+
   /// Record an app foreground/background transition (`resumed`, `paused`, …).
   ///
   /// Written through the same attributed path as link events, so a stall reads

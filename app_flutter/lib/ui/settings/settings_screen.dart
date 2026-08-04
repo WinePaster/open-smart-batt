@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../dashboard/capture_mark_labels.dart';
+import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -166,7 +167,6 @@ class _DisplayCard extends StatelessWidget {
           ),
           SettingsRow(
             label: l10n.settingsTempUnitLabel,
-            last: true,
             trailing: SegmentedControl<TempUnit>(
               selected: s.tempUnit,
               onChanged: s.setTempUnit,
@@ -176,8 +176,90 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _WatchfaceRow(),
         ],
       ),
+    );
+  }
+}
+
+/// Watchface picker + "restore defaults" (design 0034 Phase 5, Q6).
+///
+/// Two rows rather than one because they answer different questions and one of
+/// them is destructive-ish; kept in the same card because Q6 ruled that restore
+/// belongs beside the thing it restores.
+///
+/// ⚠️ The setting is bound to the DEVICE (Q3), which the rest of this card is
+/// not — everything above it is app-wide. The row therefore has a state the
+/// others cannot have: nothing to apply to. It is DISABLED and says why rather
+/// than being hidden, on the precedent of the background-monitoring row on iOS:
+/// "a user who has heard of the feature needs to see WHY it is unavailable".
+class _WatchfaceRow extends StatelessWidget {
+  const _WatchfaceRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // Both are watched: the id changes on connect/disconnect, the stored layout
+    // changes when this very control writes it.
+    final id = context.select<ConnectionController, String?>(
+        (c) => c.connectedDeviceId);
+    final devices = context.watch<DeviceController>();
+    // Not merely "connected": the layout lives in the `saved_devices` row, so a
+    // unit the user declined to name has nowhere to put it. Saving it here as a
+    // side effect would add a row to their device picker that they never asked
+    // for (see DeviceController.setDisplayLayout).
+    final target = id != null && devices.isSaved(id) ? id : null;
+    final layout = devices.layoutFor(target);
+
+    Future<void> apply(DisplayLayout next) async {
+      if (target == null) return;
+      await devices.setDisplayLayout(target, next);
+    }
+
+    final picker = SegmentedControl<Watchface>(
+      selected: layout.watchface,
+      onChanged: (v) => apply(DisplayLayout(watchface: v)),
+      options: [
+        (value: Watchface.standard, label: l10n.watchfaceStandard),
+        (value: Watchface.compact, label: l10n.watchfaceCompact),
+        (value: Watchface.diagnostic, label: l10n.watchfaceDiagnostic),
+      ],
+    );
+
+    return Column(
+      children: [
+        SettingsRow(
+          label: l10n.settingsWatchfaceLabel,
+          sub: target == null
+              ? l10n.settingsWatchfaceSubNoDevice
+              : l10n.settingsWatchfaceSub,
+          trailing: target == null
+              // Dimmed AND inert. Opacity alone would still accept taps, and a
+              // control that looks disabled but silently writes nothing is the
+              // worse of the two failures.
+              ? Opacity(
+                  opacity: 0.45,
+                  child: IgnorePointer(child: picker),
+                )
+              : picker,
+        ),
+        SettingsLinkRow(
+          icon: Icons.restore,
+          label: l10n.settingsRestoreDisplayLabel,
+          last: true,
+          onTap: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            final done = l10n.settingsRestoreDisplayDone;
+            if (target == null) return;
+            await apply(DisplayLayout.defaults);
+            messenger.showSnackBar(SnackBar(
+              duration: const Duration(milliseconds: 1600),
+              content: Text(done),
+            ));
+          },
+        ),
+      ],
     );
   }
 }
@@ -214,6 +296,10 @@ class _DataCardState extends State<_DataCard> {
     ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
+    // The dashboard layout in force right now (design 0034 §8). Captured here
+    // with the other context reads — by the time the CSV is built this screen
+    // may be gone.
+    final layout = currentExportLayoutValue(context);
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
@@ -225,6 +311,7 @@ class _DataCardState extends State<_DataCard> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          layout: layout,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
@@ -391,11 +478,14 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
+    // The dashboard layout in force right now (design 0034 §8), captured with
+    // the other context reads for the same reason.
+    final layout = currentExportLayoutValue(context);
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final header = await _logHeader(tele, services, target, rawLog);
+      final header = await _logHeader(tele, services, target, rawLog, layout);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -527,6 +617,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    String layout,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
@@ -537,6 +628,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       appBuild: services.appBuild,
       platform: services.platform,
       scope: exportScopeLabel(target),
+      layout: layout,
       connections: sessions,
       rawPacketLog: rawPacketLog,
     );

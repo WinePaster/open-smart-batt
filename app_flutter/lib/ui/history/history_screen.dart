@@ -21,6 +21,7 @@ import '../../models/models.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../dashboard/watchfaces.dart';
 import '../util/export_header.dart';
 import '../util/export_naming.dart';
 import '../util/export_scope.dart';
@@ -156,6 +157,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     ProductClass classFor(String? id) => deviceClassFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
+    // Captured with the rest, and for the same reason (design 0034 §8): the
+    // dashboard layout in force at the MOMENT OF EXPORT, which for a
+    // device-scoped or all-devices export alike is this phone's — the setting
+    // is bound to the connected unit, so an offline export honestly reports
+    // that no layout was in force.
+    final layout = currentExportLayoutValue(context);
     try {
       final csv = await _tele.exportHistoryCsv(
         since: _sinceFor(_range),
@@ -169,6 +176,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          layout: layout,
         ),
       );
       // Row count, not text emptiness: every export carries a provenance

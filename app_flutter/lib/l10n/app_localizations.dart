@@ -1448,6 +1448,54 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get settingsThemeAuto;
 
+  /// No description provided for @settingsWatchfaceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Watchface'**
+  String get settingsWatchfaceLabel;
+
+  /// design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'.
+  ///
+  /// In en, this message translates to:
+  /// **'Which cards the dashboard shows for the connected device, and in what order.'**
+  String get settingsWatchfaceSub;
+
+  /// Shown while the row is disabled. The row is kept visible rather than hidden, following the background-monitoring row on iOS: a user who has heard of the feature needs to see WHY it is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This setting belongs to a device. Connect one and save it, then it can be changed here.'**
+  String get settingsWatchfaceSubNoDevice;
+
+  /// No description provided for @watchfaceStandard.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get watchfaceStandard;
+
+  /// No description provided for @watchfaceCompact.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact'**
+  String get watchfaceCompact;
+
+  /// No description provided for @watchfaceDiagnostic.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostic'**
+  String get watchfaceDiagnostic;
+
+  /// No description provided for @settingsRestoreDisplayLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore default display'**
+  String get settingsRestoreDisplayLabel;
+
+  /// No description provided for @settingsRestoreDisplayDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Restored the standard watchface.'**
+  String get settingsRestoreDisplayDone;
+
   /// No description provided for @settingsTempUnitLabel.
   ///
   /// In en, this message translates to:
