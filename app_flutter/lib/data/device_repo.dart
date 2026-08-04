@@ -79,6 +79,22 @@ class DeviceRepo {
     );
   }
 
+  /// Persist the dashboard layout for [id] (design 0034 Phase 3). Returns rows
+  /// affected (0 if the device is not saved).
+  ///
+  /// The DEFAULT layout is stored as NULL rather than as its JSON — see
+  /// [SavedDevice.toMap]. That is also what makes "restore defaults" (Q6) a
+  /// plain write of [DisplayLayout.defaults] rather than a separate delete
+  /// path.
+  Future<int> setDisplayLayout(String id, DisplayLayout layout) {
+    return _db.update(
+      Db.tableSavedDevices,
+      {'display_layout': layout.isDefault ? null : layout.encode()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
     return _db.delete(

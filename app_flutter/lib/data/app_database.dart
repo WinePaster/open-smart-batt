@@ -58,7 +58,14 @@ class Db {
   /// column is DEAD from v9 on — nothing reads it. It stays because SQLite
   /// needs 3.35+ for DROP COLUMN and minSdk 24 ships older; rebuilding the
   /// whole settings table to reclaim four bytes is not a trade worth making.
-  static const int schemaVersion = 9;
+  /// v10: saved_devices gained `display_layout TEXT` — the dashboard layout
+  /// this unit is shown with (design 0034 Q3: bound to the DEVICE, because
+  /// binding it to the CLASS would let the user's type guess pick a layout, and
+  /// "a layout may be chosen by wire-derived facts and by nothing else" is a
+  /// standing invariant). Nullable with NO default: a NULL reads back as
+  /// [DisplayLayout.defaults], which draws exactly the pre-v10 screen, so an
+  /// upgrade changes nothing for anyone who never opens the setting (G4).
+  static const int schemaVersion = 10;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -317,6 +324,18 @@ class AppDatabase {
         "ALTER TABLE ${Db.tableSettings} ADD COLUMN retention TEXT NOT NULL DEFAULT 'forever'",
       );
     }
+    if (from < 10) {
+      // Per-device dashboard layout (design 0034). Nullable with NO default,
+      // for once NOT because a default would be a fabricated fact but because
+      // NULL already means the right thing: "this unit has no layout of its
+      // own" reads back as the default watchface, which is today's screen. A
+      // literal '{"face":"standard"}' written into every row would say the
+      // opposite — that every existing user has made a choice — and would have
+      // to be told apart from a real one the day the editor lands.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN display_layout TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -357,7 +376,8 @@ class AppDatabase {
       last_seen INTEGER,
       last_value REAL,
       stale INTEGER NOT NULL DEFAULT 0,
-      product_class TEXT NOT NULL DEFAULT 'unknown'
+      product_class TEXT NOT NULL DEFAULT 'unknown',
+      display_layout TEXT
     )
     ''',
     '''

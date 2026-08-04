@@ -8,6 +8,7 @@ export 'saved_device.dart';
 export 'app_settings.dart';
 export 'log_entry.dart';
 export 'capture_mark.dart';
+export 'display_layout.dart';
 export 'product_class.dart';
 export 'routing_decision.dart';
 export 'device_capabilities.dart';

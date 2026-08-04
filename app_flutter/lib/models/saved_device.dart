@@ -4,6 +4,7 @@
 /// editable alias, for the device-list quick-reconnect flow (mockup screen 3).
 library;
 
+import 'display_layout.dart';
 import 'product_class.dart';
 
 /// A user-saved battery + its alias and last-seen metadata.
@@ -49,6 +50,12 @@ class SavedDevice {
   /// pre-migration rows.
   final ProductClass productClass;
 
+  /// Which dashboard layout this unit is shown with (design 0034 Q3: the
+  /// setting is bound to the DEVICE). Defaults to [DisplayLayout.defaults] for
+  /// pre-v10 rows and for any unit whose owner never changed it — and that
+  /// default draws exactly the pre-0034 screen.
+  final DisplayLayout displayLayout;
+
   const SavedDevice({
     required this.id,
     required this.alias,
@@ -57,6 +64,7 @@ class SavedDevice {
     this.lastValue,
     this.stale = false,
     this.productClass = ProductClass.unknown,
+    this.displayLayout = DisplayLayout.defaults,
   });
 
   SavedDevice copyWith({
@@ -67,6 +75,7 @@ class SavedDevice {
     double? lastValue,
     bool? stale,
     ProductClass? productClass,
+    DisplayLayout? displayLayout,
   }) =>
       SavedDevice(
         id: id ?? this.id,
@@ -76,14 +85,15 @@ class SavedDevice {
         lastValue: lastValue ?? this.lastValue,
         stale: stale ?? this.stale,
         productClass: productClass ?? this.productClass,
+        displayLayout: displayLayout ?? this.displayLayout,
       );
 
-  // Mirrors the v4 `saved_devices` schema. `name`/`stale` were added by the
+  // Mirrors the v10 `saved_devices` schema. `name`/`stale` were added by the
   // schemaVersion 3 migration (D.3); `product_class` by the schemaVersion 4
   // migration, so the resolved class / cosmetic label persists across
-  // reconnects. Every one of these migrations is additive and nullable: rows
-  // written by an older build read back with the column absent rather than
-  // wrong.
+  // reconnects; `display_layout` by schemaVersion 10 (design 0034). Every one
+  // of these migrations is additive and nullable: rows written by an older
+  // build read back with the column absent rather than wrong.
   Map<String, Object?> toMap() => {
         'id': id,
         'alias': alias,
@@ -92,6 +102,11 @@ class SavedDevice {
         'last_value': lastValue,
         'stale': stale ? 1 : 0,
         'product_class': productClass.storageKey,
+        // A default layout is written as NULL, not as its JSON. The column then
+        // says "never customised" rather than "customised, to the default",
+        // which is the distinction the editor (design 0034 Phase 7) will need
+        // and which a blanket encode() would destroy on the first upsert.
+        'display_layout': displayLayout.isDefault ? null : displayLayout.encode(),
       };
 
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
@@ -108,6 +123,11 @@ class SavedDevice {
         stale: ((m['stale'] as num?)?.toInt() ?? 0) == 1,
         // Absent column / unknown key falls back to unknown (old rows).
         productClass: ProductClass.fromStorageKey(m['product_class'] as String?),
+        // Absent column, NULL, or content this build cannot parse — all three
+        // land on the default layout WITHOUT throwing. See the reasoning in
+        // display_layout.dart: a hand-edited or newer-build value must not be
+        // able to take the dashboard down.
+        displayLayout: DisplayLayout.decode(m['display_layout']),
       );
 }
 
