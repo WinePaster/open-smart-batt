@@ -17,6 +17,7 @@ import '../models/models.dart';
 import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
+import 'telemetry_health.dart';
 
 /// One minute of samples being accumulated for ONE unit.
 ///
@@ -69,7 +70,7 @@ class _StallWatch {
 }
 
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
-class TelemetryController extends ChangeNotifier {
+class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   TelemetryController(
     this._ble, {
     required SettingsController settings,
@@ -391,14 +392,21 @@ class TelemetryController extends ChangeNotifier {
   ///
   /// Reports the unit currently being recorded, which is the one the dashboard
   /// is showing. With a single link that is the only watch there is.
+  @override
   bool get telemetryStalled => _stalls[_session.deviceId]?.stalled ?? false;
 
   /// Whether the unit being recorded has produced at least one frame on this
   /// connection. False from `ready` until the first one actually lands.
+  @override
   bool get hasTelemetry => (_stalls[_session.deviceId]?.samples ?? 0) > 0;
 
   /// Age of the newest telemetry, or null before the first frame.
   Duration? get telemetryAge => _ageOf(_session.deviceId);
+
+  /// See [TelemetryHealth.lastTelemetryAt] for why this is only meaningful
+  /// once [hasTelemetry] is true.
+  @override
+  DateTime? get lastTelemetryAt => _stalls[_session.deviceId]?.lastSampleAt;
 
   Duration? _ageOf(String? deviceId) {
     final at = _stalls[deviceId]?.lastSampleAt;

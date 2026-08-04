@@ -217,6 +217,8 @@
   "settingsKeepAwakeLabel": "連線時保持螢幕喚醒",
   "settingsKeepAwakeSub": "螢幕不自動關閉，方便邊騎邊看（連線時生效）",
   "monitorNotificationTitle": "OpenSmartBatt · 監看中",
+  "monitorNotificationTitleConnecting": "OpenSmartBatt · 連線中…",
+  "monitorNotificationTitleStalled": "OpenSmartBatt · 無資料",
   "monitorNotificationStop": "停止監看",
   "monitorChannelName": "背景監看",
   "monitorChannelDescription": "連線期間顯示即時電壓與電量的常駐通知",

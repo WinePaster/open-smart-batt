@@ -30,6 +30,7 @@ import 'device_controller.dart';
 import 'pack_class_resolver.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
+import 'telemetry_health.dart';
 
 /// Live BLE connection + scan state for the UI.
 class ConnectionController extends ChangeNotifier {
@@ -94,6 +95,10 @@ class ConnectionController extends ChangeNotifier {
     _monitorRunning = shouldRun;
     if (shouldRun) {
       _lastNotifyAt = null;
+      // Forget the previous connection's health, so this one's first real
+      // transition always pushes rather than comparing equal to a state that
+      // belonged to a link that is gone.
+      _lastHealth = null;
       unawaited(_startMonitor());
     } else {
       unawaited(_monitor.stop());
@@ -118,9 +123,63 @@ class ConnectionController extends ChangeNotifier {
     if (isOnline) unawaited(disconnect());
   }
 
+  /// Watch the link's telemetry freshness so the notification can stop lying.
+  ///
+  /// Wired by [AppServices] once both controllers exist. Without it the
+  /// notification says "monitoring" from `ready` until disconnect, whatever is
+  /// or is not arriving — the state that made an orphaned service
+  /// indistinguishable from a healthy one (design 0038 §1.2 e).
+  void bindTelemetryHealth(TelemetryHealth health) {
+    _health?.removeListener(_onHealthChanged);
+    _health = health;
+    _lastHealth = (health.hasTelemetry, health.telemetryStalled);
+    health.addListener(_onHealthChanged);
+  }
+
+  /// Push the notification when — and only when — the health state CHANGES.
+  ///
+  /// [TelemetryController] notifies on every sample, so the early return is
+  /// load-bearing, not tidiness: without it this would post at 1 Hz.
+  ///
+  /// Deliberately does NOT touch [_lastNotifyAt]. The throttle exists to stop
+  /// 1 Hz posting; a state transition is rare (bounded below by the 2 s stall
+  /// check) and the user is looking at the result right now — the same reason
+  /// [setNotificationStrings] pushes straight through. Letting the next body
+  /// update through immediately is also what you want on recovery: fresh
+  /// numbers the moment they come back, not five seconds later.
+  void _onHealthChanged() {
+    final h = _health;
+    if (h == null) return;
+    final now = (h.hasTelemetry, h.telemetryStalled);
+    if (now == _lastHealth) return;
+    _lastHealth = now;
+    if (_monitorRunning) unawaited(_monitor.update(_buildNotification()));
+  }
+
+  /// Which of the three titles the current health state calls for.
+  ///
+  /// ⚠️ [TelemetryHealth.hasTelemetry] is tested FIRST and the order is not
+  /// interchangeable: `lastSampleAt` is seeded at `ready`, so a link that has
+  /// never said a word also goes `stalled` after the threshold. Reading
+  /// `telemetryStalled` first would label it "no data" and hang a
+  /// last-updated clock on it for a reading that never existed.
+  String get _stateTitle {
+    final h = _health;
+    if (h == null) return _notifyTitle; // nothing bound (iOS, tests)
+    if (!h.hasTelemetry) return _notifyTitleConnecting;
+    return h.telemetryStalled ? _notifyTitleStalled : _notifyTitle;
+  }
+
+  /// The reading line, stamped with its own clock time once it is stale.
+  String get _stateBody {
+    final h = _health;
+    if (h == null || !h.hasTelemetry || !h.telemetryStalled) return _notifyBody;
+    return formatStaleMonitorBody(_notifyBody, h.lastTelemetryAt);
+  }
+
   MonitorNotification _buildNotification() => MonitorNotification(
-        title: _notifyTitle,
-        body: _notifyBody,
+        title: _stateTitle,
+        body: _stateBody,
         stopLabel: _notifyStopLabel,
         channelName: _notifyChannelName,
         channelDescription: _notifyChannelDescription,
@@ -132,19 +191,30 @@ class ConnectionController extends ChangeNotifier {
   /// language) — NOT per telemetry sample. The live reading is formatted from
   /// the samples this controller already receives, so the UI never has to push
   /// a notification update from a build method.
+  ///
+  /// Three titles, because one sentence cannot honestly cover three states:
+  /// connected-and-flowing, connected-but-nothing-has-arrived-yet, and
+  /// stalled. The reading line stays free of translated words (see
+  /// [formatMonitorBody]), so the state has to ride the title.
   void setNotificationStrings({
     required String title,
+    required String titleConnecting,
+    required String titleStalled,
     required String stopLabel,
     required String channelName,
     required String channelDescription,
   }) {
     if (title == _notifyTitle &&
+        titleConnecting == _notifyTitleConnecting &&
+        titleStalled == _notifyTitleStalled &&
         stopLabel == _notifyStopLabel &&
         channelName == _notifyChannelName &&
         channelDescription == _notifyChannelDescription) {
       return;
     }
     _notifyTitle = title;
+    _notifyTitleConnecting = titleConnecting;
+    _notifyTitleStalled = titleStalled;
     _notifyStopLabel = stopLabel;
     _notifyChannelName = channelName;
     _notifyChannelDescription = channelDescription;
@@ -178,10 +248,14 @@ class ConnectionController extends ChangeNotifier {
   bool _monitorRunning = false;
   DateTime? _lastNotifyAt;
   String _notifyTitle = 'OpenSmartBatt';
+  String _notifyTitleConnecting = 'OpenSmartBatt';
+  String _notifyTitleStalled = 'OpenSmartBatt';
   String _notifyBody = '';
   String _notifyStopLabel = '';
   String _notifyChannelName = '';
   String _notifyChannelDescription = '';
+  TelemetryHealth? _health;
+  (bool, bool)? _lastHealth;
 
   /// True while the background monitor is engaged.
   ///
@@ -338,6 +412,9 @@ class ConnectionController extends ChangeNotifier {
 
   /// Deadline on an armed autoConnect (FB-53 / [autoConnectWatchdog]).
   Timer? _autoConnectTimer;
+
+  /// Deadline on the resume liveness probe ([onAppResumed]).
+  Timer? _resumeProbeTimer;
 
   /// True once the watchdog has given up on an armed autoConnect, until the
   /// user asks for something new.
@@ -679,6 +756,56 @@ class ConnectionController extends ChangeNotifier {
   /// 2026-07-27 reports otherwise meant reconstructing that from a hole in the
   /// per-minute frame counts and the 2× backlog burst on resume.
   void logAppLifecycle(String state) => _event('app $state');
+
+  /// How long the resume probe waits for telemetry before giving up on a link.
+  ///
+  /// 5 s against a measured p50 of 0.29 s (Android) / 0.34 s (iOS) from
+  /// `app resumed` to the next inbound frame across the whole corpus — a
+  /// healthy link answers an order of magnitude inside this. It is deliberately
+  /// generous rather than tight: the cost of waiting is a few stale seconds,
+  /// the cost of firing early is dropping a link that was about to answer.
+  ///
+  /// Compare the tail this exists to cut: p90 240 s, max 14.5 h (design 0039
+  /// §1.3). Reconnecting takes seconds; waiting out that tail does not.
+  static const Duration resumeProbeWindow = Duration(seconds: 5);
+
+  /// The app came back to the foreground — find out whether the link survived.
+  ///
+  /// A suspension that ends in the OS reclaiming the link produces NO
+  /// disconnect event, so on resume `ready` is a claim, not a fact. Ask, then
+  /// hold the answer to a deadline.
+  ///
+  /// 🔑 The test is "did ANY telemetry arrive inside the window", NOT "is the
+  /// rate back to normal". Thawing flushes a backlog all at once
+  /// (`ble_service.dart`'s keep-alive re-entrancy note records both directions
+  /// stalling for minutes and then resuming together), so a rate-based test
+  /// would misread recovery as failure and tear down a link that is coming
+  /// back. That is the same trap design 0038 §1.3 rejected the liveness
+  /// watchdog for; do not reintroduce it here.
+  /// [window] is injectable for the same reason `TelemetryController`'s stall
+  /// threshold is: the policy is the thing worth testing, and a deadline that
+  /// takes five real seconds to exercise is a deadline nobody tests.
+  void onAppResumed({Duration? window}) {
+    _resumeProbeTimer?.cancel();
+    _resumeProbeTimer = null;
+    if (!isOnline) return;
+    unawaited(_ble.pokeKeepAlive().catchError((Object _) {}));
+    _resumeProbeTimer =
+        Timer(window ?? resumeProbeWindow, _onResumeProbeExpired);
+  }
+
+  void _onResumeProbeExpired() {
+    _resumeProbeTimer = null;
+    if (!isOnline) return;
+    _event('resume probe: no telemetry within '
+        '${resumeProbeWindow.inSeconds}s of resuming — dropping a link the OS '
+        'may already have taken');
+    // `_ble.disconnect()`, NOT this controller's `disconnect()`: the latter
+    // sets `_manualDisconnect` and clears `_desiredDeviceId`, which would
+    // suppress the very reconnect this exists to trigger. Same reasoning, and
+    // the same call, as `_onAutoConnectExpired`.
+    unawaited(_ble.disconnect().catchError((Object _) {}));
+  }
 
   /// The user's explicit class choice for a unit whose device-type byte we do
   /// not recognise. Pass null to clear it. Ignored (harmlessly) when the wire
@@ -1151,6 +1278,9 @@ class ConnectionController extends ChangeNotifier {
   void _onLinkState(BleLinkState s) {
     final wasOnline = _link == BleLinkState.ready;
     _link = s;
+    // Any link transition answers the resume probe's question for it.
+    _resumeProbeTimer?.cancel();
+    _resumeProbeTimer = null;
     // Open the recording session BEFORE logging this transition, so the
     // `link: ready` line itself is already attributed to the unit. The session
     // is closed further down, AFTER the disconnect line is written.
@@ -1526,6 +1656,9 @@ class ConnectionController extends ChangeNotifier {
   final Set<int> _loggedUnknownStatus = <int>{};
 
   void _onTelemetrySample(TelemetrySample s) {
+    // The link answered — whatever the resume probe was waiting for, it came.
+    _resumeProbeTimer?.cancel();
+    _resumeProbeTimer = null;
     final sawBefore = _packResolver.sawDeviceType;
     _packResolver.observe(s);
     // The class-resolve line fires on the FIRST device-type byte of the
@@ -1773,6 +1906,11 @@ class ConnectionController extends ChangeNotifier {
     }
     _reconnectTimer?.cancel();
     _cancelAutoConnectWatchdog();
+    _resumeProbeTimer?.cancel();
+    // Safe after the notifier itself is disposed — AppServices tears telemetry
+    // down first, and ChangeNotifier.removeListener documents that it "is
+    // allowed to be called on disposed instances for usability reasons".
+    _health?.removeListener(_onHealthChanged);
     _linkSub?.cancel();
     _diagnosticsSub?.cancel();
     _scanSub?.cancel();
@@ -1783,6 +1921,27 @@ class ConnectionController extends ChangeNotifier {
     _monitor.dispose();
     super.dispose();
   }
+}
+
+/// Stamp a frozen reading with the clock time it was actually taken.
+///
+/// Pure + unit-testable, and language-free for the same reason
+/// [formatMonitorBody] is: `HH:mm` needs no translation.
+///
+/// An ABSOLUTE time, not "3 minutes ago". A relative age is wrong the moment
+/// it is posted and only stays right if the notification is re-posted on a
+/// timer — a battery cost, for a line nobody is watching second by second. A
+/// clock time is posted once and remains true.
+///
+/// [at] null (nothing has ever arrived) leaves the body alone: there is no
+/// moment to name, and inventing one is exactly the confusion
+/// [TelemetryHealth.lastTelemetryAt] warns about.
+String formatStaleMonitorBody(String body, DateTime? at) {
+  if (at == null) return body;
+  final hh = at.hour.toString().padLeft(2, '0');
+  final mm = at.minute.toString().padLeft(2, '0');
+  final stamp = '($hh:$mm)';
+  return body.isEmpty ? stamp : '$body $stamp';
 }
 
 /// Reading line for the ongoing monitor notification. Pure + unit-testable.

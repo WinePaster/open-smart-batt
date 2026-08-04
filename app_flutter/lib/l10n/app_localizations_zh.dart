@@ -797,6 +797,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get monitorNotificationTitle => 'OpenSmartBatt · 監看中';
 
   @override
+  String get monitorNotificationTitleConnecting => 'OpenSmartBatt · 連線中…';
+
+  @override
+  String get monitorNotificationTitleStalled => 'OpenSmartBatt · 無資料';
+
+  @override
   String get monitorNotificationStop => '停止監看';
 
   @override

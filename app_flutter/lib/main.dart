@@ -141,6 +141,11 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
       case AppLifecycleState.hidden:
         widget.services.telemetry.flushPendingHistory();
       case AppLifecycleState.resumed:
+        // The sentence above is why this branch cannot stay empty: if the OS
+        // took the link while we were away it said nothing, so `ready` on
+        // resume is a claim. Ask the device, and hold the answer to a deadline
+        // (design 0039 §3.1).
+        widget.services.connection.onAppResumed();
       case AppLifecycleState.inactive:
         break;
     }
@@ -287,6 +292,8 @@ class _RootShellState extends State<RootShell> {
     final l10n = AppLocalizations.of(context);
     context.read<ConnectionController>().setNotificationStrings(
           title: l10n.monitorNotificationTitle,
+          titleConnecting: l10n.monitorNotificationTitleConnecting,
+          titleStalled: l10n.monitorNotificationTitleStalled,
           stopLabel: l10n.monitorNotificationStop,
           channelName: l10n.monitorChannelName,
           channelDescription: l10n.monitorChannelDescription,

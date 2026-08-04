@@ -543,6 +543,8 @@
   "settingsKeepAwakeLabel": "Keep screen awake while connected",
   "settingsKeepAwakeSub": "Screen won't turn off automatically, handy for viewing while riding (active when connected)",
   "monitorNotificationTitle": "OpenSmartBatt · monitoring",
+  "monitorNotificationTitleConnecting": "OpenSmartBatt · connecting…",
+  "monitorNotificationTitleStalled": "OpenSmartBatt · no data",
   "monitorNotificationStop": "Stop",
   "monitorChannelName": "Background monitoring",
   "monitorChannelDescription": "Ongoing notification showing live voltage and charge while connected",

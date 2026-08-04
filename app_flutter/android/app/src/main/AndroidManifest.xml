@@ -64,10 +64,26 @@
             </intent-filter>
         </activity>
         <!-- Keeps the process at foreground importance while connected. Does
-             not touch Bluetooth itself; see MonitorService.kt. -->
+             not touch Bluetooth itself; see MonitorService.kt.
+
+             stopWithTask: the service must not outlive the engine it serves.
+             Swiping the app away destroys the Activity and with it the
+             FlutterEngine, and flutter_blue_plus disconnects every device from
+             onDetachedFromEngine — so the link is already gone. Without this
+             attribute the foreground service survived, holding the process up
+             to display an ongoing "monitoring" notification frozen at the last
+             reading, with nothing behind it (design 0038 §1.2).
+
+             ⚠️ If design 0039 adopts a cached engine (engine outlives the
+             Activity, so the link survives a task swipe), this attribute MUST
+             be removed. Leaving it would kill the foreground service while the
+             engine keeps running: the process drops back to cached importance
+             and is frozen silently — exactly what design 0008 exists to
+             prevent, and nothing would report it. -->
         <service
             android:name=".MonitorService"
             android:exported="false"
+            android:stopWithTask="true"
             android:foregroundServiceType="connectedDevice" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

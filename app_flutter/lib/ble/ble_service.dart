@@ -1349,6 +1349,17 @@ class BleService {
   /// Send one scheduled keep-alive token on demand (advances the tick counter).
   /// No-op when nothing is connected, as it always was — the old body returned
   /// early on a null write characteristic.
+  ///
+  /// Also the resume liveness probe's opening move (design 0039 §3.1): back in
+  /// the foreground, the app cannot tell a healthy link from one the OS
+  /// reclaimed while it was suspended, because that path produces no disconnect
+  /// event. Asking is the only way to find out, and waiting up to a second for
+  /// the next tick wastes the part of the window the user is watching.
+  ///
+  /// Deliberately still subject to [_LinkState.keepAliveInFlight] like any
+  /// other tick: if a write from before the suspension is still hanging, this
+  /// returns without sending, the probe sees no telemetry and the link is
+  /// dropped — which is the right answer. A hung write IS the symptom.
   Future<void> pokeKeepAlive() async {
     final link = _current;
     if (link == null) return;
