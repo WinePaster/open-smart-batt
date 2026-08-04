@@ -101,6 +101,20 @@ class AndroidMonitorService implements MonitorService {
       : _channel = channel ??
             const MethodChannel('com.winepaster.openSmartBatt/monitor') {
     _channel.setMethodCallHandler(_onCall);
+    // Boot reconciliation. A previous process may have left a service running:
+    // its task was swiped away, or its engine died while the foreground service
+    // held the process up. Nothing else would ever stop it — `_updateMonitor`
+    // opens with `if (shouldRun == _monitorRunning) return`, and in a fresh
+    // engine both are false, so it never reaches the `stop()` branch.
+    //
+    // Unconditional, because at construction this process is definitionally not
+    // connected: the app never auto-connects at launch (every `connect()` /
+    // `connectToSaved()` caller is a user tap). With no orphan this is a no-op.
+    //
+    // Here rather than in ConnectionController on purpose: "the platform may
+    // hold a service from a previous process" is a platform fact, and
+    // NoopMonitorService has no such problem. Design 0038 §5.2.
+    unawaited(_invoke('stop'));
   }
 
   final MethodChannel _channel;

@@ -1400,6 +1400,18 @@ abstract class AppLocalizations {
   /// **'OpenSmartBatt · monitoring'**
   String get monitorNotificationTitle;
 
+  /// No description provided for @monitorNotificationTitleConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenSmartBatt · connecting…'**
+  String get monitorNotificationTitleConnecting;
+
+  /// No description provided for @monitorNotificationTitleStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenSmartBatt · no data'**
+  String get monitorNotificationTitleStalled;
+
   /// No description provided for @monitorNotificationStop.
   ///
   /// In en, this message translates to:

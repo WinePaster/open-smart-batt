@@ -843,6 +843,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get monitorNotificationTitle => 'OpenSmartBatt · monitoring';
 
   @override
+  String get monitorNotificationTitleConnecting =>
+      'OpenSmartBatt · connecting…';
+
+  @override
+  String get monitorNotificationTitleStalled => 'OpenSmartBatt · no data';
+
+  @override
   String get monitorNotificationStop => 'Stop';
 
   @override

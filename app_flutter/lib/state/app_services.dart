@@ -122,6 +122,10 @@ class AppServices {
       appBuild: env.build,
       pending: pending,
     );
+    // One judgement about link freshness, two presentations: the dashboard's
+    // stale banner and the ongoing notification. Wired here because it is the
+    // only place both controllers exist (design 0038 §5.5).
+    connection.bindTelemetryHealth(telemetry);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);
