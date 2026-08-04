@@ -1121,25 +1121,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankDirectionDischarging => '放電中';
 
   @override
-  String get usbPortsHeading => 'USB 埠';
-
-  @override
   String get usbPortTypeA => 'Type-A';
 
   @override
   String get usbPortTypeC => 'Type-C';
-
-  @override
-  String get usbPortStateUnknown => '未知';
-
-  @override
-  String get usbPortStateSupplying => '供電中';
-
-  @override
-  String get usbPortStateIdle => '閒置';
-
-  @override
-  String get usbPortPendingNote => '供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。';
 
   @override
   String get powerPathHeading => '能量路徑';

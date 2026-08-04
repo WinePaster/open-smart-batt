@@ -1182,26 +1182,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankDirectionDischarging => 'DISCHARGING';
 
   @override
-  String get usbPortsHeading => 'USB Ports';
-
-  @override
   String get usbPortTypeA => 'Type-A';
 
   @override
   String get usbPortTypeC => 'Type-C';
-
-  @override
-  String get usbPortStateUnknown => 'Unknown';
-
-  @override
-  String get usbPortStateSupplying => 'Supplying';
-
-  @override
-  String get usbPortStateIdle => 'Idle';
-
-  @override
-  String get usbPortPendingNote =>
-      'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.';
 
   @override
   String get powerPathHeading => 'Energy Path';

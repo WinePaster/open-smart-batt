@@ -2006,12 +2006,6 @@ abstract class AppLocalizations {
   /// **'DISCHARGING'**
   String get powerBankDirectionDischarging;
 
-  /// No description provided for @usbPortsHeading.
-  ///
-  /// In en, this message translates to:
-  /// **'USB Ports'**
-  String get usbPortsHeading;
-
   /// No description provided for @usbPortTypeA.
   ///
   /// In en, this message translates to:
@@ -2023,30 +2017,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Type-C'**
   String get usbPortTypeC;
-
-  /// No description provided for @usbPortStateUnknown.
-  ///
-  /// In en, this message translates to:
-  /// **'Unknown'**
-  String get usbPortStateUnknown;
-
-  /// No description provided for @usbPortStateSupplying.
-  ///
-  /// In en, this message translates to:
-  /// **'Supplying'**
-  String get usbPortStateSupplying;
-
-  /// No description provided for @usbPortStateIdle.
-  ///
-  /// In en, this message translates to:
-  /// **'Idle'**
-  String get usbPortStateIdle;
-
-  /// No description provided for @usbPortPendingNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.'**
-  String get usbPortPendingNote;
 
   /// No description provided for @powerPathHeading.
   ///
