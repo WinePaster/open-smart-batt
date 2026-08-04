@@ -357,6 +357,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.';
 
   @override
+  String get disconnectedGaveUpAutoConnect =>
+      'The device was left to come back on its own and never reappeared, so it has stopped waiting.';
+
+  @override
+  String get disconnectedGaveUpRadioHint =>
+      'Nothing more happens on its own from here. Sort out the Bluetooth problem above first — connecting and scanning will both keep failing until it is fixed.';
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }

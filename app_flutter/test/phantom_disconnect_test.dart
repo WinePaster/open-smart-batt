@@ -121,6 +121,11 @@ class _FakeBle extends BleService {
   int disconnectCalls = 0;
   String? lastConnectId;
 
+  /// What `connect(autoConnect: true)` throws, when set. Only the hand-off
+  /// path, so a test can fail the arming without also failing the ladder that
+  /// is supposed to take over from it.
+  Object? autoConnectError;
+
   @override
   Stream<BleLinkState> get linkState => _linkOut.stream;
 
@@ -148,7 +153,11 @@ class _FakeBle extends BleService {
       {Duration? timeout, bool autoConnect = false}) async {
     connectCalls++;
     lastConnectId = deviceId;
-    if (autoConnect) autoConnectCalls++;
+    if (autoConnect) {
+      autoConnectCalls++;
+      final e = autoConnectError;
+      if (e != null) throw e;
+    }
   }
 
   @override
@@ -534,7 +543,12 @@ void main() {
       expect(h.conn.lastError, isNull);
 
       await tester.pump(const Duration(seconds: 2));
-      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(h.conn.lastError, 'autoconnect_timeout',
+          reason: 'not the ladder\'s code. `reconnect_exhausted` is a count, '
+              'and this is one 180 s hand-off to the OS during which no '
+              'attempt of ours was made — so "several attempts went by" would '
+              'be a claim about work nobody did, and the field logs would show '
+              'one string for two different diagnoses');
       expect(h.ble.disconnectCalls, 1,
           reason: 'the first place in this app that actually CANCELS a '
               'connect — everywhere else an abandoned one stays in flight '
@@ -545,6 +559,64 @@ void main() {
           hasLength(1),
           reason: 'greppable, or the count of how often this fires is '
               'unknowable');
+    });
+
+    testWidgets('an arming that FAILS falls back to the ladder', (tester) async {
+      // The 180 s hole. `_ble.connect(autoConnect: true)` throwing was
+      // swallowed by a bare `catchError`, and the `disconnected` its own
+      // teardown emits arrives with BOTH terms of the R3 condition false —
+      // `_reachedConnected` cleared by the drop that got us here,
+      // `_reconnectAttempts` still 0 because the hand-off path never touches
+      // the ladder. Nothing scheduled, nothing logged, and the only thing left
+      // with an opinion was a watchdog on a connect that was never registered.
+      final h = _Harness();
+      addTearDown(h.dispose);
+      h.ble.autoConnectError = StateError('CBCentralManager is not powered on');
+      await h.conn.connect('AA');
+      final before = h.ble.connectCalls;
+      h.conn.armAutoConnect();
+      await tester.pump();
+
+      expect(h.ble.autoConnectCalls, 1);
+      expect(h.conn.isRetrying, isTrue,
+          reason: 'this path is only reached for a link that WAS healthy and '
+              'dropped — exactly what R3 reserves the ladder for. A hand-off '
+              'that could not be armed is not a hand-off to prefer over it');
+      expect(h.conn.reconnectAttempts, 1);
+      expect(
+          h.logs.notes.where((n) =>
+              n.startsWith('auto-reconnect: autoConnect could not be armed')),
+          hasLength(1),
+          reason: 'greppable, or a failure that leaves no trace is one nobody '
+              'can count');
+
+      // Rung 1 fires on schedule, and this time the connect lands.
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.ble.connectCalls, before + 2);
+
+      // …and the deadline on a connect that was never registered does not
+      // outlive it and drop the link the ladder just made.
+      await tester.pump(
+          ConnectionController.autoConnectWatchdog + const Duration(seconds: 1));
+      expect(h.logs.notes.where((n) => n.contains('autoConnect gave up')),
+          isEmpty);
+      expect(h.ble.disconnectCalls, 0);
+    });
+
+    testWidgets('a failed arming after a manual disconnect stays quiet',
+        (tester) async {
+      // The guards are re-read a microtask later on purpose: the user may have
+      // moved on between the throw and its handler.
+      final h = _Harness();
+      addTearDown(h.dispose);
+      h.ble.autoConnectError = StateError('no radio');
+      await h.conn.connect('AA');
+      h.conn.armAutoConnect();
+      await h.conn.disconnect();
+      await tester.pump();
+
+      expect(h.conn.isRetrying, isFalse);
+      expect(h.conn.reconnectAttempts, 0);
     });
 
     testWidgets('giving up does not start trying again', (tester) async {
@@ -562,7 +634,7 @@ void main() {
       await tester.pump();
       expect(h.conn.isRetrying, isFalse);
       expect(h.conn.reconnectAttempts, 0);
-      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(h.conn.lastError, 'autoconnect_timeout');
     });
 
     testWidgets('the hand-off delivering `connected` cancels it',
@@ -583,6 +655,37 @@ void main() {
               'would drop a link mid-setup, or double-report a failure the '
               'ladder already reported.');
       expect(h.conn.lastError, isNull);
+    });
+
+    testWidgets('a hand-off that arrives LATE un-gives-up', (tester) async {
+      // The ordering the old code could not come back from: the watchdog fires
+      // at 180 s, and only then does the OS hand the connection over — and it
+      // gets no further than `connected` (a stalled GATT setup, which is what
+      // FB-51/FB-52 are about). `ready` never arrives, so the clear at `ready`
+      // never runs, and `_autoConnectGaveUp` stayed true for the rest of the
+      // app's life: every subsequent drop of that device was refused a
+      // reconnect by a flag whose stated reason — "the device never came
+      // back" — had been disproved by the device coming back.
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.conn.connect('AA');
+      h.conn.armAutoConnect();
+      await tester.pump(ConnectionController.autoConnectWatchdog +
+          const Duration(seconds: 1));
+      expect(h.conn.lastError, 'autoconnect_timeout');
+
+      // Late, and only as far as `connected`.
+      h.ble.emitLink(BleLinkState.connected);
+      await tester.pump();
+      h.ble.emitLink(BleLinkState.disconnected);
+      await tester.pump();
+
+      expect(h.conn.isRetrying, isTrue,
+          reason: 'the device is demonstrably still there; refusing to '
+              'reconnect to it on the strength of a give-up it has already '
+              'disproved is a dead app until the user notices');
+      expect(h.conn.reconnectAttempts, 1);
+      h.dispose(); // rung 1 is still armed
     });
 
     testWidgets('reaching ready cancels it', (tester) async {

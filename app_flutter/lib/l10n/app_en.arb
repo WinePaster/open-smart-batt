@@ -229,6 +229,14 @@
   "disconnectedGaveUpTitle": "Could not connect to this device",
   "disconnectedGaveUpBody": "Several attempts went by without a connection, so it has stopped trying.",
   "disconnectedGaveUpHint": "Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.",
+  "disconnectedGaveUpAutoConnect": "The device was left to come back on its own and never reappeared, so it has stopped waiting.",
+  "@disconnectedGaveUpAutoConnect": {
+    "description": "The autoConnect watchdog expired. Deliberately not the 'several attempts' wording: the hand-off makes no attempts of ours to count."
+  },
+  "disconnectedGaveUpRadioHint": "Nothing more happens on its own from here. Sort out the Bluetooth problem above first — connecting and scanning will both keep failing until it is fixed.",
+  "@disconnectedGaveUpRadioHint": {
+    "description": "Advice card for bluetooth_off / bluetooth_unauthorized / permission_denied. The standing hint sends the user to check the device and to scan, and neither can work with the radio down."
+  },
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {

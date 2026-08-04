@@ -168,7 +168,8 @@ class _DeviceListSheetState extends State<DeviceListSheet> {
   /// again". Telling someone to retry, when what they have to do is switch
   /// Bluetooth on, is the wrong instruction, which is the whole complaint.
   ///
-  /// Unknown codes (a raw platform exception, `reconnect_exhausted`) keep the
+  /// Unknown codes (a raw platform exception, `reconnect_exhausted`,
+  /// `autoconnect_timeout`) keep the
   /// generic line on purpose: a wrong specific instruction is worse than a
   /// vague correct one, and this is the branch that catches everything we have
   /// not classified yet.

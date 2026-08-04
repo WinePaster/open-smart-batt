@@ -397,6 +397,27 @@ class ConnectionController extends ChangeNotifier {
   /// connect to the same unit.
   int _setupFailuresSinceReady = 0;
 
+  /// Whose run [_setupFailuresSinceReady] is counting.
+  ///
+  /// The counter belongs to a UNIT, so the question "does a new connect reset
+  /// it?" is "is this a different unit?" — and that has to be asked of
+  /// something that survives a disconnect. It used to be asked of
+  /// [_desiredDeviceId], which [disconnect] sets to null, so every path that
+  /// goes out through `disconnect()` and back in through `connect()` compared
+  /// the target against null, found them different, and zeroed the run.
+  ///
+  /// [reconnectCurrent] is exactly such a path, and it is what the give-up
+  /// card's "try again" button calls — so design 0031 G3 ("a manual reconnect
+  /// to the same unit must not wash the count out") held everywhere EXCEPT on
+  /// the button built to be pressed when the count is what put the card there.
+  /// Three failures, tap, three more, tap: the give-up card could be dismissed
+  /// forever and the run never reach [maxSetupFailures] again.
+  ///
+  /// Deliberately NOT cleared by [disconnect]: a unit's run of silent
+  /// connections is a fact about that unit, and the user cycling the link is
+  /// not evidence it has ended. Only `ready` is (see [_onLinkState]).
+  String? _setupFailuresDeviceId;
+
   /// Consecutive failed setups before the app stops trying and says so.
   ///
   /// Three, not one. A single `gatt setup failed` happens on healthy hardware —
@@ -801,7 +822,16 @@ class ConnectionController extends ChangeNotifier {
     // Tapping connect again on the same unit is the user retrying the thing
     // that just failed three times; treating it as a clean slate is exactly how
     // `2026.08.03/003` kept the give-up path out of reach for fourteen minutes.
-    if (_desiredDeviceId != deviceId) _setupFailuresSinceReady = 0;
+    //
+    // Compared against [_setupFailuresDeviceId] and NOT against
+    // `_desiredDeviceId`: the latter is nulled by [disconnect], so on every
+    // path that leaves and re-enters through it — [reconnectCurrent], i.e. the
+    // give-up card's own button — the comparison was against null and always
+    // said "different unit".
+    if (_setupFailuresDeviceId != deviceId) {
+      _setupFailuresSinceReady = 0;
+      _setupFailuresDeviceId = deviceId;
+    }
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
     // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
@@ -1106,6 +1136,17 @@ class ConnectionController extends ChangeNotifier {
       // one — pairing `autoConnect gave up` with `auto-reconnect gave up` in
       // the very logs the FB-53 acceptance counts are grepped from.
       _cancelAutoConnectWatchdog();
+      // And the give-up itself is spent, not just its deadline. The flag
+      // exists to stop the drop that giving up CAUSES from restarting the
+      // ladder; a `connected` afterwards is the device saying the premise was
+      // wrong — it did come back. Cancelling the timer alone left the flag set
+      // for good in the one ordering that matters: the watchdog fires at 180 s,
+      // the OS hands the connection over a moment later, and it only reaches
+      // `connected` (a stalled GATT setup, FB-51/FB-52). `ready` never arrives,
+      // so the clear at `ready` never runs, and from then on every drop of that
+      // device is refused a reconnect by the guard below — permanently, until
+      // the user connects or disconnects by hand.
+      _autoConnectGaveUp = false;
     }
     if (s == BleLinkState.connecting ||
         s == BleLinkState.connected ||
@@ -1276,7 +1317,56 @@ class ConnectionController extends ChangeNotifier {
     _autoConnectTimer?.cancel();
     _autoConnectTimer =
         Timer(autoConnectWatchdog, () => _onAutoConnectExpired(id));
-    unawaited(_ble.connect(id, autoConnect: true).catchError((Object _) {}));
+    unawaited(_ble.connect(id, autoConnect: true)
+        .catchError((Object e) => _onArmAutoConnectFailed(id, e)));
+  }
+
+  /// The hand-off could not even be armed.
+  ///
+  /// This used to be `.catchError((Object _) {})` — swallowed whole. The cost
+  /// was 180 s of a blank screen: `_ble.connect` throwing means its own
+  /// teardown emits `disconnected`, and by the time that event reaches
+  /// [_onLinkState] the R3 condition is false on BOTH terms — `_reachedConnected`
+  /// was cleared by the drop that got us here, and `_reconnectAttempts` is 0
+  /// because the hand-off path never touches the ladder. So nothing was
+  /// scheduled, nothing was recorded, and the only thing left with an opinion
+  /// was a watchdog waiting on a connect that was never registered.
+  ///
+  /// POLICY: fall back to the ordinary backoff ladder rather than giving up on
+  /// the spot. [_armAutoConnect] is reached only from `wasOnline && isIOS` — a
+  /// link that was healthy and dropped — which is exactly the population R3
+  /// reserves the ladder for, and the population the ladder served on every
+  /// other platform all along. The hand-off is PREFERRED over the ladder (see
+  /// [autoConnectWatchdog]); a hand-off that does not exist is not something to
+  /// prefer. Giving up immediately would make an iOS device the only one that
+  /// gets no recovery attempt at all after a drop, on the strength of an error
+  /// raised before any attempt was made.
+  ///
+  /// The watchdog goes first, unconditionally: it is a deadline on a pending
+  /// connect, and there is no pending connect. Leaving it armed would fire
+  /// `autoconnect_timeout` three minutes into a ladder that has long since
+  /// finished, and drop whatever link the ladder had by then established.
+  void _onArmAutoConnectFailed(String id, Object error) {
+    _cancelAutoConnectWatchdog();
+    // Classify before anything else can overwrite it. A radio that went down
+    // between the drop and this call explains everything and the ladder is
+    // about to fail five times for that one reason; naming it now means the
+    // give-up card at the end of the ladder has something true to show.
+    final reason =
+        connectFailureError(adapter: _adapter, isIOS: Platform.isIOS, error: error);
+    if (reason != null) _lastError = reason;
+    _event('auto-reconnect: autoConnect could not be armed '
+        '(${reason ?? 'cancelled'}) — falling back to the backoff ladder: $error');
+    // The same guards the call site applies, re-read: this runs a microtask
+    // later and the user may have moved on.
+    if (!_manualDisconnect &&
+        _settings.autoReconnect &&
+        !isSetupStalled &&
+        !_autoConnectGaveUp &&
+        _desiredDeviceId == id) {
+      _scheduleReconnect();
+    }
+    notifyListeners();
   }
 
   /// Expose the iOS hand-off to tests.
@@ -1297,7 +1387,15 @@ class ConnectionController extends ChangeNotifier {
     // that is the event that starts the backoff ladder. Giving up must not be
     // the thing that starts trying again.
     _autoConnectGaveUp = true;
-    _lastError = 'reconnect_exhausted';
+    // Its own code, not the ladder's. `reconnect_exhausted` is a count — "five
+    // attempts went by without a connection", which is what
+    // `disconnectedGaveUpBody` then says on screen. This is one 180 s hand-off
+    // to the OS: no attempt of ours was made, none was counted, and reporting
+    // it as several would be a claim about work nobody did. It also collapsed
+    // two different diagnoses into one string in the field logs — the ladder
+    // exhausting says the device refused five connects, the watchdog expiring
+    // says the device never advertised at all.
+    _lastError = 'autoconnect_timeout';
     _event('auto-reconnect: autoConnect gave up after '
         '${autoConnectWatchdog.inSeconds}s with no `ready` — pending connect '
         'cancelled');

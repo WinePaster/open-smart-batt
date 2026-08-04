@@ -644,6 +644,18 @@ abstract class AppLocalizations {
   /// **'Nothing more happens on its own from here. Check the unit is nearby and powered, then try again — or scan for it below.'**
   String get disconnectedGaveUpHint;
 
+  /// The autoConnect watchdog expired. Deliberately not the 'several attempts' wording: the hand-off makes no attempts of ours to count.
+  ///
+  /// In en, this message translates to:
+  /// **'The device was left to come back on its own and never reappeared, so it has stopped waiting.'**
+  String get disconnectedGaveUpAutoConnect;
+
+  /// Advice card for bluetooth_off / bluetooth_unauthorized / permission_denied. The standing hint sends the user to check the device and to scan, and neither can work with the radio down.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing more happens on its own from here. Sort out the Bluetooth problem above first — connecting and scanning will both keep failing until it is fixed.'**
+  String get disconnectedGaveUpRadioHint;
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:
