@@ -119,8 +119,16 @@ class _ErrorConn extends ConnectionController {
 
   String? error;
 
+  /// FB-52's latch, statable the same way. The real latch is exercised by
+  /// `setup_stall_test.dart`; here only the screen's reading of it is under
+  /// test.
+  bool stalledLatch = false;
+
   @override
   String? get lastError => error;
+
+  @override
+  bool get isSetupStalled => stalledLatch;
 
   void setError(String? e) {
     error = e;
@@ -385,6 +393,29 @@ void main() {
       expect(find.textContaining('Nothing more happens on its own'),
           findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
+    });
+
+    testWidgets('the stall latch outranks whatever failed last', (tester) async {
+      // Ruled 2026-08-04. The latch only clears on `ready` or a device switch,
+      // but `lastError` is a single slot: a manual retry that dies one step
+      // earlier used to overwrite `gatt_setup_stalled` with
+      // `device_unreachable`, flipping the screen from the one remedy with
+      // field evidence ("close the app fully") to "check the unit is nearby" —
+      // the opposite direction.
+      await pump(tester);
+      conn.stalledLatch = true;
+      conn.setError('device_unreachable');
+      await tester.pump();
+
+      expect(find.text('Connected, but the device is not answering'),
+          findsOneWidget,
+          reason: 'the latch is still set — the stalled card must win');
+      expect(
+          find.text(
+              'This device could not be found. Check it is nearby and switched '
+              'on'),
+          findsNothing,
+          reason: 'the overwritten code must not surface its own copy');
     });
 
     testWidgets('an out-of-range unit is told to go and look at it',

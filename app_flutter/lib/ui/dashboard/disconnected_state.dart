@@ -108,7 +108,17 @@ class DisconnectedState extends StatelessWidget {
     // motivated it. It is gated on `!working` so a manual retry still shows
     // progress: `connect()` clears `lastError`, so the failure only comes back
     // once the retry has failed too.
-    final stalled = !working && conn.lastError == 'gatt_setup_stalled';
+    //
+    // `isSetupStalled` is consulted alongside the error code (ruled
+    // 2026-08-04): the stall is a LATCH — only `ready` or switching device
+    // clears it — but `lastError` is a single slot, so a manual retry that
+    // dies one step earlier (say, a connect timeout) used to overwrite the
+    // code and flip this screen to "check the unit is nearby". That advice
+    // points the wrong way: the only remedy with field evidence behind it is
+    // the stalled card's "close the app fully and reopen it", so as long as
+    // the latch is set, the stalled copy wins over whatever failed last.
+    final stalled = !working &&
+        (conn.lastError == 'gatt_setup_stalled' || conn.isSetupStalled);
 
     // FB-53: the three ways an attempt can END, which this screen used to sit
     // through in silence. The backoff ladder runs its 60 s, `lastError` is set,
