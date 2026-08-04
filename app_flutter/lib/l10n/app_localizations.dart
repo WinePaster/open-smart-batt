@@ -2006,12 +2006,6 @@ abstract class AppLocalizations {
   /// **'DISCHARGING'**
   String get powerBankDirectionDischarging;
 
-  /// No description provided for @powerBankDirectionIdle.
-  ///
-  /// In en, this message translates to:
-  /// **'IDLE'**
-  String get powerBankDirectionIdle;
-
   /// No description provided for @usbPortsHeading.
   ///
   /// In en, this message translates to:

@@ -1182,9 +1182,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankDirectionDischarging => 'DISCHARGING';
 
   @override
-  String get powerBankDirectionIdle => 'IDLE';
-
-  @override
   String get usbPortsHeading => 'USB Ports';
 
   @override

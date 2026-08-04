@@ -10,6 +10,10 @@
 // directions, what the page says in words, which glyph it draws, and — for the
 // two cases where saying nothing is the honest answer — that it says nothing.
 //
+// Updated for design 0037: the current READOUT now shows the MAGNITUDE plus a
+// charge/discharge badge (the ±0.05 A dead-band shows the number but names no
+// state); the signed, zero-spanning chart TRACK is untouched (bottom test).
+//
 // NOT pinned, deliberately: the signed, zero-spanning current TRACK. A sign
 // flip mid-window is how a start-up load is recognised, so that axis stays as
 // it is whatever the instantaneous direction is; the test at the bottom is
@@ -29,6 +33,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
+import 'package:open_smart_batt/ui/dashboard/readout_grid.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -162,10 +167,11 @@ void main() {
       expect(find.text('DISCHARGING'), findsNothing);
       expect(find.text('IDLE'), findsNothing);
 
-      // The sign SURVIVES. design 0030 is not renegotiated by this fix — the
-      // badge explains the number, it does not replace it.
-      expect(find.text('-0.43 A'), findsOneWidget);
-      expect(find.text('0.43 A'), findsNothing);
+      // Magnitude only (design 0037 supersedes FB-47's signed readout): the
+      // badge carries the direction, the number does not. The chart track keeps
+      // its sign — that is the bottom test, and it must stay.
+      expect(find.text('0.43 A'), findsOneWidget);
+      expect(find.text('-0.43 A'), findsNothing);
 
       // 0x37 reads the port-side voltage: 9.15 V here is what is coming IN.
       expect(find.text('INPUT VOLTAGE'), findsOneWidget);
@@ -223,37 +229,50 @@ void main() {
   // =========================================================================
   // Idle — and the -0.00 that started it
   // =========================================================================
-  group('idle (|current| below the deadband)', () {
-    testWidgets('a flat zero says IDLE, with neither arrow nor bolt',
+  group('idle (|current| below the ±0.05 deadband, design 0037)', () {
+    testWidgets('a flat zero shows the magnitude but names NO state',
         (tester) async {
       await pumpBank(tester, current: 0.0);
 
-      expect(find.text('IDLE'), findsOneWidget);
+      // Design 0037: inside the band there is no direction to name, so the
+      // badge drops — but the reading itself still shows.
+      expect(find.text('CHARGING'), findsNothing);
+      expect(find.text('DISCHARGING'), findsNothing);
       expect(find.text('0.00 A'), findsOneWidget);
       expect(iconCount(tester, Icons.pause_circle_outline), 3);
       expect(iconCount(tester, Icons.battery_charging_full), 0);
       expect(find.text('OUTPUT VOLTAGE'), findsOneWidget);
     });
 
-    testWidgets('a 2 mA trickle shows 0.00, NOT -0.00', (tester) async {
-      // charge 2 mA, discharge 0 → current == -0.002. Straight through
-      // toStringAsFixed(2) this reads "-0.00": a minus sign on a zero, which
-      // is a number no device ever reported.
+    testWidgets('a non-zero draw inside the band shows its magnitude, no badge',
+        (tester) async {
+      // 30 mA — real, but below the ±0.05 direction threshold. The user asked
+      // that this still display the number (just without a charge/discharge
+      // state).
+      await pumpBank(tester, current: 0.03);
+
+      expect(find.text('0.03 A'), findsOneWidget);
+      expect(find.text('CHARGING'), findsNothing);
+      expect(find.text('DISCHARGING'), findsNothing);
+    });
+
+    testWidgets('a 2 mA trickle shows 0.00 (absolute), NOT -0.00', (tester) async {
+      // current == -0.002. The old signed path read "-0.00"; the absolute
+      // value removes the sign entirely.
       await pumpBank(tester, current: -0.002);
 
       expect(find.text('0.00 A'), findsOneWidget);
       expect(find.text('-0.00 A'), findsNothing);
-      // 2 mA is noise, not a direction — it must not claim to be charging.
-      expect(find.text('IDLE'), findsOneWidget);
       expect(find.text('CHARGING'), findsNothing);
     });
 
-    testWidgets('just past the deadband is a direction, and rounds to a digit',
+    testWidgets('just past ±0.05 is a direction, shown as magnitude + badge',
         (tester) async {
-      await pumpBank(tester, current: -0.006);
+      await pumpBank(tester, current: -0.06);
 
       expect(find.text('CHARGING'), findsOneWidget);
-      expect(find.text('-0.01 A'), findsOneWidget);
+      expect(find.text('0.06 A'), findsOneWidget);
+      expect(find.text('-0.06 A'), findsNothing);
     });
   });
 
@@ -298,5 +317,28 @@ void main() {
     // other face of the same card, so it cannot disagree with the tile.
     final svlt = card.tracks.firstWhere((t) => t.field == TrendField.svlt);
     expect(svlt.label, 'Input voltage');
+  });
+
+  // =========================================================================
+  // Readout order (design 0037): SOC, temp, output voltage, current, cell V,
+  // [capacity]. Classified by icon/unit so l10n wording can change freely.
+  // =========================================================================
+  testWidgets('readout tiles are in the design-0037 order', (tester) async {
+    await pumpBank(tester, current: 1.2); // pumpBank registers its own teardown
+    final card = tester.widget<ReadoutsCard>(find.byType(ReadoutsCard));
+
+    String kind(Readout r) {
+      if (r.unit == '%') return 'soc';
+      if (r.unit == 'A') return 'current';
+      if (r.icon == Icons.thermostat) return 'temp';
+      if (r.icon == Icons.usb) return 'svlt';
+      if (r.icon == Icons.battery_5_bar) return 'cell';
+      return 'other';
+    }
+
+    // designCapacityMah is unset in this snapshot, so the capacity tile is
+    // absent; the surviving five must still be in order.
+    expect(card.items.map(kind).toList(),
+        ['soc', 'temp', 'svlt', 'current', 'cell']);
   });
 }

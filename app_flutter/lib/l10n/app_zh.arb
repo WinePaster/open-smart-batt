@@ -317,7 +317,6 @@
   "powerBankInputVoltageLabel": "輸入電壓",
   "powerBankDirectionCharging": "充電中",
   "powerBankDirectionDischarging": "放電中",
-  "powerBankDirectionIdle": "閒置",
   "usbPortsHeading": "USB 埠",
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",

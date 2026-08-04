@@ -147,6 +147,15 @@ class PowerBankView extends StatelessWidget {
                 ),
             ],
             items: [
+              // Order (design 0037): SOC, temperature, output voltage, current,
+              // cell voltage, design capacity. The conditional cards (current,
+              // capacity) collapse when absent; the surviving order still holds.
+              Readout(
+                icon: _flowIcon(flow),
+                label: l10n.powerBankSocReadoutLabel,
+                value: soc == null ? '--' : soc.toString(),
+                unit: '%',
+              ),
               Readout(
                 icon: Icons.thermostat,
                 label: l10n.dashboardReadoutTemperatureLabel,
@@ -154,27 +163,14 @@ class PowerBankView extends StatelessWidget {
                 unit: tele.temperatureUnitLabel,
               ),
               Readout(
-                icon: Icons.battery_5_bar,
-                label: l10n.powerBankCellVoltageLabel,
-                value: _fmt2(tele.pvlt),
-                unit: 'V',
-              ),
-              Readout(
                 icon: Icons.usb,
                 label: svltLabel,
                 value: _fmt1(tele.svlt),
                 unit: 'V',
               ),
-              Readout(
-                icon: _flowIcon(flow),
-                label: l10n.powerBankSocReadoutLabel,
-                value: soc == null ? '--' : soc.toString(),
-                unit: '%',
-              ),
-              // Signed, WITH the direction spelled out. The number keeps its
-              // sign (design 0030 is not up for renegotiation here) and the
-              // badge says what the sign means, because "-0.43 A" on its own
-              // is what FB-47 is.
+              // Magnitude, with the direction in the badge (design 0037,
+              // superseding FB-47's signed number). Inside the dead-band the
+              // magnitude still shows but the badge drops — no direction to name.
               if (modules.showsCurrentReadout && tele.current != null)
                 Readout(
                   icon: _flowIcon(flow),
@@ -184,6 +180,12 @@ class PowerBankView extends StatelessWidget {
                   badge: _flowBadge(l10n, flow),
                   badgeColor: _flowColor(flow),
                 ),
+              Readout(
+                icon: Icons.battery_5_bar,
+                label: l10n.powerBankCellVoltageLabel,
+                value: _fmt2(tele.pvlt),
+                unit: 'V',
+              ),
               if (tele.sample.designCapacityMah != null)
                 Readout(
                   icon: Icons.battery_std,
@@ -268,14 +270,12 @@ class PowerBankView extends StatelessWidget {
 /// saying it anyway is how the original defect was written.
 enum _Flow { charging, discharging, idle, unknown }
 
-/// Amps below which the reading is noise rather than a direction.
-///
-/// Doubles as the rounding guard. A 2 mA trickle gives `current == -0.002`,
-/// and `(-0.002).toStringAsFixed(2)` is the string `-0.00` — a minus sign
-/// sitting on a zero, observed in the 2026-08-04 capture. At or above this
-/// threshold the value rounds to at least 0.01, so a displayed sign always has
-/// a non-zero digit under it.
-const double _kFlowDeadbandA = 0.005;
+/// Amps below which the reading is noise rather than a direction: inside the
+/// band the current readout shows the magnitude but names no charge/discharge
+/// state (design 0037). The old `-0.00` rounding-guard role is gone — the
+/// readout is now the absolute value, so a near-zero trickle simply shows
+/// `0.00` with no sign to strand.
+const double _kFlowDeadbandA = 0.05;
 
 /// Direction from the SIGN of the signed current (design 0030: discharge
 /// positive, charge negative). Sign only — the magnitude never decides.
@@ -285,9 +285,10 @@ _Flow _flowOf(double? current) {
   return current < 0 ? _Flow.charging : _Flow.discharging;
 }
 
-/// Current, formatted so that zero never wears a minus sign.
-String _fmtCurrent(double v) =>
-    v.abs() < _kFlowDeadbandA ? '0.00' : v.toStringAsFixed(2);
+/// Current magnitude — the sign never reaches the readout (design 0037); the
+/// badge carries the charge/discharge direction instead. Inside the dead-band
+/// the true magnitude still shows (e.g. `0.03`), only the badge drops.
+String _fmtCurrent(double v) => v.abs().toStringAsFixed(2);
 
 /// Glyph for [f]. [_Flow.unknown] keeps the icon this page has always drawn:
 /// with no direction to show, a different glyph would be a different guess,
@@ -303,7 +304,9 @@ IconData _flowIcon(_Flow f) => switch (f) {
 String? _flowBadge(AppLocalizations l10n, _Flow f) => switch (f) {
       _Flow.charging => l10n.powerBankDirectionCharging,
       _Flow.discharging => l10n.powerBankDirectionDischarging,
-      _Flow.idle => l10n.powerBankDirectionIdle,
+      // Idle names no state (design 0037): inside the dead-band the direction is
+      // noise, so the magnitude shows but the badge drops.
+      _Flow.idle => null,
       _Flow.unknown => null,
     };
 

@@ -1121,9 +1121,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankDirectionDischarging => '放電中';
 
   @override
-  String get powerBankDirectionIdle => '閒置';
-
-  @override
   String get usbPortsHeading => 'USB 埠';
 
   @override

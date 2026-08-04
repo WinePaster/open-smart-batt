@@ -681,7 +681,6 @@
   "powerBankInputVoltageLabel": "Input Voltage",
   "powerBankDirectionCharging": "CHARGING",
   "powerBankDirectionDischarging": "DISCHARGING",
-  "powerBankDirectionIdle": "IDLE",
   "usbPortsHeading": "USB Ports",
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
