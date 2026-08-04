@@ -485,7 +485,11 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final header = await _logHeader(tele, services, target, rawLog, layout);
+      // design 0027 §3.1: name every unit this export touches in the header,
+      // even an all-devices export where the rows carry only nicknames.
+      final identities = await exportDeviceIdentities(devices, tele, target);
+      final header =
+          await _logHeader(tele, services, target, rawLog, layout, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -618,6 +622,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
     String layout,
+    List<ExportDeviceIdentity> devices,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
@@ -631,6 +636,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       layout: layout,
       connections: sessions,
       rawPacketLog: rawPacketLog,
+      devices: devices,
     );
   }
 

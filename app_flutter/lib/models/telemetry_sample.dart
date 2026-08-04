@@ -156,6 +156,17 @@ class TelemetrySample {
   /// layout is `0168` + dealer number, so it is the prefix of [fullSerial].
   final String? dealerCode;
 
+  /// The device's own BLE address as an upper-case colon-separated MAC (e.g.
+  /// `34:14:B5:B4:70:93`) — selector 0x38, sent as ASCII (PROTOCOL.md §8.2.3).
+  /// NULL until a 0x38 frame arrives. This is the ONE identity that is stable
+  /// across platforms and reinstalls (design 0027 §3.2); the platform device id
+  /// is a MAC on Android but an install-scoped NSUUID on iOS.
+  ///
+  /// 🔴 CLEAN-ROOM: the raw MAC is personal data. It is fine to hold and persist
+  /// it internally, but it must NEVER be written to any exported artifact — an
+  /// export writes its [shortDeviceHash] instead. See design 0027 §3.1.
+  final String? mac;
+
   /// Reported mode/status code (b4) — selector 0x23. Pack states are 0/1/2
   /// (normal / anti-theft / cut-off); a capacitor reports its own 0x05 baseline
   /// instead. Corrected 2026-08-01: this said "0/2/4", and `0x04` occurs
@@ -203,6 +214,7 @@ class TelemetrySample {
     this.deviceType,
     this.serial,
     this.dealerCode,
+    this.mac,
     this.mode,
     this.twfRaw,
   });
@@ -273,8 +285,13 @@ class TelemetrySample {
     final d = dealerCode;
     final s = serial;
     if (d == null || s == null) return null;
-    final prod = (int.tryParse(s) ?? 0).toString().padLeft(7, '0');
-    return '$d$prod';
+    final prod = int.tryParse(s) ?? 0;
+    // 🔴 design 0027 §3.2.2: an all-zero 0x26 means "no serial", NOT serial 0.
+    // A second-generation super-capacitor (34:14:B5:4C:88:EF) reports
+    // `000000` here; padding it would fabricate a very real-looking
+    // `016802170000000`. Treat it as absent rather than invent one.
+    if (prod == 0) return null;
+    return '$d${prod.toString().padLeft(7, '0')}';
   }
 
   /// Gauge fill fraction 0..1 over the 8.0–16.0 V display range (mockup gauge).
@@ -312,6 +329,7 @@ class TelemetrySample {
     int? deviceType,
     String? serial,
     String? dealerCode,
+    String? mac,
     int? mode,
     int? twfRaw,
   }) {
@@ -340,6 +358,7 @@ class TelemetrySample {
       deviceType: deviceType ?? this.deviceType,
       serial: serial ?? this.serial,
       dealerCode: dealerCode ?? this.dealerCode,
+      mac: mac ?? this.mac,
       mode: mode ?? this.mode,
       twfRaw: twfRaw ?? this.twfRaw,
     );

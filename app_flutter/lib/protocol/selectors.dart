@@ -71,6 +71,17 @@ class Selectors {
   /// Secondary voltage SVLT (V).
   static const int svlt = 0x37;
 
+  /// The device's own BLE address, sent as **ASCII text** (LEN 17, e.g.
+  /// `"AA:BB:CC:DD:EE:FF"` — PROTOCOL.md §8.2.3). Declassified 2026-07-30: it has
+  /// its own wire evidence and is documented openly, so it is decoded here, not
+  /// behind the closed [MetadataParser] seam. On iOS — where the platform device
+  /// id is an install-scoped NSUUID and CoreBluetooth never reveals the MAC —
+  /// this register is the only stable cross-platform device identity (design
+  /// 0027 §3.2). NOT gated on `rawPacketLog`: the decode path runs on every
+  /// notification, the raw-log switch only gates whether the bytes are also
+  /// written to the diagnostic log.
+  static const int bleAddress = 0x38;
+
   /// Charge info (v1 / v2).
   static const int charge = 0x41;
 

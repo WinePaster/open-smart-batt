@@ -222,6 +222,12 @@ class TelemetryController extends ChangeNotifier {
   String? get fullSerial => _sample.fullSerial;
   String? get dealerCode => _sample.dealerCode;
 
+  /// The device's own BLE address (selector 0x38), as an upper-case
+  /// colon-separated MAC — the stable cross-platform identity (design 0027
+  /// §3.2). NULL until a 0x38 frame arrives. Raw personal data: never exported
+  /// as-is, only as its [shortDeviceHash].
+  String? get mac => _sample.mac;
+
   /// Warning thresholds (selector 0x2B), in physical units.
   double? get warnOv => _sample.warnOv;
   double? get warnUv => _sample.warnUv;
@@ -347,6 +353,10 @@ class TelemetryController extends ChangeNotifier {
   /// How many distinct connections the log holds for a scope (header line).
   Future<int> logSessionCount({String? deviceId}) =>
       _logs.sessionCount(deviceId: deviceId);
+
+  /// Distinct attributed device ids present in the diagnostic log — the units an
+  /// all-devices export actually touches (design 0027 §3.1 `# devices:` block).
+  Future<List<String>> logDistinctDeviceIds() => _logs.distinctDeviceIds();
 
   /// Approximate diagnostic-log size (bytes).
   Future<int> logApproxBytes() => _logs.approxBytes();

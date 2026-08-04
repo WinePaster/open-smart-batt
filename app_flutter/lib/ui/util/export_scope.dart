@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
+import 'export_header.dart';
 import 'export_naming.dart';
 
 /// What a chosen export covers.
@@ -79,6 +80,43 @@ ExportTarget? currentDeviceTarget(
       deviceId: deviceId,
     ),
   );
+}
+
+/// The authoritative `# devices:` list for an export (design 0027 §3.1): one
+/// [ExportDeviceIdentity] per unit the export touches.
+///
+/// A device-scoped export touches exactly its one unit; an all-devices export
+/// touches every unit the diagnostic log has an attributed row for. Each unit's
+/// mac / serial / class / name come from its saved record, with a live fallback
+/// to the connected unit's freshly-decoded MAC and serial for the case where a
+/// 0x38 frame has arrived this session but not yet been persisted.
+///
+/// 🔴 The RAW mac is carried here; the file only ever sees its hash — the
+/// hashing happens in [deviceLine], never here.
+Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
+  DeviceController devices,
+  TelemetryController tele,
+  ExportTarget target,
+) async {
+  final ids = target.deviceId != null
+      ? <String>[target.deviceId!]
+      : await tele.logDistinctDeviceIds();
+  final recordingId = tele.recordingDeviceId;
+  return [
+    for (final id in ids)
+      () {
+        final saved = devices.deviceFor(id);
+        final isLive = id == recordingId;
+        return ExportDeviceIdentity(
+          deviceId: id,
+          mac: saved?.mac ?? (isLive ? tele.mac : null),
+          serial: saved?.serial ?? (isLive ? tele.fullSerial : null),
+          classSlug: productClassSlug(saved?.productClass),
+          name: saved?.name,
+          label: saved?.alias,
+        );
+      }(),
+  ];
 }
 
 /// Human-readable identity for one stored `device_id`, used for the CSV

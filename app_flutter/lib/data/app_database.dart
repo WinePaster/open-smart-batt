@@ -65,7 +65,13 @@ class Db {
   /// standing invariant). Nullable with NO default: a NULL reads back as
   /// [DisplayLayout.defaults], which draws exactly the pre-v10 screen, so an
   /// upgrade changes nothing for anyone who never opens the setting (G4).
-  static const int schemaVersion = 10;
+  /// v11: saved_devices gained `mac TEXT` (the device's own BLE address from
+  /// selector 0x38 — design 0027 §3.2, the stable cross-platform identity) and
+  /// `serial TEXT` (the full 15-digit product serial, per-device rather than
+  /// only living on the connected sample). Both nullable with NO default and NO
+  /// backfill: a pre-v11 row keeps NULL, meaning "not yet observed", rather than
+  /// being stamped with whatever unit connected next. Same reasoning as v5–v7.
+  static const int schemaVersion = 11;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -336,6 +342,20 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN display_layout TEXT',
       );
     }
+    if (from < 11) {
+      // The device's own BLE address (0x38 MAC) and full product serial, made
+      // per-device instead of only living on the live sample (design 0027 §3.2).
+      // Additive and nullable with NO default: pre-v11 rows stay NULL ("not yet
+      // observed"). Backfilling them with the currently-connected unit's values
+      // would attribute one battery's identity to every older row, exactly the
+      // fabricated-fact failure the v5 attribution rules exist to prevent.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN mac TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN serial TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -377,7 +397,9 @@ class AppDatabase {
       last_value REAL,
       stale INTEGER NOT NULL DEFAULT 0,
       product_class TEXT NOT NULL DEFAULT 'unknown',
-      display_layout TEXT
+      display_layout TEXT,
+      mac TEXT,
+      serial TEXT
     )
     ''',
     '''

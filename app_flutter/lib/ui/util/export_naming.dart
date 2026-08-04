@@ -37,12 +37,21 @@ const int kMaxIdentLength = 24;
 
 /// Keeps only characters that survive every filesystem + mail client, collapses
 /// the rest to `-`, and trims to [kMaxIdentLength]. Returns '' when nothing
-/// usable remains (e.g. a purely CJK alias).
+/// usable remains.
+///
+/// "Nothing usable" is now fewer than 2 surviving characters, not zero (design
+/// 0027 §3.4). A mostly-CJK alias like `行動外電源2` cleans down to the single
+/// digit `2`, which read as a filename fragment (`device=powerbank/2`) looks
+/// like "power bank #2" but is really alias debris — and any two aliases that
+/// share one ASCII character (`電源A` / `備用A` → both `A`) would collide. Below
+/// the threshold the caller falls through to the device hash instead, which is
+/// wrong for nobody.
 String sanitizeIdent(String raw) {
   final cleaned = raw
       .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')
       .replaceAll(RegExp(r'-{2,}'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
+  if (cleaned.length < 2) return '';
   return cleaned.length <= kMaxIdentLength
       ? cleaned
       : cleaned.substring(0, kMaxIdentLength).replaceAll(RegExp(r'-+$'), '');

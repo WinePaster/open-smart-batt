@@ -121,6 +121,24 @@ class DeviceController extends ChangeNotifier {
     await load();
   }
 
+  /// Persist the device's own BLE address (0x38 MAC) and/or full serial for
+  /// [id] (design 0027 §3.2). No-op if the device is not saved or if every
+  /// supplied value already matches what is stored, so a live connection's
+  /// repeated 0x38 frames do not each cost a DB write + reload.
+  Future<void> setIdentity(String id, {String? mac, String? serial}) async {
+    final existing = deviceFor(id);
+    if (existing == null) return;
+    final macChanged = mac != null && mac != existing.mac;
+    final serialChanged = serial != null && serial != existing.serial;
+    if (!macChanged && !serialChanged) return;
+    await _repo.setIdentity(
+      id,
+      mac: macChanged ? mac : null,
+      serial: serialChanged ? serial : null,
+    );
+    await load();
+  }
+
   /// Forget a saved device, then reload.
   Future<void> remove(String id) async {
     await _repo.deleteSavedDevice(id);

@@ -144,6 +144,27 @@ class TelemetryDecoder {
     return v.toString().padLeft(6, '0');
   }
 
+  /// Device BLE address — selector 0x38: the payload is **ASCII text** (not
+  /// packed bytes — PROTOCOL.md §8.2.3), e.g. the 17 bytes `41 41 3a … 46 46`
+  /// spell `"AA:BB:CC:DD:EE:FF"`. Normalised to an upper-case, colon-separated
+  /// MAC. Returns null when the payload does not yield 12 hex nibbles, so a
+  /// truncated or malformed frame never fabricates an address.
+  static String? mac(InboundFrame f) {
+    final sb = StringBuffer();
+    for (final byte in f.payload) {
+      // Keep only printable ASCII; the field is text, and stray control bytes
+      // (or a padded tail) must not leak into the identity.
+      if (byte >= 0x20 && byte < 0x7F) sb.writeCharCode(byte);
+    }
+    final hex = RegExp(r'[0-9A-Fa-f]')
+        .allMatches(sb.toString())
+        .map((m) => m[0]!)
+        .join()
+        .toUpperCase();
+    if (hex.length != 12) return null;
+    return [for (var i = 0; i < 12; i += 2) hex.substring(i, i + 2)].join(':');
+  }
+
   /// Dealer code / field_cb — selector 0x27: "%04d%02X%02X" of
   /// (b4*256+b5), b6, b7 (PROTOCOL.md §4.4). b8/b9 unused.
   static String dealerCode(InboundFrame f) {
@@ -317,6 +338,12 @@ class TelemetryDecoder {
         return base;
       case Selectors.dealerCode:
         return base.copyWith(timestamp: ts, dealerCode: dealerCode(f));
+      case Selectors.bleAddress:
+        // The device's own MAC, as ASCII (§8.2.3). A malformed payload decodes
+        // to null and is dropped rather than overwriting a good address with a
+        // fabricated one (design 0027 §3.2.1). Not gated on rawPacketLog.
+        final m = mac(f);
+        return m == null ? base : base.copyWith(timestamp: ts, mac: m);
       case Selectors.mode:
         return base.copyWith(timestamp: ts, mode: f.b(4));
       case Selectors.twf:

@@ -406,9 +406,10 @@ void main() {
 
     test('the version constant and the migration branch agree', () {
       // The registry in Db.schemaVersion's doc comment is the only place two
-      // parallel branches would collide; this pins the number the migration
-      // above was written against.
-      expect(Db.schemaVersion, 10);
+      // parallel branches would collide; this pins the current head. v10 added
+      // display_layout (the migration above); v11 added saved_devices.mac /
+      // serial (design 0027) — bump this in lockstep with Db.schemaVersion.
+      expect(Db.schemaVersion, 11);
     });
   });
 }

@@ -56,6 +56,20 @@ class SavedDevice {
   /// default draws exactly the pre-0034 screen.
   final DisplayLayout displayLayout;
 
+  /// The device's own BLE address (selector 0x38), as an upper-case
+  /// colon-separated MAC — the stable cross-platform identity (design 0027
+  /// §3.2). NULL for pre-v11 rows and until a 0x38 frame has been observed for
+  /// this unit.
+  ///
+  /// 🔴 CLEAN-ROOM: this is raw personal data — fine to persist internally, but
+  /// an export writes its [shortDeviceHash], never this value (design 0027 §3.1).
+  final String? mac;
+
+  /// The full 15-digit product serial (design 0027 §3.2.2). NULL for pre-v11
+  /// rows, for a unit that reports an all-zero 0x26 (a serial is never
+  /// fabricated), and for classes that carry none (power banks).
+  final String? serial;
+
   const SavedDevice({
     required this.id,
     required this.alias,
@@ -65,6 +79,8 @@ class SavedDevice {
     this.stale = false,
     this.productClass = ProductClass.unknown,
     this.displayLayout = DisplayLayout.defaults,
+    this.mac,
+    this.serial,
   });
 
   SavedDevice copyWith({
@@ -76,6 +92,8 @@ class SavedDevice {
     bool? stale,
     ProductClass? productClass,
     DisplayLayout? displayLayout,
+    String? mac,
+    String? serial,
   }) =>
       SavedDevice(
         id: id ?? this.id,
@@ -86,6 +104,8 @@ class SavedDevice {
         stale: stale ?? this.stale,
         productClass: productClass ?? this.productClass,
         displayLayout: displayLayout ?? this.displayLayout,
+        mac: mac ?? this.mac,
+        serial: serial ?? this.serial,
       );
 
   // Mirrors the v10 `saved_devices` schema. `name`/`stale` were added by the
@@ -107,6 +127,11 @@ class SavedDevice {
         // which is the distinction the editor (design 0034 Phase 7) will need
         // and which a blanket encode() would destroy on the first upsert.
         'display_layout': displayLayout.isDefault ? null : displayLayout.encode(),
+        // design 0027 v11. Nullable: a row that has never seen a 0x38 frame /
+        // a serial keeps NULL rather than an empty string, so "unknown" stays
+        // distinct from "known to be blank".
+        'mac': mac,
+        'serial': serial,
       };
 
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
@@ -128,6 +153,9 @@ class SavedDevice {
         // display_layout.dart: a hand-edited or newer-build value must not be
         // able to take the dashboard down.
         displayLayout: DisplayLayout.decode(m['display_layout']),
+        // Absent column (pre-v11) or NULL both read back as null — see toMap.
+        mac: m['mac'] as String?,
+        serial: m['serial'] as String?,
       );
 }
 

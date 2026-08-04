@@ -1544,7 +1544,25 @@ class ConnectionController extends ChangeNotifier {
     // Every frame proves the unit is still alive, so last-seen advances with
     // the data rather than sitting at the connect time.
     final id = _ble.connectedDeviceId;
-    if (id != null) _touchLastSeen(id);
+    if (id != null) {
+      _touchLastSeen(id);
+      _persistIdentity(id, s);
+    }
+  }
+
+  /// Persist the unit's own BLE address (0x38 MAC) and full serial onto its
+  /// saved record the first time each is seen (design 0027 §3.2). The MAC is
+  /// the stable cross-platform identity; the serial is the human-readable one.
+  ///
+  /// [DeviceController.setIdentity] already no-ops when the values are unchanged
+  /// or the device is not saved, so this can be called on every telemetry
+  /// sample without spamming the DB.
+  ///
+  /// 🔴 CLEAN-ROOM: only the RAW values are stored, internally. Nothing here
+  /// exports them — the export path hashes the MAC (design 0027 §3.1).
+  void _persistIdentity(String id, TelemetrySample s) {
+    final write = _devices?.setIdentity(id, mac: s.mac, serial: s.fullSerial);
+    if (write != null) _pending.add(write);
   }
 
   /// Name a device-type byte this build does not map, the moment it arrives.

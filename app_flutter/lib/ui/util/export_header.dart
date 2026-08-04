@@ -13,7 +13,71 @@
 /// plugin and possibly disagreeing with them.
 library;
 
+import '../../models/device_ident.dart';
 import 'export_scope.dart';
+
+/// One device the export touches, for the `# devices:` header block (design
+/// 0027 §3.1). Carries the RAW device id and MAC internally; [deviceLine]
+/// hashes both before they reach the file.
+class ExportDeviceIdentity {
+  const ExportDeviceIdentity({
+    required this.deviceId,
+    this.mac,
+    this.serial,
+    this.classSlug,
+    this.name,
+    this.label,
+  });
+
+  /// Platform device id — Android MAC, iOS NSUUID. Written as its
+  /// [shortDeviceHash] (`hash=`), the same value block separators fall back to,
+  /// so old NSUUID-keyed corpus and new records join up (design 0027 §3.2.3).
+  final String deviceId;
+
+  /// The device's own BLE address (0x38), if known. 🔴 Written as its
+  /// [shortDeviceHash] (`mac=`) — NEVER the raw address (design 0027 §3.1).
+  final String? mac;
+
+  /// Full 15-digit product serial, if known.
+  final String? serial;
+
+  /// Locale-independent product-class slug (`battery` / `capacitor` /
+  /// `powerbank`); omitted when unknown.
+  final String? classSlug;
+
+  /// Advertised local name (e.g. `RCE-CarBatt`) — a model, not a unit id.
+  final String? name;
+
+  /// The user's alias for the unit, if any.
+  final String? label;
+}
+
+/// One `#   mac= hash= serial= class= name= label=` line (WITHOUT the `# `
+/// prefix), or null if [d] carries nothing beyond its (always-present) hash and
+/// even that is empty. Unknown fields are omitted entirely — an empty `serial=`
+/// reads as a bug, the same rule the rest of the preamble follows.
+///
+/// 🔴 CLEAN-ROOM: `mac=` and `hash=` are BOTH [shortDeviceHash] digests. The raw
+/// MAC and the raw device id never appear in the output. The hash is a join
+/// key, not a privacy control (a 48-bit MAC over five known OUIs is brute-
+/// forceable) — its job is only to avoid widening the leak surface a file with
+/// `rawPacketLog` off never had (design 0027 §3.1).
+String? deviceLine(ExportDeviceIdentity d) {
+  final id = d.deviceId;
+  if (id.isEmpty) return null;
+  final parts = <String>[
+    if (d.mac != null && d.mac!.isNotEmpty) 'mac=${shortDeviceHash(d.mac!)}',
+    'hash=${shortDeviceHash(id)}',
+    if (d.serial != null && d.serial!.isNotEmpty) 'serial=${d.serial}',
+    if (d.classSlug != null &&
+        d.classSlug!.isNotEmpty &&
+        d.classSlug != 'unknown')
+      'class=${d.classSlug}',
+    if (d.name != null && d.name!.isNotEmpty) 'name=${d.name}',
+    if (d.label != null && d.label!.isNotEmpty) 'label=${d.label}',
+  ];
+  return '  ${parts.join('  ')}';
+}
 
 /// The `#`-preamble lines for an export, WITHOUT the `# ` prefix (the writer
 /// adds it, since the log and the CSV emit them at different points).
@@ -35,9 +99,16 @@ List<String> exportHeaderLines({
   required String layout,
   int? connections,
   bool? rawPacketLog,
+  List<ExportDeviceIdentity> devices = const [],
 }) {
   final scopeLine = StringBuffer('scope: $scope');
   if (connections != null) scopeLine.write('  connections=$connections');
+  // design 0027 §3.1: one authoritative list of every device this export
+  // touches, so an all-devices export names its units instead of leaving only
+  // user nicknames. Each line's mac/hash are hashed by [deviceLine].
+  final deviceLines = <String>[
+    for (final d in devices) ?deviceLine(d),
+  ];
   return <String>[
     title,
     'exported: ${exportedAt.toIso8601String()}',
@@ -61,6 +132,11 @@ List<String> exportHeaderLines({
     // saw the export dialog.
     if (rawPacketLog == true)
       'note: raw frames include the device\'s own BLE address (selector 0x38)',
+    // design 0027 §3.1. Emitted as a `devices: N` count line followed by one
+    // indented line per unit — all `#` comments, so the ingest scripts skip
+    // them (G3). Placed in the optional middle, before the required layout tail.
+    if (deviceLines.isNotEmpty) 'devices: ${deviceLines.length}',
+    ...deviceLines,
     // Design 0034 §8. Our problem-reading runs on screenshots: every entry in
     // `feedback-attachments/our-app.md` is a field read off a picture, and
     // sentences like "SOC shows --" or "four DVOL bars of similar length" are

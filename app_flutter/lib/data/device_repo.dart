@@ -95,6 +95,24 @@ class DeviceRepo {
     );
   }
 
+  /// Persist the device's own BLE address (0x38 MAC) and/or full serial for
+  /// [id] (design 0027 §3.2). Only the non-null arguments are written, so a
+  /// serial-only or mac-only observation never clears the other column. Returns
+  /// rows affected (0 if the device is not saved).
+  Future<int> setIdentity(String id, {String? mac, String? serial}) {
+    final values = <String, Object?>{
+      'mac': ?mac,
+      'serial': ?serial,
+    };
+    if (values.isEmpty) return Future.value(0);
+    return _db.update(
+      Db.tableSavedDevices,
+      values,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
     return _db.delete(
