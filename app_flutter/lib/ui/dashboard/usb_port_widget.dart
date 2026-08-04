@@ -1,21 +1,12 @@
 /// OpenSmartBatt — USB dual-port status (power-bank "Command 7" frame).
 ///
-/// SCAFFOLD ONLY — the widget is wired up, the decode behind it is not.
-/// Renders the Type-A and Type-C port tiles from the port-status fields on
-/// [TelemetrySample] ([TelemetrySample.isTypeAOutput],
-/// [TelemetrySample.isTypeCOutput], [TelemetrySample.inputFastChargeType],
-/// [TelemetrySample.outputFastChargeType]).
-///
-/// TODO (see PROTOCOL.md §9.1): those fields are NOT yet populated — the exact
-/// "Command 7" SELECTOR value and the bit offsets of the supply bits +
-/// input/output fast-charge value fields are UNKNOWN. Pinning them down needs a
-/// capture taken while different USB loads are plugged and unplugged, on a build
-/// that sends the extended `!#` poll; a power bank does not volunteer these
-/// frames otherwise. The value→label tables (PD / QC / FCP / …) are certain, but
-/// the bit positions are not, so the decoder deliberately leaves these fields
-/// NULL (see TelemetryDecoder.applyPortStatus). Until the wire layout is pinned
-/// down we render a clear neutral / UNKNOWN state and do NOT fabricate supply or
-/// protocol readings.
+/// ⚠️ SUPERSEDED — this two-port card is being replaced by the single
+/// energy-path row (design 0035). Phase 0 has decoded the register it was
+/// waiting for (0x4B byte b7 → [TelemetrySample.usbPort] / .isPdIn / .isPdOut /
+/// .isOutputActive / .isRailOff), but this widget is NOT yet rewired to it and
+/// still renders the neutral / UNKNOWN state it always has — Phase 1 deletes
+/// this file and adds the energy-path row. Kept building only so Phase 0 can
+/// land alone without touching any on-screen pixels.
 library;
 
 import 'package:flutter/material.dart';
@@ -32,8 +23,11 @@ class UsbPortWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final sample = tele.sample;
+    // Subscribe so this card still repaints with the rest of the dashboard,
+    // even though Phase 0 leaves it rendering a constant neutral/UNKNOWN state
+    // (the decoded port fields exist now but this superseded widget does not
+    // read them — design 0035 Phase 1 replaces it).
+    context.watch<TelemetryController>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -44,8 +38,9 @@ class UsbPortWidget extends StatelessWidget {
               child: _PortTile(
                 icon: Icons.usb,
                 name: l10n.usbPortTypeA,
-                // TODO: supply bit not yet decoded → always null for now.
-                isOutput: sample.isTypeAOutput,
+                // Phase 0 does not rewire this widget — it keeps its neutral
+                // UNKNOWN state (design 0035 Phase 1 replaces it). Explicit null.
+                isOutput: null,
               ),
             ),
             const SizedBox(width: 9),
@@ -53,8 +48,9 @@ class UsbPortWidget extends StatelessWidget {
               child: _PortTile(
                 icon: Icons.usb_rounded,
                 name: l10n.usbPortTypeC,
-                // TODO: supply bit not yet decoded → always null for now.
-                isOutput: sample.isTypeCOutput,
+                // Phase 0 does not rewire this widget — it keeps its neutral
+                // UNKNOWN state (design 0035 Phase 1 replaces it). Explicit null.
+                isOutput: null,
               ),
             ),
           ],

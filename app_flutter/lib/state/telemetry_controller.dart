@@ -185,6 +185,30 @@ class TelemetryController extends ChangeNotifier {
   /// Device-reported state-of-charge percent (0..100), selector 0x96 b6.
   int? get socPercent => _sample.socPercent;
 
+  // ---- power-bank USB port / protocol (0x4B b7, design 0035) --------------
+  // Decoded but not yet read by any view (Phase 0 changes no pixels). The
+  // energy-path row (Phase 1+) consumes these; the §4.8 feedback hook records
+  // [portFlagsRaw] alongside a user's port tag. bit0/bit4 never surface here.
+
+  /// USB port from 0x4B b7 bit1 (Type-C cable/CC); never Type-A. Null until seen.
+  UsbPort? get usbPort => _sample.usbPort;
+
+  /// Boost rail off (b7 == 0x00). Null until b7 is seen.
+  bool? get isRailOff => _sample.isRailOff;
+
+  /// Boost rail actively outputting (b7 bit2). Null until b7 is seen.
+  bool? get isOutputActive => _sample.isOutputActive;
+
+  /// PD input negotiated (b7 bit3, one-way). Null until b7 is seen.
+  bool? get isPdIn => _sample.isPdIn;
+
+  /// PD output (b7 bit5). Null until b7 is seen.
+  bool? get isPdOut => _sample.isPdOut;
+
+  /// Raw 0x4B b7 flag byte — for the design 0035 §4.8 feedback hook only; never
+  /// shown to a user. Null until b7 is seen.
+  int? get portFlagsRaw => _sample.portFlagsRaw;
+
   /// Reported mode/status code (selector 0x23).
   int? get mode => _sample.mode;
 

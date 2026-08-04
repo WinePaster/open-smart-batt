@@ -125,32 +125,6 @@ class TelemetryDecoder {
     return v;
   }
 
-  /// USB dual-port status — the power-bank "Command 7" frame (PROTOCOL.md §9.1).
-  ///
-  /// TODO(port-status): DEAD CODE — nothing calls this, and it is not reached
-  /// from [apply].
-  ///
-  /// It was written when neither the selector carrying port status nor its bit
-  /// offsets were known, and it deliberately decodes nothing rather than invent
-  /// bit positions. The selector question has since been answered elsewhere:
-  /// the bits live in 0x4B byte b7 (PROTOCOL.md §9.1), where bit1 = Type-C,
-  /// bit2 = output active, bit3 = PD input and bit5 = PD output; bit0 and bit4
-  /// are still open. See the USB dual-port fields on [TelemetrySample] for why
-  /// they are nonetheless still NULL — port and direction have to be decided
-  /// together, so the remaining work is a view change, not a decode change.
-  ///
-  /// Note the value->label tables in PROTOCOL.md §9.1 that these four fields
-  /// were shaped around are themselves unverified, so do not treat reaching
-  /// them as the end of the job.
-  static TelemetrySample applyPortStatus(
-    TelemetrySample base,
-    InboundFrame f, {
-    DateTime? at,
-  }) {
-    // Intentionally unimplemented — see TODO above.
-    return base;
-  }
-
   /// Capacity / SOH bucket — selector 0x96: from b6, int.tryParse digits then
   /// (n-1)*10 + 5. PROTOCOL.md §8.2 (bucket semantics unverified).
   static int? sohBucket(InboundFrame f) {
@@ -318,6 +292,12 @@ class TelemetryDecoder {
           // a percentage, no voltage->SOC curve.
           socPercent: socPercent(f),
           designCapacityMah: f.u16(4),
+          // b7: the port / protocol flag byte (design 0035 §3.2). Stored raw;
+          // TelemetrySample derives usbPort (bit1) / isOutputActive (bit2) /
+          // isPdIn (bit3) / isPdOut (bit5) / isRailOff (== 0x00). bit0 and bit4
+          // are decoded to NOTHING. No view reads these yet — Phase 0 changes
+          // no pixels — so this only widens what a field capture can be read for.
+          portFlagsRaw: f.b(7),
         );
       case Selectors.capacity:
         return base.copyWith(

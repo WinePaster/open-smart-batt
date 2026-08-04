@@ -5,6 +5,24 @@
 /// frame typically updates ONE field, so most fields are nullable until seen.
 library;
 
+/// Physical USB port carrying the power-bank energy path, decoded from the
+/// 0x4B port/protocol flag byte, **bit1 only** (Type-C cable / CC detect).
+///
+/// There is deliberately no `typeA`: bit0 was tested as a Type-A indicator in
+/// four field readings and refuted in all four (design 0035 §3.2 / §4.3), so
+/// the corpus holds no reliable Type-A signal and none is invented here. When
+/// bit1 is clear the port is [unknown], never Type-A. This enum is derived from
+/// the raw flag byte, so "Type-C cable present" is not the same claim as
+/// "Type-C is the port currently supplying" — direction always comes from the
+/// current sign, never from this.
+enum UsbPort {
+  /// bit1 set — a Type-C cable / CC is detected.
+  typeC,
+
+  /// bit1 clear — the port is not determined. Rendered as "路徑未定", NOT Type-A.
+  unknown,
+}
+
 /// A point-in-time decode of the battery's telemetry registers (PROTOCOL.md §8).
 class TelemetrySample {
   /// When this sample was assembled (app clock; not from the wire).
@@ -105,36 +123,26 @@ class TelemetrySample {
   ///     arrives, treat the first reading as unverified.
   final int? socPercent;
 
-  // ---- USB dual-port status ------------------------------------------------
-  // These four fields have never been populated, and the register they were
-  // waiting for has since been found: it is 0x4B byte b7 (PROTOCOL.md §9.1),
-  // where bit1 = Type-C, bit2 = output active, bit3 = PD input, bit5 = PD
-  // output. bit0 and bit4 are still open.
-  //
-  // They stay NULL because wiring them up is a UI change, not a decode change:
-  // the two-port card these were shaped for is being replaced by a single
-  // energy-path line, since only one path is ever live at a time and half a
-  // card spent saying "idle" states nothing. Do NOT populate them piecemeal:
-  // the port shown must agree with the direction shown, and that is one
-  // decision, not four fields.
-  //
-  // The fast-charge value->label table these were originally shaped around
-  // (0 none / 2 PD / 4 QC2.0 / ...) came from analysis of the reference app and
-  // has NO wire evidence. Do not treat it as certain.
+  // ---- USB port / protocol status (power bank, 0x4B byte b7) ---------------
+  // The four never-populated shell fields (isTypeAOutput / isTypeCOutput /
+  // inputFastChargeType / outputFastChargeType) and the unverified fast-charge
+  // value->label table they were shaped around are GONE (design 0035 §1.2). The
+  // register that carries port status was found — 0x4B byte b7 — so this now
+  // stores that raw byte and derives the display fields from it via the getters
+  // below, keeping "the port shown agrees with the direction shown" a single
+  // decision rather than four independently-null fields.
 
-  /// USB Type-A port is currently supplying power (供電). NULL until decoded.
-  final bool? isTypeAOutput;
-
-  /// USB Type-C port is currently supplying power (供電). NULL until decoded.
-  final bool? isTypeCOutput;
-
-  /// Input (charge) fast-charge protocol code (PROTOCOL.md §9.1: 0 none / 2 PD
-  /// / 4 other). NULL until decoded.
-  final int? inputFastChargeType;
-
-  /// Output (supply) fast-charge protocol code (PROTOCOL.md §9.1: 0 none / 2 PD
-  /// / 4 QC2.0 / 6 QC3.0 / 8 FCP / 10 PE / 12 SFCP / 14 AFC). NULL until decoded.
-  final int? outputFastChargeType;
+  /// Raw 0x4B byte b7 — the power-bank port / protocol flag byte
+  /// (design 0035 §3.2). NULL until a 0x4B frame has been folded in.
+  ///
+  /// Stored raw (never shown to a user — clean-room string discipline, no raw
+  /// bytes on screen) so the decoded getters below and the design 0035 §4.8
+  /// feedback hook read from ONE source. Bit map: bit1 = Type-C cable/CC,
+  /// bit2 = output active, bit3 = PD input, bit5 = PD output. **bit0 and bit4
+  /// are decoded to NOTHING** — bit0 was refuted as a Type-A indicator in four
+  /// field readings (§3.2), bit4 is a suspected firmware variant, and neither
+  /// may influence any display decision.
+  final int? portFlagsRaw;
 
   /// Device-type byte (b4) — selector 0x10. 0x22 (34) => power bank. PROTOCOL.md
   /// §8.2/§9: 0x44 was the Dart Smi-tag (34<<1), NOT the wire byte.
@@ -191,10 +199,7 @@ class TelemetrySample {
     this.designCapacityMah,
     this.sohBucket,
     this.socPercent,
-    this.isTypeAOutput,
-    this.isTypeCOutput,
-    this.inputFastChargeType,
-    this.outputFastChargeType,
+    this.portFlagsRaw,
     this.deviceType,
     this.serial,
     this.dealerCode,
@@ -214,6 +219,49 @@ class TelemetrySample {
   /// True when the device-type byte marks a car smart battery (0x02). Observed
   /// `[10] 裝置識別 = 02 汽車智慧電池` (PROTOCOL.md §10.2).
   bool get isSmartBattery => deviceType == 0x02;
+
+  // ---- decoded 0x4B b7 port / protocol fields (design 0035 §4.2) -----------
+  // All null until [portFlagsRaw] is seen — a power bank takes up to ~10 s per
+  // connection to send its first 0x4B, and "not decoded yet" must stay distinct
+  // from any decoded state. bit0 and bit4 never appear here.
+
+  /// USB port from b7 **bit1 only** (Type-C cable / CC). Never Type-A: bit0 is
+  /// not consulted (design 0035 §4.3). Null until [portFlagsRaw] is seen.
+  UsbPort? get usbPort {
+    final b7 = portFlagsRaw;
+    if (b7 == null) return null;
+    return (b7 & 0x02) != 0 ? UsbPort.typeC : UsbPort.unknown;
+  }
+
+  /// b7 == 0x00 — the boost rail is off ("待機 · 輸出已關閉", design 0035
+  /// §3.3 / §4.3; verified across 73 corpus frames). Null until b7 is seen.
+  bool? get isRailOff {
+    final b7 = portFlagsRaw;
+    return b7 == null ? null : b7 == 0x00;
+  }
+
+  /// b7 bit2 — the boost rail is actively outputting. Null until b7 is seen.
+  bool? get isOutputActive {
+    final b7 = portFlagsRaw;
+    return b7 == null ? null : (b7 & 0x04) != 0;
+  }
+
+  /// b7 bit3 — PD **input** negotiated.
+  ///
+  /// ONE-WAY (design 0035 §4.4): set implies PD input, but CLEAR does NOT imply
+  /// "not PD" — a 9.05 V / 1.83 A charge reads bit3 clear (16 counter-examples).
+  /// Consumers must render a positive "PD" badge only, never a "non-PD" label.
+  /// Null until b7 is seen.
+  bool? get isPdIn {
+    final b7 = portFlagsRaw;
+    return b7 == null ? null : (b7 & 0x08) != 0;
+  }
+
+  /// b7 bit5 — PD **output**. Null until b7 is seen.
+  bool? get isPdOut {
+    final b7 = portFlagsRaw;
+    return b7 == null ? null : (b7 & 0x20) != 0;
+  }
 
   /// Full product serial = **dealer code (0x27) + product serial (0x26)**, per
   /// field feedback (`0168` + 經銷商編號 + 產品序號, e.g. `016812340012345`).
@@ -260,10 +308,7 @@ class TelemetrySample {
     int? designCapacityMah,
     int? sohBucket,
     int? socPercent,
-    bool? isTypeAOutput,
-    bool? isTypeCOutput,
-    int? inputFastChargeType,
-    int? outputFastChargeType,
+    int? portFlagsRaw,
     int? deviceType,
     String? serial,
     String? dealerCode,
@@ -291,10 +336,7 @@ class TelemetrySample {
       designCapacityMah: designCapacityMah ?? this.designCapacityMah,
       sohBucket: sohBucket ?? this.sohBucket,
       socPercent: socPercent ?? this.socPercent,
-      isTypeAOutput: isTypeAOutput ?? this.isTypeAOutput,
-      isTypeCOutput: isTypeCOutput ?? this.isTypeCOutput,
-      inputFastChargeType: inputFastChargeType ?? this.inputFastChargeType,
-      outputFastChargeType: outputFastChargeType ?? this.outputFastChargeType,
+      portFlagsRaw: portFlagsRaw ?? this.portFlagsRaw,
       deviceType: deviceType ?? this.deviceType,
       serial: serial ?? this.serial,
       dealerCode: dealerCode ?? this.dealerCode,
