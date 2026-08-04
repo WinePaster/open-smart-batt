@@ -195,6 +195,50 @@ void main() {
       expect(s.connection.isSetupStalled, isTrue);
     });
 
+    testWidgets('nor does the give-up card\'s own retry button', (tester) async {
+      // T2, on the one path that defeated it. `reconnectCurrent()` is what the
+      // advice card's "try again" wires to, and it goes out through
+      // `disconnect()` — which nulls `_desiredDeviceId` — before coming back in
+      // through `connect()`. The reset test used to compare the target against
+      // that nulled field, so it read "different unit" every time: three
+      // failures, tap, three more, tap, and the card could be dismissed for
+      // ever without the run once reaching the cap that produced it.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await failedSetup(tester, s);
+      await failedSetup(tester, s);
+      expect(s.connection.setupFailures, 2);
+
+      await tester.runAsync(() => s.connection.reconnectCurrent());
+      expect(s.connection.setupFailures, 2,
+          reason: 'design 0031 G3: the same unit, reconnected by hand, is the '
+              'user retrying the thing that just failed twice');
+
+      await failedSetup(tester, s);
+      expect(s.connection.isSetupStalled, isTrue);
+    });
+
+    testWidgets('nor a manual disconnect followed by a manual connect',
+        (tester) async {
+      // Same shape, spelled out by hand rather than through `reconnectCurrent`
+      // — the run belongs to the unit, and the user cycling the link is not
+      // evidence it has ended. Only `ready` is.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await failedSetup(tester, s);
+      await failedSetup(tester, s);
+      await tester.runAsync(() => s.connection.disconnect());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      expect(s.connection.setupFailures, 2);
+    });
+
     testWidgets('reaching ready clears it', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => tester.runAsync(s.dispose));
@@ -224,6 +268,13 @@ void main() {
       await tester.runAsync(() => s.connection.connect('BB'));
       expect(s.connection.setupFailures, 0,
           reason: 'the run belongs to the unit, not to the app');
+
+      // And the ownership does not stick to the first unit ever seen: a
+      // failure under BB, then back to AA, is a different unit again.
+      await failedSetup(tester, s);
+      expect(s.connection.setupFailures, 1);
+      await tester.runAsync(() => s.connection.connect('AA'));
+      expect(s.connection.setupFailures, 0);
     });
 
     testWidgets('a connect that never lands is NOT counted here',

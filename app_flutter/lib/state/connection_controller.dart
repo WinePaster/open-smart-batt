@@ -397,6 +397,27 @@ class ConnectionController extends ChangeNotifier {
   /// connect to the same unit.
   int _setupFailuresSinceReady = 0;
 
+  /// Whose run [_setupFailuresSinceReady] is counting.
+  ///
+  /// The counter belongs to a UNIT, so the question "does a new connect reset
+  /// it?" is "is this a different unit?" — and that has to be asked of
+  /// something that survives a disconnect. It used to be asked of
+  /// [_desiredDeviceId], which [disconnect] sets to null, so every path that
+  /// goes out through `disconnect()` and back in through `connect()` compared
+  /// the target against null, found them different, and zeroed the run.
+  ///
+  /// [reconnectCurrent] is exactly such a path, and it is what the give-up
+  /// card's "try again" button calls — so design 0031 G3 ("a manual reconnect
+  /// to the same unit must not wash the count out") held everywhere EXCEPT on
+  /// the button built to be pressed when the count is what put the card there.
+  /// Three failures, tap, three more, tap: the give-up card could be dismissed
+  /// forever and the run never reach [maxSetupFailures] again.
+  ///
+  /// Deliberately NOT cleared by [disconnect]: a unit's run of silent
+  /// connections is a fact about that unit, and the user cycling the link is
+  /// not evidence it has ended. Only `ready` is (see [_onLinkState]).
+  String? _setupFailuresDeviceId;
+
   /// Consecutive failed setups before the app stops trying and says so.
   ///
   /// Three, not one. A single `gatt setup failed` happens on healthy hardware —
@@ -801,7 +822,16 @@ class ConnectionController extends ChangeNotifier {
     // Tapping connect again on the same unit is the user retrying the thing
     // that just failed three times; treating it as a clean slate is exactly how
     // `2026.08.03/003` kept the give-up path out of reach for fourteen minutes.
-    if (_desiredDeviceId != deviceId) _setupFailuresSinceReady = 0;
+    //
+    // Compared against [_setupFailuresDeviceId] and NOT against
+    // `_desiredDeviceId`: the latter is nulled by [disconnect], so on every
+    // path that leaves and re-enters through it — [reconnectCurrent], i.e. the
+    // give-up card's own button — the comparison was against null and always
+    // said "different unit".
+    if (_setupFailuresDeviceId != deviceId) {
+      _setupFailuresSinceReady = 0;
+      _setupFailuresDeviceId = deviceId;
+    }
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
     // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
