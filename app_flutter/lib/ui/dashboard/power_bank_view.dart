@@ -6,7 +6,8 @@
 /// dial. Its instrument is a percent-mode SOC ring fed DIRECTLY by the
 /// device-reported state-of-charge (selector 0x96 b6 — there is NO voltage→SOC
 /// curve, PROTOCOL.md §9.1), alongside temperature + single-cell voltage
-/// readouts and the (scaffolded) USB dual-port status. A power bank has NO DVOL
+/// readouts. The old USB dual-port card is retired (design 0035); the
+/// energy-path row that replaces it lands in Phase 2. A power bank has NO DVOL
 /// per-cell card and NO cut-off / anti-theft controls — those live on the pack
 /// page, which a power bank never navigates to.
 ///
@@ -16,7 +17,8 @@
 /// happened when nothing on screen said so: a 9.15 V PD charge showed as a bare
 /// `-0.43 A` under a hardwired charging icon, and the owner who ruled on the
 /// convention read his own device as broken. Everything direction-aware in this
-/// file hangs off [_Flow] for that reason — one derivation, used by the icon,
+/// file hangs off [PowerFlow] for that reason — one derivation (now shared with
+/// the energy-path row via `power_flow.dart`, design 0035 §6), used by the icon,
 /// the badge and the SVLT label, so they cannot disagree with each other.
 library;
 
@@ -31,9 +33,9 @@ import '../widgets/industrial_card.dart';
 import 'display_modules.dart';
 import 'pvlt_gauge.dart';
 import 'live_trend_chart.dart';
+import 'power_flow.dart';
 import 'readout_grid.dart';
 import 'readouts_card.dart';
-import 'usb_port_widget.dart';
 import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
@@ -54,13 +56,13 @@ class PowerBankView extends StatelessWidget {
     // The ONE derivation of direction on this page (FB-47). Everything that
     // claims a direction below reads this variable, so the icon, the badge and
     // the SVLT label cannot end up telling three different stories.
-    final flow = _flowOf(tele.current);
+    final flow = powerFlowOf(tele.current);
     // 0x37 is the port-side voltage: it reads 9.14–9.16 V during a 9 V PD
     // charge (`feedback-analysis/2026.08.04-002.md` §2), i.e. the INPUT. Only
     // the charging case is relabelled — idle, discharging and "no reading at
     // all" keep the original wording, because relabelling those would be a
     // guess rather than a correction.
-    final svltLabel = flow == _Flow.charging
+    final svltLabel = flow == PowerFlow.charging
         ? l10n.powerBankInputVoltageLabel
         : l10n.powerBankOutputVoltageLabel;
     // Sub-line under the SOC value: the single-cell voltage (PVLT is the cell
@@ -78,10 +80,10 @@ class PowerBankView extends StatelessWidget {
     final order = watchfaceModules(ProductClass.powerBank,
         effectiveWatchface(ProductClass.powerBank, stored.watchface));
 
-    /// One module → one card. All three of a power bank's cards are
-    /// unconditional today: a missing SOC renders as `--` inside the ring
-    /// rather than removing it, and the USB card is drawn whatever the ports
-    /// report (its values are permanently "unknown" — see [UsbPortWidget]).
+    /// One module → one card. The SOC and readouts cards are unconditional: a
+    /// missing SOC renders as `--` inside the ring rather than removing it. The
+    /// old USB card is gone (design 0035); its `usb` slot renders nothing until
+    /// Phase 2 places the energy-path row here.
     Widget? cardFor(DisplayModule m) {
       switch (m) {
         case DisplayModule.gaugeSoc:
@@ -129,7 +131,7 @@ class PowerBankView extends StatelessWidget {
                   // OTHER face of this one card (a toggle, not another page),
                   // so a legend that still said "output" while the tile said
                   // "input" would be visibly self-contradictory.
-                  label: flow == _Flow.charging
+                  label: flow == PowerFlow.charging
                       ? l10n.powerBankTrackInput
                       : l10n.powerBankTrackOutput,
                   unit: 'V',
@@ -196,11 +198,14 @@ class PowerBankView extends StatelessWidget {
             ],
           );
         case DisplayModule.usb:
-          return IndustrialCard(
-            heading: l10n.usbPortsHeading,
-            headingIcon: Icons.usb,
-            child: const UsbPortWidget(),
-          );
+          // design 0035 Phase 1: the two-port "USB" card is gone (its halves
+          // permanently said "unknown"). Its replacement — the standalone
+          // energy-path row [PowerPathRow] — exists and is tested, but is NOT
+          // placed here yet: doing so has to happen TOGETHER with removing the
+          // duplicate 0037 voltage+current tiles above (Q5+Q12: the same number
+          // must not appear twice), which is Phase 2. Until then this slot
+          // renders nothing rather than show a stale card or a doubled reading.
+          return null;
         case DisplayModule.gaugeVoltage:
         case DisplayModule.chart:
         case DisplayModule.cells:
@@ -259,61 +264,40 @@ class PowerBankView extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Direction (FB-47)
+// Direction (FB-47) — the [PowerFlow] derivation itself lives in
+// `power_flow.dart` (shared with the energy-path row, design 0035 §6). What
+// stays here is only how THIS page's tiles present it.
 // ---------------------------------------------------------------------------
-
-/// Which way energy is moving through the bank.
-///
-/// [unknown] is NOT a fourth state to render — it is the absence of a reading,
-/// and everything that switches on it falls back to the pre-FB-47 wording and
-/// glyph. A page with no current has nothing to say about direction, and
-/// saying it anyway is how the original defect was written.
-enum _Flow { charging, discharging, idle, unknown }
-
-/// Amps below which the reading is noise rather than a direction: inside the
-/// band the current readout shows the magnitude but names no charge/discharge
-/// state (design 0037). The old `-0.00` rounding-guard role is gone — the
-/// readout is now the absolute value, so a near-zero trickle simply shows
-/// `0.00` with no sign to strand.
-const double _kFlowDeadbandA = 0.05;
-
-/// Direction from the SIGN of the signed current (design 0030: discharge
-/// positive, charge negative). Sign only — the magnitude never decides.
-_Flow _flowOf(double? current) {
-  if (current == null) return _Flow.unknown;
-  if (current.abs() < _kFlowDeadbandA) return _Flow.idle;
-  return current < 0 ? _Flow.charging : _Flow.discharging;
-}
 
 /// Current magnitude — the sign never reaches the readout (design 0037); the
 /// badge carries the charge/discharge direction instead. Inside the dead-band
 /// the true magnitude still shows (e.g. `0.03`), only the badge drops.
 String _fmtCurrent(double v) => v.abs().toStringAsFixed(2);
 
-/// Glyph for [f]. [_Flow.unknown] keeps the icon this page has always drawn:
+/// Glyph for [f]. [PowerFlow.unknown] keeps the icon this page has always drawn:
 /// with no direction to show, a different glyph would be a different guess,
 /// not fewer guesses.
-IconData _flowIcon(_Flow f) => switch (f) {
-      _Flow.charging => Icons.battery_charging_full,
-      _Flow.discharging => Icons.bolt,
-      _Flow.idle => Icons.pause_circle_outline,
-      _Flow.unknown => Icons.battery_charging_full,
+IconData _flowIcon(PowerFlow f) => switch (f) {
+      PowerFlow.charging => Icons.battery_charging_full,
+      PowerFlow.discharging => Icons.bolt,
+      PowerFlow.idle => Icons.pause_circle_outline,
+      PowerFlow.unknown => Icons.battery_charging_full,
     };
 
 /// Badge wording, or null when there is no direction to name.
-String? _flowBadge(AppLocalizations l10n, _Flow f) => switch (f) {
-      _Flow.charging => l10n.powerBankDirectionCharging,
-      _Flow.discharging => l10n.powerBankDirectionDischarging,
+String? _flowBadge(AppLocalizations l10n, PowerFlow f) => switch (f) {
+      PowerFlow.charging => l10n.powerBankDirectionCharging,
+      PowerFlow.discharging => l10n.powerBankDirectionDischarging,
       // Idle names no state (design 0037): inside the dead-band the direction is
       // noise, so the magnitude shows but the badge drops.
-      _Flow.idle => null,
-      _Flow.unknown => null,
+      PowerFlow.idle => null,
+      PowerFlow.unknown => null,
     };
 
 /// Badge accent. Idle and unknown fall through to the tile's muted tone —
 /// "nothing is happening" does not deserve a colour.
-Color? _flowColor(_Flow f) => switch (f) {
-      _Flow.charging => AppColors.good,
-      _Flow.discharging => AppColors.amber,
-      _Flow.idle || _Flow.unknown => null,
+Color? _flowColor(PowerFlow f) => switch (f) {
+      PowerFlow.charging => AppColors.good,
+      PowerFlow.discharging => AppColors.amber,
+      PowerFlow.idle || PowerFlow.unknown => null,
     };

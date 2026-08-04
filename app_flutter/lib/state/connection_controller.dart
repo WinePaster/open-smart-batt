@@ -588,6 +588,18 @@ class ConnectionController extends ChangeNotifier {
     return DateTime.now().difference(since);
   }
 
+  /// How long the link has been [isOnline] (ready), or null when offline.
+  ///
+  /// Unlike [pendingFor] this holds for a unit whose class is already resolved —
+  /// the energy-path row (design 0035 §4.6) uses it to say "connected N s" while
+  /// a power bank's first `0x4B` is still on its way (up to ~10 s per connect),
+  /// which must read differently from a decoded reading of zero.
+  Duration? get onlineFor {
+    final since = _readyAt;
+    if (since == null) return null;
+    return DateTime.now().difference(since);
+  }
+
   /// Consecutive keep-alive write failures currently outstanding, 0 when the
   /// write path is healthy.
   ///

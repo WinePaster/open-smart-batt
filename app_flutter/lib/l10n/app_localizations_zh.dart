@@ -1142,6 +1142,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get usbPortPendingNote => '供電／快充協定等即時埠狀態，待實機擷取確認埠狀態封包格式後顯示。';
 
   @override
+  String get powerPathHeading => '能量路徑';
+
+  @override
+  String get powerPathPortUndetermined => '路徑未定';
+
+  @override
+  String get powerPathStandbyOutputOff => '待機 · 輸出已關閉';
+
+  @override
+  String get powerPathStandbyNoFlow => '待機 · 無輸出入';
+
+  @override
+  String powerPathWaiting(int seconds) {
+    return '等待裝置回報 · 已連線 $seconds 秒';
+  }
+
+  @override
+  String get powerPathPd => 'PD';
+
+  @override
+  String get powerPathAskWhichPort => '這是哪個孔?';
+
+  @override
+  String get powerPathTagOther => '其他 / 不確定';
+
+  @override
+  String powerPathTagSaved(String tag) {
+    return '已記錄回報：$tag';
+  }
+
+  @override
   String get dashboardModeNumbers => '數值';
 
   @override

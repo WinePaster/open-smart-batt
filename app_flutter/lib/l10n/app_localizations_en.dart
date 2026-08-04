@@ -1204,6 +1204,37 @@ class AppLocalizationsEn extends AppLocalizations {
       'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.';
 
   @override
+  String get powerPathHeading => 'Energy Path';
+
+  @override
+  String get powerPathPortUndetermined => 'Path undetermined';
+
+  @override
+  String get powerPathStandbyOutputOff => 'Standby · output off';
+
+  @override
+  String get powerPathStandbyNoFlow => 'Standby · no flow';
+
+  @override
+  String powerPathWaiting(int seconds) {
+    return 'Waiting for device · connected ${seconds}s';
+  }
+
+  @override
+  String get powerPathPd => 'PD';
+
+  @override
+  String get powerPathAskWhichPort => 'Which port is this?';
+
+  @override
+  String get powerPathTagOther => 'Other / not sure';
+
+  @override
+  String powerPathTagSaved(String tag) {
+    return 'Reported: $tag';
+  }
+
+  @override
   String get dashboardModeNumbers => 'Numbers';
 
   @override

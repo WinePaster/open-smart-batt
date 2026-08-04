@@ -2048,6 +2048,60 @@ abstract class AppLocalizations {
   /// **'Live port status (supply / fast-charge protocol) will appear once a hardware capture pins down the port-status frame layout.'**
   String get usbPortPendingNote;
 
+  /// No description provided for @powerPathHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Energy Path'**
+  String get powerPathHeading;
+
+  /// No description provided for @powerPathPortUndetermined.
+  ///
+  /// In en, this message translates to:
+  /// **'Path undetermined'**
+  String get powerPathPortUndetermined;
+
+  /// No description provided for @powerPathStandbyOutputOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Standby · output off'**
+  String get powerPathStandbyOutputOff;
+
+  /// No description provided for @powerPathStandbyNoFlow.
+  ///
+  /// In en, this message translates to:
+  /// **'Standby · no flow'**
+  String get powerPathStandbyNoFlow;
+
+  /// No description provided for @powerPathWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for device · connected {seconds}s'**
+  String powerPathWaiting(int seconds);
+
+  /// No description provided for @powerPathPd.
+  ///
+  /// In en, this message translates to:
+  /// **'PD'**
+  String get powerPathPd;
+
+  /// No description provided for @powerPathAskWhichPort.
+  ///
+  /// In en, this message translates to:
+  /// **'Which port is this?'**
+  String get powerPathAskWhichPort;
+
+  /// No description provided for @powerPathTagOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other / not sure'**
+  String get powerPathTagOther;
+
+  /// No description provided for @powerPathTagSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported: {tag}'**
+  String powerPathTagSaved(String tag);
+
   /// No description provided for @dashboardModeNumbers.
   ///
   /// In en, this message translates to:

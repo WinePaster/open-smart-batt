@@ -29,7 +29,6 @@ import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
-import 'package:open_smart_batt/ui/dashboard/usb_port_widget.dart';
 import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -221,7 +220,7 @@ void main() {
           lessThan(dy(tester, find.byType(CapacitorControls))));
     });
 
-    testWidgets('power bank: SOC ring → readouts → USB, and nothing after',
+    testWidgets('power bank: SOC ring → readouts (USB card retired)',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
@@ -229,8 +228,8 @@ void main() {
 
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
-      expect(dy(tester, find.byType(ReadoutsCard)),
-          lessThan(dy(tester, find.byType(UsbPortWidget))));
+      // design 0035 Phase 1: the two-port USB card is gone; its `usb` slot
+      // renders nothing until Phase 2 places the energy-path row there.
     });
 
     testWidgets('an unclassified pack keeps the standard order even with a '
@@ -291,16 +290,17 @@ void main() {
           lessThan(dy(tester, find.byType(BatteryControls))));
     });
 
-    testWidgets('a power bank on the diagnostic face reorders its own three',
-        (tester) async {
+    testWidgets('a power bank on the diagnostic face puts numbers before the '
+        'instrument', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
       await pumpUnder(tester, s, const PowerBankView());
 
+      // Diagnostic leads with the readouts and ends with the SOC ring. The USB
+      // slot renders nothing in design 0035 Phase 1 (energy-path row lands in
+      // Phase 2), so the pinned order is the surviving two.
       expect(dy(tester, find.byType(ReadoutsCard)),
-          lessThan(dy(tester, find.byType(UsbPortWidget))));
-      expect(dy(tester, find.byType(UsbPortWidget)),
           lessThan(dy(tester, find.byType(PvltGauge))));
     });
   });
