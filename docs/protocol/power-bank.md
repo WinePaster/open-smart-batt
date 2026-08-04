@@ -80,6 +80,30 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 > reading below, but with n = 7 on one unit it **adds a value to the list rather
 > than settling anything.**
 
+> **Ground-truth-labelled observation added 2026-08-04 — no new values.** ✅ own
+> capture, **Android 0.6.16**, raw log enabled, XOR-clean, on the corpus's
+> long-serving power-bank unit. It is the **first observation in this section
+> whose port and protocol come from the owner's own statement of what was plugged
+> in**, rather than being read off the numbers afterwards.
+>
+> * **Charge segment — owner-stated Type-C PD charge.** `b7` = **`0x0a`**
+>   (bit 1 + bit 3) on **21 of 21** frames, with `0x49` reading
+>   **9.144–9.168 V × 418–438 mA**, `0x37` reading **9.14–9.16 V** over the same
+>   frames, and SOC (`b6`) at 98 %. Both bits match the table below — bit 1 =
+>   Type-C, bit 3 = PD input — with **zero counterexamples** in the segment.
+> * **A second segment in the same batch — recorded, not interpreted.** SOC
+>   100 %, input **5.096–5.152 V** at **0–35 mA**, and `0x4A` carrying an
+>   **11–26 mA** discharge. `b7` = `0x05` ×18, `0x03` ×3, `0x02` ×1, `0x00` ×5.
+>   **The accompanying note does not say which port this segment used**, so the
+>   counts are recorded and nothing is concluded from them. `0x05` (bit 0 +
+>   bit 2) is *compatible* with the bit 0 = "probably Type-A" and bit 2 = "output
+>   active" readings below, but an unlabelled port makes it no test of either.
+>
+> This is the **same physical unit** that produced most of this table's evidence,
+> so it **adds a ground-truth-labelled instance rather than settling anything.**
+> The values list above is unchanged: `0x0a`, `0x05`, `0x03`, `0x02` and `0x00`
+> were all already on it.
+
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
 | **bit 5** | **PD output** | 184/184, no counterexample. Same bit at port voltages from 9.05 V to 13.30 V ⇒ it tracks the protocol, not the voltage rail | — |
