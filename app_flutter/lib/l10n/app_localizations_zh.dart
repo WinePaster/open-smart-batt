@@ -1107,6 +1107,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankOutputVoltageLabel => '輸出電壓';
 
   @override
+  String get powerBankInputVoltageLabel => '輸入電壓';
+
+  @override
+  String get powerBankDirectionCharging => '充電中';
+
+  @override
+  String get powerBankDirectionDischarging => '放電中';
+
+  @override
+  String get powerBankDirectionIdle => '閒置';
+
+  @override
   String get usbPortsHeading => 'USB 埠';
 
   @override
@@ -1150,6 +1162,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get powerBankTrackOutput => '輸出電壓';
+
+  @override
+  String get powerBankTrackInput => '輸入電壓';
 
   @override
   String get powerBankTrackSoc => '電量 SOC';
