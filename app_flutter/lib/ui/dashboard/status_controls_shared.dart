@@ -9,8 +9,9 @@
 ///
 /// SAFETY, and it is not symmetric:
 ///   * 復電 ([releaseCutOff]) writes "normal" (mode 0x00) and moves a pack
-///     TOWARD running. One confirmation, no auth frame — see its doc for why
-///     the password was removed.
+///     TOWARD running. One confirmation; the auth frame rides automatically
+///     (cb from the device's own dealer code, pwSum from the built-in default),
+///     so the owner needs no password — see its doc (design 0036).
 ///   * 斷電 ([cutOff]) and 防盜 ([antiTheft]) move a pack AWAY from running and
 ///     can leave a vehicle unable to start. Both require an explicit risk
 ///     confirmation and then the per-device auth dialog. In this build 斷電 has
@@ -202,22 +203,46 @@ Future<String> _modeWriteOutcome(
       : l10n.modeUnchangedSnack(action, status);
 }
 
-/// 復電 — write "normal" (mode 0x00), with no auth frame at all.
+/// Resolve release auth WITHOUT asking the user (design 0036 §4.2):
+///   * `cb`    — from the device's own dealer code (selector 0x27), via
+///     [CommandBuilder.cbFromFieldCb] (the wire-confirmed 4-char rule:
+///     `01680102` → `0168` → 168 = 0x00A8).
+///   * `pwSum` — the built-in [kDefaultCutoffPwSum]; the cut-off password is
+///     assumed a dealer-wide constant (design 0036 §2, working assumption).
+/// Returns null when the dealer code has not arrived on the wire yet, so the
+/// caller can fall back to the manual auth dialog.
 ///
-/// Owner's decision 2026-07-30: one switch, one confirmation, no password.
+/// Pure and [visibleForTesting]: the whole point is the cb rule, so it must be
+/// unit-testable without a live connection.
+@visibleForTesting
+AuthCredentials? releaseAuthFromDealerCode(String? dealerCode) {
+  if (dealerCode == null) return null;
+  try {
+    return AuthCredentials(
+      cb: CommandBuilder.cbFromFieldCb(dealerCode),
+      pwSum: kDefaultCutoffPwSum,
+    );
+  } on ArgumentError {
+    return null; // too short — dealer code not on the wire yet
+  } on FormatException {
+    return null; // leading chars not decimal
+  }
+}
+
+/// 復電 — write "normal" (mode 0x00) bundled with the auth frame.
 ///
-/// The password this used to demand is set by the DISTRIBUTOR, so a typical
-/// owner does not have it — and the dialog required it, leaving the only
-/// function the community build offers reachable only by flipping a toggle
-/// labelled "experimental: skip verification". That was backwards.
+/// Owner's decision 2026-08-04 (design 0036): the release always carries auth
+/// (the only path proven to work on the wire — iOS eng-app HCI capture, mode-0
+/// with auth moved `0x23` 02→00), but the owner never types a password: `cb`
+/// comes from the device's own dealer code and `pwSum` from [kDefaultCutoffPwSum].
+/// The no-auth mode-0 path is deliberately dropped (unproven; ruling Q3).
 ///
-/// ⚠️ Whether 0x00 needs auth is **untested**. The one no-auth capture we hold
-/// paired a bare mode frame with 0x06, the code we now know is wrong, so its
-/// failure says nothing about auth. This ships unverified on purpose — and
-/// [_modeWriteOutcome] is why that is acceptable: the app reads 0x23 back and
-/// tells the user what actually happened, so a wrong guess surfaces as "state
-/// unchanged" rather than as silence, and every attempt becomes the evidence
-/// that settles it.
+/// When the dealer code has not streamed yet, falls back to the manual auth
+/// dialog so an owner who knows their code can still proceed.
+///
+/// [_modeWriteOutcome] reads `0x23` back and reports what actually happened, so
+/// a wrong assumption (e.g. a different dealer's password) surfaces as "state
+/// unchanged" rather than a false success.
 ///
 /// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
 /// hence the control is no longer named after cut-off alone.
@@ -251,12 +276,21 @@ Future<void> releaseCutOff(
     ),
   );
   if (ok != true) return;
+  var creds = releaseAuthFromDealerCode(tele.dealerCode);
+  if (creds == null) {
+    // Dealer code not on the wire yet — let the owner supply auth manually.
+    if (!context.mounted) return;
+    final req = await showReleaseCutOffDialog(
+      context,
+      initialDealerCode: tele.dealerCode,
+    );
+    if (req == null || req.creds == null) return; // release requires auth (Q3)
+    creds = req.creds!;
+  }
   try {
-    await conn.releaseCutOffModeOnly();
+    await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum);
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 3600),
-      // skipAuth:false deliberately — going without auth is how this command
-      // works now, not a toggle the user flipped, so it needs no caveat.
       content: Text(await _modeWriteOutcome(l10n, tele,
           action: action, before: before, skipAuth: false)),
     ));

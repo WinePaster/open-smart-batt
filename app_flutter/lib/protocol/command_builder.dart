@@ -11,6 +11,12 @@ import 'dart:typed_data';
 import 'frame.dart';
 import 'selectors.dart';
 
+/// Default cut-off `pwSum` used by the 復電 (release) path when the user has not
+/// supplied their own (design 0036 §4.2). This is the auth checksum observed for
+/// current-generation packs; it is a default, overridable by an imported value,
+/// and is only ever sent to move a pack toward normal (release has no lock path).
+const int kDefaultCutoffPwSum = 0x01E4;
+
 /// Battery-specific auth credentials (live HCI capture).
 ///
 /// `cb`    — 16-bit echo derived from the device's dealer code (selector 0x27),
@@ -28,10 +34,10 @@ class AuthCredentials {
 
   const AuthCredentials({required this.cb, required this.pwSum});
 
-  /// High byte of `cb`. PROTOCOL.md §6.1 notes the app does NOT mask this byte
-  /// (decimal int.parse may exceed 255); we expose the raw shift and let the
-  /// frame builder truncate to a byte on the wire. For the observed 3-digit
-  /// field_cb the high byte is 0x00.
+  /// High byte of `cb`. With the corrected 4-char rule ([CommandBuilder.cbFromFieldCb])
+  /// `cb` is at most 9999, so this is always a real byte; the frame builder still
+  /// truncates defensively. (The old 8-char rule could push it past a byte — no
+  /// longer produced, but the truncation stays as a guard.)
   int get cbHi => cb >> 8;
 
   /// Low byte of `cb`.
@@ -58,15 +64,21 @@ class CommandBuilder {
     return sum & 0xFFFF;
   }
 
-  /// Derives the auth echo `cb` from a field_cb string (PROTOCOL.md §6.1):
-  /// `v = int.parse(fieldCb.substring(0,8))` in BASE 10, then `cbHi = v >> 8`,
-  /// `cbLo = v & 0xFF`. Returns the raw 16-bit-ish value `v & 0xFFFF`-equivalent
-  /// pairing as a [cb] where cbHi may exceed a byte; see [AuthCredentials.cbHi].
+  /// Derives the auth echo `cb` from a dealer-code / field_cb string
+  /// (PROTOCOL.md §6.1, **wire-confirmed 2026-08-04**): `cb` is the first two
+  /// payload bytes of selector 0x27, big-endian — which the `%04d%02X%02X` label
+  /// renders as its leading **4** characters read as decimal
+  /// (`01680102` → `0168` → 168 = 0x00A8).
+  ///
+  /// ⚠️ Corrected from the earlier **8-char** rule (`01680102` → 1680102), which
+  /// produced the wrong low byte and matched no capture. The 4-char reading holds
+  /// while the u16 dealer value is ≤ 9999 (all observed codes are); a value >9999
+  /// would render as 5 leading digits and need the raw 0x27 bytes instead.
   static int cbFromFieldCb(String fieldCb) {
-    if (fieldCb.length < 8) {
-      throw ArgumentError.value(fieldCb, 'fieldCb', 'need >= 8 chars');
+    if (fieldCb.length < 4) {
+      throw ArgumentError.value(fieldCb, 'fieldCb', 'need >= 4 chars');
     }
-    return int.parse(fieldCb.substring(0, 8));
+    return int.parse(fieldCb.substring(0, 4));
   }
 
   /// Parse a user-entered 16-bit auth value (cb or pwSum) in the "use my code"

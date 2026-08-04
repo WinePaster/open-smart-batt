@@ -36,14 +36,17 @@ bytes as `%04d`):
 > the old example came from 4 characters, so the prose and its own evidence
 > disagreed. **The evidence wins.**
 >
-> ⚠️ **This document's own client implemented the 8-character rule**, and a
+> ⚠️ **This document's own client used to implement the 8-character rule**, and a
 > 2026-07-30 capture shows it writing `cb = 0xC9F6` (1690102 & 0xFFFF) to a
 > `01690102` battery where this table predicts `0x00A9`. The device did not
 > change `0x23` in response — see §6.2. That is **consistent with** a rejected
 > auth but does not prove it: the same capture's battery was already in normal
-> mode, so a correctly-authenticated release would also have been a no-op. **Both
-> the 4-character rule and the failure mode need one deliberate capture against a
-> unit that is actually in cut-off.**
+> mode, so a correctly-authenticated release would also have been a no-op.
+>
+> ✅ **Fixed 2026-08-04:** the client now derives `cb` with the 4-character rule,
+> after an iOS engineering-app HCI capture wrote `cb = 0x00A8` for `01680102` and
+> the release succeeded (`0x23` 02→00, §6.2). The 4-char reading and a working
+> release are now both attested; the wrong 8-char cb is retired.
 
 ⚠️ **Both this value and the password checksum
 travel in cleartext in the auth write, and the dealer code is broadcast by the
@@ -104,7 +107,10 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 >
 > ⚠️ `0` is **not proven** either: no capture holds a successful write. The case
 > for it is elimination plus the vendor's numbering, so a client should verify
-> against `0x23` afterwards rather than report success.
+> against `0x23` afterwards rather than report success. — ✅ **Superseded
+> 2026-08-04:** a live capture now holds four successful mode `0x02`/`0x00`
+> writes with `0x23` tracking each within ~1 s. See "The transition captured
+> live" below.
 
 > ⚠️ **A mode write is not acknowledged in any observable way.** In a 2026-07-30
 > capture a client wrote mode `0x06` five times to a battery (four bundled with
@@ -118,6 +124,43 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 > anyway" by watching `0x23`.** Do not report success on a write returning
 > without error; the only honest UI is "sent", plus whatever `0x23` says
 > afterwards.
+
+> ### ✅ The transition captured live — mode `0x02` and `0x00`, readback moves (2026-08-04)
+>
+> Every result above is either a device *sitting* in a state (owner-labelled
+> exports) or a mode-`0x06` write that moved nothing. The one capture this
+> document kept asking for — "a deliberate capture against a unit that is
+> actually in cut-off", with the *write and its effect in the same window" — now
+> exists: an owner's own iOS engineering-app HCI snoop, one pack, **two rounds of
+> 正常↔斷電**. It is the first capture in the corpus to carry mode `0x02`/`0x00`
+> at all (the whole prior corpus was `0x06`), and the first in which a write
+> **moves the readback**:
+>
+> | write to command char | XOR | `0x23` telemetry after | Δt |
+> |---|---|---|---|
+> | `B8 23 00 01 `**`02`** | `98` | `0x00` → **`0x02`** | ~1 s |
+> | `B8 23 00 01 `**`00`** | `9A` | `0x02` → **`0x00`** | ~1 s |
+> | `B8 23 00 01 `**`02`** | `98` | `0x00` → **`0x02`** | ~1 s |
+> | `B8 23 00 01 `**`00`** | `9A` | `0x02` → **`0x00`** | ~1 s |
+>
+> All eight mode/auth frames XOR-clean. This **proves what elimination only
+> implied**: mode `0x02` enters cut-off and **mode `0x00` releases it**, and
+> `0x23` tracks the write in real time (not "5–14 minutes away by other means").
+> It retires the "`0` is not proven — no capture holds a successful write" caveat
+> on the mode table above.
+>
+> ⚠️ **Three limits, all real.** (1) Each set carried a **valid auth frame** —
+> this proves *release-with-auth works*, not that auth is optional; the `0x06`
+> census still separately suggests auth is not what gates a release, but no
+> capture yet holds a bare mode-`0x00` that succeeded. (2) The capture is the
+> **engineering app**, which also issues an explicit read-back poll
+> `B8 23 01 00 <XOR> 26` (`role=01, count=0`) after each set; a reference client
+> does not need to send that — it can watch the passive `0x23` stream, which
+> carried the state change on its own. (3) One pack, one owner, one session.
+>
+> ⇒ For a release button the honest flow is now: **write mode `0x00` (with the
+> auth frame), then confirm the transition against `0x23` before reporting
+> success** — the confirmation step now has positive precedent, not just theory.
 
 > 📉 **Negative result — the whole-corpus TX census (2026-07-31).** All **32**
 > log files in this project's capture corpus were re-walked on the transmit side: TX lines

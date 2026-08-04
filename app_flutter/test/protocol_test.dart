@@ -241,14 +241,17 @@ void main() {
       expect(CommandBuilder.passwordChecksum(pw), 58392);
     });
 
-    test('cbFromFieldCb parses first 8 chars in BASE 10', () {
-      // '01681234' parsed decimal -> 1681234 (NOT hex, which would be 23532596).
-      expect(CommandBuilder.cbFromFieldCb('01681234'), 1681234);
-      expect(CommandBuilder.cbFromFieldCb('01681234300001'), 1681234);
+    test('cbFromFieldCb parses first 4 chars in BASE 10 (wire-confirmed)', () {
+      // Corrected 2026-08-04: cb = first two 0x27 payload bytes big-endian =
+      // leading 4 chars as decimal. '01680102' -> '0168' -> 168 (0x00A8), the
+      // value actually captured. The trailing chars are ignored.
+      expect(CommandBuilder.cbFromFieldCb('01680102'), 0x00A8);
+      expect(CommandBuilder.cbFromFieldCb('01680104'), 0x00A8);
+      expect(CommandBuilder.cbFromFieldCb('99991234'), 9999);
     });
 
-    test('cbFromFieldCb throws when shorter than 8 chars', () {
-      expect(() => CommandBuilder.cbFromFieldCb('0168'), throwsArgumentError);
+    test('cbFromFieldCb throws when shorter than 4 chars', () {
+      expect(() => CommandBuilder.cbFromFieldCb('016'), throwsArgumentError);
     });
 
     test('AuthCredentials hi/lo getters split big-endian', () {
@@ -259,14 +262,15 @@ void main() {
       expect(c.pwLo, 0xCD);
     });
 
-    test('AuthCredentials cbHi is NOT byte-masked (spec quirk)', () {
-      // field_cb '01681234' -> 1681234; cbHi = 1681234>>8 = 6567 (>255).
+    test('auth() truncates an out-of-byte cb defensively', () {
+      // The corrected cbFromFieldCb no longer yields cb > 0xFFFF, but
+      // AuthCredentials keeps cbHi raw and the frame builder truncates to a byte
+      // on the wire. Guard that truncation with an arbitrary large cb.
       const c = AuthCredentials(cb: 1681234, pwSum: 0);
-      expect(c.cbHi, 6567);
+      expect(c.cbHi, 6567); // raw shift, not byte-masked
       expect(c.cbLo, 1681234 & 0xFF); // 0x52
-      // ...but the frame builder truncates it to a byte on the wire.
       final f = const CommandBuilder().auth(c);
-      expect(f[4], 6567 & 0xFF); // 0xA7
+      expect(f[4], 6567 & 0xFF); // 0xA7 on the wire
       expect(f[5], 0x52);
     });
   });
