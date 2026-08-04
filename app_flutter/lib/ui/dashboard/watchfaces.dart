@@ -24,6 +24,25 @@
 /// are all the same". [watchfaceModules] is now pairwise different on EVERY
 /// product class, and that is pinned by test T2 rather than left to review.
 ///
+/// ## 🔴 The chart is on `diagnostic` ONLY, and that costs something real
+///
+/// Design 0040 Q1 first proposed `standard` = the old three cards PLUS the
+/// chart appended last, so that removing the toggle would not take the live
+/// curve away from anybody. That was implemented, reviewed, and **REVERSED by
+/// the owner** on 2026-08-05. The chart is now reachable from `diagnostic` and
+/// nowhere else.
+///
+/// The cost was put to the owner in these terms and accepted: **a user who
+/// never opens Settings loses the live chart.** Before this build they could
+/// reach it from the readouts card's own header toggle, without knowing that a
+/// watchface setting exists; now they cannot reach it at all until they go into
+/// Settings and pick `diagnostic`. That is a capability removed from the
+/// default install, not merely a card relocated, and it is written down here so
+/// that a later reader finds a decision rather than an accident. The
+/// compensation is that `standard` is byte-for-byte the pre-0040 list again, so
+/// design 0034's G4 holds LITERALLY — which is what test T1 pins, in its
+/// original strict form.
+///
 /// ## The control card is not here, and cannot be
 ///
 /// Design 0034 §6 makes "controls are last, always, and never customisable" an
@@ -54,21 +73,18 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
   final extra =
       isPowerBank ? DisplayModule.energyPath : DisplayModule.cells;
   switch (face) {
-    // Everything this class has, with the FIRST THREE cards exactly what the
-    // dashboard drew before design 0034 existed. That prefix is the
+    // Card for card, in order, exactly what the dashboard drew before design
+    // 0034 existed — and still exactly that after Phase 1. This IS the
     // implementation of G4 ("a user who never opens the setting sees no
-    // change") and is pinned by test T1.
+    // change"), which is why it is written as the first case and pinned by test
+    // T1 rather than left implicit.
     //
-    // ⚠️ The trailing `chart` is a deliberate, reviewed trade-off against G4's
-    // LITERAL wording, not an oversight (design 0040 §3.2 / Q1, ruled by the
-    // owner). Removing the numbers/chart toggle takes away the only way a user
-    // could ever reach the live curve, so after Phase 1 it must have a default
-    // home; "standard has no chart" would be a feature disappearing, which is a
-    // bigger change than a card appearing. Placing it LAST keeps the first
-    // screen — gauge plus readouts — pixel-identical to v0.7.2, and the first
-    // screen is what G4 actually protects. The new card is below the fold.
+    // ⚠️ No `chart` here, by ruling. Design 0040 Q1 proposed appending it; the
+    // owner reversed that on review, knowing it means the live curve is
+    // unreachable without a trip to Settings. See the library comment — the
+    // cost is recorded there, not softened.
     case Watchface.standard:
-      return [gauge, DisplayModule.readouts, extra, DisplayModule.chart];
+      return [gauge, DisplayModule.readouts, extra];
     // One screenful, no scrolling: the fewest cards that still answer the
     // question this class is usually asked.
     //
@@ -87,6 +103,10 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // are what a reporter is asked to screenshot; the instrument is the thing
     // they can read at a glance anyway, so it goes to the bottom rather than
     // away.
+    //
+    // This is the ONLY face carrying the chart (Q1 as reversed). Consequence
+    // worth stating: "turn on diagnostic" is now the instruction for anyone who
+    // wants a live curve at all, not just for someone gathering a report.
     case Watchface.diagnostic:
       return [DisplayModule.readouts, extra, DisplayModule.chart, gauge];
   }

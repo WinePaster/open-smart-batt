@@ -289,29 +289,21 @@ void main() {
   });
 
   // =========================================================================
-  // T1 — the default screen, and how much of it G4 still protects
+  // T1 — the default IS today's screen, in the strict sense
   // =========================================================================
   //
-  // ⚠️ RELAXED 2026-08-05 (design 0040 §3.2 / Q1 — an owner ruling, not a
-  // quiet loosening). This group used to pin the WHOLE standard list; it now
-  // pins the FIRST THREE cards. G4 was not abandoned, it was made decidable:
-  //
-  //   Phase 1 removes `_ModeToggle`, which was the only way to reach the live
-  //   curve. So after Phase 1 either `standard` gains the chart (the page grows
-  //   a card) or the chart becomes unreachable for everyone who never opens
-  //   Settings (a feature silently disappears). G4's literal wording — "nothing
-  //   changes" — is not available in either direction. The ruling chose the
-  //   smaller change and put the chart LAST, so the FIRST SCREEN is
-  //   pixel-identical to v0.7.2 and the new card is below the fold.
-  //
-  // Hence: the prefix is pinned, the tail is allowed to grow. What is NOT
-  // relaxed is the order or the identity of those first three cards — those are
-  // still asserted card for card, and the pure-Dart prefix test below states it
-  // without depending on a viewport size.
+  // This is the ORIGINAL strict form, and it is strict deliberately. Design
+  // 0040 Q1 proposed appending the chart to `standard`; it was implemented,
+  // this assertion was relaxed to a three-card prefix to accommodate it, and
+  // then the owner REVERSED Q1 on review. So the whole list is pinned again —
+  // if you are reading this wondering whether the strict form is merely
+  // inherited from before Phase 1: no, it was loosened and put back on purpose.
+  // The chart lives on `diagnostic` alone, at the cost recorded in
+  // `watchfaces.dart`, and this test is what keeps `standard` paying none of it.
   group('T1: the standard face reproduces the pre-0034 dashboard', () {
-    test('the first three cards are, verbatim, the pre-Phase-1 list', () {
+    test('the standard list is, verbatim, the pre-Phase-1 list', () {
       // Transcribed from `watchfaces.dart` as it stood at v0.7.2 — the whole
-      // return value then, the required prefix now.
+      // return value then, and the whole return value still.
       const pre = <ProductClass, List<DisplayModule>>{
         ProductClass.smartBattery: [
           DisplayModule.gaugeVoltage,
@@ -334,13 +326,9 @@ void main() {
           DisplayModule.energyPath,
         ],
       };
-      pre.forEach((cls, prefix) {
-        final now = watchfaceModules(cls, Watchface.standard);
-        expect(now.take(3).toList(), prefix, reason: cls.name);
-        // And the ONLY thing appended is the chart. A second new card would
-        // slide into the first screen on a short phone, which is the thing the
-        // relaxation above was careful not to permit.
-        expect(now.skip(3).toList(), [DisplayModule.chart], reason: cls.name);
+      pre.forEach((cls, expected) {
+        expect(watchfaceModules(cls, Watchface.standard), expected,
+            reason: cls.name);
       });
     });
 
@@ -357,12 +345,13 @@ void main() {
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(DvolBars))));
-      // The Phase 1 addition, and where it sits: after the three cards G4
-      // protects, before the control card §6 pins last.
       expect(dy(tester, find.byType(DvolBars)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
-      expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(BatteryControls))));
+      // Phase 1 added a card to the app but NOT to this page. The surface here
+      // is 3000px tall, so the chart card would be built and found if the
+      // standard face named it — this is a real absence, not a lazy ListView.
+      expect(find.byType(TrendChartCard), findsNothing,
+          reason: 'Q1 reversed: the chart is reachable from diagnostic only');
     });
 
     testWidgets('capacitor: the same order, with the capacitor body',
@@ -380,44 +369,13 @@ void main() {
           lessThan(dy(tester, find.byType(DvolBars))));
       expect(dy(tester, find.byType(DvolBars)),
           lessThan(dy(tester, find.byType(CapacitorControls))));
-
-      // T4 — the footnote travelled WITH the chart.
-      //
-      // This is the one string the split could plausibly have dropped, and the
-      // capacitor is the only class that has it. "No current track: this unit
-      // reports a constant 0 A, which is not a measurement" is what stops an
-      // owner reading the missing series as an app failure — the same reason
-      // `display_modules.dart` calls it the entry most easily lost in a
-      // refactor. Asserted as a DESCENDANT of the chart card, not merely
-      // somewhere on the page, because "still rendered, but under the numbers"
-      // is exactly the wrong outcome this pins against.
-      expect(
-        find.descendant(
-          of: find.byType(TrendChartCard),
-          matching: find.textContaining('constant 0 A'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(ReadoutsCard),
-          matching: find.textContaining('constant 0 A'),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('T4: a battery has no chart footnote — the note is a '
-        'capacitor fact, not decoration', (tester) async {
-      // The inverse of the assertion above. A footnote that appeared on every
-      // class would tell battery owners their current track is fake.
-      final s = await makeServices(tester);
-      addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
-
-      expect(find.byType(TrendChartCard), findsOneWidget);
+      expect(find.byType(TrendChartCard), findsNothing,
+          reason: 'Q1 reversed: no face but diagnostic carries the chart');
+      // ⚠️ And with no chart card here there is no chart footnote here either.
+      // That is the ACCEPTED cost of the Q1 reversal, spelled out: a capacitor
+      // owner on the default face sees neither the curve nor the sentence
+      // explaining why it has no current track. Both are on `diagnostic`,
+      // together — which is the part T4 below still guarantees.
       expect(find.textContaining('constant 0 A'), findsNothing);
     });
 
@@ -450,6 +408,67 @@ void main() {
           lessThan(dy(tester, find.byType(ReadoutsCard))),
           reason: 'a page that is asking the user what this device is must not '
               'also be rearranged under them');
+      // Same remap, seen from the other side: the stored face WOULD have put
+      // the chart on this page, and Q4 is what keeps it off.
+      expect(find.byType(TrendChartCard), findsNothing);
+    });
+  });
+
+  // =========================================================================
+  // T4 — the chart footnote travels with the chart
+  // =========================================================================
+  //
+  // Exercised on the DIAGNOSTIC face, because since the Q1 reversal that is the
+  // only face with a chart card to attach a footnote to.
+  //
+  // This is the one string the Phase 1 split could plausibly have dropped, and
+  // the capacitor is the only class that has it. "No current track: this unit
+  // reports a constant 0 A, which is not a measurement" is what stops an owner
+  // reading the missing series as an app failure — the same reason
+  // `display_modules.dart` calls it the entry most easily lost in a refactor.
+  group('T4: the capacitor footnote renders inside the chart card', () {
+    testWidgets('capacitor / diagnostic: the note is under the chart, not the '
+        'numbers', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.supercapacitor);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
+      await pumpUnder(
+          tester, s, const PackScaffold(controls: CapacitorControls()));
+      await feedDvol(tester);
+
+      expect(find.byType(TrendChartCard), findsOneWidget);
+      // A DESCENDANT of the chart card, not merely somewhere on the page:
+      // "still rendered, but under the numbers" is exactly the wrong outcome
+      // this pins against, and a page-wide finder would accept it.
+      expect(
+        find.descendant(
+          of: find.byType(TrendChartCard),
+          matching: find.textContaining('constant 0 A'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(ReadoutsCard),
+          matching: find.textContaining('constant 0 A'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('battery / diagnostic: a chart, and no footnote', (tester) async {
+      // The inverse. A footnote that appeared on every class would tell battery
+      // owners their current track is fake.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await feedDvol(tester);
+
+      expect(find.byType(TrendChartCard), findsOneWidget);
+      expect(find.textContaining('constant 0 A'), findsNothing);
     });
   });
 

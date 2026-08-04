@@ -84,18 +84,8 @@ void main() {
   }
 
   /// Pump [child] under the controller providers + English localization.
-  ///
-  /// A TALL surface, on purpose (same reason as `watchface_ui_test.dart`). The
-  /// pack page is a ListView, which builds only the children it can show. On
-  /// the default 800x600 the protection card fell off the bottom the moment
-  /// design 0040 added the trend-chart card above it, and every "this body
-  /// shows Check Capacitor" assertion started failing for a reason that has
-  /// nothing to do with the control split these tests are about.
   Future<void> pumpUnder(
       WidgetTester tester, AppServices s, Widget child) async {
-    tester.view.physicalSize = const Size(900, 3000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MultiProvider(
         providers: [

@@ -67,8 +67,7 @@ void main() {
           cls: ProductClass.smartBattery, layout: DisplayLayout.defaults);
       final lines = header(layout: v);
       expect(lines.where((l) => l.startsWith('layout: ')), hasLength(1));
-      expect(lines.last,
-          'layout: face=standard modules=gaugeVoltage,readouts,cells,chart');
+      expect(lines.last, 'layout: face=standard modules=gaugeVoltage,readouts,cells');
     });
 
     test('the parameter is required, so no call site can drop it', () {
@@ -146,7 +145,7 @@ void main() {
       expect(
         exportLayoutValue(
             cls: ProductClass.smartBattery, layout: DisplayLayout.defaults),
-        'face=standard modules=gaugeVoltage,readouts,cells,chart',
+        'face=standard modules=gaugeVoltage,readouts,cells',
       );
     });
 
@@ -176,7 +175,7 @@ void main() {
           cls: ProductClass.unknown,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=standard modules=gaugeVoltage,readouts,cells,chart',
+        'face=standard modules=gaugeVoltage,readouts,cells',
         reason: 'the stored face is not applied to an unclassified unit, so '
             'the preamble must not claim it was',
       );
@@ -216,33 +215,35 @@ void main() {
   //  1. it is the machine-readable statement of design 0040 §3.3, so a change to
   //     `watchfaceModules` cannot land without someone editing the exact strings
   //     that will appear in the field captures we analyse;
-  //  2. ⚠️ it records the COMPATIBILITY BREAK. Before design 0040 the chart was
-  //     not a placeable module, so `modules=` never contained `chart` and
-  //     `face=standard` on a battery read `gaugeVoltage,readouts,cells`. The
-  //     same face name now names a different set of cards. Anyone diffing
-  //     `modules=` across the v0.7.2 boundary needs this table, in the same way
-  //     the `usb` → `energyPath` rename (design 0035 §5.3 / R4) needed its own
-  //     note. `ProductClass.unknown` is absent by design — Q4 forces it onto the
-  //     standard face, which the group above already pins.
+  //  2. ⚠️ it scopes the COMPATIBILITY BREAK, which is ONE FACE WIDE. Before
+  //     design 0040 the chart was not placeable, so `modules=` never contained
+  //     `chart`; `face=diagnostic` therefore names a different set of cards
+  //     before and after this build. `face=standard` and `face=compact` do NOT
+  //     — Q1 was reversed on review, so `standard` kept its pre-0040 list
+  //     verbatim and stays directly comparable across the boundary. That
+  //     distinction matters to the analysis side in the same way the `usb` →
+  //     `energyPath` rename (design 0035 §5.3 / R4) did, and stating it too
+  //     broadly would cost us real comparisons: `standard` is what almost every
+  //     capture carries.
+  //
+  // `ProductClass.unknown` is absent by design — Q4 forces it onto the standard
+  // face, which the group above already pins.
   group('T6: the exported module list, class by class and face by face', () {
     const expected = <ProductClass, Map<Watchface, String>>{
       ProductClass.smartBattery: {
-        Watchface.standard: 'face=standard '
-            'modules=gaugeVoltage,readouts,cells,chart',
+        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
         Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=readouts,cells,chart,gaugeVoltage',
       },
       ProductClass.supercapacitor: {
-        Watchface.standard: 'face=standard '
-            'modules=gaugeVoltage,readouts,cells,chart',
+        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
         Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=readouts,cells,chart,gaugeVoltage',
       },
       ProductClass.powerBank: {
-        Watchface.standard: 'face=standard '
-            'modules=gaugeSoc,readouts,energyPath,chart',
+        Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
         // No `readouts` here, and that is design 0040 Q2, not an omission: a
         // one-screenful power-bank layout keeps the direction row and drops the
         // grid — which also drops temperature (R3), accepted knowingly.

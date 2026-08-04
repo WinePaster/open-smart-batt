@@ -21,8 +21,16 @@
 /// comment.) Design 0034 §5.2 ruled that once both are placeable
 /// modules the toggle has no meaning: the watchface decides which cards are on
 /// the page, and a per-card view switch on top of that is a second, weaker
-/// mechanism for the same question. The chart now has a permanent home on the
-/// `standard` and `diagnostic` faces (`watchfaces.dart`).
+/// mechanism for the same question.
+///
+/// ⚠️ The chart's home is the `diagnostic` face, and ONLY that face
+/// (`watchfaces.dart`). Design 0040 Q1 proposed giving `standard` a copy so
+/// that nobody would lose the curve; the owner reversed that on review, knowing
+/// the consequence — **a user who never opens Settings can no longer see the
+/// live chart at all**, where before this build the header toggle put it one
+/// tap away. That is a capability withdrawn from the default install. It is
+/// written here because this file is where someone will come looking after
+/// asking "where did the chart go".
 library;
 
 import 'package:flutter/material.dart';

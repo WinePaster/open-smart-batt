@@ -17,7 +17,10 @@
 //   * the type-chip glyph, which follows the flow (charging battery only while
 //     charging — FB-47 symptom 1);
 //   * the chart's SVLT track legend, which still relabels input/output by
-//     direction (it is the other face of the readouts card);
+//     direction. ⚠️ Since design 0040 the chart is its own card
+//     ([TrendChartCard]) and, after that design's Q1 was reversed, it is placed
+//     on the DIAGNOSTIC face only — so the tests below ask for that face
+//     explicitly. It is no longer "the other face of the readouts card".
 //   * the signed, zero-spanning current TRACK, deliberately NOT direction-
 //     switched — a sign flip mid-window is how a start-up load is read;
 //   * the surviving grid order (SOC, temp, [capacity]) and the ABSENCE of the
@@ -110,13 +113,22 @@ void main() {
   /// [current] null means "no reading has arrived" — the direction-unknown
   /// case, which is a separate branch from idle and must not be conflated with
   /// a zero.
+  /// [face] exists because since design 0040's Q1 reversal the chart card is
+  /// on the DIAGNOSTIC face only. The tests about the chart's legends have to
+  /// ask for that face; everything else stays on the default, which is also the
+  /// screen almost every field capture shows.
   Future<AppServices> pumpBank(
     WidgetTester tester, {
     required double? current,
     String locale = 'en',
+    Watchface face = Watchface.standard,
   }) async {
     final s = await makeServices(tester);
     addTearDown(() => teardown(tester, s));
+    if (face != Watchface.standard) {
+      await tester.runAsync(() =>
+          s.devices.setDisplayLayout('DEV-A', DisplayLayout(watchface: face)));
+    }
     // Tall surface: the page is a ListView, and a card that is never built
     // cannot fail an assertion about what it says.
     tester.view.physicalSize = const Size(900, 3000);
@@ -271,25 +283,39 @@ void main() {
   });
 
   // =========================================================================
-  // The SVLT chart-track legend still relabels input/output by direction — it
-  // is the OTHER face of the readouts card, and this is the surviving
-  // direction relabel now that the voltage tile has moved.
+  // The SVLT chart-track legend still relabels input/output by direction — the
+  // surviving direction relabel now that the voltage tile has moved.
+  //
+  // On the DIAGNOSTIC face: design 0040 split the chart into its own card and
+  // the Q1 reversal put that card on diagnostic alone. The legend is worth
+  // pinning wherever it renders — it and the energy-path row now sit on the
+  // same page, so a legend saying "output" under a row saying "input" would be
+  // visibly self-contradictory.
   // =========================================================================
   group('the chart SVLT legend follows the direction', () {
     testWidgets('charging → input', (tester) async {
-      await pumpBank(tester, current: -0.43);
+      await pumpBank(tester,
+          current: -0.43, face: Watchface.diagnostic);
       expect(svltTrackLabel(tester), 'Input voltage');
     });
 
     testWidgets('discharging → output', (tester) async {
-      await pumpBank(tester, current: 1.2);
+      await pumpBank(tester, current: 1.2, face: Watchface.diagnostic);
       expect(svltTrackLabel(tester), 'Output voltage');
     });
 
     testWidgets('no reading keeps output (relabel would be a guess)',
         (tester) async {
-      await pumpBank(tester, current: null);
+      await pumpBank(tester, current: null, face: Watchface.diagnostic);
       expect(svltTrackLabel(tester), 'Output voltage');
+    });
+
+    testWidgets('and on the default face there is no chart card to label',
+        (tester) async {
+      // Not a throwaway: it is the assertion that the three tests above pass
+      // because the face was asked for, not because the card is everywhere.
+      await pumpBank(tester, current: -0.43);
+      expect(find.byType(TrendChartCard), findsNothing);
     });
   });
 
@@ -298,7 +324,7 @@ void main() {
   // =========================================================================
   testWidgets('the current track stays signed and zero-spanning while charging',
       (tester) async {
-    await pumpBank(tester, current: -0.43);
+    await pumpBank(tester, current: -0.43, face: Watchface.diagnostic);
 
     final current = chartCard(tester)
         .tracks
