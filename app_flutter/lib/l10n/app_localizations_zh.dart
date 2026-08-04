@@ -819,6 +819,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsThemeAuto => '自動';
 
   @override
+  String get settingsWatchfaceLabel => '錶盤';
+
+  @override
+  String get settingsWatchfaceSub => '目前連線裝置的儀表板要放哪些卡片、依什麼順序。';
+
+  @override
+  String get settingsWatchfaceSubNoDevice => '此設定綁定裝置。請先連線並儲存裝置，才能在這裡調整。';
+
+  @override
+  String get watchfaceStandard => '標準';
+
+  @override
+  String get watchfaceCompact => '精簡';
+
+  @override
+  String get watchfaceDiagnostic => '診斷';
+
+  @override
+  String get settingsRestoreDisplayLabel => '還原預設顯示';
+
+  @override
+  String get settingsRestoreDisplayDone => '已還原為標準錶盤。';
+
+  @override
   String get settingsTempUnitLabel => '溫度單位';
 
   @override

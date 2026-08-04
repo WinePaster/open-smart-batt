@@ -46,6 +46,7 @@ import 'readout_grid.dart';
 import 'readouts_card.dart';
 import 'dvol_bars.dart';
 import 'status_controls.dart';
+import 'watchfaces.dart';
 
 /// The pack shell: picks the per-class body by the cosmetic label. GATING,
 /// never routing — every branch renders the same [PackScaffold] layout, so this
@@ -108,10 +109,23 @@ class PackScaffold extends StatelessWidget {
     final packLabel =
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
     // Everything this shell does differently per class comes from here.
-    // NOTE the lookup is `forPackShell`, not `forClass`: a stray `powerBank`
-    // label reaches this shell (see [PackView] above) and has always drawn the
-    // unclassified set here — see the doc on that method.
-    final modules = DisplayModules.forPackShell(packLabel);
+    // NOTE the lookup is by `packShellClass`, not the raw label: a stray
+    // `powerBank` label reaches this shell (see [PackView] above) and has
+    // always drawn the unclassified set here — see the doc on that method.
+    final shellClass = DisplayModules.packShellClass(packLabel);
+    final modules = DisplayModules.forClass(shellClass);
+    // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
+    // against the connected unit (Q3), so both providers are read: the id moves
+    // on connect, the stored layout moves when Settings writes it.
+    //
+    // `effectiveWatchface` is what makes Q4 true here — an unclassified pack
+    // gets the standard face whatever is stored, so the page a user is being
+    // asked to identify is never rearranged under them.
+    final deviceId =
+        context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
+    final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    final order = watchfaceModules(
+        shellClass, effectiveWatchface(shellClass, stored.watchface));
     // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once
     // the connect burst arrives; else the tail-only serial; else NOTHING — the
     // row hides itself below.
@@ -137,6 +151,148 @@ class PackScaffold extends StatelessWidget {
     // Both the gate AND the wording are the registry's (design 0034 §12.3 #2:
     // the per-class difference here is content, not just presence).
     final sohText = modules.sohGaugeLine?.call(l10n, tele.sohBucket);
+
+    /// One module → one card, or null when its DATA condition is unmet.
+    ///
+    /// The split design 0034 §12.3 #2 asked for, made visible: the watchface
+    /// decides WHICH cards and in what order, and the card itself still decides
+    /// whether it has anything to draw. A face that includes `cells` on a
+    /// session with no DVOL yields no DVOL card — exactly as before this
+    /// existed — while the export preamble still reports `cells`, which is how
+    /// a reader tells "no data" apart from "not on the page".
+    Widget? cardFor(DisplayModule m) {
+      switch (m) {
+        case DisplayModule.gaugeVoltage:
+          return IndustrialCard(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final s = AppTheme.gaugeDiameter(context, c.maxWidth);
+                return Center(
+                  child: PvltGauge.voltage(
+                    volts: tele.pvlt,
+                    caption: l10n.gaugePvltLabel,
+                    subText: sohText,
+                    size: s,
+                  ),
+                );
+              },
+            ),
+          );
+        case DisplayModule.readouts:
+          return ReadoutsCard(
+            buffer: tele.trend,
+            // Same class gate as the current readout below: a capacitor
+            // streams 0x2E as a constant 0.0 A, so a current track would draw
+            // a flat line at zero and read as "measured 0 A" — worse than
+            // leaving it out. Voltage and temperature do move on a capacitor,
+            // so the chart is still offered, just without that track.
+            tracks: [
+              if (modules.hasTrack(TrendField.current))
+                TrendTrack(
+                  field: TrendField.current,
+                  label: l10n.dashboardTrackCurrent,
+                  unit: 'A',
+                  color: AppColors.cyan,
+                  // Signed, and the axis must cross zero. 0x2E carries a sign
+                  // whose DIRECTION is still unverified, so the axis states
+                  // the number and never labels it charge/discharge — but
+                  // hiding the sign would erase the reversal that makes a
+                  // cranking load recognisable.
+                  spanZero: true,
+                  minSpan: 10,
+                  height: 92,
+                ),
+              if (modules.hasTrack(TrendField.pvlt))
+                TrendTrack(
+                  field: TrendField.pvlt,
+                  label: l10n.dashboardTrackPvlt,
+                  unit: 'V',
+                  color: AppColors.amber,
+                  decimals: 2,
+                  minSpan: 0.5,
+                ),
+              // A capacitor has one track MORE than a battery, not fewer.
+              if (modules.hasTrack(TrendField.svlt))
+                TrendTrack(
+                  field: TrendField.svlt,
+                  label: l10n.capacitorTrackSvlt,
+                  unit: 'V',
+                  color: AppColors.cyan,
+                  decimals: 2,
+                  minSpan: 0.5,
+                ),
+              if (modules.hasTrack(TrendField.temperature))
+                TrendTrack(
+                  field: TrendField.temperature,
+                  label: l10n.dashboardTrackTemperature,
+                  unit: '\u00b0C',
+                  color: AppColors.good,
+                  minSpan: 4,
+                ),
+            ],
+            chartFootnote: modules.chartFootnote?.call(l10n),
+            items: [
+              Readout(
+                icon: Icons.thermostat,
+                label: l10n.dashboardReadoutTemperatureLabel,
+                value: _fmtInt(tele.temperatureDisplay),
+                unit: tele.temperatureUnitLabel,
+              ),
+              Readout(
+                icon: Icons.bolt,
+                label: l10n.dashboardReadoutSvltLabel,
+                value: _fmt1(tele.svlt),
+                unit: 'V',
+              ),
+              // Class gate from the registry, data gate right here — the two
+              // are different questions and are answered in different places
+              // (design 0034 §12.3 #2). A capacitor DOES stream 0x2E, but it
+              // is a constant 0.0 A, so the readout is hidden rather than
+              // shown as a real zero.
+              if (modules.showsCurrentReadout && tele.current != null)
+                Readout(
+                  icon: Icons.electric_bolt,
+                  label: l10n.dashboardReadoutCurrentLabel,
+                  value: _fmt1(tele.current),
+                  unit: 'A',
+                ),
+              if (modules.showsSohReadout && tele.sohBucket != null)
+                Readout(
+                  icon: Icons.monitor_heart_outlined,
+                  label: l10n.dashboardReadoutSohLabel,
+                  value: tele.sohBucket!.toString(),
+                  unit: '%',
+                ),
+            ],
+          );
+        case DisplayModule.cells:
+          if (tele.dvol != null) {
+            return IndustrialCard(
+              heading: l10n.dashboardDvolHeading,
+              headingIcon: Icons.battery_std,
+              child: DvolBars(cells: tele.dvol),
+            );
+          }
+          // DVOL frames arriving but VADJ (scaling) not yet known: show a
+          // pending note rather than a bogus voltage. See PROTOCOL.md §8.2.
+          if (tele.dvolPending) {
+            return IndustrialCard(
+              heading: l10n.dashboardDvolHeading,
+              headingIcon: Icons.battery_std,
+              child: PendingNote(text: l10n.dashboardDvolPendingNote),
+            );
+          }
+          return null;
+        case DisplayModule.gaugeSoc:
+        case DisplayModule.chart:
+        case DisplayModule.usb:
+          // Not cards of the pack shell, and unreachable through [order] — it
+          // is built from this class's own registry entry. Listed explicitly so
+          // that a NEW module fails to compile here rather than silently
+          // drawing nothing.
+          return null;
+      }
+    }
 
     return Center(
       child: ConstrainedBox(
@@ -174,126 +330,13 @@ class PackScaffold extends StatelessWidget {
                 ),
               ),
 
-            // ---- PVLT voltage gauge (ALWAYS) -----------------------------
-            IndustrialCard(
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final s = AppTheme.gaugeDiameter(context, c.maxWidth);
-                  return Center(
-                    child: PvltGauge.voltage(
-                      volts: tele.pvlt,
-                      caption: l10n.gaugePvltLabel,
-                      subText: sohText,
-                      size: s,
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // ---- readouts: TEMP + SVLT always; current only if present ---
-            ReadoutsCard(
-              buffer: tele.trend,
-              // Same class gate as the current readout below: a capacitor
-              // streams 0x2E as a constant 0.0 A, so a current track would draw
-              // a flat line at zero and read as "measured 0 A" — worse than
-              // leaving it out. Voltage and temperature do move on a capacitor,
-              // so the chart is still offered, just without that track.
-              tracks: [
-                if (modules.hasTrack(TrendField.current))
-                  TrendTrack(
-                    field: TrendField.current,
-                    label: l10n.dashboardTrackCurrent,
-                    unit: 'A',
-                    color: AppColors.cyan,
-                    // Signed, and the axis must cross zero. 0x2E carries a sign
-                    // whose DIRECTION is still unverified, so the axis states
-                    // the number and never labels it charge/discharge — but
-                    // hiding the sign would erase the reversal that makes a
-                    // cranking load recognisable.
-                    spanZero: true,
-                    minSpan: 10,
-                    height: 92,
-                  ),
-                if (modules.hasTrack(TrendField.pvlt))
-                  TrendTrack(
-                    field: TrendField.pvlt,
-                    label: l10n.dashboardTrackPvlt,
-                    unit: 'V',
-                    color: AppColors.amber,
-                    decimals: 2,
-                    minSpan: 0.5,
-                  ),
-                // A capacitor has one track MORE than a battery, not fewer.
-                if (modules.hasTrack(TrendField.svlt))
-                  TrendTrack(
-                    field: TrendField.svlt,
-                    label: l10n.capacitorTrackSvlt,
-                    unit: 'V',
-                    color: AppColors.cyan,
-                    decimals: 2,
-                    minSpan: 0.5,
-                  ),
-                if (modules.hasTrack(TrendField.temperature))
-                  TrendTrack(
-                    field: TrendField.temperature,
-                    label: l10n.dashboardTrackTemperature,
-                    unit: '\u00b0C',
-                    color: AppColors.good,
-                    minSpan: 4,
-                  ),
-              ],
-              chartFootnote: modules.chartFootnote?.call(l10n),
-              items: [
-                Readout(
-                  icon: Icons.thermostat,
-                  label: l10n.dashboardReadoutTemperatureLabel,
-                  value: _fmtInt(tele.temperatureDisplay),
-                  unit: tele.temperatureUnitLabel,
-                ),
-                Readout(
-                  icon: Icons.bolt,
-                  label: l10n.dashboardReadoutSvltLabel,
-                  value: _fmt1(tele.svlt),
-                  unit: 'V',
-                ),
-                // Class gate from the registry, data gate right here — the two
-                // are different questions and are answered in different places
-                // (design 0034 §12.3 #2). A capacitor DOES stream 0x2E, but it
-                // is a constant 0.0 A, so the readout is hidden rather than
-                // shown as a real zero.
-                if (modules.showsCurrentReadout && tele.current != null)
-                  Readout(
-                    icon: Icons.electric_bolt,
-                    label: l10n.dashboardReadoutCurrentLabel,
-                    value: _fmt1(tele.current),
-                    unit: 'A',
-                  ),
-                if (modules.showsSohReadout && tele.sohBucket != null)
-                  Readout(
-                    icon: Icons.monitor_heart_outlined,
-                    label: l10n.dashboardReadoutSohLabel,
-                    value: tele.sohBucket!.toString(),
-                    unit: '%',
-                  ),
-              ],
-            ),
-
-            // ---- DVOL per-cell bars: ONLY when the unit streams them ------
-            if (tele.dvol != null)
-              IndustrialCard(
-                heading: l10n.dashboardDvolHeading,
-                headingIcon: Icons.battery_std,
-                child: DvolBars(cells: tele.dvol),
-              )
-            // DVOL frames arriving but VADJ (scaling) not yet known: show a
-            // pending note rather than a bogus voltage. See PROTOCOL.md §8.2.
-            else if (tele.dvolPending)
-              IndustrialCard(
-                heading: l10n.dashboardDvolHeading,
-                headingIcon: Icons.battery_std,
-                child: PendingNote(text: l10n.dashboardDvolPendingNote),
-              ),
+            // ---- the watchface: which cards, in what order ---------------
+            //
+            // The protection card below is NOT in this loop and cannot be:
+            // design 0034 §6 makes "controls last, always, never customisable"
+            // an invariant, and it is enforced structurally — there is no
+            // DisplayModule for it, so no watchface can name it.
+            for (final m in order) ?cardFor(m),
 
             // ---- protection status + class-specific controls -------------
             IndustrialCard(

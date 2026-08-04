@@ -234,6 +234,14 @@ class DisplayModules {
         ProductClass.unknown => unclassified,
       };
 
+  /// The class the pack shell BEHAVES as, for a given cosmetic label.
+  ///
+  /// Split out of [forPackShell] because design 0034 Phase 5 needs the class
+  /// itself (to look up a watchface), not just its registry entry — and having
+  /// two expressions of the same quirk is exactly how they would drift.
+  static ProductClass packShellClass(ProductClass label) =>
+      label == ProductClass.powerBank ? ProductClass.unknown : label;
+
   /// The lookup [PackScaffold] uses, which is NOT [forClass].
   ///
   /// A `powerBank` LABEL can reach the pack shell: routing is decided by the
@@ -244,9 +252,8 @@ class DisplayModules {
   /// different widget the pack route never builds. Mapping it to [powerBank]
   /// here would put an SOC-only entry inside a voltage-gauge shell and silently
   /// change the screen, so the quirk is preserved verbatim and pinned by test.
-  static DisplayModules forPackShell(ProductClass label) => forClass(
-        label == ProductClass.powerBank ? ProductClass.unknown : label,
-      );
+  static DisplayModules forPackShell(ProductClass label) =>
+      forClass(packShellClass(label));
 }
 
 /// Gauge SOH sub-line for the classes that have one.

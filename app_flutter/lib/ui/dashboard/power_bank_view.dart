@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
@@ -24,6 +25,7 @@ import 'live_trend_chart.dart';
 import 'readout_grid.dart';
 import 'readouts_card.dart';
 import 'usb_port_widget.dart';
+import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
 class PowerBankView extends StatelessWidget {
@@ -45,6 +47,139 @@ class PowerBankView extends StatelessWidget {
     final subText = tele.pvlt == null
         ? l10n.powerBankSocSubUnknown
         : l10n.powerBankCellSub(tele.pvlt!.toStringAsFixed(2));
+
+    // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
+    // against the connected unit (Q3), so both providers are read: the id moves
+    // on connect, the stored layout moves when Settings writes it.
+    final deviceId =
+        context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
+    final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    final order = watchfaceModules(ProductClass.powerBank,
+        effectiveWatchface(ProductClass.powerBank, stored.watchface));
+
+    /// One module → one card. All three of a power bank's cards are
+    /// unconditional today: a missing SOC renders as `--` inside the ring
+    /// rather than removing it, and the USB card is drawn whatever the ports
+    /// report (its values are permanently "unknown" — see [UsbPortWidget]).
+    Widget? cardFor(DisplayModule m) {
+      switch (m) {
+        case DisplayModule.gaugeSoc:
+          // SOC ring (percent mode, direct 0x96 b6).
+          return IndustrialCard(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final s = AppTheme.gaugeDiameter(context, c.maxWidth);
+                return Center(
+                  child: PvltGauge.percent(
+                    percent: soc,
+                    caption: l10n.powerBankSocCaption,
+                    subText: subText,
+                    size: s,
+                  ),
+                );
+              },
+            ),
+          );
+        case DisplayModule.readouts:
+          return ReadoutsCard(
+            buffer: tele.trend,
+            // A power bank's current DOES have a direction, but not inside
+            // one register: 0x49 carries it while charging and 0x4A while
+            // discharging, and today only 0x4A reaches `current`. So the
+            // track is drawn signed and zero-crossing — the axis is already
+            // right for the day the charge side is decoded, and until then a
+            // charging bank simply reads 0.00 A, which is what the readout
+            // beside it says too.
+            tracks: [
+              if (modules.hasTrack(TrendField.current))
+                TrendTrack(
+                  field: TrendField.current,
+                  label: l10n.powerBankTrackCurrent,
+                  unit: 'A',
+                  color: AppColors.cyan,
+                  decimals: 2,
+                  spanZero: true,
+                  minSpan: 1,
+                  height: 92,
+                ),
+              if (modules.hasTrack(TrendField.svlt))
+                TrendTrack(
+                  field: TrendField.svlt,
+                  label: l10n.powerBankTrackOutput,
+                  unit: 'V',
+                  color: AppColors.amber,
+                  decimals: 2,
+                  minSpan: 0.5,
+                ),
+              if (modules.hasTrack(TrendField.soc))
+                TrendTrack(
+                  field: TrendField.soc,
+                  label: l10n.powerBankTrackSoc,
+                  unit: '%',
+                  color: AppColors.good,
+                  minSpan: 5,
+                ),
+            ],
+            items: [
+              Readout(
+                icon: Icons.thermostat,
+                label: l10n.dashboardReadoutTemperatureLabel,
+                value: _fmtInt(tele.temperatureDisplay),
+                unit: tele.temperatureUnitLabel,
+              ),
+              Readout(
+                icon: Icons.battery_5_bar,
+                label: l10n.powerBankCellVoltageLabel,
+                value: _fmt2(tele.pvlt),
+                unit: 'V',
+              ),
+              Readout(
+                icon: Icons.usb,
+                label: l10n.powerBankOutputVoltageLabel,
+                value: _fmt1(tele.svlt),
+                unit: 'V',
+              ),
+              Readout(
+                icon: Icons.battery_charging_full,
+                label: l10n.powerBankSocReadoutLabel,
+                value: soc == null ? '--' : soc.toString(),
+                unit: '%',
+              ),
+              // Magnitude, no direction — the register's charge/discharge
+              // attribution is unresolved (see Selectors.discharge), so the
+              // label deliberately says "Current", not "Output"/"Charge".
+              if (modules.showsCurrentReadout && tele.current != null)
+                Readout(
+                  icon: Icons.electric_bolt,
+                  label: l10n.powerBankCurrentLabel,
+                  value: tele.current!.toStringAsFixed(2),
+                  unit: 'A',
+                ),
+              if (tele.sample.designCapacityMah != null)
+                Readout(
+                  icon: Icons.battery_std,
+                  label: l10n.powerBankDesignCapacityLabel,
+                  value: tele.sample.designCapacityMah!.toString(),
+                  unit: 'mAh',
+                ),
+            ],
+          );
+        case DisplayModule.usb:
+          return IndustrialCard(
+            heading: l10n.usbPortsHeading,
+            headingIcon: Icons.usb,
+            child: const UsbPortWidget(),
+          );
+        case DisplayModule.gaugeVoltage:
+        case DisplayModule.chart:
+        case DisplayModule.cells:
+          // Not cards of this view, and unreachable through [order] — it is
+          // built from this class's own registry entry. Listed explicitly so
+          // that a NEW module fails to compile here rather than silently
+          // drawing nothing.
+          return null;
+      }
+    }
 
     return Center(
       child: ConstrainedBox(
@@ -70,114 +205,14 @@ class PowerBankView extends StatelessWidget {
               ),
             ),
 
-            // ---- SOC ring (percent mode, direct 0x96 b6) ----------------
-            IndustrialCard(
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final s = AppTheme.gaugeDiameter(context, c.maxWidth);
-                  return Center(
-                    child: PvltGauge.percent(
-                      percent: soc,
-                      caption: l10n.powerBankSocCaption,
-                      subText: subText,
-                      size: s,
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // ---- readouts: temperature + cell + output voltage ----------
-            ReadoutsCard(
-              buffer: tele.trend,
-              // A power bank's current DOES have a direction, but not inside
-              // one register: 0x49 carries it while charging and 0x4A while
-              // discharging, and today only 0x4A reaches `current`. So the
-              // track is drawn signed and zero-crossing — the axis is already
-              // right for the day the charge side is decoded, and until then a
-              // charging bank simply reads 0.00 A, which is what the readout
-              // beside it says too.
-              tracks: [
-                if (modules.hasTrack(TrendField.current))
-                  TrendTrack(
-                    field: TrendField.current,
-                    label: l10n.powerBankTrackCurrent,
-                    unit: 'A',
-                    color: AppColors.cyan,
-                    decimals: 2,
-                    spanZero: true,
-                    minSpan: 1,
-                    height: 92,
-                  ),
-                if (modules.hasTrack(TrendField.svlt))
-                  TrendTrack(
-                    field: TrendField.svlt,
-                    label: l10n.powerBankTrackOutput,
-                    unit: 'V',
-                    color: AppColors.amber,
-                    decimals: 2,
-                    minSpan: 0.5,
-                  ),
-                if (modules.hasTrack(TrendField.soc))
-                  TrendTrack(
-                    field: TrendField.soc,
-                    label: l10n.powerBankTrackSoc,
-                    unit: '%',
-                    color: AppColors.good,
-                    minSpan: 5,
-                  ),
-              ],
-              items: [
-                Readout(
-                  icon: Icons.thermostat,
-                  label: l10n.dashboardReadoutTemperatureLabel,
-                  value: _fmtInt(tele.temperatureDisplay),
-                  unit: tele.temperatureUnitLabel,
-                ),
-                Readout(
-                  icon: Icons.battery_5_bar,
-                  label: l10n.powerBankCellVoltageLabel,
-                  value: _fmt2(tele.pvlt),
-                  unit: 'V',
-                ),
-                Readout(
-                  icon: Icons.usb,
-                  label: l10n.powerBankOutputVoltageLabel,
-                  value: _fmt1(tele.svlt),
-                  unit: 'V',
-                ),
-                Readout(
-                  icon: Icons.battery_charging_full,
-                  label: l10n.powerBankSocReadoutLabel,
-                  value: soc == null ? '--' : soc.toString(),
-                  unit: '%',
-                ),
-                // Magnitude, no direction — the register's charge/discharge
-                // attribution is unresolved (see Selectors.discharge), so the
-                // label deliberately says "Current", not "Output"/"Charge".
-                if (modules.showsCurrentReadout && tele.current != null)
-                  Readout(
-                    icon: Icons.electric_bolt,
-                    label: l10n.powerBankCurrentLabel,
-                    value: tele.current!.toStringAsFixed(2),
-                    unit: 'A',
-                  ),
-                if (tele.sample.designCapacityMah != null)
-                  Readout(
-                    icon: Icons.battery_std,
-                    label: l10n.powerBankDesignCapacityLabel,
-                    value: tele.sample.designCapacityMah!.toString(),
-                    unit: 'mAh',
-                  ),
-              ],
-            ),
-
-            // ---- USB dual-port status (scaffold; Phase 4) ----------------
-            IndustrialCard(
-              heading: l10n.usbPortsHeading,
-              headingIcon: Icons.usb,
-              child: const UsbPortWidget(),
-            ),
+            // ---- the watchface: which cards, in what order --------------
+            //
+            // NOTHING is appended after this loop, and that is design 0034 §6
+            // rule 3 rather than an omission: a power bank has no protection
+            // controls, and must not grow an empty control card for the sake of
+            // looking like the pack page. An always-empty card is the same
+            // mistake as a permanent `--`.
+            for (final m in order) ?cardFor(m),
           ],
         ),
       ),

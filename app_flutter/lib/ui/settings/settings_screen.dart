@@ -167,7 +167,6 @@ class _DisplayCard extends StatelessWidget {
           ),
           SettingsRow(
             label: l10n.settingsTempUnitLabel,
-            last: true,
             trailing: SegmentedControl<TempUnit>(
               selected: s.tempUnit,
               onChanged: s.setTempUnit,
@@ -177,8 +176,90 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _WatchfaceRow(),
         ],
       ),
+    );
+  }
+}
+
+/// Watchface picker + "restore defaults" (design 0034 Phase 5, Q6).
+///
+/// Two rows rather than one because they answer different questions and one of
+/// them is destructive-ish; kept in the same card because Q6 ruled that restore
+/// belongs beside the thing it restores.
+///
+/// ⚠️ The setting is bound to the DEVICE (Q3), which the rest of this card is
+/// not — everything above it is app-wide. The row therefore has a state the
+/// others cannot have: nothing to apply to. It is DISABLED and says why rather
+/// than being hidden, on the precedent of the background-monitoring row on iOS:
+/// "a user who has heard of the feature needs to see WHY it is unavailable".
+class _WatchfaceRow extends StatelessWidget {
+  const _WatchfaceRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // Both are watched: the id changes on connect/disconnect, the stored layout
+    // changes when this very control writes it.
+    final id = context.select<ConnectionController, String?>(
+        (c) => c.connectedDeviceId);
+    final devices = context.watch<DeviceController>();
+    // Not merely "connected": the layout lives in the `saved_devices` row, so a
+    // unit the user declined to name has nowhere to put it. Saving it here as a
+    // side effect would add a row to their device picker that they never asked
+    // for (see DeviceController.setDisplayLayout).
+    final target = id != null && devices.isSaved(id) ? id : null;
+    final layout = devices.layoutFor(target);
+
+    Future<void> apply(DisplayLayout next) async {
+      if (target == null) return;
+      await devices.setDisplayLayout(target, next);
+    }
+
+    final picker = SegmentedControl<Watchface>(
+      selected: layout.watchface,
+      onChanged: (v) => apply(DisplayLayout(watchface: v)),
+      options: [
+        (value: Watchface.standard, label: l10n.watchfaceStandard),
+        (value: Watchface.compact, label: l10n.watchfaceCompact),
+        (value: Watchface.diagnostic, label: l10n.watchfaceDiagnostic),
+      ],
+    );
+
+    return Column(
+      children: [
+        SettingsRow(
+          label: l10n.settingsWatchfaceLabel,
+          sub: target == null
+              ? l10n.settingsWatchfaceSubNoDevice
+              : l10n.settingsWatchfaceSub,
+          trailing: target == null
+              // Dimmed AND inert. Opacity alone would still accept taps, and a
+              // control that looks disabled but silently writes nothing is the
+              // worse of the two failures.
+              ? Opacity(
+                  opacity: 0.45,
+                  child: IgnorePointer(child: picker),
+                )
+              : picker,
+        ),
+        SettingsLinkRow(
+          icon: Icons.restore,
+          label: l10n.settingsRestoreDisplayLabel,
+          last: true,
+          onTap: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            final done = l10n.settingsRestoreDisplayDone;
+            if (target == null) return;
+            await apply(DisplayLayout.defaults);
+            messenger.showSnackBar(SnackBar(
+              duration: const Duration(milliseconds: 1600),
+              content: Text(done),
+            ));
+          },
+        ),
+      ],
     );
   }
 }
