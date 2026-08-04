@@ -148,28 +148,35 @@ class AppServices {
     );
   }
 
-  /// Tear everything down (controllers → BLE → pending writes → DB).
+  /// Tear everything down (BLE → pending writes → controllers → DB).
   ///
-  /// The order matters and the middle step is the whole point. Disposing the
-  /// controllers and the BLE service stops *new* work being queued; draining
-  /// [pending] then waits for the writes already in flight. Only then is it
-  /// safe to close the database.
+  /// The order matters at both ends. Disposing the BLE service FIRST stops the
+  /// event sources, so nothing new can be queued; draining [pending] then
+  /// waits for the writes already in flight — and those writes need the
+  /// controllers still alive: `DeviceController.touch`/`setProductClass`
+  /// finish with `load()` → `notifyListeners()`, which on a disposed
+  /// ChangeNotifier is a "used after being disposed" error. That is why the
+  /// controllers come AFTER the drain, not before it (found 2026-08-04; the
+  /// old order was controllers-first, which was safe only while no test or
+  /// runtime path had a write in flight at teardown). No controller's own
+  /// `dispose()` queues a write, so nothing is enqueued past the drain.
   ///
   /// 🔴 Closing before the drain is what produced the intermittent
   /// `DatabaseException(error database_closed)` — a two-step `insertLog`
-  /// resuming after `close()`. See [PendingWrites] for the full trace.
+  /// resuming after `close()`. See [PendingWrites] for the full trace. That
+  /// invariant (drain before close) is unchanged.
   ///
   /// The drain is bounded: if a write wedges we close anyway rather than hang
   /// shutdown forever. Its result is deliberately ignored here — there is no
   /// remedy at this point and nowhere left to report to, since the log sink is
   /// the database we are about to close.
   Future<void> dispose() async {
+    await ble.dispose();
+    await pending.drain();
     telemetry.dispose();
     connection.dispose();
     devices.dispose();
     settings.dispose();
-    await ble.dispose();
-    await pending.drain();
     await appDb.close();
   }
 }
