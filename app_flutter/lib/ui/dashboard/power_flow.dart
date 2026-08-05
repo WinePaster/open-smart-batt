@@ -28,10 +28,22 @@ enum PowerFlow { charging, discharging, idle, unknown }
 
 /// Amps below which the current is noise rather than a direction (design 0037).
 ///
-/// 🔒 Do NOT lower below 0.03 A (design 0035 §6 seam 1 / Q8): a power bank with
-/// its boost rail off (`0x4B` b7 == 0x00) still reports a 36–39 mA `0x49`
-/// offset, computing to ≈ −0.039 A. This band is what naturally swallows that
-/// offset so a standby unit does not read as "charging".
+/// 🔒 Do NOT lower below 0.03 A. There are now TWO load-bearing reasons, and
+/// they point the same way:
+///
+///  1. (design 0035 §6 seam 1 / Q8) A power bank with its boost rail off
+///     (`0x4B` b7 == 0x00) still reports a 36–39 mA `0x49` offset, computing to
+///     ≈ −0.039 A. This band is what naturally swallows that offset so a
+///     standby unit does not read as "charging".
+///  2. (2026-08-05) The energy-path row now uses `powerFlowOf(...) == idle` as
+///     the same-burst CORROBORATION for `b7 == 0x00` — see
+///     `power_path_row.dart`'s "why standby needs corroboration" note. That
+///     works only because reason 1 holds: a real rail-off computes inside the
+///     band, while the 5 spurious `0x00` frames in the corpus sit at 2,718 /
+///     251 / 68 mA, two orders of magnitude out. Lower this constant far enough
+///     and a genuine rail-off stops reading idle — at which point the guard
+///     inverts and the app starts BELIEVING the spurious standby readings it
+///     was written to reject.
 const double kPowerFlowDeadbandA = 0.05;
 
 /// Direction from the SIGN of the signed current. Sign only — the magnitude

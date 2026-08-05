@@ -78,6 +78,23 @@ counterexample in the corpus (✅ verified). **The converse, charging ⇒ TWF =
 trickle charge (single-digit to ~60 mA) and the first burst or two of start-up
 delay after a charger is connected.
 
+**Strengthened 2026-08-05 — a second physical unit, at 20× the sample count.**
+Until now the second-by-second alignment behind this implication came from a
+single unit. A 10 h 32 m capture at 1 Hz on a **fifth power-bank unit** — the
+first of them polled fast enough to test alignment at the sampling limit — gives:
+
+| | bursts |
+|---|---|
+| TWF `b4` = `0x20` **and** `0x49` current > 0 | **9,293** |
+| TWF `b4` = `0x00` **and** `0x49` current = 0 | **26,838** |
+| **disagreeing** | **15** (0.04 %) |
+
+All fifteen were read individually: every one sits either **within one second of
+a charge starting or stopping**, or on the 2–5 mA measurement floor where the
+current field itself has not yet resolved. ⇒ the alignment is exact to the limit
+of the sampling rate, and the `0x20` ⇒ charging implication now rests on **two
+physical units**, clearing the multi-unit bar.
+
 > 🔴 **Superseded 2026-08-01 — the arrow was written backwards.** This paragraph
 > previously read:
 >

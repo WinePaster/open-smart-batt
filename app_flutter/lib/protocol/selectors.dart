@@ -102,11 +102,16 @@ class Selectors {
   /// On a POWER BANK the same 4-byte payload reads as `[u16 mV][u16 mA]`, and
   /// the second field is the ampere figure the unit itself reports: a live
   /// capture held 1042–1128 mA at the same moment the unit's own display showed
-  /// 1.05 A. The first field tracks [pvlt] to within ±10 mV over 48 frames, so
-  /// it is the same cell voltage and is not decoded again.
+  /// 1.05 A. The first field is the CELL voltage — it tracks [pvlt] (0x19), so
+  /// it is not decoded again. Measured by same-burst pairing across **five
+  /// physical units**: median difference **+4 mV**, and 96–100 % of samples
+  /// within ±30 mV, against a deliberately mis-paired control at +1,634 mV
+  /// (2026-08-05). The sibling [chargeCurrent]'s mV field is the PORT voltage
+  /// instead — the two are NOT the same quantity.
   ///
   /// Whether that current is measured cell-side or at the output port is NOT
-  /// established.
+  /// established. That is a separate question from which voltage each mV field
+  /// copies; knowing the latter says nothing about the former.
   ///
   /// The sibling register [chargeCurrent] (0x49) carries the same shape for the
   /// charging direction. It used to be read as "always zero" and left
@@ -134,10 +139,27 @@ class Selectors {
   /// the direction. `0x4B`'s port bits agree independently (bit 3 set only in
   /// the charging captures) but are not needed for this.
   ///
-  /// ⚠️ Three physical units cover the discharging side; the charging side is
-  /// so far ONE unit. Enough to sign a live reading — a unit's own two
-  /// registers are complementary on their own — and not enough to write the
-  /// attribution into the protocol document as settled.
+  /// ~~⚠️ Three physical units cover the discharging side; the charging side is
+  /// so far ONE unit.~~ **Stale as of 2026-08-05 — the charging side now has a
+  /// second unit**, and at 20× the sample count: 36,152 complete bursts over
+  /// 10.5 h at 1 Hz, mutually exclusive in 36,145, both non-zero in **7**
+  /// (0.02 %, every one inside the second a direction changes, at 2–5 mA), both
+  /// zero in **0**. Both halves now clear the multi-unit bar, and the protocol
+  /// document says so.
+  ///
+  /// 🔲 **This register's mV field is the PORT voltage** (the same quantity as
+  /// `0x37`), not the cell voltage that [discharge]'s mV field carries: five
+  /// units, median +4 mV against `0x37` and 85–95 % within ±30 mV, versus a
+  /// mis-paired control at +1,634 mV. **Deliberately still not decoded here** —
+  /// only `u16(6)`, the current, is read.
+  ///
+  /// Noted because there is an opportunity in it, and a ruling owed: this
+  /// register arrives in the SAME BURST as `0x4B`, whereas `0x37` — the port
+  /// voltage the energy-path row displays — free-runs on its own cadence.
+  /// design 0035 §4.5 asked for same-burst coupling of the displayed voltage
+  /// and the status line books not doing it as an accepted deviation. Reading
+  /// this mV field would close that deviation. Do not do it on the strength of
+  /// this comment.
   static const int chargeCurrent = 0x49;
 
   /// Power-bank capacity frame, 5 bytes:

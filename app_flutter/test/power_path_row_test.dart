@@ -8,7 +8,9 @@
 //     never inferred from bit0 (§4.3, Q10(a));
 //   * "PD" is positive-only, from bit3 (input) / bit5 (output), never crossed
 //     and never negated into a "standard"/"non-PD" label (§4.4);
-//   * b7 == 0x00 is standby (rail off), decided BEFORE any port test (§4.3);
+//   * b7 == 0x00 **corroborated by an idle current** is standby (rail off),
+//     decided BEFORE any port test (§4.3); b7 == 0x00 that the same burst's
+//     current contradicts claims neither standby nor a port (2026-08-05);
 //   * the §4.8 hook shows ONLY on the "path undetermined" row while energy is
 //     moving, is dismissible, and changes no display decision.
 //
@@ -199,14 +201,51 @@ void main() {
       expect(find.text('Type-A'), findsNothing);
     });
 
-    testWidgets('0x00: standby (rail off), decided before any port test',
+    testWidgets('0x00 + in-band current: standby, before any port test',
         (tester) async {
+      // A GENUINE rail-off: −0.039 A is the 36–39 mA `0x49` offset a rail-off
+      // unit always reports, which the ±0.05 A dead-band swallows. Flag and
+      // current corroborate, so standby is claimed. Unchanged behaviour.
       await pumpRow(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
 
       expect(find.text('Standby · output off'), findsOneWidget);
       expect(find.text('Type-C'), findsNothing);
       expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
+    });
+
+    testWidgets('spurious 0x00 (2,718 mA discharge): neither standby nor Type-A',
+        (tester) async {
+      // The 13:08:26 vector from the 36,151-burst capture: b7 read 0x00 while
+      // `0x4A` carried the batch's HIGHEST discharge (2,718 mA) and the port
+      // voltage held ≥ 5.17 V across ±2 s. The flag contradicts the current, so
+      // the row must claim neither.
+      //
+      // The Type-A assertion is the load-bearing one: b7 == 0x00 has bit1
+      // clear, so a fall-through to the normal ladder would print "Type-A" with
+      // full confidence — on a sample the operator had marked Type-C.
+      await pumpRow(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+
+      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-C'), findsNothing);
+      expect(find.text('PD'), findsNothing);
+      // What we DO still know comes from 0x49/0x4A, not from b7.
+      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('DISCHARGING'), findsOneWidget);
+      expect(find.text('5.22 V'), findsOneWidget);
+      expect(find.text('2.72 A'), findsOneWidget);
+    });
+
+    testWidgets('spurious 0x00 on the charge side is treated the same',
+        (tester) async {
+      // The 23:25:27 vector: b7 = 0x00 with `0x49` at 2,712 mA charging.
+      await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+
+      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('CHARGING'), findsOneWidget);
     });
 
     testWidgets('0x03 (bit0+bit1): bit1 wins → Type-C, never Type-A',
@@ -333,6 +372,15 @@ void main() {
 
     testWidgets('never shown in standby', (tester) async {
       await pumpRow(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      expect(find.text('Which port is this?'), findsNothing);
+    });
+
+    testWidgets('never shown on a contradicted 0x00 burst', (tester) async {
+      // Undetermined AND charging, which is normally the one hooked state —
+      // but we do not ask the user to label a burst whose flag byte we have
+      // just decided not to believe.
+      await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+      expect(find.text('Path undetermined'), findsOneWidget);
       expect(find.text('Which port is this?'), findsNothing);
     });
   });

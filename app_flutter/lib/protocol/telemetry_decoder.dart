@@ -261,6 +261,11 @@ class TelemetryDecoder {
         // on screen for a millisecond and then replace it with 0x4A's idle
         // zero. The combination happens in 0x4A, which is the register that has
         // always driven `current`.
+        //
+        // u16(4), this register's mV field, is the PORT voltage — identified
+        // 2026-08-05 on five units — and is deliberately NOT read. Doing so
+        // would be a display change (it is same-burst with 0x4B where 0x37 free
+        // -runs), and that needs a ruling; see [Selectors.chargeCurrent].
         return base.copyWith(timestamp: ts, chargeCurrent: f.u16(6) / 1000.0);
       case Selectors.discharge:
         // Same 4 bytes, two readings — this selector means different things on
@@ -280,9 +285,15 @@ class TelemetryDecoder {
         // already did and this one did not.
         if (base.deviceType == null) return base;
         if (base.isPowerBank) {
-          // `[u16 mV][u16 mA]`. Only the current is taken: the mV field tracks
-          // PVLT (0x19) to ±10 mV, so decoding it again would just be a second
-          // name for the same number.
+          // `[u16 mV][u16 mA]`. Only the current is taken: the mV field is the
+          // CELL voltage and tracks PVLT (0x19) — five physical units, median
+          // +4 mV, 96–100 % of samples within ±30 mV, against a deliberately
+          // mis-paired control at +1,634 mV (2026-08-05) — so decoding it again
+          // would just be a second name for the same number.
+          //
+          // ⚠️ 0x49's mV field is NOT the same quantity: it is the PORT voltage
+          // (0x37). See [Selectors.chargeCurrent], which also records why we do
+          // not read it yet.
           //
           // SIGNED, from both registers: this one is the discharging direction
           // and 0x49 the charging one, and they are complementary — whichever

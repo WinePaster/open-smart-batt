@@ -14,8 +14,14 @@
 //     The authoritative, later, thrice-repeated ruling — and the shipped Phase-0
 //     decoder + Phase-1 row — say b7 == 0x00 → "Standby · output off", decided
 //     BEFORE any port test. The DURABLE invariant both readings share, and the
-//     one pinned here, is: b7 == 0x00 shows NO port badge (never Type-A, Type-C,
-//     or "path undetermined"). The standby wording follows §4.3, not stale §9 T4.
+//     one pinned here, is: b7 == 0x00 never shows a FABRICATED port (never
+//     Type-A, never Type-C).
+//     ⚠️ **Revised 2026-08-05 (spurious-0x00 guard).** Standby now requires the
+//     same burst's current to be idle as well. With a live current the flag is
+//     contradicted, and the row claims neither standby nor a port — it shows
+//     the direction, the readings, and "path undetermined". That lands T4 back
+//     on §9's original "路徑未定, never 待機" wording for the nonzero-current
+//     case, which is why T4 below now asserts the undetermined badge.
 //   * The §3.3 discharge current for 0x05 (11–26 mA) sits INSIDE the ±0.05 A
 //     dead-band, so the real vector reads "idle", not "discharging". To isolate
 //     the PORT ladder (the point of T1/T7) these tests use a beyond-band current
@@ -201,17 +207,62 @@ void main() {
       expect(find.text('Type-C'), findsNothing);
     });
 
-    testWidgets('0x00 charging: Standby · output off, with direction word',
-        (tester) async {
-      await mount(tester, portFlagsRaw: 0x00, current: -0.42, svlt: 3.95);
-      // b7 == 0x00 = rail off (§4.3 step 1), decided before any port test. A
-      // beyond-band charge still names the direction (§4.6: "電流非零時併顯方向").
+    testWidgets('0x00 + in-band current: Standby · output off', (tester) async {
+      // The §3.3 rail-off vector as it actually reads on the wire: −0.039 A,
+      // the `0x49` offset a rail-off unit always reports, inside the ±0.05 A
+      // dead-band. Flag and current corroborate ⇒ standby, decided before any
+      // port test, and no port badge of any kind.
+      await mount(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
       expect(find.text('Standby · output off'), findsOneWidget);
-      expect(find.text('CHARGING'), findsOneWidget);
-      // No port badge of any kind.
+      expect(find.text('CHARGING'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
       expect(find.text('Path undetermined'), findsNothing);
+    });
+  });
+
+  // =========================================================================
+  // Spurious b7 == 0x00 (2026-08-05) — the flag contradicted by its own burst.
+  // =========================================================================
+  group('spurious 0x00 guard', () {
+    testWidgets('2,718 mA discharge: no standby, no Type-A, undetermined',
+        (tester) async {
+      // The 13:08:26 vector — b7 = 0x00 at the capture's highest discharge,
+      // with `0x37` never dropping below 5.17 V across ±2 s. 5 such frames in
+      // 36,152 bursts; at 1 Hz that is a visible flicker every ~2 hours.
+      await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+      expect(find.text('Standby · output off'), findsNothing);
+      // bit1 is clear at 0x00, so a fall-through would print Type-A with full
+      // confidence — and the operator had this sample marked Type-C.
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-C'), findsNothing);
+      expect(find.text('Path undetermined'), findsOneWidget);
+      // Direction and readings survive: they come from 0x49/0x4A, not from b7.
+      expect(find.text('DISCHARGING'), findsOneWidget);
+      expect(find.text('5.22 V'), findsOneWidget);
+      expect(find.text('2.72 A'), findsOneWidget);
+    });
+
+    testWidgets('68 mA discharge is still beyond the dead-band',
+        (tester) async {
+      // The 20:49:38 vector. 0.068 A > 0.05 A, so it is a contradiction too —
+      // this is the sample that shows the guard is not merely a "large current"
+      // rule; the dead-band is the whole test.
+      await mount(tester, portFlagsRaw: 0x00, current: 0.068, svlt: 5.18);
+      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Path undetermined'), findsOneWidget);
+    });
+
+    testWidgets('no debounce was added: one sample still decides the frame',
+        (tester) async {
+      // A debounce was considered and rejected (state + latency on the genuine
+      // transition). Nothing is waiting to flip this row a second later.
+      await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+      expect(find.text('Path undetermined'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 15));
+      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('Standby · output off'), findsNothing);
     });
   });
 
@@ -271,17 +322,19 @@ void main() {
   // =========================================================================
   // T4 — b7 all-clear + nonzero current: no port badge, ever.
   // =========================================================================
-  testWidgets('T4 b7==0x00 + nonzero current shows no port badge',
+  testWidgets('T4 b7==0x00 + nonzero current shows no FABRICATED port',
       (tester) async {
-    // §9's T4 wording ("路徑未定, never 待機") predates the b7==0x00 = rail-off
-    // upgrade (§3.3 obs 1 / §4.3 / §4.6). The enduring invariant both readings
-    // share — and the one that matters — is: a fabricated port is never shown.
+    // The enduring invariant across every revision of this line: a fabricated
+    // port is never shown. §9's original T4 wording ("路徑未定, never 待機") was
+    // overtaken by the b7==0x00 = rail-off upgrade (§3.3 obs 1 / §4.3 / §4.6)
+    // and is now BACK in force for this vector — the spurious-0x00 guard
+    // (2026-08-05) withholds standby when the same burst's current contradicts
+    // the flag, and "path undetermined" is what is left.
     await mount(tester, portFlagsRaw: 0x00, current: 0.30, svlt: 3.95);
     expect(find.text('Type-A'), findsNothing);
     expect(find.text('Type-C'), findsNothing);
-    expect(find.text('Path undetermined'), findsNothing);
-    // Per the authoritative later ruling, this is standby (rail off), not a port.
-    expect(find.text('Standby · output off'), findsOneWidget);
+    expect(find.text('Path undetermined'), findsOneWidget);
+    expect(find.text('Standby · output off'), findsNothing);
   });
 
   // =========================================================================
@@ -419,7 +472,15 @@ void main() {
     });
 
     testWidgets('NOT shown in rail-off standby', (tester) async {
-      await mount(tester, portFlagsRaw: 0x00, current: -0.42, svlt: 3.95);
+      await mount(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      expect(find.text('Which port is this?'), findsNothing);
+    });
+
+    testWidgets('NOT shown on a contradicted 0x00 burst', (tester) async {
+      // Undetermined AND charging — normally the one hooked state. Suppressed:
+      // an answer here would be filed against a b7 we do not believe.
+      await mount(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+      expect(find.text('Path undetermined'), findsOneWidget);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
