@@ -178,8 +178,8 @@ class PackScaffold extends StatelessWidget {
               },
             ),
           );
-        case DisplayModule.readouts:
-          return ReadoutsCard(
+        case DisplayModule.chart:
+          return TrendChartCard(
             buffer: tele.trend,
             // Same class gate as the current readout below: a capacitor
             // streams 0x2E as a constant 0.0 A, so a current track would draw
@@ -230,7 +230,15 @@ class PackScaffold extends StatelessWidget {
                   minSpan: 4,
                 ),
             ],
+            // Travels with the CHART, not with the readouts (design 0040
+            // §3.1). On a capacitor this is the line explaining that the
+            // absent current track is the device's own constant zero, not a
+            // fetch the app got wrong — the single most losable piece of this
+            // whole split.
             chartFootnote: modules.chartFootnote?.call(l10n),
+          );
+        case DisplayModule.readouts:
+          return ReadoutsCard(
             items: [
               Readout(
                 icon: Icons.thermostat,
@@ -284,7 +292,6 @@ class PackScaffold extends StatelessWidget {
           }
           return null;
         case DisplayModule.gaugeSoc:
-        case DisplayModule.chart:
         case DisplayModule.energyPath:
           // Not cards of the pack shell, and unreachable through [order] — it
           // is built from this class's own registry entry. Listed explicitly so

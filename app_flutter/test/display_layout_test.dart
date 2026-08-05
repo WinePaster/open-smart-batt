@@ -176,15 +176,33 @@ void main() {
           reason: 'a pack compact still drops its extra card');
     });
 
-    test('the chart is not placeable while Phase 1 is locked', () {
-      // It is still a MODE of the readouts card (`_ModeToggle`), and that mode
-      // is not persisted. Offering it as an orderable card would advertise
-      // control the user does not have.
+    // REWRITTEN 2026-08-05 (design 0034 Phase 1, implemented by design 0040).
+    // This used to assert the chart was placeable on NO face, because it was
+    // still a mode of the readouts card behind an unpersisted header toggle.
+    // Phase 1 landed and the toggle is gone, so "no face at all" would now mean
+    // the chart is unreachable by anyone — hence the assertion still exists,
+    // but it names the ONE face that carries it.
+    test('the chart is placeable, and only on diagnostic', () {
       for (final cls in ProductClass.values) {
-        for (final face in Watchface.values) {
-          expect(watchfaceModules(cls, face),
-              isNot(contains(DisplayModule.chart)));
-        }
+        // Q4: an unclassified unit is drawn with the standard face whatever is
+        // stored, but watchfaceModules itself answers per (class, face) — the
+        // Q4 remap happens in effectiveWatchface, tested separately below.
+        expect(watchfaceModules(cls, Watchface.diagnostic),
+            contains(DisplayModule.chart),
+            reason: 'diagnostic is the only route to the live curve now, so a '
+                'change that drops it here removes the feature outright');
+        // ⚠️ design 0040 Q1 was PROPOSED as "standard gets the chart, last",
+        // implemented, and then REVERSED by the owner. The accepted cost is
+        // that a user who never opens Settings has no live chart at all — they
+        // used to reach it from the readouts card's own header toggle. This
+        // assertion is that ruling, not an artefact of the old behaviour.
+        expect(watchfaceModules(cls, Watchface.standard),
+            isNot(contains(DisplayModule.chart)),
+            reason: 'standard must stay byte-for-byte the pre-0040 list (G4)');
+        expect(watchfaceModules(cls, Watchface.compact),
+            isNot(contains(DisplayModule.chart)),
+            reason: 'compact is the one-screenful face; a stack of tracks is '
+                'the first thing it drops');
       }
     });
 

@@ -9,12 +9,39 @@
 ///
 /// ## Only the CARDS that exist today are placeable
 ///
-/// [DisplayModule.chart] is deliberately absent from every face. Design 0034
-/// Phase 1 (splitting the chart out of [ReadoutsCard] into a card of its own)
-/// is NOT unlocked: the chart is still a mode of the readouts card, toggled by
-/// `_ModeToggle`, and that toggle's state is not persisted at all. Listing it
-/// as a placeable module would advertise an ordering the user cannot control.
-/// It re-enters these lists the day Phase 1 lands, and not before.
+/// Historical note: until design 0040 (2026-08-05) [DisplayModule.chart] was
+/// absent from every list below, because the chart was still a MODE of the
+/// readouts card behind a header toggle whose state was not persisted —
+/// listing it would have advertised an ordering the user could not control.
+/// Design 0034 Phase 1 has now landed: the chart is [TrendChartCard], the
+/// toggle is gone, and the chart is placed by these lists like any other card.
+///
+/// That unlock is also what fixed the defect design 0040 was written for. With
+/// the chart withheld, a power bank had exactly two placeable cards after the
+/// always-present energy-path row (design 0035 Q2), so `standard` and `compact`
+/// returned IDENTICAL lists — three menu entries, two outcomes. The owner's
+/// field report on v0.7.2 was literally "I tapped through all three and they
+/// are all the same". [watchfaceModules] is now pairwise different on EVERY
+/// product class, and that is pinned by test T2 rather than left to review.
+///
+/// ## 🔴 The chart is on `diagnostic` ONLY, and that costs something real
+///
+/// Design 0040 Q1 first proposed `standard` = the old three cards PLUS the
+/// chart appended last, so that removing the toggle would not take the live
+/// curve away from anybody. That was implemented, reviewed, and **REVERSED by
+/// the owner** on 2026-08-05. The chart is now reachable from `diagnostic` and
+/// nowhere else.
+///
+/// The cost was put to the owner in these terms and accepted: **a user who
+/// never opens Settings loses the live chart.** Before this build they could
+/// reach it from the readouts card's own header toggle, without knowing that a
+/// watchface setting exists; now they cannot reach it at all until they go into
+/// Settings and pick `diagnostic`. That is a capability removed from the
+/// default install, not merely a card relocated, and it is written down here so
+/// that a later reader finds a decision rather than an accident. The
+/// compensation is that `standard` is byte-for-byte the pre-0040 list again, so
+/// design 0034's G4 holds LITERALLY — which is what test T1 pins, in its
+/// original strict form.
 ///
 /// ## The control card is not here, and cannot be
 ///
@@ -47,25 +74,41 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
       isPowerBank ? DisplayModule.energyPath : DisplayModule.cells;
   switch (face) {
     // Card for card, in order, exactly what the dashboard drew before design
-    // 0034 existed. This IS the implementation of G4 ("a user who never opens
-    // the setting sees no change"), which is why it is written as the first
-    // case and pinned by test T1 rather than left implicit.
+    // 0034 existed — and still exactly that after Phase 1. This IS the
+    // implementation of G4 ("a user who never opens the setting sees no
+    // change"), which is why it is written as the first case and pinned by test
+    // T1 rather than left implicit.
+    //
+    // ⚠️ No `chart` here, by ruling. Design 0040 Q1 proposed appending it; the
+    // owner reversed that on review, knowing it means the live curve is
+    // unreachable without a trip to Settings. See the library comment — the
+    // cost is recorded there, not softened.
     case Watchface.standard:
       return [gauge, DisplayModule.readouts, extra];
-    // Instrument and numbers — and, on a power bank, the energy-path row too
-    // (design 0035 Q2: it rides EVERY face, compact included). A pack still
-    // drops its extra (a half-height DVOL chart would be a new widget, and this
-    // release adds none); the power bank keeps its one line because that line
-    // IS the answer to "which way is it charging", not an optional detail.
+    // One screenful, no scrolling: the fewest cards that still answer the
+    // question this class is usually asked.
+    //
+    // A pack drops its DVOL card and keeps the numbers. A power bank does the
+    // OPPOSITE — it drops the numbers and keeps the energy-path row — because
+    // design 0035 Q2's reason for that row ("it IS the answer to which way it
+    // is charging") gets STRONGER as the layout gets shorter, not weaker. The
+    // cost, accepted knowingly (design 0040 Q2 / R3): a power bank's compact
+    // face shows no temperature at all. Anyone who wants temperature has two
+    // other faces, both of which carry the readouts grid.
     case Watchface.compact:
       return isPowerBank
-          ? [gauge, DisplayModule.readouts, extra]
+          ? [gauge, extra]
           : [gauge, DisplayModule.readouts];
-    // Detail first. The numbers grid and the per-cell / port card are what a
-    // reporter is asked to screenshot; the instrument is the thing they can
-    // read at a glance anyway, so it goes to the bottom rather than away.
+    // Detail first. The numbers grid, the per-cell / port card and the curve
+    // are what a reporter is asked to screenshot; the instrument is the thing
+    // they can read at a glance anyway, so it goes to the bottom rather than
+    // away.
+    //
+    // This is the ONLY face carrying the chart (Q1 as reversed). Consequence
+    // worth stating: "turn on diagnostic" is now the instruction for anyone who
+    // wants a live curve at all, not just for someone gathering a report.
     case Watchface.diagnostic:
-      return [DisplayModule.readouts, extra, gauge];
+      return [DisplayModule.readouts, extra, DisplayModule.chart, gauge];
   }
 }
 

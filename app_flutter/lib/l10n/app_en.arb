@@ -666,23 +666,15 @@
   "classPendingRetryButton": "Reconnect",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",
-  "powerBankSocSubUnknown": "Cell -- V",
-  "powerBankCellSub": "Cell {volts} V",
-  "@powerBankCellSub": {
-    "placeholders": {
-      "volts": {
-        "type": "String"
-      }
-    }
-  },
+  "powerBankSocSubUnknown": "NO READING",
   "powerBankCurrentLabel": "Current",
   "powerBankDesignCapacityLabel": "Rated Capacity",
   "powerBankSocReadoutLabel": "Charge SOC",
-  "powerBankCellVoltageLabel": "Cell Voltage",
   "powerBankOutputVoltageLabel": "Output Voltage",
   "powerBankInputVoltageLabel": "Input Voltage",
   "powerBankDirectionCharging": "CHARGING",
   "powerBankDirectionDischarging": "DISCHARGING",
+  "powerBankDirectionIdle": "STANDBY",
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
   "powerPathHeading": "Energy Path",
@@ -708,8 +700,7 @@
       }
     }
   },
-  "dashboardModeNumbers": "Numbers",
-  "dashboardModeChart": "Chart",
+  "dashboardChartHeading": "Live Trend",
   "dashboardChartWaiting": "Waiting for telemetry…",
   "dashboardTrackCurrent": "Main current",
   "dashboardTrackPvlt": "PVLT · main voltage",

@@ -11,12 +11,15 @@
 ///   * DIRECTION comes from the current sign alone ([powerFlowOf]) — never from
 ///     b7 bit2/bit3, which are weaker (design 0035 §4.2). Port and direction are
 ///     read from the SAME sample so they cannot disagree (§4.5 / G3).
-///   * The PORT is Type-C (b7 bit1, a cable/CC detection) or "path undetermined"
-///     — NEVER Type-A. bit0 was refuted as a Type-A indicator in four field
-///     readings, so there is no reliable Type-A bit anywhere (§4.3). When the
-///     port is undetermined the row offers a lightweight feedback hook (§4.8)
-///     that lets the user tag it, turning the one state we cannot decode into a
-///     way to collect the ground truth that would decode it.
+///   * The PORT is Type-C (b7 bit1, a cable/CC detection), Type-A **by
+///     elimination**, or "path undetermined". There is still no Type-A bit —
+///     bit0 was refuted as one in four field readings (§4.3) — but with bit1
+///     clear and the bank discharging there is no other path the energy can
+///     take, and that holds 29,114/0 over every port-marked capture on three
+///     units (2026-08-05, `feedback-analysis/2026.08.04-014.md` §1). The
+///     elimination is restricted to discharge: nothing in the corpus charges
+///     with bit1 clear, so that case stays undetermined and keeps the
+///     lightweight feedback hook (§4.8) that lets the user tag it.
 ///   * "PD" is a positive-only badge from bit3 (input) / bit5 (output), never
 ///     crossed and never negated. bit3 is ONE-WAY — a 9.05 V/1.83 A charge
 ///     reads it clear (16 counter-examples) — so a "non-PD"/"standard" label
@@ -113,9 +116,9 @@ class _PowerPathRowState extends State<PowerPathRow> {
     if (word != null) {
       children
         ..add(_dot(context))
-        ..add(_flowIcon(flow, _flowColor(context, flow)))
+        ..add(_flowIcon(flow, powerFlowColor(context, flow)))
         ..add(Text(word,
-            style: TextStyle(fontSize: 12.5, color: _flowColor(context, flow))));
+            style: TextStyle(fontSize: 12.5, color: powerFlowColor(context, flow))));
     }
     return Wrap(
       spacing: 7,
@@ -155,7 +158,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
       ));
     } else {
       final word = _directionWord(l10n, flow);
-      final color = _flowColor(context, flow);
+      final color = powerFlowColor(context, flow);
       row
         ..add(_flowIcon(flow, color))
         ..add(Text(word ?? '--',
@@ -166,7 +169,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // ---- segment 2: port badge --------------------------------------------
     row
       ..add(_dot(context))
-      ..add(_portBadge(context, l10n, isTypeC, active));
+      ..add(_portBadge(context, l10n, isTypeC, active, flow));
     if (showPd) row.add(_pdBadge(context, l10n));
 
     // ---- segment 3: readings ----------------------------------------------
@@ -186,7 +189,16 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // "path undetermined" AND actually moving (not standby). Type-C is known,
     // so it is never hooked (avoid nagging). The hook records data only; it
     // changes NO display decision — bit0 stays out of every field above.
-    final showHook = !isTypeC && active && !_hookHandled;
+    //
+    // Narrowed 2026-08-05: discharge with bit1 clear is now DERIVED as Type-A,
+    // so hooking it would be asking a question we can already answer — and it
+    // is the commonest state a bank sits in, which is how a non-nagging hook
+    // becomes a nagging one. What is left genuinely unknown is CHARGING with no
+    // Type-C cable, which no capture in the corpus contains; if a user is in
+    // that state we want to hear about it. (The one field use of this hook so
+    // far, in the 2026-08-04 controlled capture, tagged `a` at b7=0x05 while
+    // discharging 473 mA — the derivation would have printed Type-A unasked.)
+    final showHook = !isTypeC && flow == PowerFlow.charging && !_hookHandled;
     if (!showHook) return rowWrap;
 
     return Column(
@@ -323,17 +335,40 @@ class _PowerPathRowState extends State<PowerPathRow> {
     return Icon(icon, size: 15, color: color);
   }
 
-  Color _flowColor(BuildContext context, PowerFlow flow) => switch (flow) {
-        PowerFlow.charging => AppColors.good,
-        PowerFlow.discharging => AppColors.amber,
-        PowerFlow.idle || PowerFlow.unknown => context.colors.muted,
-      };
-
+  /// Which port the energy is using.
+  ///
+  /// Still NOT read off any Type-A bit — there is none, and bit0 is refuted
+  /// (§4.3). Type-A is reached by ELIMINATION instead: with no Type-C cable
+  /// present (bit1 clear) and the bank discharging, there is no other path the
+  /// energy can be taking. Corpus check over every port-marked power-bank
+  /// capture, excluding the `b7 == 0x00` frames the ladder short-circuits
+  /// above: **29,114 agree / 0 disagree**, across three physical units
+  /// (2026-08-05 corpus-wide sweep, the derivation section) — so this one
+  /// clears the multi-unit bar that bit0 never did.
+  ///
+  /// ⚠️ Restricted to DISCHARGE on purpose. The corpus check paired `0x4A`, so
+  /// it says nothing about charging with bit1 clear, and no capture shows that
+  /// combination at all. Charging stays "undetermined" until one does.
+  ///
+  /// 🔲 The Type-C branch is the weaker one, and now says so. bit1 is CABLE
+  /// PRESENT, not "the C port is carrying this" — a C cable sitting idle while
+  /// the load is on Type-A reads Type-C here. That is not hypothetical: 46
+  /// frames in `2026.07.31/001` are exactly it (the operator later confirmed
+  /// the C cable was never unplugged). Settling it needs a bit we do not have.
   Widget _portBadge(BuildContext context, AppLocalizations l10n, bool isTypeC,
-      bool active) {
+      bool active, PowerFlow flow) {
     final colors = context.colors;
     if (!isTypeC) {
-      // No reliable Type-A bit exists — never draw Type-A (§4.3). Undetermined.
+      if (flow == PowerFlow.discharging) {
+        return _badge(
+          context,
+          l10n.usbPortTypeA,
+          fill: AppColors.amber,
+          border: AppColors.amber,
+          textColor: AppColors.onAmber,
+        );
+      }
+      // Idle, charging, or no reading: nothing to eliminate from.
       return _badge(
         context,
         l10n.powerPathPortUndetermined,

@@ -80,6 +80,22 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 > reading below, but with n = 7 on one unit it **adds a value to the list rather
 > than settling anything.**
 
+> **Revised 2026-08-04 by a controlled capture.** One unit was run through a
+> ten-step script in which **cables and loads were operated separately** — plug
+> the cable with nothing on the far end, then add the load, then remove only the
+> load, then remove the cable — with every step marked in the log as it
+> happened. That is the first capture in the corpus where "a port is occupied"
+> and "a port is delivering current" are independent variables. It settled
+> bit 1, **refuted** the surviving reading of bit 0, and turned bit 2 from
+> 689/691 into an exact equivalence. A **second** capture the same evening added
+> the charging direction and refuted a replacement model for bit 0 that had been
+> published a few hours earlier. The rows below are the post-revision state; all
+> superseded text is kept, struck through, in the sections that follow.
+
+> 🔴 **Superseded by the paragraph above (2026-08-04).** Kept because its
+> measurements are still good evidence — only its conclusion ("adds an instance
+> rather than settling anything") has been overtaken by the controlled captures.
+>
 > **Ground-truth-labelled observation added 2026-08-04 — no new values.** ✅ own
 > capture, **Android 0.6.16**, raw log enabled, XOR-clean, on the corpus's
 > long-serving power-bank unit. It is the **first observation in this section
@@ -107,11 +123,42 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
 | **bit 5** | **PD output** | 184/184, no counterexample. Same bit at port voltages from 9.05 V to 13.30 V ⇒ it tracks the protocol, not the voltage rail | — |
-| **bit 3** | **PD input ⇒ set** | 221/221 | ⚠️ **One-way only.** PD charging does *not* imply bit 3: a unit charging at 9.05 V / 1.83 A (≈16 W) left it clear |
-| **bit 2** | **output active** | 689/691 | Two counterexamples, both at 15–31 mA next to a direction change |
-| **bit 1** | **Type-C** | A Type-A-only session was 134/134 clear | ⚠️ A Type-C session was **79/84**, not 84/84 — the first ~11 seconds read as bit-1-clear |
+| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands as recorded: 16 charging bursts left it clear. 🔲 But see the note below — those may be non-PD 9 V chargers, in which case the caveat dissolves |
+| **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, every `b7 = 0x00` frame has the port voltage at cell potential | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
+| **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
 | **bit 4** | **unknown** | Appears only as `0x12` (bit1+bit4), **16** frames, on **one** unit | 🚫 Not decoded. Suspected firmware variant — notably, that is the unit that also failed name-based discovery. See the measurement below |
-| **bit 0** | **probably "Type-A active"** | See below | ⚠️ Not settled |
+| **bit 0** | 🚫 **unknown — and specifically NOT "Type-A active"** | Set with **both ports physically empty**, 7/7, 19–22 mA, in a capture where the operator had pulled the Type-A cable 34 s earlier | ⚠️ See the refutation below. Do **not** drive a "Type-A device attached" indicator from it |
+
+**On bit 3: the A/B that removes "power" and "voltage" as explanations**
+(2026-08-04).
+
+Until now bit 3 rested on 221/221 co-occurrence with PD charging, which cannot
+separate *the protocol* from *the voltage* or *the power* — all three move
+together on a normal charger. A capture on one unit ran both inputs back to
+back through the **same port with the same cable**, and matched the power:
+
+| | PD input | non-PD 5 V input |
+|---|---|---|
+| `b7` | **`0x0a`** (bit 1 + **bit 3**), 7/7 | **`0x02`** (bit 1 only), 6/6 |
+| `0x49` port voltage | 9,024 – 9,084 mV | 4,884 – 4,896 mV |
+| `0x49` charge current | 662 – 678 mA | 1,177 – 1,185 mA |
+| **input power** | **6.07 W** | **5.77 W** |
+| `0x20` (TWF) | `0x20` | `0x20` |
+| bit 2 | clear | clear |
+
+Power differs by 5 %, so **bit 3 is not a power threshold.**
+
+🔲 **And this makes the "one-way only" caveat look like a charger-type
+artefact rather than a protocol quirk.** The recorded counterexample is a unit
+charging at **9.05 V** with bit 3 clear. If bit 3 tracked *voltage*, 9.05 V
+would set it and those 16 bursts would be unexplainable. If it tracks the
+*protocol*, they are exactly what a **non-PD 9 V fast charge** (QuickCharge and
+similar) looks like. That is a hypothesis, not a finding — the charger type in
+those captures was never recorded.
+
+**The capture that would settle it:** a **QuickCharge 9 V (non-PD)** charger
+into the same unit for 90 s. bit 3 clear with `0x49` reading ≈9 V ⇒ the caveat
+can be lifted and bit 3 becomes two-way.
 
 **On bit 4: a measurement that supports "firmware variant of bit 3" — and is not
 proof of it** (2026-07-31).
@@ -143,8 +190,25 @@ both units, back to back, labelled as such.** No such capture exists.
 *(Count corrected here from 15 to 16 frames. The difference is de-duplication of
 overlapping cumulative exports, not a new observation.)*
 
-**On bit 0: three readings tested, two eliminated, one survives — and it is
-still not decoded.**
+**`b7 = 0x00` means the boost rail is off** (2026-08-04).
+
+All 73 `0x00` frames in the corpus have the port voltage (`0x37`) sitting at
+**3.62–4.05 V** — cell potential, i.e. the boost stage has stopped switching —
+with the `0x4A` discharge current at 0. **The BLE link does not drop**: `0x37`
+keeps arriving at 1 Hz throughout. So what a user experiences as "the power bank
+turned itself off" is only the 5 V output shutting down; the radio stays up.
+
+On the unit measured, that shutdown happens **32–37 s after the last load is
+removed** (four measurements: 32, 35, 36, 37 s). This is a property of that
+model, not of the protocol, but it bounds every port experiment: an unloaded
+state can only be observed for about half a minute before `b7` collapses
+to `0x00`.
+
+Two short rail interruptions in the same capture — 2 s each, at the moment a
+load was plugged and unplugged — did **not** clear `b7`. A 41 s interruption
+did. The threshold is somewhere between.
+
+**On bit 0: four readings tested, all four refuted. It is not decoded.**
 
 *Refuted — "bit 0 = 5 V / non-fast-charge":* one capture holds `0x07` and `0x06`
 **in the same session, 59 seconds apart, at an identical 5.16 V port voltage**
@@ -158,29 +222,127 @@ both set and clear the same bit.
 session held bit 0 for **136 consecutive bursts over 13 min 10 s, across two
 separate connections**.
 
-*Surviving — "bit 0 = Type-A port active":* no counterexample, and it makes the
-observed sequences physically coherent. One session runs
-`0x05` (A only, 16–22 mA idle) → `0x07` (A + C, load ramping 20 → 2100 mA at
-5 V) → `0x26` (C only, PD negotiated to 12.2 V, bit 0 now clear — consistent
-with a unit that drops the A port when C takes the full power budget). A
-vendor-app screenshot taken during `0x26` shows the Type-A icon dark.
+*Refuted 2026-08-04 — "bit 0 = Type-A port active":* the experiment this
+document asked for was run. Three separate rail work-cycles began with the
+Type-A port in three different physical states, and `b7` read `0x05` in all
+three:
 
-> ⚠️ **PENDING — this is an inference, not a decode.** Every capture to date was
-> taken without a record of which ports were physically occupied, so "A + C
-> together" is read INTO `0x07`, never confirmed against it. Two further points
-> keep it open:
+| Rail restart | Type-A port | Type-C port | `b7` | Samples |
+|---|---|---|---|---|
+| start of capture | **empty** | empty | `0x05` | 6/6 |
+| mid-capture | **cable + earbud case attached** | empty | `0x05` | 6/6 |
+| after a 19 s rail-off | **empty** — cable pulled 34 s earlier | empty | `0x05` | **7/7**, 19–22 mA |
+
+Whether anything is attached to the A port, and whether it draws current, does
+not change the bit. The third row is the controlled one: the operator removed
+the Type-A cable, the rail shut down, it came back, and bit 0 was set again with
+nothing plugged into the unit at all.
+
+> ~~*Surviving — "bit 0 = Type-A port active":* no counterexample, and it makes
+> the observed sequences physically coherent. One session runs `0x05` (A only,
+> 16–22 mA idle) → `0x07` (A + C, load ramping 20 → 2100 mA at 5 V) → `0x26`
+> (C only, PD negotiated to 12.2 V, bit 0 now clear — consistent with a unit
+> that drops the A port when C takes the full power budget). A vendor-app
+> screenshot taken during `0x26` shows the Type-A icon dark.~~
 >
-> * In both sessions where `0x07` appears it sits at the **start** of a segment
->   and lasts only 5–6 bursts. That is consistent with someone unplugging the A
->   device, and equally consistent with bit 0 meaning something transient that
->   we have not identified.
-> * The `0x05` → `0x07` reading of "A, then A and C" is the only interpretation
->   we tried that fits. Fitting is not the same as being tested.
+> **Superseded text, kept deliberately.** The observations in it are still
+> correct — it is the *reading* that failed. The `0x05 → 0x07 → 0x26` sequence
+> is real; what was wrong was inferring "A, then A and C, then C" from it. The
+> vendor-app screenshot showing a dark Type-A icon during `0x26` remains
+> unexplained under any current reading and is **not** evidence for the
+> refuted one.
+
+> ~~🔲 **Speculative — a work-cycle model.** bit 0 and bit 1 describe the port
+> enablement decided when the boost rail starts a work cycle … They are **not
+> re-evaluated while the rail stays up**. Supporting evidence: pulling the
+> Type-A cable did not change `b7` (2 samples over 9 s); the value only changed
+> when the rail cycled 11 s later.~~
 >
-> **The experiment that settles it: one capture with both ports deliberately
-> loaded at once, labelled as such.** Until then an implementation may show
-> "Type-A" from bit 0, but must not present it as more certain than the
-> directly-indicated Type-C of bit 1.
+> 🔴 **Retracted the same day it was written (2026-08-04), by the next capture
+> from the same operator.** Kept here struck through, because it was published
+> and someone may have read it.
+>
+> The refutation: across **55 s in which the rail never went down** (87 `0x37`
+> samples, 5.12–5.14 V, **none below 4.6 V**), `b7` changed twice —
+> `0x05` → `0x07` when a Type-C cable was inserted, then `0x07` → `0x06` about
+> 20 s later. "Not re-evaluated while the rail stays up" is simply false.
+>
+> Why the earlier capture supported it: **it contained no cable insertion while
+> the rail was already up** — every plug and unplug in it fell inside a rail-off
+> window or a 2 s rail blink. The "pulling the A cable changed nothing"
+> observation is *expected* under the replacement reading below, so it was never
+> evidence for a latch. A sampling blind spot, not bad data.
+
+🔲 **Speculative — bit 0 as a live "Type-A output path enabled" flag.** One
+unit; recorded as a hypothesis, not a decode.
+
+> **bit 1** = a Type-C cable is present (this part is evidenced, see the table).
+> **bit 0** = the **Type-A output path is currently enabled** — a live state,
+> not a latch. Observed rule: enabled by default when **no Type-C cable is
+> present**; dropped roughly **15–20 s** after the Type-C port starts
+> delivering; dropped while the unit is **charging**.
+
+Checked against every capture in the corpus:
+
+| Situation | bit 0 predicted | observed |
+|---|---|---|
+| both ports empty | 1 | **1** (6/6, 7/7, 3/3) |
+| Type-A cable only, no load | 1 | **1** |
+| Type-A cable + load | 1 | **1** (6/6, 7/7) |
+| A cable pulled, still no C cable | 1 | **1** |
+| C cable just inserted (< 20 s) | 1 | **1** (4/4) |
+| C cable delivering (> 20 s) | 0 | **0** (4/4, 9/9) |
+| both cables present, C idle | 1 | **1** (`0x07` held 9 min) |
+| charging over Type-C | 0 | **0** (7/7 PD, 6/6 non-PD) |
+| rail down | — (`b7` = `0x00`) | **`0x00`** |
+
+The one soft spot is the ~20 s window in which the C port is already delivering
+and bit 0 is still set. Reading that as "the A path takes a while to be switched
+out" is fitted after the fact, from a single occurrence.
+
+**What does not depend on any of this:** bit 0 is **not** "a Type-A device is
+attached" and **not** "the Type-A port is drawing current". That refutation
+stands on its own evidence (table above) and is unaffected by which replacement
+reading turns out to be right.
+
+**Until then: an implementation must not drive a "Type-A device attached"
+indicator from bit 0.** With nothing plugged into either port the bit reads set.
+bit 1 may be used, but it means *a Type-C cable is present*, not *the Type-C
+port is delivering power*.
+
+### Naming the Type-A path without a Type-A bit ✅
+
+*Added 2026-08-05.* There is no Type-A bit and, after the four refutations
+above, no prospect of one. The path can still be named — by **elimination**
+rather than by reading a flag:
+
+> **bit 1 clear** (no Type-C cable) **and the unit is discharging**
+> ⇒ the energy is leaving through **Type-A**.
+
+Checked against every port-marked power-bank capture in the corpus, pairing each
+`0x4B` with the `0x4A` from its own burst, and excluding the `b7 == 0x00` frames
+that the standby test decides before any port test ever runs:
+
+| | Samples |
+|---|---|
+| Derivation agrees with the operator's port label | **29,114** |
+| Derivation disagrees | **0** |
+
+Contributed by **three physically distinct units** — so unlike bit 0, this
+clears the multi-unit bar. The 46 frames that look like counterexamples are all
+one batch marked "Type-A only" in which the operator later confirmed the Type-C
+cable had never been unplugged: bit 1 was right and the label was wrong.
+
+Two limits, both load-bearing:
+
+* **Discharge only.** The check paired `0x4A`, and no capture in the corpus
+  shows charging with bit 1 clear at all. Charging with no Type-C cable stays
+  *undetermined* — if a unit ever produces it, that is new information.
+* 🔲 **The Type-C branch is now the weaker one.** bit 1 is *cable present*, so a
+  C cable sitting idle while the load is on Type-A reads as Type-C. That is the
+  same 46 frames from the other side, and nothing in the register set separates
+  the two. An implementation should not present Type-C as more certain than it
+  is.
 
 ### Class-dependent layouts that catch people out
 
@@ -249,15 +411,19 @@ collected here so an implementer does not have to reconstruct it from prose.
 
 | Item | Status | The capture that would settle it |
 |---|---|---|
-| `0x4B` b7 **bit 0** = Type-A active | **Inferred.** Three rival readings tested and refuted; this one fits and has no counterexample, but was never tested directly | One session with **both ports deliberately loaded at once**, labelled as such |
+| `0x4B` b7 **bit 0** | 🚫 **Unknown.** Four readings tested, **all four refuted** — including "Type-A active", killed 2026-08-04 by a capture where the bit was set 7/7 with both ports empty | Separate "A cable present" from "A load present" the way bit 1 was: both ports empty → let the rail time out → plug a Type-A cable with **nothing** on the far end → let the rail restart → record 25 s |
+| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
+| Which port carries the flow when **bit 1 is SET** | 🔲 bit 1 is *cable present*, so an idle C cable with the load on Type-A reads as Type-C — 46 frames in one batch are exactly that. The elimination rule only settles the bit-1-**clear** half | A capture with a C cable inserted and untouched while the load is moved between A and C, marked at each move |
+| Charging with **bit 1 clear** | 🚫 **Never observed.** The elimination rule therefore says nothing about it, and the row keeps its feedback hook there | Any capture that produces it |
+| Boost-rail auto-off delay | **32–37 s** after the last load is removed, four measurements, **one unit**. Model behaviour, not protocol | Same measurement on a second unit |
 | `0x4B` b7 **bit 4** | **Unknown.** 15 bursts, one physical unit, always as `0x12` | A second unit showing the same bit — or a firmware version readout (`0x29`) from the unit that does |
 | `0x4B` **b8** | **Not decoded.** Ruled out as the displayed temperature | A capture with a known second thermal load |
 | `0x4C` | **Not decoded.** 691/691 constant | Any capture where it varies |
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
 | `0x49` mV field | **Not published.** Tracks PVLT, so decoding it again would just rename an existing number | — |
-| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 16 counterexamples. Forward direction holds 221/221 | Understood; recorded so nobody re-derives the reverse |
-| bit 1 = Type-C | **Holds.** An earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state, not an error | — |
+| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 16 counterexamples. Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver | 🔲 The 16 may be **non-PD 9 V** chargers. A QuickCharge 9 V charger into the same unit would tell |
+| bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
 
 **Convention for this document: an item is either evidenced with its sample
 size, or it appears in a table like this one. There is no third category.**

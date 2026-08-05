@@ -1157,12 +1157,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankSocCaption => 'SOC · State of Charge';
 
   @override
-  String get powerBankSocSubUnknown => 'Cell -- V';
-
-  @override
-  String powerBankCellSub(String volts) {
-    return 'Cell $volts V';
-  }
+  String get powerBankSocSubUnknown => 'NO READING';
 
   @override
   String get powerBankCurrentLabel => 'Current';
@@ -1172,9 +1167,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get powerBankSocReadoutLabel => 'Charge SOC';
-
-  @override
-  String get powerBankCellVoltageLabel => 'Cell Voltage';
 
   @override
   String get powerBankOutputVoltageLabel => 'Output Voltage';
@@ -1187,6 +1179,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get powerBankDirectionDischarging => 'DISCHARGING';
+
+  @override
+  String get powerBankDirectionIdle => 'STANDBY';
 
   @override
   String get usbPortTypeA => 'Type-A';
@@ -1226,10 +1221,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get dashboardModeNumbers => 'Numbers';
-
-  @override
-  String get dashboardModeChart => 'Chart';
+  String get dashboardChartHeading => 'Live Trend';
 
   @override
   String get dashboardChartWaiting => 'Waiting for telemetry…';

@@ -187,14 +187,17 @@ void main() {
       expect(find.text('Path undetermined'), findsNothing);
     });
 
-    testWidgets('0x05 discharging: DISCHARGING · Path undetermined, never Type-A',
+    testWidgets('0x05 discharging: DISCHARGING · Type-A by elimination',
         (tester) async {
       // §3.3's 17 mA is in-band; a beyond-band discharge isolates the PORT.
+      // Revised 2026-08-05: bit1 clear + discharging leaves Type-A as the only
+      // path the energy can take (29,114/0 over every port-marked capture,
+      // three units). Still no Type-A BIT — bit0 stays refuted and unread.
       await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
       expect(find.text('DISCHARGING'), findsOneWidget);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('Type-A'), findsOneWidget);
       expect(find.text('5.12 V'), findsOneWidget);
-      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
     });
 
@@ -306,10 +309,11 @@ void main() {
     // The row is entirely the SECOND sample. The old voltage must not survive
     // next to the new port, and vice versa — no "9.14 V with undetermined".
     expect(find.text('DISCHARGING'), findsOneWidget);
-    expect(find.text('Path undetermined'), findsOneWidget);
+    expect(find.text('Type-A'), findsOneWidget);
     expect(find.text('5.12 V'), findsOneWidget);
     expect(find.text('CHARGING'), findsNothing);
     expect(find.text('9.14 V'), findsNothing);
+    expect(find.text('Type-C'), findsNothing);
     expect(find.text('Type-C'), findsNothing);
     expect(find.text('PD'), findsNothing);
   });
@@ -396,8 +400,17 @@ void main() {
   // =========================================================================
   group('§4.8 hook appears only on the undetermined moving row', () {
     testWidgets('shown on undetermined + moving', (tester) async {
-      await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.1);
+      // Narrowed 2026-08-05: the undetermined-and-moving row is now CHARGING
+      // with bit1 clear. Discharge with bit1 clear is derived as Type-A, so
+      // hooking it would ask a question already answered — on the state a bank
+      // spends most of its life in.
+      await mount(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
       expect(find.text('Which port is this?'), findsOneWidget);
+    });
+
+    testWidgets('NOT shown on a derived Type-A row', (tester) async {
+      await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.1);
+      expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('NOT shown on a known Type-C row', (tester) async {
@@ -412,8 +425,9 @@ void main() {
 
     testWidgets('NOT shown for in-band standby (undetermined but not moving)',
         (tester) async {
-      // 0x05, in-band current → idle. Port is undetermined, but nothing is
-      // moving, so the hook stays away (it rides only the MOVING row).
+      // 0x05, in-band current → idle. Port is undetermined (nothing to
+      // eliminate from when nothing moves), but the hook rides only the MOVING
+      // row, so it stays away.
       await mount(tester, portFlagsRaw: 0x05, current: 0.01, svlt: 5.1);
       expect(find.text('Which port is this?'), findsNothing);
     });
@@ -426,7 +440,7 @@ void main() {
     testWidgets('records a tag once, then is gone for the connection',
         (tester) async {
       final (s, _) =
-          await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.1);
+          await mount(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
       final hook = find.text('Which port is this?');
       expect(hook, findsOneWidget);
 

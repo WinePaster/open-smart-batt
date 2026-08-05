@@ -1,15 +1,25 @@
-// The watchface, on screen (design 0034 Phase 5 — tests T1 / T7 / T8 / T9).
+// The watchface, on screen (design 0034 Phase 5 + Phase 1 — tests T1 / T2 /
+// T4 / T5 / T7 / T8 / T9).
 //
 // THE INVARIANT WORTH THE MOST HERE IS G4: a user who never opens the setting
-// must see the screen they saw yesterday, card for card, in order. Every other
-// test in this file is about what changes; T1 is about what must not.
+// must see the screen they saw yesterday. ⚠️ Design 0040 RELAXED what that
+// means, deliberately and with the owner's ruling — see the long note on the T1
+// group below before assuming it was abandoned.
 //
-// The second is §6, and it is an INVARIANT rather than a default: the control
+// The invariant this file gained is G1 (T2): the three faces must produce
+// PAIRWISE DIFFERENT layouts on EVERY product class. That is not a nicety. On
+// v0.7.2 a power bank's `standard` and `compact` returned identical lists, so
+// the owner tapped through all three settings and reported that nothing
+// happened — three menu entries, two outcomes. T2 is the test that makes that
+// state of affairs impossible to ship again.
+//
+// The third is §6, and it is an INVARIANT rather than a default: the control
 // card is last, always, and cannot be moved or removed. It is enforced
 // structurally — there is no `DisplayModule` for it, so no watchface can name
 // it — but "structurally impossible" is a claim that has to be executed, not
 // asserted in a comment.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
@@ -23,12 +33,14 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
+import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
 import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -183,9 +195,143 @@ void main() {
       s.devices.setDisplayLayout(id, DisplayLayout(watchface: f));
 
   // =========================================================================
-  // T1 — the default IS today's screen
+  // T2 (G1) — the three faces are pairwise different, on EVERY class
   // =========================================================================
+  //
+  // THIS TEST IS THE REASON DESIGN 0040 EXISTS. Pure Dart, no widgets: the
+  // defect was in `watchfaceModules` itself, not in how a view drew it.
+  //
+  // What went wrong on v0.7.2: a power bank had four registered modules, the
+  // chart was withheld from every face (Phase 1 unimplemented) and the
+  // energy-path row rode every face by ruling (design 0035 Q2). That left two
+  // placeable cards, hence two possible orderings, hence `standard == compact`
+  // — verbatim, same list object contents. The picker offered three choices and
+  // delivered two screens, and the owner found out by using it.
+  //
+  // ⚠️ It is also the guard against the CHEAP fix. The alternative on the table
+  // was to hide `compact` from the picker for power banks, which would have
+  // made the symptom invisible while leaving the cause in place. That "fix"
+  // fails this test too, because this asserts the FACES differ, not that the
+  // picker is short.
+  group('T2 (G1): no two faces draw the same layout, for any class', () {
+    for (final cls in ProductClass.values) {
+      test('${cls.name}: standard / compact / diagnostic are pairwise unequal',
+          () {
+        final byFace = {
+          for (final f in Watchface.values) f: watchfaceModules(cls, f),
+        };
+        for (final a in Watchface.values) {
+          for (final b in Watchface.values) {
+            if (a == b) continue;
+            expect(byFace[a], isNot(byFace[b]),
+                reason: '${a.slug} and ${b.slug} give ${cls.name} the same '
+                    'page: ${byFace[a]}');
+          }
+        }
+      });
+    }
+
+    test('every face still draws at least the instrument, and no empty page',
+        () {
+      // The trivially "different" layouts — one of them empty — would satisfy
+      // the pairwise check above while shipping a blank screen.
+      for (final cls in ProductClass.values) {
+        for (final f in Watchface.values) {
+          final mods = watchfaceModules(cls, f);
+          expect(mods, isNotEmpty, reason: '${cls.name}/${f.slug}');
+          expect(mods.toSet(), hasLength(mods.length),
+              reason: '${cls.name}/${f.slug} repeats a card');
+          expect(
+            mods.any((m) =>
+                m == DisplayModule.gaugeSoc || m == DisplayModule.gaugeVoltage),
+            isTrue,
+            reason: '${cls.name}/${f.slug} has no instrument',
+          );
+        }
+      }
+    });
+  });
+
+  // =========================================================================
+  // T5 — the toggle, and its vocabulary, are gone from the app
+  // =========================================================================
+  group('T5: `_ModeToggle` and its two l10n keys are gone from lib/', () {
+    // Source-level, because the widget is private and the two strings are
+    // reachable from nothing once the toggle is removed — a `find.text` test
+    // can only prove they are not on ONE page. The precedent is design 0035 T11
+    // for the retired USB keys: an orphan key survives forever otherwise, gets
+    // re-translated at every locale pass, and eventually gets reused for
+    // something unrelated because its name still sounds available.
+    late final List<String> sources;
+
+    setUpAll(() {
+      sources = Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart') || f.path.endsWith('.arb'))
+          .map((f) => f.readAsStringSync())
+          .toList();
+      // The scan must have found something, or every expectation below is
+      // vacuously true.
+      expect(sources.length, greaterThan(20));
+      expect(sources.any((s) => s.contains('dashboardChartWaiting')), isTrue);
+    });
+
+    for (final needle in const [
+      '_ModeToggle',
+      'dashboardModeNumbers',
+      'dashboardModeChart',
+    ]) {
+      test('no occurrence of `$needle`', () {
+        expect(sources.where((s) => s.contains(needle)), isEmpty);
+      });
+    }
+  });
+
+  // =========================================================================
+  // T1 — the default IS today's screen, in the strict sense
+  // =========================================================================
+  //
+  // This is the ORIGINAL strict form, and it is strict deliberately. Design
+  // 0040 Q1 proposed appending the chart to `standard`; it was implemented,
+  // this assertion was relaxed to a three-card prefix to accommodate it, and
+  // then the owner REVERSED Q1 on review. So the whole list is pinned again —
+  // if you are reading this wondering whether the strict form is merely
+  // inherited from before Phase 1: no, it was loosened and put back on purpose.
+  // The chart lives on `diagnostic` alone, at the cost recorded in
+  // `watchfaces.dart`, and this test is what keeps `standard` paying none of it.
   group('T1: the standard face reproduces the pre-0034 dashboard', () {
+    test('the standard list is, verbatim, the pre-Phase-1 list', () {
+      // Transcribed from `watchfaces.dart` as it stood at v0.7.2 — the whole
+      // return value then, and the whole return value still.
+      const pre = <ProductClass, List<DisplayModule>>{
+        ProductClass.smartBattery: [
+          DisplayModule.gaugeVoltage,
+          DisplayModule.readouts,
+          DisplayModule.cells,
+        ],
+        ProductClass.supercapacitor: [
+          DisplayModule.gaugeVoltage,
+          DisplayModule.readouts,
+          DisplayModule.cells,
+        ],
+        ProductClass.unknown: [
+          DisplayModule.gaugeVoltage,
+          DisplayModule.readouts,
+          DisplayModule.cells,
+        ],
+        ProductClass.powerBank: [
+          DisplayModule.gaugeSoc,
+          DisplayModule.readouts,
+          DisplayModule.energyPath,
+        ],
+      };
+      pre.forEach((cls, expected) {
+        expect(watchfaceModules(cls, Watchface.standard), expected,
+            reason: cls.name);
+      });
+    });
+
     testWidgets('battery: gauge → readouts → DVOL → controls', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
@@ -201,6 +347,11 @@ void main() {
           lessThan(dy(tester, find.byType(DvolBars))));
       expect(dy(tester, find.byType(DvolBars)),
           lessThan(dy(tester, find.byType(BatteryControls))));
+      // Phase 1 added a card to the app but NOT to this page. The surface here
+      // is 3000px tall, so the chart card would be built and found if the
+      // standard face named it — this is a real absence, not a lazy ListView.
+      expect(find.byType(TrendChartCard), findsNothing,
+          reason: 'Q1 reversed: the chart is reachable from diagnostic only');
     });
 
     testWidgets('capacitor: the same order, with the capacitor body',
@@ -218,6 +369,14 @@ void main() {
           lessThan(dy(tester, find.byType(DvolBars))));
       expect(dy(tester, find.byType(DvolBars)),
           lessThan(dy(tester, find.byType(CapacitorControls))));
+      expect(find.byType(TrendChartCard), findsNothing,
+          reason: 'Q1 reversed: no face but diagnostic carries the chart');
+      // ⚠️ And with no chart card here there is no chart footnote here either.
+      // That is the ACCEPTED cost of the Q1 reversal, spelled out: a capacitor
+      // owner on the default face sees neither the curve nor the sentence
+      // explaining why it has no current track. Both are on `diagnostic`,
+      // together — which is the part T4 below still guarantees.
+      expect(find.textContaining('constant 0 A'), findsNothing);
     });
 
     testWidgets('power bank: SOC ring → readouts (USB card retired)',
@@ -249,6 +408,67 @@ void main() {
           lessThan(dy(tester, find.byType(ReadoutsCard))),
           reason: 'a page that is asking the user what this device is must not '
               'also be rearranged under them');
+      // Same remap, seen from the other side: the stored face WOULD have put
+      // the chart on this page, and Q4 is what keeps it off.
+      expect(find.byType(TrendChartCard), findsNothing);
+    });
+  });
+
+  // =========================================================================
+  // T4 — the chart footnote travels with the chart
+  // =========================================================================
+  //
+  // Exercised on the DIAGNOSTIC face, because since the Q1 reversal that is the
+  // only face with a chart card to attach a footnote to.
+  //
+  // This is the one string the Phase 1 split could plausibly have dropped, and
+  // the capacitor is the only class that has it. "No current track: this unit
+  // reports a constant 0 A, which is not a measurement" is what stops an owner
+  // reading the missing series as an app failure — the same reason
+  // `display_modules.dart` calls it the entry most easily lost in a refactor.
+  group('T4: the capacitor footnote renders inside the chart card', () {
+    testWidgets('capacitor / diagnostic: the note is under the chart, not the '
+        'numbers', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.supercapacitor);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
+      await pumpUnder(
+          tester, s, const PackScaffold(controls: CapacitorControls()));
+      await feedDvol(tester);
+
+      expect(find.byType(TrendChartCard), findsOneWidget);
+      // A DESCENDANT of the chart card, not merely somewhere on the page:
+      // "still rendered, but under the numbers" is exactly the wrong outcome
+      // this pins against, and a page-wide finder would accept it.
+      expect(
+        find.descendant(
+          of: find.byType(TrendChartCard),
+          matching: find.textContaining('constant 0 A'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(ReadoutsCard),
+          matching: find.textContaining('constant 0 A'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('battery / diagnostic: a chart, and no footnote', (tester) async {
+      // The inverse. A footnote that appeared on every class would tell battery
+      // owners their current track is fake.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await feedDvol(tester);
+
+      expect(find.byType(TrendChartCard), findsOneWidget);
+      expect(find.textContaining('constant 0 A'), findsNothing);
     });
   });
 
@@ -270,9 +490,39 @@ void main() {
       expect(find.byType(DvolBars), findsNothing,
           reason: 'the card is off the page by choice, not for want of data — '
               'which is exactly why the export preamble still records it');
+      expect(find.byType(TrendChartCard), findsNothing,
+          reason: 'compact is the one-screenful face; a stack of tracks is the '
+              'first thing it drops');
       // And the controls are still there, and still last.
       expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(BatteryControls))));
+    });
+
+    testWidgets('a power bank on compact keeps the direction row and drops '
+        'the numbers (design 0040 Q2)', (tester) async {
+      // The deliberate asymmetry: a PACK's compact drops its extra card and
+      // keeps the grid; a POWER BANK does the opposite. design 0035 Q2's
+      // reason for the energy-path row — "that line IS the answer to which way
+      // it is charging" — only gets stronger as the page gets shorter.
+      //
+      // The accepted cost is R3: this face carries no temperature at all,
+      // because temperature lives in the grid that just went away. Two other
+      // faces have it.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.compact));
+      await pumpUnder(tester, s, const PowerBankView());
+
+      expect(
+          watchfaceModules(ProductClass.powerBank, Watchface.compact),
+          [DisplayModule.gaugeSoc, DisplayModule.energyPath]);
+      // On screen: the ring is there, the grid is not. (The energy-path row
+      // renders nothing in this harness — the class is not overridden to power
+      // bank, so its own gate holds it back; it is covered by
+      // power_bank_direction_test.dart, which does set the 0x22 wire byte.)
+      expect(find.byType(PvltGauge), findsOneWidget);
+      expect(find.byType(ReadoutsCard), findsNothing);
+      expect(find.byType(TrendChartCard), findsNothing);
     });
 
     testWidgets('diagnostic puts the numbers first and the instrument last',
@@ -286,7 +536,12 @@ void main() {
 
       expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(DvolBars))));
+      // Detail first, and the curve counts as detail: it sits between the
+      // per-cell card and the instrument, so a reporter screenshotting the top
+      // of the page catches the numbers, the cells AND the trace.
       expect(dy(tester, find.byType(DvolBars)),
+          lessThan(dy(tester, find.byType(TrendChartCard))));
+      expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(PvltGauge))));
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(BatteryControls))));
@@ -302,8 +557,10 @@ void main() {
       // Diagnostic leads with the readouts and ends with the SOC ring. The
       // energy-path row (design 0035 Phase 2) renders nothing in this harness
       // (the class is not overridden to power bank), so the pinned order is the
-      // surviving two.
+      // surviving three.
       expect(dy(tester, find.byType(ReadoutsCard)),
+          lessThan(dy(tester, find.byType(TrendChartCard))));
+      expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(PvltGauge))));
     });
   });
@@ -328,10 +585,15 @@ void main() {
         expect(shellChildren(tester).last, isA<IndustrialCard>());
         expect(find.byType(BatteryControls), findsOneWidget,
             reason: 'no face may remove it');
+        // Every card a pack face can place, including the one Phase 1 added:
+        // the control card outranks all of them. (`TrendChartCard` is absent on
+        // `compact`, and `dy` is only evaluated for what a face actually
+        // placed, hence the filter rather than a fixed list.)
         for (final other in [
           find.byType(PvltGauge),
           find.byType(ReadoutsCard),
-        ]) {
+          find.byType(TrendChartCard),
+        ].where((f) => f.evaluate().isNotEmpty)) {
           expect(dy(tester, other),
               lessThan(dy(tester, find.byType(BatteryControls))));
         }
@@ -349,7 +611,11 @@ void main() {
         await pumpUnder(tester, s, const PowerBankView());
 
         // The page did render — otherwise "no controls" would be vacuous.
-        expect(find.byType(ReadoutsCard), findsOneWidget);
+        //
+        // Probed on the SOC ring rather than the readouts card: since design
+        // 0040 Q2 the power bank's `compact` face has no readouts card at all,
+        // so that probe would have started passing for the wrong reason.
+        expect(find.byType(PvltGauge), findsOneWidget);
         expect(find.byType(BatteryControls), findsNothing);
         expect(find.byType(CapacitorControls), findsNothing);
         expect(find.byType(PackControls), findsNothing);
