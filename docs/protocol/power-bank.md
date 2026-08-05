@@ -27,8 +27,8 @@ was taken at the same minute. Baseline: whole-corpus re-walk 2026-07-30.
 
 | Selector | LEN | Layout | Confidence |
 |---|---|---|---|
-| `0x49` | 4 | `[u16 mV][u16 mA]` — the **charge**-side pair | ✅ direction established; current field decoded |
-| `0x4A` | 4 | `[u16 mV][u16 mA]` — the **discharge**-side pair | ✅ |
+| `0x49` | 4 | `[u16 mV][u16 mA]` — the **charge**-side pair. The mV field is the **PORT** voltage (the same quantity as `0x37`) | ✅ direction established; current field decoded. mV field identified but **not decoded by this app** |
+| `0x4A` | 4 | `[u16 mV][u16 mA]` — the **discharge**-side pair. The mV field is the **CELL** voltage (the same quantity as `0x19`) | ✅ |
 | `0x4B` | 5 | `[u16 design capacity mAh][u8 SOC %][u8 port flags][u8 ?]` | ✅ for the first three fields |
 | `0x4C` | 2 | `3c0a`, **constant in 691 of 691 frames** across 3 physical units and 2 phones | 🚫 not decoded — nothing varies, so nothing can be inferred |
 
@@ -42,10 +42,66 @@ The current field of exactly one of the two is non-zero at any time.
 * **No burst has ever had both currents zero** (0 of 715).
 * An independent capture — second physical unit, second phone — reproduced this
   212 of 212.
+* **A fifth physical unit, on a third phone, reproduced it at scale**
+  (2026-08-05): **36,152** complete `0x10`+`0x49`+`0x4A`+`0x4B` bursts over
+  10 h 32 m at 1 Hz, with **36,145 mutually exclusive**, **7** carrying both
+  currents non-zero (0.02 % — every one inside the second a direction changes,
+  at 2–5 mA), and **0** carrying both at zero.
+  🔑 **This is the second physical unit on the CHARGING side.** Until it, the
+  corpus covered discharging on three units but charging on only one, which is
+  why the app's source carried a caveat saying so. Both halves now clear the
+  multi-unit bar.
 
 ⇒ **Publish a magnitude and a direction; do not publish a signed current.**
-Whether the current is measured at the cell or at the port is **not established**,
-so the two are not interchangeable with a pack's signed `0x2E`.
+Whether the current is *measured* at the cell or at the port is **not
+established**, so the two are not interchangeable with a pack's signed `0x2E`.
+(That is a separate question from *which existing voltage each mV field copies*,
+which is settled immediately below — knowing where the voltage is sensed says
+nothing about where the current is.)
+
+### The two mV fields: `0x49` reads the PORT, `0x4A` reads the CELL ✅
+
+*Added 2026-08-05.* Both registers are `[u16 mV][u16 mA]`, and until now only
+their current halves had been characterised. Pairing each register with the
+frames from **its own burst** identifies the voltage halves:
+
+| Same-burst pairing | median difference | within ±30 mV |
+|---|---|---|
+| `0x49`.mV − `0x37` (port voltage) | **+4 mV** | 90.8 % (n = 36,145) |
+| `0x4A`.mV − `0x19` (cell voltage) | **+4 mV** | 99.9 % (n = 36,145) |
+| `0x49`.mV − `0x19` — **deliberately mis-paired control** | **+1,634 mV** | 0.0 % |
+
+The control row is the point: a wrong pairing is off by three orders of
+magnitude, so the +4 mV agreements are not an artefact of "all these numbers are
+voltages". Re-run over the whole corpus, **five physical units**:
+
+| Unit | `0x49` ↔ `0x37`: n / within ±30 mV | `0x4A` ↔ `0x19`: n / within ±30 mV |
+|---|---|---|
+| 1 | 36,145 / 90.8 % | 36,145 / 99.9 % |
+| 2 | 101 / 92.1 % | 101 / 98.0 % |
+| 3 | 347 / 91.1 % | 347 / 99.1 % |
+| 4 | 41 / 95.1 % | 41 / 100.0 % |
+| 5 | 164 / 85.4 % | 164 / 95.7 % |
+
+✅ **Verified, five units — this clears the multi-unit bar.** The 5–15 % tail on
+the `0x49` column is sampling skew, not disagreement: `0x37` free-runs at about
+0.21 s while a poll burst arrives once a second, so same-burst pairing can pick
+up a `0x37` reading as much as half a second stale. The `0x4A` column has no such
+tail because `0x19` rides the poll burst itself.
+
+⚠️ **What this does and does not say.** It establishes **which existing reading
+each mV field duplicates** — nothing more. It is *not* a statement about where
+the current is measured; the "not established" note above still stands, and
+these two questions must not be collapsed into one.
+
+🔲 **A recorded opportunity, deliberately not acted on.** `0x49`'s mV arrives in
+the **same burst** as `0x4B`, whereas `0x37` — the port voltage a client
+displays — free-runs on its own cadence. design 0035's status line concedes that
+§4.5's same-burst coupling of the port voltage was never implemented, and books
+it as an accepted deviation. If `0x49`'s mV *is* the port voltage, that deviation
+could be closed by reading it instead. **This is noted, not decided**: the app
+still reads only `f.u16(6)` (the current) from `0x49`, and changing that needs a
+ruling of its own.
 
 ### `0x4B` — capacity and state of charge
 
@@ -472,7 +528,7 @@ collected here so an implementer does not have to reconstruct it from prose.
 | `0x4C` | **Not decoded.** 691/691 constant | Any capture where it varies |
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
-| `0x49` mV field | **Not published.** Tracks PVLT, so decoding it again would just rename an existing number | — |
+| `0x49` mV field | ~~**Not published.** Tracks PVLT, so decoding it again would just rename an existing number~~ 🔴 **Corrected 2026-08-05: it tracks the PORT voltage (`0x37`), not PVLT (`0x19`)** — five units, median +4 mV, against a mis-paired control at +1,634 mV (see the mV-fields section above). Still **not decoded by this app** | — (identified). 🔲 What is open is whether to *use* it: it is same-burst with `0x4B` where `0x37` free-runs, so it could close design 0035 §4.5's accepted deviation. Needs a ruling, not a capture |
 | Spurious single-poll `b7 = 0x00` | 🔲 **Hypothesis, one unit.** 5 frames in 36,152 bursts (0.014 %) read `0x00` with the rail demonstrably up and the same burst's `0x49` mV corrupted too. Does not affect the meaning of `0x00`; it means a lone `0x00` is not proof of it | The same 1 Hz, ≥2 A, 30-minute run on a second unit — then check `0x37`'s free-running series either side of every `0x00` |
 | bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 16 counterexamples. Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver | 🔲 The 16 may be **non-PD 9 V** chargers. A QuickCharge 9 V charger into the same unit would tell |
 | bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
