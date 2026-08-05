@@ -26,11 +26,45 @@
 ///     would be fabrication (§4.4). We show the measured voltage and let it
 ///     speak for itself.
 ///
-/// Standby is two shapes: b7 == 0x00 is the boost rail off ("standby · output
-/// off"); an in-band near-zero current with the rail up is "standby · no flow"
-/// (§4.6). Before the first `0x4B` arrives (up to ~10 s per connect) the row
-/// says "waiting · connected N s" rather than a decoded zero (§4.6). A
-/// non-power-bank renders nothing.
+/// Standby is two shapes: b7 == 0x00 **corroborated by an idle current** is the
+/// boost rail off ("standby · output off"); an in-band near-zero current with
+/// the rail up is "standby · no flow" (§4.6). Before the first `0x4B` arrives
+/// (up to ~10 s per connect) the row says "waiting · connected N s" rather than
+/// a decoded zero (§4.6). A non-power-bank renders nothing.
+///
+/// ## Why standby needs corroboration (2026-08-05)
+///
+/// `b7 == 0x00` on its own is one bit of one sample, and it is not reliable. A
+/// 10.5 h capture at 1 Hz — 36,152 complete bursts, the corpus's largest —
+/// contains **5 frames where b7 read 0x00 while the unit was demonstrably not
+/// idle**: a 2,718 mA discharge with the port voltage held ≥ 5.17 V across
+/// ±2 s, a 68 mA discharge, a 4,712 mV charge-side reading. At 1 Hz that
+/// surfaces as a visible flicker of "output off" about every two hours.
+///
+/// So the ladder now requires the SAME BURST to agree with the flag:
+///
+///   * `b7 == 0x00` AND `powerFlowOf(current) == idle` ⇒ standby · output off.
+///     A genuinely rail-off unit reads `0x49` at 36–39 mA and `0x4A` at 0,
+///     computing to ≈ −0.039 A — inside the ±0.05 A dead-band, so idle always
+///     holds for a real rail-off. Behaviour there is unchanged.
+///   * `b7 == 0x00` BUT current is flowing ⇒ the flag contradicts the current.
+///     **Claim neither.** Show the direction, the readings, and "path
+///     undetermined". Deliberately NOT a fall-through to the normal port
+///     ladder: with b7 == 0x00 bit1 is clear, so Type-A-by-elimination would
+///     confidently print "Type-A" — and the operator had the 2,718 mA sample
+///     marked as Type-C. A contradictory sample must say "I don't know".
+///
+/// A DEBOUNCE was considered and rejected: it needs state and it costs latency
+/// on the genuine transition. Corroboration is stateless, instant, and uses a
+/// signal already in the same burst — which is what §4.5 asked for and was
+/// recorded as an "acceptable deviation" for not doing. Do not reintroduce one.
+///
+/// ⚠️ **Status: this is a ROBUSTNESS GUARD, not a protocol claim.** It asserts
+/// nothing new about the wire — b7 == 0x00 still means "boost rail off" and the
+/// documentation is unchanged on that point. It only stops the UI acting on a
+/// single uncorroborated bit. That is why a single-unit observation was allowed
+/// to change behaviour at all: the corpus's multi-machine bar governs what we
+/// *assert*, and this asserts nothing.
 ///
 /// No register numbers or raw bytes reach the screen (design 0017 string
 /// discipline); the raw b7 the feedback hook records rides the diagnostic log,
@@ -85,10 +119,17 @@ class _PowerPathRowState extends State<PowerPathRow> {
         l10n.powerPathWaiting(seconds),
         style: TextStyle(fontSize: 12.5, color: context.colors.muted),
       );
+    } else if (tele.isRailOff == true &&
+        powerFlowOf(tele.current) == PowerFlow.idle) {
+      // b7 == 0x00 AND the same burst's current is in the dead-band — the two
+      // corroborate, so this is a genuine rail-off. The standby test still
+      // comes FIRST in the ladder (§3.3 / §4.3); it just no longer fires on
+      // the flag alone (see the "why standby needs corroboration" note above).
+      body = _railOff(context, l10n);
     } else if (tele.isRailOff == true) {
-      // b7 == 0x00 — the boost rail is off. Verified across 73 corpus frames
-      // (§3.3 / §4.3); the standby test comes FIRST in the ladder.
-      body = _railOff(context, l10n, powerFlowOf(tele.current));
+      // b7 == 0x00 while current is flowing: the flag and the current disagree
+      // inside one burst. Claim NEITHER — not standby, and not a port either.
+      body = _path(context, l10n, tele, flagsContradicted: true);
     } else {
       body = _path(context, l10n, tele);
     }
@@ -100,48 +141,45 @@ class _PowerPathRowState extends State<PowerPathRow> {
     );
   }
 
-  /// b7 == 0x00: rail off. The current can still be non-zero (a charge into the
-  /// cell with the output rail down), so the direction word is still shown when
-  /// there is one — direction comes from the current, not from the rail flag.
-  Widget _railOff(BuildContext context, AppLocalizations l10n, PowerFlow flow) {
-    final colors = context.colors;
-    final children = <Widget>[
-      Text(
-        l10n.powerPathStandbyOutputOff,
-        style: TextStyle(
-            fontSize: 13, fontWeight: FontWeight.w700, color: colors.text),
-      ),
-    ];
-    final word = _directionWord(l10n, flow);
-    if (word != null) {
-      children
-        ..add(_dot(context))
-        ..add(_flowIcon(flow, powerFlowColor(context, flow)))
-        ..add(Text(word,
-            style: TextStyle(fontSize: 12.5, color: powerFlowColor(context, flow))));
-    }
-    return Wrap(
-      spacing: 7,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: children,
+  /// b7 == 0x00 corroborated by an idle current: the rail really is off.
+  ///
+  /// No direction word: this branch is only reached when the flow is idle, so
+  /// there is no direction to name. (It used to print one, because the branch
+  /// used to be reached with a live current too — that combination is now the
+  /// contradiction case and never lands here.)
+  Widget _railOff(BuildContext context, AppLocalizations l10n) {
+    return Text(
+      l10n.powerPathStandbyOutputOff,
+      style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: context.colors.text),
     );
   }
 
   /// The full row: direction → port → protocol → readings.
+  ///
+  /// [flagsContradicted] is the spurious-`0x00` case: b7 says the rail is off
+  /// while the same burst's current says energy is moving. The direction and
+  /// the readings still stand — they come from `0x49`/`0x4A`, not from b7 — but
+  /// EVERY b7-derived claim is withheld: no port (not even the derived Type-A,
+  /// which bit1-clear would otherwise hand us), no PD badge, and no §4.8 hook
+  /// (we do not ask the user to label a burst we do not trust).
   Widget _path(
-      BuildContext context, AppLocalizations l10n, TelemetryController tele) {
+      BuildContext context, AppLocalizations l10n, TelemetryController tele,
+      {bool flagsContradicted = false}) {
     final colors = context.colors;
     final flow = powerFlowOf(tele.current);
     final active = flow == PowerFlow.charging || flow == PowerFlow.discharging;
-    final isTypeC = tele.usbPort == UsbPort.typeC;
+    final isTypeC = !flagsContradicted && tele.usbPort == UsbPort.typeC;
 
     // PD badge: bit3 while charging (input), bit5 while discharging (output).
     // NEVER crossed, and never shown for idle/unknown. A CLEAR bit is not a
     // "non-PD" claim — 16 charging counter-examples read bit3 clear (§4.4), so
     // there is no negative label here, ever. Do not "helpfully" add one.
-    final showPd = (flow == PowerFlow.charging && tele.isPdIn == true) ||
-        (flow == PowerFlow.discharging && tele.isPdOut == true);
+    final showPd = !flagsContradicted &&
+        ((flow == PowerFlow.charging && tele.isPdIn == true) ||
+            (flow == PowerFlow.discharging && tele.isPdOut == true));
 
     final row = <Widget>[];
 
@@ -169,7 +207,9 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // ---- segment 2: port badge --------------------------------------------
     row
       ..add(_dot(context))
-      ..add(_portBadge(context, l10n, isTypeC, active, flow));
+      ..add(flagsContradicted
+          ? _undeterminedBadge(context, l10n)
+          : _portBadge(context, l10n, isTypeC, active, flow));
     if (showPd) row.add(_pdBadge(context, l10n));
 
     // ---- segment 3: readings ----------------------------------------------
@@ -198,7 +238,13 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // that state we want to hear about it. (The one field use of this hook so
     // far, in the 2026-08-04 controlled capture, tagged `a` at b7=0x05 while
     // discharging 473 mA — the derivation would have printed Type-A unasked.)
-    final showHook = !isTypeC && flow == PowerFlow.charging && !_hookHandled;
+    //
+    // Never hooked on a contradicted burst either: the answer would be filed
+    // against a b7 we have just decided not to believe.
+    final showHook = !flagsContradicted &&
+        !isTypeC &&
+        flow == PowerFlow.charging &&
+        !_hookHandled;
     if (!showHook) return rowWrap;
 
     return Column(
@@ -369,13 +415,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
         );
       }
       // Idle, charging, or no reading: nothing to eliminate from.
-      return _badge(
-        context,
-        l10n.powerPathPortUndetermined,
-        fill: null,
-        border: colors.line,
-        textColor: colors.muted,
-      );
+      return _undeterminedBadge(context, l10n);
     }
     // Type-C present. Filled amber while actually supplying/charging, outline
     // otherwise ("cable inserted" is not "cable in use", §3.2 / §4.1).
@@ -385,6 +425,20 @@ class _PowerPathRowState extends State<PowerPathRow> {
       fill: active ? AppColors.amber : null,
       border: active ? AppColors.amber : colors.line,
       textColor: active ? AppColors.onAmber : colors.text,
+    );
+  }
+
+  /// "Path undetermined" — the honest badge. Used both when there is nothing to
+  /// eliminate from and when b7 contradicts the current (the spurious-`0x00`
+  /// guard), so the two cases cannot drift into different wording.
+  Widget _undeterminedBadge(BuildContext context, AppLocalizations l10n) {
+    final colors = context.colors;
+    return _badge(
+      context,
+      l10n.powerPathPortUndetermined,
+      fill: null,
+      border: colors.line,
+      textColor: colors.muted,
     );
   }
 

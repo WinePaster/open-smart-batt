@@ -124,7 +124,7 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 |---|---|---|---|
 | **bit 5** | **PD output** | 184/184, no counterexample. Same bit at port voltages from 9.05 V to 13.30 V ⇒ it tracks the protocol, not the voltage rail | — |
 | **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands as recorded: 16 charging bursts left it clear. 🔲 But see the note below — those may be non-PD 9 V chargers, in which case the caveat dissolves |
-| **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, every `b7 = 0x00` frame has the port voltage at cell potential | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
+| **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, ~~every~~ **128 of 133** `b7 = 0x00` frames have the port voltage at cell potential (count and exceptions revised 2026-08-05 — see the `b7 = 0x00` section below) | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
 | **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
 | **bit 4** | **unknown** | Appears only as `0x12` (bit1+bit4), **16** frames, on **one** unit | 🚫 Not decoded. Suspected firmware variant — notably, that is the unit that also failed name-based discovery. See the measurement below |
 | **bit 0** | 🚫 **unknown — and specifically NOT "Type-A active"** | Set with **both ports physically empty**, 7/7, 19–22 mA, in a capture where the operator had pulled the Type-A cable 34 s earlier | ⚠️ See the refutation below. Do **not** drive a "Type-A device attached" indicator from it |
@@ -190,13 +190,64 @@ both units, back to back, labelled as such.** No such capture exists.
 *(Count corrected here from 15 to 16 frames. The difference is de-duplication of
 overlapping cumulative exports, not a new observation.)*
 
-**`b7 = 0x00` means the boost rail is off** (2026-08-04).
+**`b7 = 0x00` means the boost rail is off** (2026-08-04; counts revised
+2026-08-05).
 
-All 73 `0x00` frames in the corpus have the port voltage (`0x37`) sitting at
-**3.62–4.05 V** — cell potential, i.e. the boost stage has stopped switching —
-with the `0x4A` discharge current at 0. **The BLE link does not drop**: `0x37`
-keeps arriving at 1 Hz throughout. So what a user experiences as "the power bank
-turned itself off" is only the 5 V output shutting down; the radio stays up.
+> ~~All 73 `0x00` frames in the corpus have the port voltage (`0x37`) sitting at
+> **3.62–4.05 V** — cell potential, i.e. the boost stage has stopped switching —
+> with the `0x4A` discharge current at 0.~~
+>
+> **Superseded 2026-08-05 — arithmetic, not meaning.** That sentence was a
+> statement *about the corpus*, and the corpus grew. Kept struck through because
+> it was published and because the numbers in it are still correct for the
+> frames it was written over.
+
+The corpus now holds **133 `0x00` frames**, and **128 of them** have the port
+voltage (`0x37`) at **3.34–4.05 V** — cell potential, i.e. the boost stage has
+stopped switching — with the `0x4A` discharge current at 0. That remains the
+meaning of the value: **`b7 = 0x00` is the boost rail off.** **The BLE link does
+not drop**: `0x37` keeps arriving at 1 Hz throughout. So what a user experiences
+as "the power bank turned itself off" is only the 5 V output shutting down; the
+radio stays up.
+
+🔲 **The 5 exceptions: a single-poll spurious `0x00`.** One unit, polled at 1 Hz
+for 10.5 h — 36,152 complete `0x10`+`0x49`+`0x4A`+`0x4B` bursts, the largest and
+cleanest capture in the corpus — produced **5 frames (5 / 36,152 = 0.014 %)**
+where `b7` read `0x00` while the unit was demonstrably not idle:
+
+| `0x37` at the frame | `0x49` | `0x4A` |
+|---|---|---|
+| **5.22 V** | 3 mA | **2,718 mA** (the capture's highest discharge) |
+| 5.18 V | 3 mA | 68 mA |
+| **4.92 V** | **2,712 mA** | 0 |
+| 3.55 V | 667 mA | 0 |
+| 4.71 V | 0 | 251 mA |
+
+The hardest of them is the first. `0x37` free-runs at ~0.21 s, and over the
+±2 s around that frame its eight samples read 5.23 / 5.23 / 5.23 / 5.23 / 5.23 /
+5.24 / 5.24 / 5.22 / 5.18 / 5.17 / 5.18 / 5.22 V — **never below 5.17 V**. The
+rail was up. In the same burst the `0x49` mV field also collapsed to 3,436 mV
+from a ~5,180 mV baseline, so the corruption is not confined to the flag byte.
+
+⇒ 🔲 **Hypothesis: `0x4B`'s `b7` can misread as `0x00` on a single poll**, taking
+the same burst's `0x49` with it. One unit; the reason no earlier capture shows it
+is sampling rate — every other power-bank capture polls 5× slower and is orders
+of magnitude shorter (the other four units contribute 123 `0x00` frames in
+total, none of them exceptional). **The rail-off meaning of `0x00` is not in
+question**; what is refuted is treating a lone `0x00` as proof of it.
+
+**Consequence for an implementation.** At 1 Hz this surfaces roughly **once every
+two hours** as a one-frame flicker. A client that renders "standby / output off"
+from `b7 == 0x00` alone will flicker with it. The fix that does not cost latency
+is **same-burst corroboration**: require the burst's own current to be idle as
+well. A genuine rail-off always is: with the rail down and both ports empty a
+unit reports `0x49` at **36–39 mA** and `0x4A` at 0, so a signed
+`discharge − charge` lands at **≈ −0.039 A** — inside any sane dead-band. All
+five exceptions above are **68 mA or more**, two orders of magnitude out. This
+app does exactly that, and deliberately claims *neither* standby *nor* a port
+when the two disagree: at `b7 = 0x00` bit 1 is clear, so the
+Type-A-by-elimination rule below would otherwise print a confident "Type-A" for
+a frame that was in fact marked Type-C by the operator.
 
 On the unit measured, that shutdown happens **32–37 s after the last load is
 removed** (four measurements: 32, 35, 36, 37 s). This is a property of that
@@ -422,6 +473,7 @@ collected here so an implementer does not have to reconstruct it from prose.
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
 | `0x49` mV field | **Not published.** Tracks PVLT, so decoding it again would just rename an existing number | — |
+| Spurious single-poll `b7 = 0x00` | 🔲 **Hypothesis, one unit.** 5 frames in 36,152 bursts (0.014 %) read `0x00` with the rail demonstrably up and the same burst's `0x49` mV corrupted too. Does not affect the meaning of `0x00`; it means a lone `0x00` is not proof of it | The same 1 Hz, ≥2 A, 30-minute run on a second unit — then check `0x37`'s free-running series either side of every `0x00` |
 | bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 16 counterexamples. Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver | 🔲 The 16 may be **non-PD 9 V** chargers. A QuickCharge 9 V charger into the same unit would tell |
 | bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
 
