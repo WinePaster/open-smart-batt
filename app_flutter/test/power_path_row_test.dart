@@ -384,4 +384,56 @@ void main() {
       expect(find.text('Which port is this?'), findsNothing);
     });
   });
+
+  // =========================================================================
+  // Reading ORDER — the direction word must sit immediately before the numbers
+  // it qualifies (2026-08-05).
+  //
+  // This group exists because the change that introduced it broke NOTHING: the
+  // whole suite passed unchanged after the segments were reordered, since every
+  // other assertion is `find.text(...)`, which is order-blind. The defect being
+  // fixed is *purely* spatial — "9.04 V" with no word near it saying which way
+  // the energy goes — so a presence check cannot protect it and the next
+  // refactor would silently put it back. These assert x-positions, i.e. what a
+  // reader's eye actually does.
+  // =========================================================================
+  group('the direction word reads as the readings\' label', () {
+    /// Left edge of the first widget matching [f], in logical pixels.
+    double x(WidgetTester tester, Finder f) => tester.getTopLeft(f.first).dx;
+
+    testWidgets('charging: port → PD → direction → V → A', (tester) async {
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+
+      final port = x(tester, find.text('Type-C'));
+      final pd = x(tester, find.text('PD'));
+      final dir = x(tester, find.text('CHARGING'));
+      final volts = x(tester, find.text('9.14 V'));
+      final amps = x(tester, find.text('0.42 A'));
+
+      expect(port, lessThan(pd), reason: 'port before protocol');
+      expect(pd, lessThan(dir), reason: 'protocol before direction');
+      expect(dir, lessThan(volts), reason: 'THE POINT: direction before volts');
+      expect(volts, lessThan(amps), reason: 'volts before amps');
+    });
+
+    testWidgets('discharging: the same order, Type-A by elimination',
+        (tester) async {
+      await pumpRow(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
+
+      expect(x(tester, find.text('Type-A')),
+          lessThan(x(tester, find.text('DISCHARGING'))));
+      expect(x(tester, find.text('DISCHARGING')),
+          lessThan(x(tester, find.text('5.12 V'))));
+    });
+
+    testWidgets('nothing separates the direction from the readings',
+        (tester) async {
+      // A `·` between them would undo the grouping this change is for: the
+      // separators mark the boundaries BETWEEN clauses, and the direction plus
+      // its numbers are one clause. Three dots, not four.
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      expect(find.text('·'), findsNWidgets(1),
+          reason: 'one separator: [port PD] · [direction V A]');
+    });
+  });
 }
