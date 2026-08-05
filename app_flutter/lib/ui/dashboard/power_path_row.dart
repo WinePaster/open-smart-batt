@@ -12,25 +12,52 @@
 ///     b7 bit2/bit3, which are weaker (design 0035 §4.2). Port and direction are
 ///     read from the SAME sample so they cannot disagree (§4.5 / G3).
 ///   * The PORT is Type-C (b7 bit1, a cable/CC detection), Type-A **by
-///     elimination**, or "path undetermined". There is still no Type-A bit —
+///     elimination**, or NOTHING AT ALL. There is still no Type-A bit —
 ///     bit0 was refuted as one in four field readings (§4.3) — but with bit1
 ///     clear and the bank discharging there is no other path the energy can
 ///     take, and that holds 29,114/0 over every port-marked capture on three
 ///     units (2026-08-05, `feedback-analysis/2026.08.04-014.md` §1). The
 ///     elimination is restricted to discharge: nothing in the corpus charges
-///     with bit1 clear, so that case stays undetermined and keeps the
-///     lightweight feedback hook (§4.8) that lets the user tag it.
+///     with bit1 clear, so that case draws no badge and keeps the lightweight
+///     feedback hook (§4.8) that lets the user tag it.
 ///   * "PD" is a positive-only badge from bit3 (input) / bit5 (output), never
 ///     crossed and never negated. bit3 is ONE-WAY — a 9.05 V/1.83 A charge
 ///     reads it clear (16 counter-examples) — so a "non-PD"/"standard" label
 ///     would be fabrication (§4.4). We show the measured voltage and let it
 ///     speak for itself.
 ///
-/// Standby is two shapes: b7 == 0x00 **corroborated by an idle current** is the
-/// boost rail off ("standby · output off"); an in-band near-zero current with
-/// the rail up is "standby · no flow" (§4.6). Before the first `0x4B` arrives
-/// (up to ~10 s per connect) the row says "waiting · connected N s" rather than
-/// a decoded zero (§4.6). A non-power-bank renders nothing.
+/// Standby is ONE shape: an in-band current reads "standby", whether the boost
+/// rail is up or down. Before the first `0x4B` arrives (up to ~10 s per connect)
+/// the row says "waiting · connected N s" rather than a decoded zero (§4.6). A
+/// non-power-bank renders nothing.
+///
+/// ## What design 0041 removed, and what it deliberately did not
+///
+/// Two things left this file on 2026-08-05, both by owner ruling after the
+/// diagnosis design 0040 §9 A5 asked for:
+///
+///  1. **The "path undetermined" badge.** Withholding a claim is now expressed
+///     by drawing NO badge instead of by printing a word for it. Same meaning,
+///     and an empty slot cannot be misread as a third kind of port. ⚠️ The §4.8
+///     hook stays: with the badge gone it is the only place this row still says
+///     "I don't know", and it fires on exactly the state the corpus never
+///     covered (bit1 clear while charging).
+///  2. **The two standby strings.** "standby · output off" (rail down) and
+///     "standby · no flow" (rail up, no current) both collapse to the plain
+///     "standby" the SOC dial already uses — deliberately the SAME l10n key, per
+///     §6's one-derivation-one-rendering rule.
+///
+/// 🔴 The accepted cost of (2), recorded rather than softened: a user can no
+/// longer tell "the bank switched its own output off, press the button" from
+/// "the bank is awake with nothing drawing". Those imply different next actions.
+/// The owner was told this before ruling (design 0041 R1). If the field asks for
+/// the distinction back, the answer is a better single sentence — NOT the two
+/// states returning.
+///
+/// ⚠️ What did NOT go: the `isRailOff` corroboration guard below. It stopped
+/// choosing a STRING and now only decides whether b7-derived claims are
+/// withheld. Deleting it would let a spurious `0x00` print a confident "Type-A"
+/// — see the next section, which is still live.
 ///
 /// ## Why standby needs corroboration (2026-08-05)
 ///
@@ -41,18 +68,20 @@
 /// ±2 s, a 68 mA discharge, a 4,712 mV charge-side reading. At 1 Hz that
 /// surfaces as a visible flicker of "output off" about every two hours.
 ///
-/// So the ladder now requires the SAME BURST to agree with the flag:
+/// So the ladder still requires the SAME BURST to agree with the flag:
 ///
-///   * `b7 == 0x00` AND `powerFlowOf(current) == idle` ⇒ standby · output off.
+///   * `b7 == 0x00` AND `powerFlowOf(current) == idle` ⇒ a genuine rail-off.
 ///     A genuinely rail-off unit reads `0x49` at 36–39 mA and `0x4A` at 0,
 ///     computing to ≈ −0.039 A — inside the ±0.05 A dead-band, so idle always
-///     holds for a real rail-off. Behaviour there is unchanged.
+///     holds for a real rail-off. Since design 0041 this needs no branch of its
+///     own: it renders as plain "standby", the same as any other in-band
+///     reading, and no port badge (bit1 is clear, and idle eliminates nothing).
 ///   * `b7 == 0x00` BUT current is flowing ⇒ the flag contradicts the current.
-///     **Claim neither.** Show the direction, the readings, and "path
-///     undetermined". Deliberately NOT a fall-through to the normal port
-///     ladder: with b7 == 0x00 bit1 is clear, so Type-A-by-elimination would
-///     confidently print "Type-A" — and the operator had the 2,718 mA sample
-///     marked as Type-C. A contradictory sample must say "I don't know".
+///     **Claim neither.** Show the direction and the readings, and withhold
+///     every b7-derived claim. Deliberately NOT a fall-through to the normal
+///     port ladder: with b7 == 0x00 bit1 is clear, so Type-A-by-elimination
+///     would confidently print "Type-A" — and the operator had the 2,718 mA
+///     sample marked as Type-C. A contradictory sample must say nothing.
 ///
 /// A DEBOUNCE was considered and rejected: it needs state and it costs latency
 /// on the genuine transition. Corroboration is stateless, instant, and uses a
@@ -119,19 +148,23 @@ class _PowerPathRowState extends State<PowerPathRow> {
         l10n.powerPathWaiting(seconds),
         style: TextStyle(fontSize: 12.5, color: context.colors.muted),
       );
-    } else if (tele.isRailOff == true &&
-        powerFlowOf(tele.current) == PowerFlow.idle) {
-      // b7 == 0x00 AND the same burst's current is in the dead-band — the two
-      // corroborate, so this is a genuine rail-off. The standby test still
-      // comes FIRST in the ladder (§3.3 / §4.3); it just no longer fires on
-      // the flag alone (see the "why standby needs corroboration" note above).
-      body = _railOff(context, l10n);
-    } else if (tele.isRailOff == true) {
-      // b7 == 0x00 while current is flowing: the flag and the current disagree
-      // inside one burst. Claim NEITHER — not standby, and not a port either.
-      body = _path(context, l10n, tele, flagsContradicted: true);
     } else {
-      body = _path(context, l10n, tele);
+      // Two branches, not four (design 0041 §3.4). The rail-off case no longer
+      // gets a rendering of its own — an idle current prints "standby" whether
+      // the rail is up or down — so all `isRailOff` decides now is whether b7
+      // is trustworthy enough to make claims from.
+      //
+      // 🔒 That test must NOT be simplified away with the strings it used to
+      // pick. b7 == 0x00 while current flows means bit1 is clear, and a
+      // discharge would then be printed as a confident "Type-A" by elimination
+      // — on the very sample (2,718 mA) whose operator recorded Type-C.
+      body = _path(
+        context,
+        l10n,
+        tele,
+        flagsContradicted: tele.isRailOff == true &&
+            powerFlowOf(tele.current) != PowerFlow.idle,
+      );
     }
 
     return IndustrialCard(
@@ -141,34 +174,18 @@ class _PowerPathRowState extends State<PowerPathRow> {
     );
   }
 
-  /// b7 == 0x00 corroborated by an idle current: the rail really is off.
-  ///
-  /// No direction word: this branch is only reached when the flow is idle, so
-  /// there is no direction to name. (It used to print one, because the branch
-  /// used to be reached with a live current too — that combination is now the
-  /// contradiction case and never lands here.)
-  Widget _railOff(BuildContext context, AppLocalizations l10n) {
-    return Text(
-      l10n.powerPathStandbyOutputOff,
-      style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: context.colors.text),
-    );
-  }
-
-  /// The full row: direction → port → protocol → readings.
+  /// The full row: port → protocol → direction → readings.
   ///
   /// [flagsContradicted] is the spurious-`0x00` case: b7 says the rail is off
   /// while the same burst's current says energy is moving. The direction and
   /// the readings still stand — they come from `0x49`/`0x4A`, not from b7 — but
   /// EVERY b7-derived claim is withheld: no port (not even the derived Type-A,
   /// which bit1-clear would otherwise hand us), no PD badge, and no §4.8 hook
-  /// (we do not ask the user to label a burst we do not trust).
+  /// (we do not ask the user to label a burst we do not trust). Since design
+  /// 0041 "withheld" means the badge is absent, not that it says so in words.
   Widget _path(
       BuildContext context, AppLocalizations l10n, TelemetryController tele,
       {bool flagsContradicted = false}) {
-    final colors = context.colors;
     final flow = powerFlowOf(tele.current);
     final active = flow == PowerFlow.charging || flow == PowerFlow.discharging;
     final isTypeC = !flagsContradicted && tele.usbPort == UsbPort.typeC;
@@ -183,10 +200,15 @@ class _PowerPathRowState extends State<PowerPathRow> {
 
     final row = <Widget>[];
 
-    // ---- segment 1: port badge ---------------------------------------------
-    row.add(flagsContradicted
-        ? _undeterminedBadge(context, l10n)
-        : _portBadge(context, l10n, isTypeC, active, flow));
+    // ---- segment 1: port badge, or NOTHING ---------------------------------
+    //
+    // Since design 0041 an unknown port draws no badge instead of a "path
+    // undetermined" one. A contradicted burst is the same case reached a
+    // different way, which is why both go through this single null.
+    final badge = flagsContradicted
+        ? null
+        : _portBadge(context, l10n, isTypeC, active, flow);
+    if (badge != null) row.add(badge);
     if (showPd) row.add(_pdBadge(context, l10n));
 
     // ---- segment 2: direction, placed to READ AS the readings' label -------
@@ -210,26 +232,27 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // Losing the leading slot costs nothing since v0.7.3: the SOC dial above
     // carries the direction as its own sub-line, so the glanceable copy lives
     // there and this row is free to spend the slot on precision.
-    row.add(_dot(context));
-    if (flow == PowerFlow.idle) {
-      // Rail up but current in the dead-band: "standby · no flow" (§4.6). This
-      // is the correct face of bit1's "first 11 seconds" — a Type-C cable that
-      // is inserted but not yet supplying reads here, and must NOT read as
-      // "Type-C supplying" (§4.5). No debounce: this sample decides the frame.
-      row.add(Text(
-        l10n.powerPathStandbyNoFlow,
-        style: TextStyle(
-            fontSize: 13, fontWeight: FontWeight.w700, color: colors.text),
-      ));
-    } else {
-      final word = _directionWord(l10n, flow);
-      final color = powerFlowColor(context, flow);
-      row
-        ..add(_flowIcon(flow, color))
-        ..add(Text(word ?? '--',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700, color: color)));
-    }
+    // The separator parts the badges from the direction, so it only belongs
+    // there when a badge actually preceded it (design 0041 §3.3): with the
+    // "undetermined" badge gone, an unconditional dot would sit at the head of
+    // the row as an orphan.
+    if (row.isNotEmpty) row.add(_dot(context));
+    // ONE branch for every flow, standby included (design 0041 §3.4). Standby
+    // is drawn exactly like a direction because it IS the answer to the same
+    // question — and in the same muted colour the SOC dial's sub-line gives it,
+    // from the shared [powerFlowColor] table, so the two cannot disagree.
+    //
+    // This is also the correct face of bit1's "first 11 seconds": a Type-C
+    // cable inserted but not yet supplying lands here and reads "Type-C ·
+    // standby", never "Type-C supplying" (§4.5). No debounce: this sample
+    // decides this frame.
+    final word = _directionWord(l10n, flow);
+    final color = powerFlowColor(context, flow);
+    row
+      ..add(_flowIcon(flow, color))
+      ..add(Text(word ?? '--',
+          style: TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w700, color: color)));
 
     // ---- segment 3: readings, no separator — they belong to the word above --
     row
@@ -244,9 +267,14 @@ class _PowerPathRowState extends State<PowerPathRow> {
     );
 
     // ---- §4.8 feedback hook: only when we genuinely do not know the port ---
-    // "path undetermined" AND actually moving (not standby). Type-C is known,
-    // so it is never hooked (avoid nagging). The hook records data only; it
-    // changes NO display decision — bit0 stays out of every field above.
+    // No badge drawn AND actually moving (not standby). Type-C is known, so it
+    // is never hooked (avoid nagging). The hook records data only; it changes
+    // NO display decision — bit0 stays out of every field above.
+    //
+    // ⚠️ Load-bearing since design 0041 removed the "path undetermined" badge:
+    // this line is now the ONLY place the row admits it does not know. Deleting
+    // it would leave the unknown-port case rendering as a bare direction, with
+    // nothing distinguishing "we chose not to claim" from "there is no port".
     //
     // Narrowed 2026-08-05: discharge with bit1 clear is now DERIVED as Type-A,
     // so hooking it would be asking a question we can already answer — and it
@@ -382,10 +410,21 @@ class _PowerPathRowState extends State<PowerPathRow> {
   // Pieces
   // -------------------------------------------------------------------------
 
+  /// The word for [flow]. `null` only for [PowerFlow.unknown] — the ABSENCE of
+  /// a current reading, which the caller renders as `--`.
+  ///
+  /// [PowerFlow.idle] is a word now, and deliberately the SAME key the SOC
+  /// dial's sub-line uses (design 0041 §3.4): one state, one string, on one
+  /// screen. It replaced two — "standby · output off" and "standby · no flow" —
+  /// whose difference (boost rail down vs merely nothing flowing) the owner
+  /// ruled was internal detail. Do not reintroduce a second standby string
+  /// here without reading design 0041 R1 first; the distinction was given up
+  /// knowingly, not overlooked.
   String? _directionWord(AppLocalizations l10n, PowerFlow flow) => switch (flow) {
         PowerFlow.charging => l10n.powerBankDirectionCharging,
         PowerFlow.discharging => l10n.powerBankDirectionDischarging,
-        PowerFlow.idle || PowerFlow.unknown => null,
+        PowerFlow.idle => l10n.powerBankDirectionIdle,
+        PowerFlow.unknown => null,
       };
 
   /// Charging draws energy IN (arrow toward the device); discharging sends it
@@ -412,14 +451,18 @@ class _PowerPathRowState extends State<PowerPathRow> {
   ///
   /// ⚠️ Restricted to DISCHARGE on purpose. The corpus check paired `0x4A`, so
   /// it says nothing about charging with bit1 clear, and no capture shows that
-  /// combination at all. Charging stays "undetermined" until one does.
+  /// combination at all. Charging draws no badge until one does.
   ///
   /// 🔲 The Type-C branch is the weaker one, and now says so. bit1 is CABLE
   /// PRESENT, not "the C port is carrying this" — a C cable sitting idle while
   /// the load is on Type-A reads Type-C here. That is not hypothetical: 46
   /// frames in `2026.07.31/001` are exactly it (the operator later confirmed
   /// the C cable was never unplugged). Settling it needs a bit we do not have.
-  Widget _portBadge(BuildContext context, AppLocalizations l10n, bool isTypeC,
+  ///
+  /// Returns `null` when there is nothing to claim. Design 0041 Q3 removed the
+  /// "path undetermined" badge that used to fill that slot: an empty slot says
+  /// the same thing, and cannot be misread as a third kind of port.
+  Widget? _portBadge(BuildContext context, AppLocalizations l10n, bool isTypeC,
       bool active, PowerFlow flow) {
     final colors = context.colors;
     if (!isTypeC) {
@@ -432,8 +475,9 @@ class _PowerPathRowState extends State<PowerPathRow> {
           textColor: AppColors.onAmber,
         );
       }
-      // Idle, charging, or no reading: nothing to eliminate from.
-      return _undeterminedBadge(context, l10n);
+      // Idle, charging, or no reading: nothing to eliminate from. Draw nothing
+      // — and, while charging, let the §4.8 hook do the asking instead.
+      return null;
     }
     // Type-C present. Filled amber while actually supplying/charging, outline
     // otherwise ("cable inserted" is not "cable in use", §3.2 / §4.1).
@@ -443,20 +487,6 @@ class _PowerPathRowState extends State<PowerPathRow> {
       fill: active ? AppColors.amber : null,
       border: active ? AppColors.amber : colors.line,
       textColor: active ? AppColors.onAmber : colors.text,
-    );
-  }
-
-  /// "Path undetermined" — the honest badge. Used both when there is nothing to
-  /// eliminate from and when b7 contradicts the current (the spurious-`0x00`
-  /// guard), so the two cases cannot drift into different wording.
-  Widget _undeterminedBadge(BuildContext context, AppLocalizations l10n) {
-    final colors = context.colors;
-    return _badge(
-      context,
-      l10n.powerPathPortUndetermined,
-      fill: null,
-      border: colors.line,
-      textColor: colors.muted,
     );
   }
 

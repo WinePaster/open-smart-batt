@@ -1131,15 +1131,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerPathHeading => '能量路徑';
 
   @override
-  String get powerPathPortUndetermined => '路徑未定';
-
-  @override
-  String get powerPathStandbyOutputOff => '待機 · 輸出已關閉';
-
-  @override
-  String get powerPathStandbyNoFlow => '待機 · 無輸出入';
-
-  @override
   String powerPathWaiting(int seconds) {
     return '等待裝置回報 · 已連線 $seconds 秒';
   }

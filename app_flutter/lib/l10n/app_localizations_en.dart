@@ -1193,15 +1193,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerPathHeading => 'Energy Path';
 
   @override
-  String get powerPathPortUndetermined => 'Path undetermined';
-
-  @override
-  String get powerPathStandbyOutputOff => 'Standby · output off';
-
-  @override
-  String get powerPathStandbyNoFlow => 'Standby · no flow';
-
-  @override
   String powerPathWaiting(int seconds) {
     return 'Waiting for device · connected ${seconds}s';
   }

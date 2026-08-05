@@ -678,9 +678,6 @@
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
   "powerPathHeading": "Energy Path",
-  "powerPathPortUndetermined": "Path undetermined",
-  "powerPathStandbyOutputOff": "Standby · output off",
-  "powerPathStandbyNoFlow": "Standby · no flow",
   "powerPathWaiting": "Waiting for device · connected {seconds}s",
   "@powerPathWaiting": {
     "placeholders": {

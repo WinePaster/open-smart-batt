@@ -155,7 +155,7 @@ void main() {
           cls: ProductClass.powerBank,
           layout: const DisplayLayout(watchface: Watchface.diagnostic),
         ),
-        'face=diagnostic modules=readouts,energyPath,chart,gaugeSoc',
+        'face=diagnostic modules=chart,readouts,energyPath,gaugeSoc',
       );
     });
 
@@ -165,7 +165,7 @@ void main() {
           cls: ProductClass.supercapacitor,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=compact modules=gaugeVoltage,readouts',
+        'face=compact modules=gaugeVoltage,cells',
       );
     });
 
@@ -215,16 +215,23 @@ void main() {
   //  1. it is the machine-readable statement of design 0040 §3.3, so a change to
   //     `watchfaceModules` cannot land without someone editing the exact strings
   //     that will appear in the field captures we analyse;
-  //  2. ⚠️ it scopes the COMPATIBILITY BREAK, which is ONE FACE WIDE. Before
-  //     design 0040 the chart was not placeable, so `modules=` never contained
-  //     `chart`; `face=diagnostic` therefore names a different set of cards
-  //     before and after this build. `face=standard` and `face=compact` do NOT
-  //     — Q1 was reversed on review, so `standard` kept its pre-0040 list
-  //     verbatim and stays directly comparable across the boundary. That
-  //     distinction matters to the analysis side in the same way the `usb` →
-  //     `energyPath` rename (design 0035 §5.3 / R4) did, and stating it too
-  //     broadly would cost us real comparisons: `standard` is what almost every
-  //     capture carries.
+  //  2. ⚠️ it scopes the COMPATIBILITY BREAKS, of which there are now TWO, each
+  //     one face wide. Before design 0040 the chart was not placeable, so
+  //     `modules=` never contained `chart`; `face=diagnostic` therefore names a
+  //     different set of cards across that boundary. Design 0041 then moved a
+  //     pack's `compact` from `gaugeVoltage,readouts` to `gaugeVoltage,cells`,
+  //     so `face=compact` is a second break — on PACKS only; the power bank's
+  //     compact list is untouched since 0040.
+  //
+  //     `face=standard` is the one that does NOT break, on any class: 0040 Q1
+  //     was reversed on review and 0041 did not touch it, so `standard` keeps
+  //     its pre-0040 list verbatim and stays directly comparable all the way
+  //     back. That matters more than the other two put together — `standard` is
+  //     the default, and therefore what almost every field capture carries.
+  //
+  //     Same class of thing as the `usb` → `energyPath` rename (design 0035
+  //     §5.3 / R4), and recorded the same way, in
+  //     `docs/feedback-index/conventions.md`.
   //
   // `ProductClass.unknown` is absent by design — Q4 forces it onto the standard
   // face, which the group above already pins.
@@ -232,15 +239,15 @@ void main() {
     const expected = <ProductClass, Map<Watchface, String>>{
       ProductClass.smartBattery: {
         Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
-        Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
+        Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
-            'modules=readouts,cells,chart,gaugeVoltage',
+            'modules=chart,readouts,cells,gaugeVoltage',
       },
       ProductClass.supercapacitor: {
         Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
-        Watchface.compact: 'face=compact modules=gaugeVoltage,readouts',
+        Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
-            'modules=readouts,cells,chart,gaugeVoltage',
+            'modules=chart,readouts,cells,gaugeVoltage',
       },
       ProductClass.powerBank: {
         Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
@@ -249,7 +256,7 @@ void main() {
         // grid — which also drops temperature (R3), accepted knowingly.
         Watchface.compact: 'face=compact modules=gaugeSoc,energyPath',
         Watchface.diagnostic: 'face=diagnostic '
-            'modules=readouts,energyPath,chart,gaugeSoc',
+            'modules=chart,readouts,energyPath,gaugeSoc',
       },
     };
 
@@ -297,7 +304,7 @@ void main() {
       final lines = out.text.split(RegExp(r'\r?\n'));
       final layoutLine = lines.firstWhere((l) => l.contains('layout: '));
       expect(layoutLine,
-          '# layout: face=diagnostic modules=readouts,cells,chart,gaugeVoltage');
+          '# layout: face=diagnostic modules=chart,readouts,cells,gaugeVoltage');
       // Still inside the commented preamble, above the column header.
       expect(lines.indexOf(layoutLine),
           lessThan(lines.indexWhere((l) => !l.startsWith('#'))));

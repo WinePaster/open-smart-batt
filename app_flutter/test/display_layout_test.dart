@@ -161,19 +161,74 @@ void main() {
       }
     });
 
-    test('the energy-path row rides EVERY power-bank face, compact included '
-        '(design 0035 Q2)', () {
-      // Unlike a pack's DVOL card, which compact drops, the energy-path row is
-      // the answer to "which way is it charging" — not an optional detail — so
-      // it stays on all three faces. A pack's compact still drops its extra.
+    test("the class's own card rides EVERY face, compact included "
+        '(design 0035 Q2, generalised by design 0041)', () {
+      // The energy-path row is the answer to "which way is it charging" — not
+      // an optional detail — so it stays on all three faces. Design 0041 gave
+      // the pack's per-cell card the same status for the same reason, so this
+      // now reads as one rule instead of two opposite ones.
       for (final face in Watchface.values) {
         expect(watchfaceModules(ProductClass.powerBank, face),
             contains(DisplayModule.energyPath),
             reason: '${face.slug} must keep the energy-path row');
       }
-      expect(watchfaceModules(ProductClass.smartBattery, Watchface.compact),
-          isNot(contains(DisplayModule.cells)),
-          reason: 'a pack compact still drops its extra card');
+      // 🔴 REVERSED 2026-08-05 (design 0041 Q1). This asserted the OPPOSITE —
+      // "a pack compact still drops its extra card" — and that is precisely
+      // what made `standard` and `compact` render identically on a pack with no
+      // DVOL: `cells` was the only difference between them, and `cells` is the
+      // one module a pack declares dataGated. The difference now sits on the
+      // readouts grid, which never vanishes. See T2b, which is the general form
+      // of this and the thing that stops it recurring on a fourth class.
+      for (final pack in [
+        ProductClass.smartBattery,
+        ProductClass.supercapacitor,
+        ProductClass.unknown,
+      ]) {
+        expect(watchfaceModules(pack, Watchface.compact),
+            contains(DisplayModule.cells),
+            reason: "$pack compact keeps the class's own card");
+        expect(watchfaceModules(pack, Watchface.compact),
+            isNot(contains(DisplayModule.readouts)),
+            reason: '$pack compact is what drops the numbers grid');
+      }
+      expect(watchfaceModules(ProductClass.powerBank, Watchface.compact),
+          isNot(contains(DisplayModule.readouts)),
+          reason: 'the same rule, unchanged from design 0040 Q2');
+    });
+
+    // T2b (design 0041 §3.2) — the guard T2 could not be.
+    //
+    // T2 pins that the three faces return DIFFERENT LISTS. That is not enough,
+    // and v0.7.4 proved it: a pack's `standard` and `compact` differed only by
+    // `cells`, `cells` is dataGated, and a unit that never sends 0x24 rendered
+    // the two faces as the same page with T2 green throughout.
+    //
+    // So: for every class and every PAIR of faces, the set-difference of their
+    // modules must contain at least one module that is NOT dataGated — i.e. at
+    // least one card that is guaranteed to be on the page to tell them apart.
+    //
+    // ⚠️ Sets, not lists, and that is deliberate: two faces differing only in
+    // ORDER have no card to lose, so the difference between them can be erased
+    // by absent data. Do not "simplify" this into a list comparison, and do not
+    // delete it as a duplicate of T2 — T2 pins the lists, T2b pins that a
+    // difference can actually be SEEN.
+    test('T2b: every pair of faces differs by a card that cannot vanish', () {
+      for (final cls in ProductClass.values) {
+        final dataGated = DisplayModules.forClass(cls).dataGated;
+        final faces = Watchface.values;
+        for (var i = 0; i < faces.length; i++) {
+          for (var j = i + 1; j < faces.length; j++) {
+            final a = watchfaceModules(cls, faces[i]).toSet();
+            final b = watchfaceModules(cls, faces[j]).toSet();
+            final symmetricDifference = a.difference(b).union(b.difference(a));
+            final alwaysDrawn = symmetricDifference.difference(dataGated);
+            expect(alwaysDrawn, isNotEmpty,
+                reason: '$cls: ${faces[i].slug} vs ${faces[j].slug} differ only '
+                    'by $symmetricDifference, all of which is data-gated — on a '
+                    'unit without that data the two faces render identically');
+          }
+        }
+      }
     });
 
     // REWRITTEN 2026-08-05 (design 0034 Phase 1, implemented by design 0040).
