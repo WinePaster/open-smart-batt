@@ -72,6 +72,38 @@ timestamp; it is useful for ordering and for detecting a device reset.
 > reading renders every date one month early and one day short — and on any
 > device reporting `DD = 0x00` it produces a date that does not exist.
 
+> 🔴 **SETTLED 2026-08-05 — it IS a calendar clock. The units that look like
+> timers were simply never set.** The block below is the superseded hypothesis,
+> kept because its measurements are good and because the reasoning failure is
+> worth seeing: every observation in it was correct, and the conclusion drawn
+> from them was still wrong.
+>
+> **What settled it:** a capture in which this register was **written and read
+> back**. A value written as month 08 / day 05 read back as `MM = 07`, `DD = 04`
+> — with hours, minutes and seconds identical to what was written. That is a
+> controlled confirmation of the 0-based `MM`/`DD` rule above, which until then
+> rested on corpus statistics alone. A second connection in the same capture
+> received no write, free-ran **442 s against 441 s of wall clock**, and stayed
+> aligned **across a 9-minute disconnect** — a clock, not a session timer.
+>
+> **And the observation that produced the hypothesis has a better explanation.**
+> "Restarts from the same base on every connection" is wrong on the quantifier:
+> it restarts on every **device reboot**, not every connection. Three mutually
+> independent fingerprints mark a reboot — the register rewinds to a saved
+> checkpoint, `0x34`'s last byte increments, and the first telemetry frame after
+> reconnecting reads all zeros. Earlier captures could not tell the two apart
+> because they held a single connection each.
+>
+> ⇒ **A power bank whose `0x3B` shows a fixed base has an unset RTC**, exactly
+> like the year-2000 unit described at the top of this section. Rendering it to
+> a user is still wrong — but because the value is *unset*, not because the
+> register is not a clock.
+>
+> ⚠️ Whoever renders this: an unset unit is the common case, not the exception.
+
+<details>
+<summary>🔴 Superseded hypothesis (2026-08-04/05), kept for the record</summary>
+
 > 🔲 **Unsettled — power banks may not be running a calendar clock at all.** On
 > power-bank units this register has been seen restarting from the same base value
 > on three different real-world dates, and half of the units observed emit
@@ -103,3 +135,5 @@ timestamp; it is useful for ordering and for detecting a device reset.
 >   origin on every connection" observation that the claim above rests on.
 >
 > ⇒ Recorded as a strengthening of the 🔲, **not** as a settlement of it.
+
+</details>
