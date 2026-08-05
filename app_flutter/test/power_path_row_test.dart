@@ -191,7 +191,7 @@ void main() {
       expect(find.text('Type-A'), findsOneWidget);
     });
 
-    testWidgets('bit1 clear but NOT discharging: still undetermined',
+    testWidgets('bit1 clear but NOT discharging: no port badge at all',
         (tester) async {
       // Standby has nothing to eliminate from. The elimination is a statement
       // about where a current is going, not about the port itself — bit1 clear
@@ -199,16 +199,28 @@ void main() {
       await pumpRow(tester, portFlagsRaw: 0x05, current: 0.0, svlt: 5.12);
 
       expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-C'), findsNothing);
+      // design 0041 Q3: the slot is EMPTY rather than filled with a word for
+      // "unknown". The row still says what it does know.
+      expect(find.text('Path undetermined'), findsNothing);
+      expect(find.text('STANDBY'), findsOneWidget);
     });
 
-    testWidgets('0x00 + in-band current: standby, before any port test',
+    testWidgets('0x00 + in-band current: plain standby, and no port badge',
         (tester) async {
       // A GENUINE rail-off: −0.039 A is the 36–39 mA `0x49` offset a rail-off
-      // unit always reports, which the ±0.05 A dead-band swallows. Flag and
-      // current corroborate, so standby is claimed. Unchanged behaviour.
+      // unit always reports, which the ±0.05 A dead-band swallows.
+      //
+      // 🔴 design 0041 Q2: this no longer gets a rendering of its own. It reads
+      // "STANDBY", the same as a rail-up unit with nothing flowing — the
+      // distinction between those two was given up knowingly (R1), not lost.
+      // The corroboration test itself survives; see the contradiction cases
+      // below, which are what it still decides.
       await pumpRow(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
 
-      expect(find.text('Standby · output off'), findsOneWidget);
+      expect(find.text('STANDBY'), findsOneWidget);
+      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('Standby · no flow'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
       expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
@@ -226,12 +238,14 @@ void main() {
       // full confidence — on a sample the operator had marked Type-C.
       await pumpRow(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
 
-      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
       expect(find.text('PD'), findsNothing);
+      // Withholding is now expressed by drawing NO badge (design 0041 Q3), so
+      // the assertion is that no port word of any kind reached the row.
+      expect(find.text('Path undetermined'), findsNothing);
       // What we DO still know comes from 0x49/0x4A, not from b7.
-      expect(find.text('Path undetermined'), findsOneWidget);
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('5.22 V'), findsOneWidget);
       expect(find.text('2.72 A'), findsOneWidget);
@@ -242,9 +256,10 @@ void main() {
       // The 23:25:27 vector: b7 = 0x00 with `0x49` at 2,712 mA charging.
       await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
 
-      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('Type-C'), findsNothing);
+      expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('CHARGING'), findsOneWidget);
     });
 
@@ -380,7 +395,13 @@ void main() {
       // but we do not ask the user to label a burst whose flag byte we have
       // just decided not to believe.
       await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      // No badge at all since design 0041 Q3 — which is exactly why the hook's
+      // suppression matters here: with nothing in the port slot, the hook would
+      // be the row's only remaining voice, and it must still stay silent on a
+      // burst whose flag byte we have decided not to believe.
+      expect(find.text('Path undetermined'), findsNothing);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-C'), findsNothing);
       expect(find.text('Which port is this?'), findsNothing);
     });
   });

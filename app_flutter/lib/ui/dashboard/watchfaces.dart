@@ -24,6 +24,28 @@
 /// are all the same". [watchfaceModules] is now pairwise different on EVERY
 /// product class, and that is pinned by test T2 rather than left to review.
 ///
+/// ## A LIST that differs is not a PAGE that differs (design 0041)
+///
+/// Design 0040 fixed the power bank and the same complaint came straight back
+/// on a pack, on v0.7.4. The lists there were never equal — `standard` was
+/// `[gauge, readouts, cells]` against `compact`'s `[gauge, readouts]` — but the
+/// ONLY difference was `cells`, and `cells` is the one module a pack declares
+/// `dataGated`. A unit that never sends `0x24` draws no DVOL card, so `standard`
+/// rendered as `[gauge, readouts]`: byte-identical to `compact`, with T2 green.
+///
+/// The fix is not "make `cells` always draw" — a permanent empty card is the
+/// same mistake as a permanent `--`. It is to move the difference onto a card
+/// that CANNOT vanish. Hence `compact` is now `[gauge, extra]` for every class,
+/// and the thing it drops is the readouts grid, which every class renders
+/// unconditionally. The rule is one sentence again: **compact drops the numbers
+/// grid and keeps the instrument plus the class's own card.**
+///
+/// Test T2b is the general form of that lesson and is the reason this cannot
+/// recur on a third class: for every class and every PAIR of faces, the
+/// set-difference of their modules must contain something that is NOT
+/// `dataGated`. T2 pins the lists; T2b pins that a difference can actually be
+/// SEEN. Do not delete it as a duplicate of T2 — it is not.
+///
 /// ## 🔴 The chart is on `diagnostic` ONLY, and that costs something real
 ///
 /// Design 0040 Q1 first proposed `standard` = the old three cards PLUS the
@@ -88,27 +110,45 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // One screenful, no scrolling: the fewest cards that still answer the
     // question this class is usually asked.
     //
-    // A pack drops its DVOL card and keeps the numbers. A power bank does the
-    // OPPOSITE — it drops the numbers and keeps the energy-path row — because
-    // design 0035 Q2's reason for that row ("it IS the answer to which way it
-    // is charging") gets STRONGER as the layout gets shorter, not weaker. The
-    // cost, accepted knowingly (design 0040 Q2 / R3): a power bank's compact
-    // face shows no temperature at all. Anyone who wants temperature has two
-    // other faces, both of which carry the readouts grid.
-    case Watchface.compact:
-      return isPowerBank
-          ? [gauge, extra]
-          : [gauge, DisplayModule.readouts];
-    // Detail first. The numbers grid, the per-cell / port card and the curve
-    // are what a reporter is asked to screenshot; the instrument is the thing
-    // they can read at a glance anyway, so it goes to the bottom rather than
-    // away.
+    // The instrument plus the class's own card — the SAME shape for every
+    // class, which is what design 0041 Q1 bought. What it drops is the numbers
+    // grid, and that choice is load-bearing rather than cosmetic: the grid is
+    // the only card here every class renders unconditionally, so it is the only
+    // place a difference from `standard` is guaranteed to be visible. A pack
+    // used to do the opposite (drop `cells`, keep the numbers) and that is
+    // exactly how `standard` and `compact` collapsed into the same page on a
+    // unit with no DVOL — see the library comment.
     //
-    // This is the ONLY face carrying the chart (Q1 as reversed). Consequence
-    // worth stating: "turn on diagnostic" is now the instruction for anyone who
-    // wants a live curve at all, not just for someone gathering a report.
+    // The reason it keeps `extra` rather than the numbers is design 0035 Q2's,
+    // now applied to both classes: the energy-path row "IS the answer to which
+    // way it is charging", and that argument gets STRONGER as the layout gets
+    // shorter. The per-cell card is the pack's equivalent.
+    //
+    // Costs, both accepted knowingly (design 0040 Q2/R3, design 0041 Q1/R3+R4):
+    // compact shows NO temperature on any class, and on a pack that never sends
+    // DVOL it renders as the gauge alone (plus the always-appended control
+    // card). Anyone who wants temperature has two other faces.
+    case Watchface.compact:
+      return [gauge, extra];
+    // The CHART FIRST, then detail, instrument last (design 0041 Q4).
+    //
+    // Design 0034 put the numbers grid at the top here, on the reasoning that
+    // this face exists for someone gathering a report and the chart was third
+    // in that list of things to screenshot. Design 0040 Q1 then made this the
+    // ONLY face carrying the chart, which invalidated the premise: "turn on
+    // diagnostic" became the instruction for anyone who wants a live curve at
+    // all, so most people arriving here arrived FOR the curve and had to scroll
+    // past two cards to reach it.
+    //
+    // The instrument still goes last — it is the one thing readable at a glance,
+    // so it loses least by being at the bottom.
+    //
+    // ⚠️ Known cost: for the first few seconds of a connection the chart has no
+    // points and renders its own waiting label, so the TOP of this page is a
+    // waiting card. Accepted: it resolves in seconds, and it is an honest
+    // waiting state rather than a permanent placeholder.
     case Watchface.diagnostic:
-      return [DisplayModule.readouts, extra, DisplayModule.chart, gauge];
+      return [DisplayModule.chart, DisplayModule.readouts, extra, gauge];
   }
 }
 

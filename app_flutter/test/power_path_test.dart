@@ -12,7 +12,7 @@
 //   * T1 / T4 (b7 == 0x00): §9's T4 line predates the 009–012 upgrade that made
 //     b7 == 0x00 mean "boost rail off" (§3.3 obs 1, §4.3 ladder step 1, §4.6).
 //     The authoritative, later, thrice-repeated ruling — and the shipped Phase-0
-//     decoder + Phase-1 row — say b7 == 0x00 → "Standby · output off", decided
+//     decoder + Phase-1 row — say b7 == 0x00 → a rail-off standby, decided
 //     BEFORE any port test. The DURABLE invariant both readings share, and the
 //     one pinned here, is: b7 == 0x00 never shows a FABRICATED port (never
 //     Type-A, never Type-C).
@@ -207,13 +207,20 @@ void main() {
       expect(find.text('Type-C'), findsNothing);
     });
 
-    testWidgets('0x00 + in-band current: Standby · output off', (tester) async {
+    testWidgets('0x00 + in-band current: plain STANDBY', (tester) async {
       // The §3.3 rail-off vector as it actually reads on the wire: −0.039 A,
       // the `0x49` offset a rail-off unit always reports, inside the ±0.05 A
-      // dead-band. Flag and current corroborate ⇒ standby, decided before any
-      // port test, and no port badge of any kind.
+      // dead-band. Flag and current corroborate ⇒ standby, and no port badge of
+      // any kind.
+      //
+      // 🔴 design 0041 Q2: the words are now the plain "STANDBY" the SOC dial
+      // uses, not a rail-specific phrase. The two standby STRINGS were merged;
+      // the corroboration TEST that used to pick between them still runs and is
+      // pinned by the spurious-0x00 group below.
       await mount(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
-      expect(find.text('Standby · output off'), findsOneWidget);
+      expect(find.text('STANDBY'), findsOneWidget);
+      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('Standby · no flow'), findsNothing);
       expect(find.text('CHARGING'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
@@ -231,12 +238,14 @@ void main() {
       // with `0x37` never dropping below 5.17 V across ±2 s. 5 such frames in
       // 36,152 bursts; at 1 Hz that is a visible flicker every ~2 hours.
       await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
-      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('STANDBY'), findsNothing);
       // bit1 is clear at 0x00, so a fall-through would print Type-A with full
       // confidence — and the operator had this sample marked Type-C.
       expect(find.text('Type-A'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      // design 0041 Q3: withholding is drawing NO badge. The assertion is that
+      // no port word of any kind reached the row.
+      expect(find.text('Path undetermined'), findsNothing);
       // Direction and readings survive: they come from 0x49/0x4A, not from b7.
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('5.22 V'), findsOneWidget);
@@ -249,9 +258,10 @@ void main() {
       // this is the sample that shows the guard is not merely a "large current"
       // rule; the dead-band is the whole test.
       await mount(tester, portFlagsRaw: 0x00, current: 0.068, svlt: 5.18);
-      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('Type-C'), findsNothing);
+      expect(find.text('DISCHARGING'), findsOneWidget);
     });
 
     testWidgets('no debounce was added: one sample still decides the frame',
@@ -259,10 +269,12 @@ void main() {
       // A debounce was considered and rejected (state + latency on the genuine
       // transition). Nothing is waiting to flip this row a second later.
       await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('DISCHARGING'), findsOneWidget);
+      expect(find.text('Type-A'), findsNothing);
       await tester.pump(const Duration(seconds: 15));
-      expect(find.text('Path undetermined'), findsOneWidget);
-      expect(find.text('Standby · output off'), findsNothing);
+      expect(find.text('DISCHARGING'), findsOneWidget);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('STANDBY'), findsNothing);
     });
   });
 
@@ -326,15 +338,17 @@ void main() {
       (tester) async {
     // The enduring invariant across every revision of this line: a fabricated
     // port is never shown. §9's original T4 wording ("路徑未定, never 待機") was
-    // overtaken by the b7==0x00 = rail-off upgrade (§3.3 obs 1 / §4.3 / §4.6)
-    // and is now BACK in force for this vector — the spurious-0x00 guard
-    // (2026-08-05) withholds standby when the same burst's current contradicts
-    // the flag, and "path undetermined" is what is left.
+    // overtaken by the b7==0x00 = rail-off upgrade (§3.3 obs 1 / §4.3 / §4.6),
+    // then came back for this vector via the spurious-0x00 guard (2026-08-05),
+    // and design 0041 Q3 finally deleted the badge it named: the row now
+    // withholds the port by drawing NOTHING there. The invariant is unchanged —
+    // only how "I don't know" is spelled.
     await mount(tester, portFlagsRaw: 0x00, current: 0.30, svlt: 3.95);
     expect(find.text('Type-A'), findsNothing);
     expect(find.text('Type-C'), findsNothing);
-    expect(find.text('Path undetermined'), findsOneWidget);
-    expect(find.text('Standby · output off'), findsNothing);
+    expect(find.text('Path undetermined'), findsNothing);
+    expect(find.text('STANDBY'), findsNothing);
+    expect(find.text('DISCHARGING'), findsOneWidget);
   });
 
   // =========================================================================
@@ -400,9 +414,12 @@ void main() {
   testWidgets('T8 first-11-seconds sample decides with no debounce/delay',
       (tester) async {
     // 0x02 = bit1 set (Type-C cable inserted), bit2 clear; 19 mA is IN-BAND
-    // (idle). The honest face is "standby · no flow", NOT "Type-C supplying".
+    // (idle). The honest face is "Type-C · STANDBY", NOT "Type-C supplying" —
+    // the badge is drawn in its outline form, which is what says "cable
+    // inserted" without claiming "cable in use".
     await mount(tester, portFlagsRaw: 0x02, current: 0.019, svlt: 5.16);
-    expect(find.text('Standby · no flow'), findsOneWidget);
+    expect(find.text('STANDBY'), findsOneWidget);
+    expect(find.text('Type-C'), findsOneWidget);
     // No direction from an in-band current, and no supplying claim.
     expect(find.text('DISCHARGING'), findsNothing);
     expect(find.text('CHARGING'), findsNothing);
@@ -411,7 +428,7 @@ void main() {
     // flip the row to a supplying/direction state. There is no delayed gate —
     // the one sample already decided, and nothing is waiting to change it.
     await tester.pump(const Duration(seconds: 15));
-    expect(find.text('Standby · no flow'), findsOneWidget);
+    expect(find.text('STANDBY'), findsOneWidget);
     expect(find.text('DISCHARGING'), findsNothing);
     expect(find.text('CHARGING'), findsNothing);
   });
@@ -480,7 +497,8 @@ void main() {
       // Undetermined AND charging — normally the one hooked state. Suppressed:
       // an answer here would be filed against a b7 we do not believe.
       await mount(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
-      expect(find.text('Path undetermined'), findsOneWidget);
+      expect(find.text('Path undetermined'), findsNothing);
+      expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('Which port is this?'), findsNothing);
     });
 

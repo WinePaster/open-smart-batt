@@ -255,7 +255,7 @@ void main() {
   // =========================================================================
   // T5 — the toggle, and its vocabulary, are gone from the app
   // =========================================================================
-  group('T5: `_ModeToggle` and its two l10n keys are gone from lib/', () {
+  group('T5: retired widgets and l10n keys are gone from lib/', () {
     // Source-level, because the widget is private and the two strings are
     // reachable from nothing once the toggle is removed — a `find.text` test
     // can only prove they are not on ONE page. The precedent is design 0035 T11
@@ -278,9 +278,24 @@ void main() {
     });
 
     for (final needle in const [
+      // design 0040: the readouts card's numbers/chart toggle.
       '_ModeToggle',
       'dashboardModeNumbers',
       'dashboardModeChart',
+      // design 0041 Q3 + Q2: the "path undetermined" badge and the two
+      // rail-specific standby phrases. The row now withholds a port by drawing
+      // NO badge, and every standby reads as the plain `powerBankDirectionIdle`
+      // the SOC dial already used.
+      //
+      // ⚠️ Their absence from `lib/` is what stops them creeping back through a
+      // translation pass — the same reason design 0035 T11 scanned for the
+      // retired USB keys. If you are reintroducing one of these, read design
+      // 0041 R1 first: the standby distinction was given up knowingly.
+      'powerPathPortUndetermined',
+      'powerPathStandbyOutputOff',
+      'powerPathStandbyNoFlow',
+      '_undeterminedBadge',
+      '_railOff',
     ]) {
       test('no occurrence of `$needle`', () {
         expect(sources.where((s) => s.contains(needle)), isEmpty);
@@ -476,7 +491,16 @@ void main() {
   // The other two faces actually do something
   // =========================================================================
   group('the non-default faces change the page', () {
-    testWidgets('compact drops the DVOL card even when DVOL has data',
+    // 🔴 REVERSED 2026-08-05 (design 0041 Q1). This used to assert that compact
+    // dropped the DVOL card and KEPT the numbers grid. That was the defect: the
+    // grid was then the only thing `compact` and `standard` had in common, so
+    // the two faces differed by `cells` alone — and `cells` is the pack's one
+    // dataGated module, absent on any unit that never sends 0x24. On such a
+    // unit the two faces rendered the same page.
+    //
+    // The card that goes is now the grid, because the grid is the one a pack
+    // always draws. See T2b in display_layout_test.dart for the general rule.
+    testWidgets('compact drops the numbers grid and keeps the DVOL card',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
@@ -486,24 +510,51 @@ void main() {
       await feedDvol(tester);
 
       expect(find.byType(PvltGauge), findsOneWidget);
-      expect(find.byType(ReadoutsCard), findsOneWidget);
-      expect(find.byType(DvolBars), findsNothing,
-          reason: 'the card is off the page by choice, not for want of data — '
-              'which is exactly why the export preamble still records it');
+      expect(find.byType(DvolBars), findsOneWidget);
+      expect(find.byType(ReadoutsCard), findsNothing,
+          reason: 'the grid is off the page by choice, not for want of data — '
+              'which is exactly why the export preamble still records what the '
+              'LAYOUT says rather than what rendered');
       expect(find.byType(TrendChartCard), findsNothing,
           reason: 'compact is the one-screenful face; a stack of tracks is the '
               'first thing it drops');
       // And the controls are still there, and still last.
-      expect(dy(tester, find.byType(ReadoutsCard)),
+      expect(dy(tester, find.byType(DvolBars)),
           lessThan(dy(tester, find.byType(BatteryControls))));
+    });
+
+    // The other half of design 0041 Q1, and the one that actually reproduces
+    // the field report: a pack whose DVOL never arrives. `standard` loses its
+    // per-cell card to the data gate here — that is unchanged and correct — so
+    // the ONLY thing that can distinguish the two faces is the grid.
+    testWidgets('with no DVOL at all, compact and standard still differ',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.compact));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      // NOTE: no feedDvol() — this is the unit the report came from.
+
+      expect(find.byType(DvolBars), findsNothing, reason: 'no data to draw');
+      expect(find.byType(ReadoutsCard), findsNothing, reason: 'compact');
+
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.standard));
+      await tester.pump();
+      expect(find.byType(ReadoutsCard), findsOneWidget,
+          reason: 'standard must still look different from compact on a unit '
+              'that reports no per-cell voltages — this is the whole of the '
+              'v0.7.4 field report');
     });
 
     testWidgets('a power bank on compact keeps the direction row and drops '
         'the numbers (design 0040 Q2)', (tester) async {
-      // The deliberate asymmetry: a PACK's compact drops its extra card and
-      // keeps the grid; a POWER BANK does the opposite. design 0035 Q2's
-      // reason for the energy-path row — "that line IS the answer to which way
-      // it is charging" — only gets stronger as the page gets shorter.
+      // design 0035 Q2's reason for the energy-path row — "that line IS the
+      // answer to which way it is charging" — only gets stronger as the page
+      // gets shorter. ⚠️ This used to be described here as a deliberate
+      // ASYMMETRY against packs, which dropped their extra card and kept the
+      // grid. Design 0041 made the pack follow the same rule, so the two are
+      // now one rule, not two opposite ones. Nothing in THIS test changed.
       //
       // The accepted cost is R3: this face carries no temperature at all,
       // because temperature lives in the grid that just went away. Two other
@@ -525,7 +576,14 @@ void main() {
       expect(find.byType(TrendChartCard), findsNothing);
     });
 
-    testWidgets('diagnostic puts the numbers first and the instrument last',
+    // 🔴 REORDERED 2026-08-05 (design 0041 Q4): the CURVE now leads this face.
+    // It used to sit third, between the per-cell card and the instrument, on
+    // design 0034's reasoning that this face serves someone gathering a report.
+    // Design 0040 Q1 made diagnostic the chart's ONLY home, which turned "turn
+    // on diagnostic" into the instruction for anyone who wants a live curve at
+    // all — so most arrivals here came FOR the curve and had to scroll past two
+    // cards to reach it. The instrument still ends the page.
+    testWidgets('diagnostic leads with the curve and ends with the instrument',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
@@ -534,33 +592,32 @@ void main() {
       await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
       await feedDvol(tester);
 
+      expect(dy(tester, find.byType(TrendChartCard)),
+          lessThan(dy(tester, find.byType(ReadoutsCard))));
       expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(DvolBars))));
-      // Detail first, and the curve counts as detail: it sits between the
-      // per-cell card and the instrument, so a reporter screenshotting the top
-      // of the page catches the numbers, the cells AND the trace.
       expect(dy(tester, find.byType(DvolBars)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
-      expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(PvltGauge))));
+      // The control card is still last, and still not placeable by any face
+      // (design 0034 §6).
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(BatteryControls))));
     });
 
-    testWidgets('a power bank on the diagnostic face puts numbers before the '
-        'instrument', (tester) async {
+    testWidgets('a power bank on the diagnostic face leads with the curve too',
+        (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
       await pumpUnder(tester, s, const PowerBankView());
 
-      // Diagnostic leads with the readouts and ends with the SOC ring. The
-      // energy-path row (design 0035 Phase 2) renders nothing in this harness
-      // (the class is not overridden to power bank), so the pinned order is the
-      // surviving three.
-      expect(dy(tester, find.byType(ReadoutsCard)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
+      // Same order as the pack (design 0041 Q4): curve, numbers, class card,
+      // instrument. The energy-path row (design 0035 Phase 2) renders nothing
+      // in this harness — the class is not overridden to power bank — so the
+      // pinned order is the surviving three.
       expect(dy(tester, find.byType(TrendChartCard)),
+          lessThan(dy(tester, find.byType(ReadoutsCard))));
+      expect(dy(tester, find.byType(ReadoutsCard)),
           lessThan(dy(tester, find.byType(PvltGauge))));
     });
   });
@@ -642,13 +699,15 @@ void main() {
       ble.connectedId = 'DEV-A';
       await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
       await feedDvol(tester);
-      expect(find.byType(DvolBars), findsNothing, reason: 'A is compact');
+      // Keyed on the GRID since design 0041: it is what compact drops, and it
+      // is the card that is guaranteed to be there when it is not dropped.
+      expect(find.byType(ReadoutsCard), findsNothing, reason: 'A is compact');
 
       // Same telemetry, same widget, different unit.
       ble.connectedId = 'DEV-B';
       await tester.runAsync(() => s.devices.load()); // notifies → rebuild
       await tester.pump();
-      expect(find.byType(DvolBars), findsOneWidget, reason: 'B is standard');
+      expect(find.byType(ReadoutsCard), findsOneWidget, reason: 'B is standard');
     });
   });
 

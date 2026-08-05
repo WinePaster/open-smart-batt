@@ -2030,24 +2030,6 @@ abstract class AppLocalizations {
   /// **'Energy Path'**
   String get powerPathHeading;
 
-  /// No description provided for @powerPathPortUndetermined.
-  ///
-  /// In en, this message translates to:
-  /// **'Path undetermined'**
-  String get powerPathPortUndetermined;
-
-  /// No description provided for @powerPathStandbyOutputOff.
-  ///
-  /// In en, this message translates to:
-  /// **'Standby · output off'**
-  String get powerPathStandbyOutputOff;
-
-  /// No description provided for @powerPathStandbyNoFlow.
-  ///
-  /// In en, this message translates to:
-  /// **'Standby · no flow'**
-  String get powerPathStandbyNoFlow;
-
   /// No description provided for @powerPathWaiting.
   ///
   /// In en, this message translates to:
