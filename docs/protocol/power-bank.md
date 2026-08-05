@@ -123,10 +123,10 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
 | **bit 5** | **PD output** | 184/184, no counterexample. Same bit at port voltages from 9.05 V to 13.30 V ⇒ it tracks the protocol, not the voltage rail | — |
-| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands as recorded: 16 charging bursts left it clear. 🔲 But see the note below — those may be non-PD 9 V chargers, in which case the caveat dissolves |
+| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands. 🔑 **But the counterexamples are now accounted for (2026-08-05): all 62 of them set bit 4 instead.** No ≥8 V charge in the corpus leaves both bits clear (0 of 2,042). See the bit-4 section |
 | **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, every `b7 = 0x00` frame has the port voltage at cell potential | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
 | **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
-| **bit 4** | **unknown** | Appears only as `0x12` (bit1+bit4), **16** frames, on **one** unit | 🚫 Not decoded. Suspected firmware variant — notably, that is the unit that also failed name-based discovery. See the measurement below |
+| **bit 4** | **unknown**, but **structurally paired with bit 3** | Appears only as `0x12` (bit1+bit4), **62** frames (was "16" — corpus has grown), on **one** unit. ⚠️ **The "firmware variant" reading is dead** — see below | 🚫 Not decoded. But bit 3 and bit 4 are **mutually exclusive** (0 co-occurrences in 42,142 paired bursts), and **every** ≥8 V charge sets exactly one of them |
 | **bit 0** | 🚫 **unknown — and specifically NOT "Type-A active"** | Set with **both ports physically empty**, 7/7, 19–22 mA, in a capture where the operator had pulled the Type-A cable 34 s earlier | ⚠️ See the refutation below. Do **not** drive a "Type-A device attached" indicator from it |
 
 **On bit 3: the A/B that removes "power" and "voltage" as explanations**
@@ -160,35 +160,74 @@ those captures was never recorded.
 into the same unit for 90 s. bit 3 clear with `0x49` reading ≈9 V ⇒ the caveat
 can be lifted and bit 3 becomes two-way.
 
-**On bit 4: a measurement that supports "firmware variant of bit 3" — and is not
-proof of it** (2026-07-31).
+**On bit 4: the "firmware variant" reading is refuted, and bit 3 / bit 4 turn out
+to be one field** (2026-08-05).
 
-The firmware-variant suspicion in the table above has until now been bare
-suspicion, with nothing behind it but "only one unit does this". There is now a
-measurement. `0x12` (bit 1 + bit 4) and `0x0a` (bit 1 + bit 3) describe the
-**same physical state** — a ≈9 V PD charge over Type-C — and differ only in
-which of the two bits carries it:
+> 🔴 **Superseded — the 2026-07-31 text below is kept struck through.** Its
+> measurements are still correct; its central factual premise is not.
 
-| `b7` | frames | port voltage `0x37` | `0x49` charge current | Units producing it |
+> ~~What the table shows is that **no measured quantity separates the two
+> states, while the device does**: every `0x12` frame in the corpus comes from one
+> physical power bank, and **that unit has never emitted `0x0a`**. That is what a
+> firmware variant would look like.~~
+>
+> ~~`0x0a` | 247 frames | 8.75 – 9.09 V | 508 – 1,791 mA | two device names,
+> **neither** the `0x12` unit~~
+
+**The premise is false, and a whole-corpus re-walk was all it took.** The unit
+that produces `0x12` — a single power bank, identified by the MAC it reports in
+`0x38` — **also produces `0x0a`**:
+
+| Capture | `0x0a` | `0x12` |
+|---|---|---|
+| 2026-07-29 | — | 16 |
+| 2026-08-01 | — | 46 |
+| **2026-08-04** (three separate controlled captures) | **21 + 7 + 7 = 35** | — |
+
+Every one of those captures carries **its own** `0x38` frames reading that same
+MAC — the identity is read off the wire in each capture, not inherited from a
+nickname (which for power banks is explicitly unreliable: this unit is labelled
+under two different names across the two periods, and the vendor app's own device
+hash differs between them too).
+
+A firmware variant cannot emit both encodings of the same field, so whatever
+separates them is a **state**, not a build.
+
+⚠️ **The claim was true when it was written and went stale.** Through
+2026-08-01 the unit really had never emitted `0x0a`; the 2026-08-04 controlled
+captures — the same ones this document leans on for bits 1 and 2 — falsified it,
+and nobody re-ran the check. That is the failure mode to watch: a "never
+observed" claim is a statement about a corpus, and the corpus keeps growing.
+
+**What the re-walk does establish** — pairing every `0x4B` with the `0x49` from
+its own burst, 42,142 paired bursts, charge bursts split by port voltage:
+
+| Port voltage while charging | bit 3 set | **bit 4 set** | **neither** | Units |
 |---|---|---|---|---|
-| `0x0a` | 247 | 8.75 – 9.09 V | 508 – 1,791 mA | two device names, **neither** the `0x12` unit |
-| `0x12` | 16 | 9.03 – 9.07 V on 15 frames; one frame at 4.40 V, mid-negotiation | 396 – 1,834 mA | **one unit** |
+| **≥ 8 V** | 1,980 | **62** | **0** | 3 |
+| 6 – 8 V | 0 | 0 | 1 | 1 |
+| < 6 V | 0 | 0 | 9,638 | 6 |
 
-⚠️ **State the overlap accurately: it is near-total, not total.** `0x12`'s port
-voltage sits inside `0x0a`'s window, but its charge current runs a little past
-*both* ends — 396 mA below `0x0a`'s 508 mA floor and 1,834 mA above its 1,791 mA
-ceiling. What the table shows is that **no measured quantity separates the two
-states, while the device does**: every `0x12` frame in the corpus comes from one
-physical power bank, and that unit has never emitted `0x0a`. That is what a
-firmware variant would look like.
+Two facts fall out, and neither needs a new capture:
 
-It is **not proof.** The two sets were captured at different times on different
-hardware with no controlled variable; "same state" is read off the numbers, not
-imposed. **The capture that would settle it: the same charger and cable into
-both units, back to back, labelled as such.** No such capture exists.
+* **bit 3 and bit 4 never co-occur** — 0 of 42,142 paired bursts.
+* **Every ≥ 8 V charge sets exactly one of them** — 2,042 of 2,042, across three
+  physical units, with **zero** leaving both clear. Below 6 V, both are always
+  clear (9,638 bursts, six units).
 
-*(Count corrected here from 15 to 16 frames. The difference is de-duplication of
-overlapping cumulative exports, not a new observation.)*
+⇒ 🔑 **The "16 counterexamples to the reverse direction of bit 3" and "the 16
+unexplained bit-4 frames" were never two open questions. They are the same
+frames** — 62 of them now. bit 3's one-way caveat is not an anomaly to be
+explained away; it is bit 4 doing the job in those bursts.
+
+⇒ 🔲 **Still not decoded.** This is a structural result, not a semantic one. That
+the register always names *some* protocol above 8 V does not tell us *which*
+protocol bit 4 is, and bit 4 remains **one unit**. The natural hypothesis is that
+bit 3 / bit 4 are a PD / non-PD pair, but that is a hypothesis — see the pending
+table.
+
+**The capture that would settle it:** a charger of a known, stated type
+(QuickCharge 9 V, non-PD) into a **second** unit, labelled as such.
 
 **`b7 = 0x00` means the boost rail is off** (2026-08-04).
 
@@ -416,13 +455,13 @@ collected here so an implementer does not have to reconstruct it from prose.
 | Which port carries the flow when **bit 1 is SET** | 🔲 bit 1 is *cable present*, so an idle C cable with the load on Type-A reads as Type-C — 46 frames in one batch are exactly that. The elimination rule only settles the bit-1-**clear** half | A capture with a C cable inserted and untouched while the load is moved between A and C, marked at each move |
 | Charging with **bit 1 clear** | 🚫 **Never observed.** The elimination rule therefore says nothing about it, and the row keeps its feedback hook there | Any capture that produces it |
 | Boost-rail auto-off delay | **32–37 s** after the last load is removed, four measurements, **one unit**. Model behaviour, not protocol | Same measurement on a second unit |
-| `0x4B` b7 **bit 4** | **Unknown.** 15 bursts, one physical unit, always as `0x12` | A second unit showing the same bit — or a firmware version readout (`0x29`) from the unit that does |
+| `0x4B` b7 **bit 4** | **Unknown semantically**, but no longer unstructured (2026-08-05): **62** bursts, one physical unit, always as `0x12`. bit 3 and bit 4 are **mutually exclusive** (0 of 42,142) and **every ≥8 V charge sets exactly one** (2,042 of 2,042, three units). ⚠️ The **"firmware variant" reading is refuted** — the `0x12` unit emits `0x0a` too (35 vs 62) | A **second** unit emitting `0x12`. 🔲 Working hypothesis, not a finding: bit 3 / bit 4 = PD / non-PD input, which a labelled QuickCharge 9 V charge would test |
 | `0x4B` **b8** | **Not decoded.** Ruled out as the displayed temperature | A capture with a known second thermal load |
 | `0x4C` | **Not decoded.** 691/691 constant | Any capture where it varies |
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
 | `0x49` mV field | **Not published.** Tracks PVLT, so decoding it again would just rename an existing number | — |
-| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 16 counterexamples. Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver | 🔲 The 16 may be **non-PD 9 V** chargers. A QuickCharge 9 V charger into the same unit would tell |
+| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 62 counterexamples (was "16"; corpus grew). Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver. 🔑 **2026-08-05: the counterexamples are exactly the bit-4 frames** — this row and the bit-4 row are one question, not two | 🔲 A **labelled** non-PD 9 V (QuickCharge) charge. If bit 4 is what a non-PD fast charge looks like, both rows close together |
 | bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
 
 **Convention for this document: an item is either evidenced with its sample

@@ -112,7 +112,7 @@ values identify the device class in field reports: `01680102` on batteries and
 | `0x21` | all | Temperature | §8. ⚠️ LEN 1 on pack, **LEN 2 on power bank** (§9.1) |
 | `0x23` | all | Mode / status register | §8 |
 | `0x24` | pack | DVOL per-series cell voltages | §8. **Not gated** — streams unconditionally (9,496 frames observed) |
-| `0x25` | pack | Manufacture year | §8.2.3. **Not the serial high word** — see §9 |
+| `0x25` | all | Manufacture year | §8.2.3. **Not the serial high word** — see §9. ⚠️ **Class corrected to `all` 2026-08-05** — it was listed as `pack`, but a whole-corpus count finds it on every device class, including **36,507 frames on power banks** (constant `07e5` = 2021). Per class: `0x02` battery 217 (`07e4`/`07e9`), `0x17` capacitor 13,900 (`07e4`), `0x18` flagship capacitor 3,483 (`07e8`), `0x22` power bank 36,507 (`07e5`) |
 | `0x26` | pack | Battery serial number | §8 |
 | `0x27` | all | Dealer code (經銷商代號) | §8 |
 | `0x29` | all | Firmware version | §8.2.3 |
