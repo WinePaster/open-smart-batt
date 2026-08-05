@@ -26,7 +26,7 @@ them, and anyone who implemented against an older copy of this file needs to kno
 | Write characteristic is Write-Without-Response only | ❌ **Wrong** | props `0x08` = Write **with** response; `0x04` is not set. 50/50 observed writes are opcode `0x12`. See §2, §3.1 |
 | Outbound byte[2] is reserved / a length high byte | ❌ **Wrong** | It is a role flag: `0x00` standalone, `0x01` on a mode-bundled auth sub-frame. See §4.1 |
 | `switchMode` carries a trailing context payload | ❌ **Wrong** | Exactly 15 bytes on the wire, nothing after the auth sub-frame. See §6.2 |
-| `0x41` payload is 9 bytes; `0x34` is 9 bytes | ❌ **Wrong** | LEN is **8** and **10** respectively. The old figures counted the XOR byte as payload — and the `0x41` "length doesn't match" argument in §10.1 rested on that miscount |
+| `0x41` payload is 9 bytes; `0x34` is 9 bytes | ❌ **Wrong** | LEN is **8** and **10 _or_ 11** respectively. The old figures counted the XOR byte as payload — and the `0x41` "length doesn't match" argument in §10.1 rested on that miscount. ⚠️ **Re-corrected 2026-08-05**: this row previously said `0x34` is "10", full stop. It is 10 on power banks and capacitors and **11 on some batteries** — the correction was made against a sample that happened to contain only one of the two. |
 | TWF values are constant for a whole session | ❌ **Wrong** | A power bank moves between `0x00`/`0x01`/`0x20` inside one connection |
 | `0x2B` 4th byte is `0x14` on every unit | ❌ **Wrong** | `0x00` also observed (§8.2.2) |
 | `0x96` carries capacity/SOH | ⚠️ **Never observed** | **0 of 206,516 frames**, across 96 sessions, four device classes and seven months. The formulas came from analysis of the reference app, not from the link. Do not implement against them without a capture |

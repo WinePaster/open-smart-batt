@@ -131,7 +131,8 @@ values identify the device class in field reports: `01680102` on batteries and
 | `0x4B` | power bank | `[u16 design mAh][u8 SOC %][u8 port flags][u8 ?]` | §9.1 |
 | `0x4C` | power bank | Constant, undecoded | §10.1 |
 | `0x96` | — | Capacity / SOH info | ⚠️ **Never observed on the wire** (0 / 206,516 frames) — see §9 |
-| `0x2C` / `0x34` / `0x3A` / `0x3C` / `0x40` / `0x42` / `0x4D` | see §10.1 | Streamed but undecoded | §10.1 |
+| `0x34` | all | **System counters** — standby / connected minutes, sleep / power-on / cut-off counts | see `telemetry-decoding.md` |
+| `0x2C` / `0x3A` / `0x3C` / `0x40` / `0x42` / `0x4D` | see §10.1 | Streamed but undecoded | §10.1 |
 
 ### 5.3 Observed dealer-code label strings
 
