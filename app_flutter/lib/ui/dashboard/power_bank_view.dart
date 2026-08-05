@@ -69,7 +69,8 @@ class PowerBankView extends StatelessWidget {
     // caption named a charging state the dial never drew, and the same `pvlt`
     // was printed a second time in the readouts grid below — the duplication
     // this file's own Q5+Q12 note forbids for current and port voltage. Both
-    // were reported from the field on v0.7.2 (feedback_log/2026.08.04/014).
+    // were both reported from the field on v0.7.2, in a 2026-08-04 owner-run
+    // controlled capture.
     // `unknown` is the absence of a reading, not a fourth state, so it renders
     // as a placeholder rather than a word.
     final subText = switch (flow) {
@@ -173,7 +174,7 @@ class PowerBankView extends StatelessWidget {
               // holds.
               //
               // The CELL VOLTAGE tile is gone too (2026-08-05, owner's call on
-              // feedback_log/2026.08.04/014 §4.2). On a 1S bank it duplicated
+              // 2026-08-04 controlled capture). On a 1S bank it duplicated
               // the dial's sub-line, and the sub-line is now the direction. If
               // it ever comes back it belongs in ONE place, not two.
               Readout(

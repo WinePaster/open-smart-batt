@@ -26,7 +26,7 @@
 //     read "SOC · State of Charge" / "電量 · 充電狀態" while the dial drew no
 //     state at all — the sub-line under it was the cell voltage, which was ALSO
 //     printed as a grid tile. Reported from the field on v0.7.2
-//     (feedback_log/2026.08.04/014 §4.1 / §4.2). The cell tile is gone and the
+//     (a 2026-08-04 owner-run controlled capture). The cell tile is gone and the
 //     sub-line now carries the direction, which is why every flow-glyph count
 //     below went up by exactly one.
 import 'dart:async';
@@ -316,7 +316,7 @@ void main() {
   });
 
   // =========================================================================
-  // The dial says what its caption promises (feedback_log/2026.08.04/014 §4.1).
+  // The dial says what its caption promises (2026-08-04 field report).
   // =========================================================================
   group('the dial sub-line carries the direction', () {
     testWidgets('charging', (tester) async {

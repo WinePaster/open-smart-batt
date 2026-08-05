@@ -196,7 +196,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
     // becomes a nagging one. What is left genuinely unknown is CHARGING with no
     // Type-C cable, which no capture in the corpus contains; if a user is in
     // that state we want to hear about it. (The one field use of this hook so
-    // far, `feedback_log/2026.08.04/014` 02:27:42, tagged `a` at b7=0x05 while
+    // far, in the 2026-08-04 controlled capture, tagged `a` at b7=0x05 while
     // discharging 473 mA — the derivation would have printed Type-A unasked.)
     final showHook = !isTypeC && flow == PowerFlow.charging && !_hookHandled;
     if (!showHook) return rowWrap;
@@ -343,7 +343,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
   /// energy can be taking. Corpus check over every port-marked power-bank
   /// capture, excluding the `b7 == 0x00` frames the ladder short-circuits
   /// above: **29,114 agree / 0 disagree**, across three physical units
-  /// (`feedback_log/2026.08.04/014` §1, the derivation section) — so this one
+  /// (2026-08-05 corpus-wide sweep, the derivation section) — so this one
   /// clears the multi-unit bar that bit0 never did.
   ///
   /// ⚠️ Restricted to DISCHARGE on purpose. The corpus check paired `0x4A`, so
