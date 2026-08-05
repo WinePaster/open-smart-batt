@@ -1,5 +1,20 @@
-# Deployment target floor: 13.0 (>= highest pod podspec minimum; flutter_blue_plus_darwin 7.x effective floor).
-platform :ios, '13.0'
+# Deployment target floor: 15.0.
+#
+# Two constraints, and APPLE's is now the binding one:
+#
+#   * >= the highest pod podspec minimum (flutter_blue_plus_darwin 7.x was the
+#     effective floor, and set 13.0 here until 2026-08-06);
+#   * >= 15.0, because App Store Connect warns on upload that from Spring 2027
+#     it will REFUSE any build with a MinimumOSVersion below 15.0. Seen on the
+#     v0.7.5 archive.
+#
+# Raising 13.0 → 15.0 costs no hardware: iOS 15 runs on exactly the same devices
+# as iOS 13 (iPhone 6s / iPad Air 2 and later). iOS 16 is where that generation
+# was dropped — so do NOT raise this to 16+ casually, that one is not free.
+#
+# ⚠️ Keep this in step with IPHONEOS_DEPLOYMENT_TARGET in project.pbxproj (three
+# configs) and with the post_install override below. Three places, one number.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -41,7 +56,10 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
       # C.1 — pin deployment target floor for every pod target/config.
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # ⚠️ Must equal `platform :ios` at the top of this file; a pod left below
+      # the app's own floor is what produces the "MinimumOSVersion too low"
+      # upload warning even after project.pbxproj has been raised.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
 
       # C.2 — permission_handler macros. Disable every permission so unused
       # handlers are compiled out (avoids ITMS-90683 auto-rejection). Must be a
