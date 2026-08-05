@@ -156,3 +156,76 @@ Frame: `[0xB8, 0x2B, 0x00, 0x04, OV_byte, UV_byte, OT_byte, 0x00] + XOR`.
 *(Write path uses round-half (`LibcRound`); OV/UV additionally pass a precision-
 rounding step before rounding; read-path gauge/current use truncation — so a
 round-trip may differ by ±1 LSB.)*
+
+---
+
+### 8.4 `0x34` — system counters ✅
+
+*Decoded 2026-08-05.* Previously listed as "streamed but undecoded".
+
+**Two lengths, and the length identifies the class.**
+
+| LEN | Emitted by | Fields |
+|---|---|---|
+| **11** | battery `0x02` (some units) | all five below |
+| **10** | power bank `0x22`, capacitor `0x17`/`0x18`, and other `0x02` units | the first four — **the cut-off counter is absent** |
+
+```
+LEN 11:  [u24 standby min][u24 connected min][u16 sleeps][u16 power-ons][u8 cut-offs]
+LEN 10:  [u24 standby min][u24 connected min][u16 sleeps][u16 power-ons]
+```
+
+All fields big-endian, all cumulative over the unit's life.
+
+| Field | Meaning |
+|---|---|
+| `[0:3]` | minutes spent in **standby** |
+| `[3:6]` | minutes spent **connected** |
+| `[6:8]` | number of **sleeps** |
+| `[8:10]` | number of **power-ons** |
+| `[10]` | number of **cut-offs** — LEN 11 only |
+
+**Why the fifth field is battery-only, and why that is a useful cross-check:**
+cut-off is a battery feature. Power banks and capacitors have no cut-off mode,
+and they are exactly the classes that emit the 10-byte form. So a LEN-11 `0x34`
+is a **second, independent signal that the unit is a battery**, alongside the
+`0x10` device-type byte.
+
+⚠️ Not every battery sends 11 — 488 battery frames in the corpus are 10 bytes
+against 217 that are 11. Treat LEN 11 as sufficient evidence of a battery, never
+LEN 10 as evidence against one.
+
+#### Evidence
+
+The **field meanings** were supplied by the hardware distributor and confirmed
+against the vendor's own on-screen readout. The **structure** is independently
+verified against this project's captures, which is what makes the split
+falsifiable rather than taken on trust:
+
+* Two batteries in one capture read `standby 17 / connected 31 / sleeps 0 /
+  power-ons 7 / cut-offs 0` and `standby 36192 / connected 142 / sleeps 0 /
+  power-ons 17 / cut-offs 0`. Seven and seventeen power-ons are plausible on
+  their face; **no other alignment of these 11 bytes produces two plausible
+  counters at once.**
+* **The connected-minutes field advances once per minute of wall clock.** Two
+  independent measurements: 67.0 s/tick over a 10.5 h single-connection capture
+  (counter 11 → 573), and 65–70 s/tick in a second capture — and it advances at
+  the *same* rate under near-zero current and under 2 A, so it is time, not
+  energy.
+* **The power-on counter increments by exactly 1 at a device reboot**, observed
+  alongside two other independent reboot fingerprints (`0x3B` rewinding to a
+  checkpoint, and the first telemetry frame after reconnect reading all zeros).
+  Corpus-wide it steps by 1 and never decreases.
+* Sleeps and cut-offs are **0 in every frame the corpus holds** (54,139 frames)
+  — consistent with counters for states this project's captures never entered.
+
+#### Not settled
+
+* 🔲 **The standby-minutes field is not sanity-checked.** One unit reports
+  2,705,779 — about 5.1 years — which is possible for a cumulative lifetime
+  counter on an old pack but has no corroboration. Do not present it to a user
+  as a duration until a unit of known age is measured.
+* 🔲 **Why some batteries send 10 and others 11** is unknown; firmware is the
+  obvious guess and is untested.
+* 🚫 **Nothing here is decoded by this app.** These are lifetime counters, not
+  telemetry; they are documented so the field is not re-opened as "undecoded".
