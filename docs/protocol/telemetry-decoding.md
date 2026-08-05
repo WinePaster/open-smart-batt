@@ -61,7 +61,7 @@
 | **Discharge** v1 / v2 | ⚠️ | `0x4A` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **PACK-SIDE ONLY, and never observed on any pack.** On a power bank the same 4 bytes are `[u16 mV][u16 mA]` (§9.1) |
 | **Device type** | all | `0x10` | `b4` — `0x02` battery / `0x17` capacitor / `0x22` power bank (§9) |
 | **Battery serial** | pack | `0x26` | `b4..b9` packed big-endian into a 48-bit int, `padLeft(6,'0')` |
-| **Manufacture year** | pack | `0x25` | big-endian u16 (§8.2.3). **Not part of the serial** (§9) |
+| **Manufacture year** | all | `0x25` | big-endian u16 (§8.2.3). **Not part of the serial** (§9). ⚠️ **Class corrected from `pack` to `all`, 2026-08-05** — present on every device class, including 36,507 power-bank frames |
 | **Dealer code** | all | `0x27` | label string `"%04d%02X%02X"` from `b4..b7` (§4.4) |
 | **Mode / status** | all | `0x23` | `b4` — reported-status code space (§6.2) |
 | **Capacity / SOH** | ⚠️ | `0x96` | **Never observed.** See §9 before implementing |
