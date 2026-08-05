@@ -183,7 +183,34 @@ class _PowerPathRowState extends State<PowerPathRow> {
 
     final row = <Widget>[];
 
-    // ---- segment 1: direction (or the in-band standby label) ---------------
+    // ---- segment 1: port badge ---------------------------------------------
+    row.add(flagsContradicted
+        ? _undeterminedBadge(context, l10n)
+        : _portBadge(context, l10n, isTypeC, active, flow));
+    if (showPd) row.add(_pdBadge(context, l10n));
+
+    // ---- segment 2: direction, placed to READ AS the readings' label -------
+    //
+    // The direction sits immediately before the numbers on purpose (2026-08-05).
+    // It used to lead the row, which left "9.04 V  0.68 A" bare at the far end
+    // with two separators and two badges between them and the only word saying
+    // which way the energy goes. A reporter on 0.6.14 put it plainly: "no
+    // charging voltage shown". He was right, and the fix is adjacency —
+    // "CHARGING 9.04 V 0.68 A" reads as one clause.
+    //
+    // ⚠️ Deliberately NOT a per-reading label ("input voltage" / "output
+    // voltage"), even though both strings still sit unused in the .arb from
+    // design 0037. A label is a SECOND surface that has to stay in agreement
+    // with [PowerFlow], and a label saying the wrong thing is precisely FB-47:
+    // a 9.15 V PD charge printed under "Output Voltage", which the owner read
+    // as his device being broken. One derivation, one rendering (§6) —
+    // adjacency cannot disagree with the word it is adjacent to. Do not
+    // "improve" this by reintroducing the labels.
+    //
+    // Losing the leading slot costs nothing since v0.7.3: the SOC dial above
+    // carries the direction as its own sub-line, so the glanceable copy lives
+    // there and this row is free to spend the slot on precision.
+    row.add(_dot(context));
     if (flow == PowerFlow.idle) {
       // Rail up but current in the dead-band: "standby · no flow" (§4.6). This
       // is the correct face of bit1's "first 11 seconds" — a Type-C cable that
@@ -204,17 +231,8 @@ class _PowerPathRowState extends State<PowerPathRow> {
                 fontSize: 13, fontWeight: FontWeight.w700, color: color)));
     }
 
-    // ---- segment 2: port badge --------------------------------------------
+    // ---- segment 3: readings, no separator — they belong to the word above --
     row
-      ..add(_dot(context))
-      ..add(flagsContradicted
-          ? _undeterminedBadge(context, l10n)
-          : _portBadge(context, l10n, isTypeC, active, flow));
-    if (showPd) row.add(_pdBadge(context, l10n));
-
-    // ---- segment 3: readings ----------------------------------------------
-    row
-      ..add(_dot(context))
       ..add(_reading(context, _fmt2(tele.svlt), 'V'))
       ..add(_reading(context, _fmt2Abs(tele.current), 'A'));
 

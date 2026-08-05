@@ -115,6 +115,32 @@ class TelemetryDecoder {
   /// Capacity raw byte — selector 0x96: b6.
   static int capacityRaw(InboundFrame f) => f.b(6);
 
+  /// ## Not-ready frames (2026-08-05)
+  ///
+  /// A power bank that reboots mid-session sends one telemetry group whose
+  /// values are not yet populated — `0x19 = 0000`, `0x37 = 0000`, `0x21`
+  /// temperature `= 00` — while the frame itself is perfectly well formed
+  /// (`0x21`'s trailing byte still reads its usual `0xe2`, and the XOR checks
+  /// out). **The frame is legal; the values are not ready.** 180 ms later the
+  /// same registers read normally. Observed three times in one capture, each
+  /// alongside two other independent reboot fingerprints (`0x3B` rewinding to
+  /// a checkpoint, `0x34`'s last byte incrementing).
+  ///
+  /// Published as-is it renders "0.00 V / 0.00 V / 0 °C" on the dashboard: a
+  /// plausible-looking wrong reading, which this project treats as strictly
+  /// worse than a blank — the same rule that gates `0x4A` on the device class
+  /// below.
+  ///
+  /// The guard is a PHYSICAL argument, not a statistical one: a device whose
+  /// primary cell reads 0 V cannot be powering the radio that just delivered
+  /// the frame. That is why `pvlt == 0` is dropped for every class, while
+  /// `svlt == 0` is dropped only on a power bank.
+  ///
+  /// ⚠️ Not a protocol claim, so not subject to the corpus's multi-unit bar:
+  /// it asserts nothing new about the wire, it only declines to render a frame
+  /// the device has not finished filling in. Same character as the same-burst
+  /// corroboration in `power_path_row.dart`.
+
   /// SOC percent — selector 0x96: b6 read DIRECTLY as a 0..100 percentage
   /// (PROTOCOL.md §9.1). The device reports SOC straight; there is no
   /// voltage->SOC curve. Clamped to 0..100. Distinct from [sohBucket].
@@ -184,10 +210,17 @@ class TelemetryDecoder {
     switch (f.selector) {
       case Selectors.pvlt:
         final v = pvlt(f);
+        // NOT-READY frame, not a reading — see the note above [socPercent].
+        if (v == 0) return base;
         return base.copyWith(
             timestamp: ts, pvlt: v, pvltGaugeIndex: pvltGaugeIndex(v));
       case Selectors.svlt:
-        return base.copyWith(timestamp: ts, svlt: svlt(f));
+        final sv = svlt(f);
+        // Same guard, power banks only: a capacitor's SECONDARY voltage does
+        // legitimately reach 0 V when it is discharged, so this one cannot be
+        // class-blind the way pvlt can.
+        if (sv == 0 && base.isPowerBank) return base;
+        return base.copyWith(timestamp: ts, svlt: sv);
       case Selectors.temperature:
         return base.copyWith(timestamp: ts, temperatureC: temperature(f));
       case Selectors.current:
