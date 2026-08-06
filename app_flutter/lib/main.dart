@@ -329,6 +329,33 @@ class _RootShellState extends State<RootShell> {
         );
   }
 
+  /// The ONLY way `_tab` may be written after construction.
+  ///
+  /// 🔴 It is a single entry point because it was not one, and that cost a
+  /// bypass: the stale-telemetry banner's "open Settings" callback used to do
+  /// its own `setState(() => _tab = _Tab.settings)`. `setState` does not run
+  /// `didChangeDependencies`, so [_syncDashboardVisible] never fired and gate
+  /// condition 3 stayed true. With the IndexedStack keeping the speed card
+  /// mounted (condition 1) and the app resumed (condition 2), the GNSS receiver
+  /// kept running — and speed kept landing — while Settings covered the
+  /// dashboard. Design 0042 G4 makes that gate the whole battery story.
+  ///
+  /// The trigger was not exotic: the banner appears whenever telemetry stalls,
+  /// which on a moving bike is whenever BLE hiccups.
+  ///
+  /// Anything that needs to switch tabs calls this. A second `_tab = …` in this
+  /// file is a bug, not a shortcut.
+  void _setTab(_Tab next) {
+    setState(() {
+      _tab = next;
+      // Re-keyed on each switch to 歷史 so it reloads the latest records.
+      if (next == _Tab.history) _historyEpoch++;
+    });
+    // OUTSIDE the setState closure: this notifies a ChangeNotifier, and doing
+    // that inside a state update marks other widgets dirty in the middle of one.
+    _syncDashboardVisible();
+  }
+
   void _syncDashboardVisible() =>
       context.read<GpsSpeedController>().setDashboardVisible(
             _tab == _Tab.dashboard,
@@ -357,7 +384,7 @@ class _RootShellState extends State<RootShell> {
           index: _tab.index,
           children: [
             DashboardPage(
-              onOpenSettings: () => setState(() => _tab = _Tab.settings),
+              onOpenSettings: () => _setTab(_Tab.settings),
             ),
             // Re-keyed on each switch to 歷史 so it reloads the latest records.
             HistoryScreen(key: ValueKey(_historyEpoch)),
@@ -391,16 +418,7 @@ class _RootShellState extends State<RootShell> {
         ),
         child: NavigationBar(
           selectedIndex: _tab.index,
-          onDestinationSelected: (i) {
-            setState(() {
-              _tab = _Tab.values[i];
-              if (_tab == _Tab.history) _historyEpoch++;
-            });
-            // OUTSIDE the setState closure: this notifies a ChangeNotifier,
-            // and doing that inside a state update marks other widgets dirty
-            // in the middle of one.
-            _syncDashboardVisible();
-          },
+          onDestinationSelected: (i) => _setTab(_Tab.values[i]),
           destinations: [
             NavigationDestination(
               icon: const Icon(Icons.speed_outlined),

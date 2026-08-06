@@ -229,6 +229,16 @@ class GpsSpeedController extends ChangeNotifier {
   bool _appResumed = true;
   bool _dashboardVisible = false;
 
+  /// Gate condition 3, readable so a test can drive it through the real shell.
+  ///
+  /// It is exposed because the 2026-08-07 review found a route that set the tab
+  /// without telling this controller, and a unit test on [setDashboardVisible]
+  /// would have passed the whole time — the defect was in the CALLER. Making
+  /// the condition observable is what lets `widget_test.dart` assert on the
+  /// shell's behaviour instead of on this class's.
+  @visibleForTesting
+  bool get dashboardVisible => _dashboardVisible;
+
   StreamSubscription<SpeedFix>? _fixes;
   Timer? _ticker;
   SpeedPermissionState _permission = SpeedPermissionState.notRequested;

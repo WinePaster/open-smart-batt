@@ -73,9 +73,32 @@ const String _v11DiagLog = '''
     note TEXT, device_id TEXT, session_id INTEGER, app_build TEXT
   )''';
 
+/// Column NAMES only. Kept because several assertions read better as a set
+/// difference; [_columnSpecsOf] is what actually guards the migration.
 Future<Set<String>> _columnsOf(dynamic db, String table) async {
   final info = await db.rawQuery('PRAGMA table_info($table)');
   return {for (final row in info) row['name'] as String};
+}
+
+/// Column name **plus its full declaration** — type, NOT NULL and DEFAULT.
+///
+/// 🔴 Comparing names alone is not enough, and that gap was found by review
+/// rather than by this file failing (2026-08-07). `ALTER TABLE ... ADD COLUMN
+/// g_meter_enabled INTEGER` and `... INTEGER NOT NULL DEFAULT 0` produce the
+/// same NAME, and a name-only comparison calls the two schemas equal. The
+/// constraints on these nine columns were themselves a ruling — `g_meter_enabled`
+/// NOT NULL DEFAULT 0 because a boolean has two meaningful states, `g_calibration`
+/// nullable because "never calibrated" has no sensible default — and SQLite
+/// cannot alter a column's constraints afterwards. So a constraint that lands
+/// wrong in v12 lands wrong permanently, and only this comparison can say so
+/// before it ships.
+Future<Set<String>> _columnSpecsOf(dynamic db, String table) async {
+  final info = await db.rawQuery('PRAGMA table_info($table)');
+  return {
+    for (final row in info)
+      '${row['name']} ${row['type']} '
+          'notnull=${row['notnull']} default=${row['dflt_value']} pk=${row['pk']}'
+  };
 }
 
 void main() {
@@ -216,12 +239,25 @@ void main() {
       final fresh = await AppDatabase.open(
           path: p.join(dir.path, 'fresh.db'), factory: databaseFactoryFfi);
       addTearDown(fresh.close);
+      // Names first, because a missing column reads far better as a set
+      // difference than as a diff of declaration strings.
       expect(
         await _columnsOf(upgraded.db, table),
         await _columnsOf(fresh.db, table),
         reason: '$table differs between a new install and an upgraded one — '
             'one of _createStatements / _onUpgrade was edited without the '
             'other',
+      );
+      // Then the declarations. This is the half that catches
+      // `ADD COLUMN x INTEGER` vs `x INTEGER NOT NULL DEFAULT 0` — same name,
+      // different column, and SQLite cannot fix it after v12 ships.
+      expect(
+        await _columnSpecsOf(upgraded.db, table),
+        await _columnSpecsOf(fresh.db, table),
+        reason: '$table has a column whose TYPE / NOT NULL / DEFAULT differs '
+            'between a new install and an upgraded one. The names match, so '
+            'somebody added the column to both paths but declared it '
+            'differently in one of them.',
       );
     }
 
