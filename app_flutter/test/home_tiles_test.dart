@@ -24,7 +24,11 @@ import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
+import 'dart:io';
+
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
+import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
@@ -240,4 +244,83 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 交付一查核, B-1. A connected power bank rendered its whole
+  // default home page as `--`, and 1052 tests were green: home_layout_test
+  // covers the model only, and this file had never pumped a live power bank.
+  // The decision is now a named function so the branch is reachable at all.
+  // ---------------------------------------------------------------------------
+  group('B-1: a live power bank draws its own cards, not the unclassified set',
+      () {
+    test('a real power bank resolves to powerBank, not unknown', () {
+      // packShellClass(powerBank) == unknown. displayClass has ALREADY folded a
+      // stray powerBank LABEL to unknown, so a second application demotes the
+      // real thing. This is the assertion the bug could not have survived.
+      expect(DisplayModules.packShellClass(ProductClass.powerBank),
+          ProductClass.unknown,
+          reason: 'the quirk itself is unchanged — it is the double '
+              'application that was wrong');
+      expect(homeTileShellClass('DEV-PB', _StubConn(ProductClass.powerBank)),
+          ProductClass.powerBank);
+    });
+
+    test('a stray powerBank LABEL on the pack route still folds to unknown',
+        () {
+      // displayClass does that fold itself; the home tile must not undo it and
+      // must not repeat it.
+      expect(homeTileShellClass('DEV-PACK', _StubConn(ProductClass.unknown)),
+          ProductClass.unknown);
+    });
+
+    test('the modules a power bank home page asks for actually exist', () {
+      // The other half: even with the right class, the default layout is only
+      // useful if these two resolve. `defaultFor` gives a lone power bank
+      // exactly [gaugeSoc, readouts].
+      final mods = DisplayModules.forClass(ProductClass.powerBank).modules;
+      expect(mods, contains(DisplayModule.gaugeSoc));
+      expect(mods, contains(DisplayModule.energyPath));
+      expect(DisplayModules.forClass(ProductClass.unknown).modules,
+          isNot(contains(DisplayModule.gaugeSoc)),
+          reason: 'this is why the double application showed `--`');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 交付一查核, B-2. T-new-3 pins "a number never appears without its
+  // age". It did — and the number could still be weeks older than the age
+  // beside it, because `last_value` was written once (at saveNew) while
+  // `last_seen` advanced every minute. The invariant was satisfied to the
+  // letter and the sentence was false.
+  //
+  // The existing T-new-3 tests could not catch it: they build a SavedDevice by
+  // hand with the two fields already agreeing, which is exactly the thing that
+  // does not happen in the app.
+  // ---------------------------------------------------------------------------
+  test('B-2: the stored value travels with the stored age', () {
+    // Source-level, because the defect is about WHO writes the pair and WHEN —
+    // a widget test that constructs the row cannot see it.
+    final src = File('lib/state/connection_controller.dart').readAsStringSync();
+    final touchSig = RegExp(r'void _touchLastSeen\([^)]*\)').firstMatch(src);
+    expect(touchSig, isNotNull);
+    expect(touchSig!.group(0), contains('double? value'),
+        reason: 'the throttled last_seen write is the only place that runs '
+            'once a minute with a live sample in scope — if it cannot carry '
+            'the value, the value cannot stay fresh');
+
+    // And the telemetry-driven call site must actually pass one. A signature
+    // that nobody feeds is the same bug with extra steps.
+    expect(src, contains('_touchLastSeen(id, value: s.pvlt)'),
+        reason: 'the per-frame path must hand over the sample it already has');
+  });
+}
+
+/// Minimal stand-in: [homeTileShellClass] reads exactly one getter.
+class _StubConn implements ConnectionController {
+  _StubConn(this._cls);
+  final ProductClass _cls;
+  @override
+  ProductClass get displayClass => _cls;
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }

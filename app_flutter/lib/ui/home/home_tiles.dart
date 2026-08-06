@@ -37,7 +37,6 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_cards.dart';
-import '../dashboard/display_modules.dart';
 import '../widgets/industrial_card.dart';
 import '../util/relative_time.dart';
 
@@ -357,9 +356,7 @@ class _ModuleTile extends StatelessWidget {
     final live =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
     if (!live) return _WaitingTile(module: module);
-    final shellClass = id == null
-        ? ProductClass.unknown
-        : DisplayModules.packShellClass(conn.displayClass);
+    final shellClass = homeTileShellClass(id, conn);
     return dashboardCardFor(context, module, shellClass: shellClass) ??
         _WaitingTile(module: module);
   }
@@ -395,3 +392,32 @@ class _WaitingTile extends StatelessWidget {
     );
   }
 }
+
+/// Which class's card set a home module tile draws with.
+///
+/// 🔴 `displayClass`, NOT `packShellClass(displayClass)`. The two look
+/// interchangeable and are not.
+///
+/// [DisplayModules.packShellClass] exists for the PACK SHELL, which is handed
+/// the raw cosmetic label and has to fold a stray `powerBank` LABEL into the
+/// unclassified set (`pack_view.dart:110`). [ConnectionController.displayClass]
+/// has already answered that question — it reports what will actually be drawn.
+/// Applying the quirk a second time maps a REAL power bank (`isPowerBank`, so
+/// `displayClass` == `powerBank`) to `unknown`.
+///
+/// That shipped, briefly, and the symptom was a home page of `--`: `gaugeSoc`
+/// and `energyPath` do not exist for `unknown`, so `dashboardCardFor` returned
+/// null for both and `readouts` drew a pack's voltage grid. It hit the DEFAULT
+/// layout head-on — [HomeLayout.defaultFor] gives a single power bank exactly
+/// `[gaugeSoc, readouts]` — so the first thing a power-bank owner would have
+/// seen on the new home tab was two empty cards.
+///
+/// It is a named function rather than two lines inside `build` because that is
+/// what makes the decision reachable from a test. The 1052-test suite was green
+/// throughout: `home_layout_test` only covers the model, and `home_tiles_test`
+/// had never pumped a live power bank. Same shape as the 0042 defect where the
+/// Android sampling period sat at 5 s past 940 green tests — the input to the
+/// decision had no test looking at it.
+@visibleForTesting
+ProductClass homeTileShellClass(String? deviceId, ConnectionController conn) =>
+    deviceId == null ? ProductClass.unknown : conn.displayClass;

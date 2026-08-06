@@ -1678,7 +1678,9 @@ class ConnectionController extends ChangeNotifier {
     // the data rather than sitting at the connect time.
     final id = _ble.connectedDeviceId;
     if (id != null) {
-      _touchLastSeen(id);
+      // The sample is right here, so the stored value and the stored age come
+      // from the same instant. See [_touchLastSeen].
+      _touchLastSeen(id, value: s.pvlt);
       _persistIdentity(id, s);
     }
   }
@@ -1761,7 +1763,25 @@ class ConnectionController extends ChangeNotifier {
   /// Advance the saved unit's `last_seen`, at most once per
   /// [lastSeenInterval] unless [force]. The forced calls are the two that must
   /// not be dropped: the opening stamp, and the final one at disconnect.
-  void _touchLastSeen(String id, {bool force = false}) {
+  ///
+  /// [value] rides along on the telemetry-driven calls, and it has to.
+  ///
+  /// 🔴 `last_value` used to be written in exactly ONE place — `saveNew`, when
+  /// the unit was first named — while `last_seen` advanced every minute of
+  /// every session. The two are rendered as a single sentence
+  /// ("12.6 V · 3 minutes ago"), so the pair drifted apart silently: the age
+  /// was current and the number could be weeks old. Design 0046 promoted that
+  /// sentence from an 11 pt meta line in a bottom sheet to the headline of the
+  /// default home page, and then wrote an invariant on top of it (T-new-3, "a
+  /// number never appears without its age") — which the code satisfied to the
+  /// letter while telling the user something false.
+  ///
+  /// Writing both together costs nothing: this method is already throttled to
+  /// [lastSeenInterval], so it is one extra column on a write that was
+  /// happening anyway. The forced calls pass null, and `DeviceRepo.touch`
+  /// omits a null rather than clearing the column — a disconnect must not
+  /// erase the last thing we knew.
+  void _touchLastSeen(String id, {bool force = false, double? value}) {
     final now = DateTime.now();
     final last = _lastSeenWrittenAt;
     if (!force &&
@@ -1772,7 +1792,7 @@ class ConnectionController extends ChangeNotifier {
     }
     _lastSeenWrittenAt = now;
     _lastSeenDeviceId = id;
-    final touch = _devices?.touch(id, lastSeen: now);
+    final touch = _devices?.touch(id, lastSeen: now, lastValue: value);
     if (touch != null) _pending.add(touch);
   }
 
