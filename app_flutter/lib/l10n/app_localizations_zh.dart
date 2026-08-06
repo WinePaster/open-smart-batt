@@ -729,6 +729,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyEmptyAll => '尚無歷史紀錄。\n連線裝置後就會開始累積。';
 
   @override
+  String get historyEmptyNoDevices => '尚無裝置紀錄。\n連線並命名裝置後就會開始累積。';
+
+  @override
+  String get historyEmptyDeviceRange => '這台裝置在此範圍內沒有紀錄。';
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);

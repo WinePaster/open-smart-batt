@@ -1298,6 +1298,18 @@ abstract class AppLocalizations {
   /// **'No history yet.\nIt starts accumulating once a device is connected.'**
   String get historyEmptyAll;
 
+  /// History is empty because no device has any rows yet. It names the naming step on purpose: saving a device is a manual step the user can cancel, which is where people get stuck.
+  ///
+  /// In en, this message translates to:
+  /// **'No device records yet.\nThey start accumulating once you connect a device and give it a name.'**
+  String get historyEmptyNoDevices;
+
+  /// The view is always scoped to one device, so 'no records' has to say WHOSE — history may well hold plenty of rows, just for another unit.
+  ///
+  /// In en, this message translates to:
+  /// **'No records for this device in the selected range.'**
+  String get historyEmptyDeviceRange;
+
   /// No description provided for @historyFooter.
   ///
   /// In en, this message translates to:

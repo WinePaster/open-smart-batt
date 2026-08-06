@@ -141,8 +141,10 @@ class HistoryRepo {
     DateTime? since,
     int? limit,
     String? deviceId,
+    bool attributedOnly = false,
   }) async {
-    final (where, args) = _scope(since: since, deviceId: deviceId);
+    final (where, args) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final rows = await _db.query(
       Db.tableHistory,
       where: where,
@@ -168,8 +170,10 @@ class HistoryRepo {
     DateTime? since,
     int? limit,
     String? deviceId,
+    bool attributedOnly = false,
   }) async {
-    final (where, args) = _scope(since: since, deviceId: deviceId);
+    final (where, args) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final rows = await _db.query(
       Db.tableHistory,
       where: where,
@@ -187,9 +191,24 @@ class HistoryRepo {
 
   /// WHERE clause for a time/device scope. A null [deviceId] means "every
   /// device" — it never matches only the NULL (unattributed) rows.
-  (String?, List<Object?>?) _scope({DateTime? since, String? deviceId}) {
+  ///
+  /// [attributedOnly] additionally drops the rows that carry NO device at all
+  /// (design 0043 §3.2). It is OPT-IN rather than the default for one reason:
+  /// the export must keep emitting those rows, and it is the only way anyone
+  /// can still reach them once the History screen stops showing them. An
+  /// opt-out default would put that guarantee one forgotten argument away,
+  /// whereas an opt-in one cannot leak into a call site that never asks for it.
+  (String?, List<Object?>?) _scope({
+    DateTime? since,
+    String? deviceId,
+    bool attributedOnly = false,
+  }) {
     final clauses = <String>[];
     final args = <Object?>[];
+    // Redundant when [deviceId] is set (`NULL = 'AA'` is NULL, never true), but
+    // spelled out anyway so the clause reads the same in every scope and a
+    // reader never has to re-derive SQL's three-valued logic to be sure.
+    if (attributedOnly) clauses.add('device_id IS NOT NULL');
     if (since != null) {
       clauses.add('timestamp >= ?');
       args.add(since.millisecondsSinceEpoch);
@@ -214,9 +233,11 @@ class HistoryRepo {
     DateTime? since,
     required int bucketMs,
     String? deviceId,
+    bool attributedOnly = false,
   }) async {
     final b = bucketMs < 60000 ? 60000 : bucketMs;
-    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final (clause, scopeArgs) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final rows = await _db.rawQuery(
@@ -245,8 +266,13 @@ class HistoryRepo {
 
   /// Range-wide min/max/avg over raw rows (accurate stats, not bucket-averaged).
   /// FB-38: see [queryBuckets] — same gap, same fix.
-  Future<HistoryStats> aggregate({DateTime? since, String? deviceId}) async {
-    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+  Future<HistoryStats> aggregate({
+    DateTime? since,
+    String? deviceId,
+    bool attributedOnly = false,
+  }) async {
+    final (clause, scopeArgs) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final r = await _db.rawQuery(
@@ -271,12 +297,64 @@ class HistoryRepo {
     );
   }
 
-  /// Total stored sample count.
+  /// Total stored sample count, unattributed rows included.
   Future<int> count() async {
     final r = await _db.rawQuery(
       'SELECT COUNT(*) AS n FROM ${Db.tableHistory}',
     );
     return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Rows that carry a device — i.e. everything the History screen can show.
+  ///
+  /// This is the number the screen's footer reports (design 0043 §3.2), and it
+  /// is also one half of the invariant that licensed removing the screen's
+  /// "all devices" option: it must equal the sum of [deviceGroups]' counts.
+  /// If it ever exceeds that sum, some showable row belongs to no group and is
+  /// therefore reachable from nowhere on the screen — the footer would then
+  /// disagree with the lists above it, in public, which is the point of putting
+  /// this number there rather than [count].
+  Future<int> countAttributed() async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE device_id IS NOT NULL',
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// One entry per device that history actually holds rows for.
+  ///
+  /// This — not `saved_devices` — is what the History screen's device picker
+  /// offers (design 0043 §3.4). The two disagree in both directions: deleting a
+  /// saved record leaves its rows behind, and saving a record is a MANUAL step
+  /// the user can cancel, so a unit can accumulate a month of history without
+  /// ever appearing in the saved list. Sourcing the picker from `saved_devices`
+  /// therefore produced options that were guaranteed empty alongside data that
+  /// was unreachable; grouping history against itself makes the picker and the
+  /// data agree by construction.
+  ///
+  /// Deliberately NOT time-scoped. The picker answers "which units does this
+  /// database know about", which is a different question from "which stretch of
+  /// time am I looking at" — a list that shrank with the range would make units
+  /// blink out when the user switched to "today" and read as data loss.
+  ///
+  /// [lastAt] is the newest row for that device, used to order the units that
+  /// have no saved record left to sort by, and to tell two ids for the same
+  /// physical unit apart after an iOS reinstall rotates its NSUUID.
+  Future<List<({String deviceId, int count, DateTime lastAt})>>
+      deviceGroups() async {
+    final rows = await _db.rawQuery(
+      'SELECT device_id AS id, COUNT(*) AS n, MAX(timestamp) AS lastAt '
+      'FROM ${Db.tableHistory} WHERE device_id IS NOT NULL '
+      'GROUP BY device_id',
+    );
+    return rows
+        .map((r) => (
+              deviceId: r['id'] as String,
+              count: (r['n'] as num?)?.toInt() ?? 0,
+              lastAt: DateTime.fromMillisecondsSinceEpoch(
+                  (r['lastAt'] as num?)?.toInt() ?? 0),
+            ))
+        .toList(growable: false);
   }
 
   /// Delete all history rows.
@@ -330,6 +408,12 @@ class HistoryRepo {
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
   }) async {
+    // No `attributedOnly` here, and there must never be one: since design 0043
+    // the History screen hides rows with no device, so this export is the only
+    // remaining way to get them off the phone. Those rows were never deleted
+    // precisely because this path keeps them reachable — a CSV names the device
+    // on every row, so one file holding several units cannot mislead the way a
+    // single averaged chart line does.
     final (where, args) = _scope(since: since, deviceId: deviceId);
     final raw = await _db.query(
       Db.tableHistory,
@@ -388,10 +472,13 @@ class HistoryRepo {
   /// the result set, which cannot see them.
   /// Rows recorded before the unit was identified, in [since]'s range.
   ///
-  /// Public since FB-38: a device-scoped VIEW hides these exactly as a
-  /// device-scoped EXPORT does, and the screen has to be able to say so. The
-  /// export already admits it in its header; leaving the screen silent would
-  /// just relocate the "where did my data go?" report rather than fix it.
+  /// Used by the EXPORT header only. The History screen used to call this too,
+  /// to footnote how many rows its device scope was hiding; design 0043 §3.6.1
+  /// withdrew that note. A row with no device is not a category the user has to
+  /// understand — it is a record that should never have been written (§3.1 now
+  /// prevents it), so the screen simply does not deal in it. The export still
+  /// declares the count because a file that cannot state what it omits is the
+  /// original problem this whole line of work exists to fix.
   Future<int> countUnattributed({DateTime? since}) async {
     final where = <String>['device_id IS NULL'];
     final args = <Object?>[];

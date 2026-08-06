@@ -49,14 +49,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _warningOnly = false;
   bool _exporting = false;
 
-  /// FB-38: which unit the chart, the stats AND the list cover. Null = all.
+  /// Which unit the chart, the stats AND the list cover.
   ///
-  /// Seeded from the live connection in [didChangeDependencies]; offline it
-  /// stays null on purpose. Guessing a unit while offline would quietly drop
-  /// the other units' rows with nothing on screen to explain the gap — and the
-  /// capture that opened FB-38 was taken offline.
+  /// Never "all units" any more (design 0043 §3.5). The three product classes
+  /// do not share a voltage range — a power bank sits near 3.9 V, a capacitor
+  /// near 13.5 V — and the chart aggregates without a device dimension, so an
+  /// unscoped view averaged them into a single line matching no physical unit.
+  /// Null here means only "not resolved yet"; [_load] fills it on first load
+  /// and never leaves it null while [_groups] is non-empty.
   String? _deviceId;
-  bool _seededDevice = false;
+
+  /// The units history holds rows for — the picker's options, and the reason
+  /// the "all devices" entry could be dropped: every row the screen can show
+  /// belongs to exactly one of these.
+  ///
+  /// Kept raw (ids and counts, no labels) so the names and the ordering are
+  /// resolved in [build] against the CURRENT saved-device list. Baking labels
+  /// in at load time left a unit reading as its hash when the device list
+  /// finished loading a moment after this did.
+  List<({String deviceId, int count, DateTime lastAt})> _groups = const [];
 
   late Future<_HistoryData> _future;
 
@@ -64,18 +75,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void initState() {
     super.initState();
     _future = _load();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_seededDevice) return;
-    _seededDevice = true;
-    final live = context.read<TelemetryController>().recordingDeviceId;
-    if (live != null) {
-      _deviceId = live;
-      _future = _load();
-    }
   }
 
   TelemetryController get _tele => context.read<TelemetryController>();
@@ -94,9 +93,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<_HistoryData> _load() async {
     final tele = _tele;
+    // Both controllers are captured now, before the first await: this can be
+    // called from initState, and `context.read` after an await may be running
+    // against a screen that is already gone. The CONTROLLER is captured, not
+    // its list — the saved devices are read at use time, so a device list that
+    // finishes loading during this load is still taken into account.
+    final devices = context.read<DeviceController>();
     final since = _sinceFor(_range);
-    final total = await tele.historyCount();
-    final scoped = _deviceId;
+
+    // Options first, and the default chosen FROM them (design 0043 §3.3.1).
+    // The seed used to run on the first frame against an already-loaded
+    // controller; it now has a database round-trip to lose to, and a seed that
+    // loses would leave the scope null with nothing to re-trigger it — an
+    // empty screen with no way back. Resolving both inside one load makes that
+    // race impossible rather than unlikely.
+    final groups = await tele.historyDeviceGroups();
+    final options = _optionsFor(groups, devices);
+    final known = {for (final o in options) o.id};
+    var scoped = _deviceId;
+    if (scoped == null || !known.contains(scoped)) {
+      // Also the recovery path for a selection that stopped being valid — the
+      // unit's rows pruned or cleared away. With no "all devices" entry left,
+      // a stale id has no item to sit on.
+      scoped = _seedScope(options, tele.recordingDeviceId, devices);
+    }
+    if (!mounted) {
+      return const _HistoryData(
+          rows: [], buckets: [], stats: HistoryStats.empty, total: 0);
+    }
+    // The picker sits OUTSIDE the FutureBuilder so that it does not blink out
+    // on every range change — which also means the future completing does not
+    // rebuild it. This is the one place that can.
+    setState(() {
+      _groups = groups;
+      _deviceId = scoped;
+    });
+
+    final total = await tele.historyAttributedCount();
     final stats = await tele.historyStats(since: since, deviceId: scoped);
     // Bucket width: aim for ~180 points across the visible span (>= 1 minute).
     final from = since ?? stats.firstAt;
@@ -108,16 +141,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         since: since, bucketMs: bucketMs, deviceId: scoped);
     final rows = await tele.historyWithDevice(
         since: since, limit: _rowCap, deviceId: scoped);
-    // Only meaningful while scoped: with no device filter these rows ARE shown.
-    final hidden = scoped == null
-        ? 0
-        : await tele.historyUnattributedCount(since: since);
     return _HistoryData(
-        rows: rows,
-        buckets: buckets,
-        stats: stats,
-        total: total,
-        hiddenUnattributed: hidden);
+        rows: rows, buckets: buckets, stats: stats, total: total);
   }
 
   void _reload() => setState(() => _future = _load());
@@ -132,7 +157,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _toggleWarning() => setState(() => _warningOnly = !_warningOnly);
 
-  void _setDevice(String? id) {
+  void _setDevice(String id) {
     if (id == _deviceId) return;
     setState(() {
       _deviceId = id;
@@ -296,8 +321,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ],
                         ),
                       ),
-                    if (_deviceId != null && data.hiddenUnattributed > 0)
-                      _hiddenNote(data.hiddenUnattributed),
                     _footer(data.total),
                   ],
                 );
@@ -415,18 +438,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// FB-38: device scope. Rendered only when there is a real choice — with one
-  /// saved unit the control is pure noise, and it says nothing the export
-  /// dialog does not already.
+  /// Device scope. Shown whenever there is anything to show — including with a
+  /// single option (design 0043 §3.7). It stopped being a switcher the moment
+  /// "all devices" went away: with the view permanently scoped to one unit, the
+  /// bar is how the screen says WHICH unit these numbers belong to, and that
+  /// sentence is needed just as much when there is only one answer to it.
   Widget? _deviceBar() {
-    final l10n = AppLocalizations.of(context);
-    final devices = context.watch<DeviceController>().devices;
-    if (devices.length < 2) return null;
-    final items = <(String?, String)>[
-      (null, l10n.historyScopeAllDevices),
-      for (final d in devices)
-        (d.id, d.alias.isNotEmpty ? d.alias : shortDeviceHash(d.id)),
-    ];
+    final options = _optionsFor(_groups, context.watch<DeviceController>());
+    final selected = _deviceId;
+    // Both empty only before the first load has resolved; `selected` is kept
+    // inside `options` by [_load], and a Dropdown whose value is not among its
+    // items throws.
+    if (options.isEmpty || selected == null) return null;
+    if (!options.any((o) => o.id == selected)) return null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 0, 15, 4),
       child: Row(
@@ -435,20 +459,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(width: 7),
           Expanded(
             child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: items.any((e) => e.$1 == _deviceId) ? _deviceId : null,
+              child: DropdownButton<String>(
+                value: selected,
                 isDense: true,
                 isExpanded: true,
                 style: TextStyle(fontSize: 12.5, color: context.colors.text),
                 dropdownColor: context.colors.panel2,
                 items: [
-                  for (final (id, label) in items)
-                    DropdownMenuItem<String?>(
-                      value: id,
-                      child: Text(label, overflow: TextOverflow.ellipsis),
+                  for (final o in options)
+                    DropdownMenuItem<String>(
+                      value: o.id,
+                      child: Text(o.label, overflow: TextOverflow.ellipsis),
                     ),
                 ],
-                onChanged: _setDevice,
+                onChanged: (id) {
+                  if (id != null) _setDevice(id);
+                },
               ),
             ),
           ),
@@ -456,27 +482,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
-
-  /// The scope's own footnote. A filter that silently drops 29 % of the rows —
-  /// which is what the capture behind FB-38 held — is FB-21 relocated from the
-  /// export to the screen, so the screen has to admit it too.
-  Widget _hiddenNote(int n) => Padding(
-        padding: const EdgeInsets.only(top: 9),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.info_outline, size: 14, color: AppColors.amber),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                AppLocalizations.of(context).historyScopeHiddenNote(n),
-                style: const TextStyle(
-                    fontSize: 10.5, height: 1.5, color: AppColors.amber),
-              ),
-            ),
-          ],
-        ),
-      );
 
   Widget _footer(int total) {
     return IndustrialCard(
@@ -506,10 +511,78 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   String _emptyText() {
     final l10n = AppLocalizations.of(context);
+    // No unit has a single row: say so once, in these words, whatever else the
+    // database still holds (design 0043 §3.6.1). A phone whose entire history
+    // predates device attribution lands here and is told nothing about those
+    // rows — deliberately. They are not a category a user should have to learn
+    // about; they remain on disk and remain exportable.
+    if (_groups.isEmpty) return l10n.historyEmptyNoDevices;
     if (_warningOnly) return l10n.historyEmptyWarning;
-    return _range == HistoryRange.today
-        ? l10n.historyEmptyToday
-        : l10n.historyEmptyAll;
+    // The view is always scoped to one unit now, which makes the old "no
+    // records today" wrong as often as not: there may be plenty of records,
+    // they just belong to a different unit.
+    return l10n.historyEmptyDeviceRange;
+  }
+
+  /// Order the picker: units the user can still put a name to first, most
+  /// recently seen among them first, then the rest by their own newest row.
+  ///
+  /// Two halves with two sort keys, because they have to be. `lastSeen` lives
+  /// in the saved-device table, so a unit whose record was deleted — or never
+  /// created, saving being a manual step — has none to sort by. Ordering those
+  /// by their newest history row is the closest honest equivalent.
+  ///
+  /// A unit with no saved record shows as its short hash. Design 0022 rejected
+  /// sourcing this list from history for exactly that reason; design 0043 §3.4
+  /// reverses the priority, because "ugly but reachable" beats "tidy but
+  /// permanently invisible" — and invisible is what those rows were.
+  static List<_DeviceOption> _optionsFor(
+    List<({String deviceId, int count, DateTime lastAt})> groups,
+    DeviceController devices,
+  ) {
+    // DeviceController hands its list back most-recently-seen first, so the
+    // index IS the lastSeen order; deriving a second one here would be a second
+    // answer to a question already answered.
+    final rank = <String, int>{
+      for (var i = 0; i < devices.devices.length; i++) devices.devices[i].id: i,
+    };
+    final named = <({String deviceId, int count, DateTime lastAt})>[];
+    final orphans = <({String deviceId, int count, DateTime lastAt})>[];
+    for (final g in groups) {
+      (deviceNameFor(devices, g.deviceId).isNotEmpty ? named : orphans).add(g);
+    }
+    named.sort((a, b) => rank[a.deviceId]!.compareTo(rank[b.deviceId]!));
+    orphans.sort((a, b) => b.lastAt.compareTo(a.lastAt));
+    return [
+      for (final g in [...named, ...orphans])
+        _DeviceOption(
+          id: g.deviceId,
+          label: deviceLabelFor(devices, g.deviceId),
+        ),
+    ];
+  }
+
+  /// The default unit (design 0043 §3.3): the one being recorded, else the one
+  /// seen most recently, else simply the first option.
+  ///
+  /// Every step is intersected with [options]. Seeding to a unit that has no
+  /// history rows — which the saved-device list is full of, since a record
+  /// outlives the rows and can exist before any — would open the screen on a
+  /// guaranteed-blank chart.
+  static String? _seedScope(
+    List<_DeviceOption> options,
+    String? recording,
+    DeviceController devices,
+  ) {
+    if (options.isEmpty) return null;
+    final known = {for (final o in options) o.id};
+    if (recording != null && known.contains(recording)) return recording;
+    for (final d in devices.devices) {
+      if (known.contains(d.id)) return d.id;
+    }
+    // Nothing in the picker has a saved record left: fall back to the first
+    // option, which by [_optionsFor] is the one with the newest row.
+    return options.first.id;
   }
 
   // ---- filtering / classification --------------------------------------
@@ -549,22 +622,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
+/// One entry in the device picker.
+///
+/// The group's row count is deliberately NOT carried here: it exists to be
+/// summed against [HistoryRepo.countAttributed], and that check belongs where
+/// both halves are — in the repository, not in a widget.
+class _DeviceOption {
+  const _DeviceOption({required this.id, required this.label});
+
+  final String id;
+
+  /// Alias, else advertised name, else the short hash — never blank, and never
+  /// the raw id, which is a MAC address on Android.
+  final String label;
+}
+
 class _HistoryData {
   const _HistoryData({
     required this.rows,
     required this.buckets,
     required this.stats,
     required this.total,
-    this.hiddenUnattributed = 0,
   });
   final List<({TelemetrySample sample, String? deviceId})> rows;
   final List<HistoryBucket> buckets;
   final HistoryStats stats;
-  final int total;
 
-  /// Rows the device scope excluded because they were recorded before the unit
-  /// was identified (FB-38 §3.4). Zero when unscoped.
-  final int hiddenUnattributed;
+  /// Rows carrying a device — what the screen is able to show, and therefore
+  /// what the footer counts (design 0043 §3.2).
+  final int total;
 }
 
 // ====================== trend chart + stats =============================

@@ -770,6 +770,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'No history yet.\nIt starts accumulating once a device is connected.';
 
   @override
+  String get historyEmptyNoDevices =>
+      'No device records yet.\nThey start accumulating once you connect a device and give it a name.';
+
+  @override
+  String get historyEmptyDeviceRange =>
+      'No records for this device in the selected range.';
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);

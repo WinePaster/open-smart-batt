@@ -268,16 +268,35 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
 
   /// History rows paired with the unit each was recorded against, so the UI can
   /// resolve a row's product class (see [HistoryRepo.querySamplesWithDevice]).
+  ///
+  /// Attributed rows only — see [historyStats] for why the three History screen
+  /// queries all fix this.
   Future<List<({TelemetrySample sample, String? deviceId})>> historyWithDevice({
     DateTime? since,
     int? limit,
     String? deviceId,
   }) =>
       _history.querySamplesWithDevice(
-          since: since, limit: limit, deviceId: deviceId);
+          since: since, limit: limit, deviceId: deviceId, attributedOnly: true);
 
-  /// Stored sample count.
+  /// Stored sample count, unattributed rows included. [historyAttributedCount]
+  /// is the one the History screen reports.
   Future<int> historyCount() => _history.count();
+
+  /// Rows the History screen is able to show — every row that carries a device.
+  ///
+  /// Shown in the screen's footer instead of [historyCount] so the total agrees
+  /// with the chart, the stats and the list above it (design 0043 §3.2). A
+  /// footer counting rows the screen refuses to display would be the one place
+  /// the user could see that something exists, with no way to reach it.
+  Future<int> historyAttributedCount() => _history.countAttributed();
+
+  /// The units history holds rows for — the History screen's device picker.
+  ///
+  /// See [HistoryRepo.deviceGroups]: sourced from history itself rather than
+  /// from the saved device list, which is neither a superset nor a subset of it.
+  Future<List<({String deviceId, int count, DateTime lastAt})>>
+      historyDeviceGroups() => _history.deviceGroups();
 
   /// Bucketed trend for the chart (DB-side aggregation).
   ///
@@ -287,16 +306,27 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   Future<List<HistoryBucket>> historyBuckets(
           {DateTime? since, required int bucketMs, String? deviceId}) =>
       _history.queryBuckets(
-          since: since, bucketMs: bucketMs, deviceId: deviceId);
+          since: since,
+          bucketMs: bucketMs,
+          deviceId: deviceId,
+          attributedOnly: true);
 
   /// Range-wide min/max/avg stats over raw rows.
+  ///
+  /// Attributed rows only, and not optionally so. These three methods
+  /// ([historyStats], [historyBuckets], [historyWithDevice]) are the History
+  /// screen's entire view of the table, and design 0043 §3.2 puts rows with no
+  /// device outside that view. Fixing it here rather than passing a flag down
+  /// from the screen keeps the rule in one place and keeps it away from
+  /// [exportHistoryCsv], which must go on including those rows.
   Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) =>
-      _history.aggregate(since: since, deviceId: deviceId);
+      _history.aggregate(
+          since: since, deviceId: deviceId, attributedOnly: true);
 
   /// Rows in range that were recorded before the unit was identified.
   ///
-  /// FB-38 / FB-21: a device-scoped view excludes these, so the screen has to
-  /// be able to say how many it is not showing.
+  /// The export header's, not the screen's — see
+  /// [HistoryRepo.countUnattributed].
   Future<int> historyUnattributedCount({DateTime? since}) =>
       _history.countUnattributed(since: since);
 
@@ -454,8 +484,13 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// Open buckets keyed by the unit that owns them. The key is captured when
   /// the bucket opens, NOT when it flushes: a flush triggered by a disconnect
   /// (or after the next unit connects) would otherwise file the minute under
-  /// the wrong device — or under none at all. The null key is the unattributed
-  /// case and behaves exactly as it did.
+  /// the wrong device — or under none at all.
+  ///
+  /// The key stays nullable although [_maybeAutoLog] no longer opens a bucket
+  /// without a device (design 0043 §3.1): the flush paths are shared with code
+  /// that still reasons in terms of "whichever unit is current", and widening
+  /// the guard's reach by making the map non-nullable would move the check away
+  /// from the single place that is meant to own it.
   ///
   /// Keying is what replaces the old "a new unit mid-minute closes the bucket"
   /// rule. It gives the same guarantee — one row never mixes two units'
@@ -472,9 +507,30 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// diagnostic log carries on its own. The setting the user actually needs is
   /// how long to KEEP history, and that is what replaced it.
   void _maybeAutoLog(TelemetrySample s) {
+    final deviceId = _session.deviceId;
+    // design 0043 §3.1: a history row with no device is not recorded at all.
+    // Such rows are unreadable by construction — the History screen aggregates
+    // by device, so an unattributed row can only ever be averaged in with units
+    // it has nothing to do with, and a 3.7 V power bank folded into a 14 V
+    // capacitor's line produces a number matching no physical unit. The guard
+    // sits HERE, at the source, and not as a NOT NULL column constraint,
+    // because writes go through a background queue: a constraint violation
+    // would surface as an exception inside that queue, harder to trace than a
+    // dropped sample and able to take unrelated writes down with it.
+    //
+    // Today the session always has a device by the time telemetry flows
+    // (attribution begins at `connecting`, telemetry only at `ready`). This is
+    // therefore a guard against the future: once two links can be up at once,
+    // one unit disconnecting clears the ambient session while the other keeps
+    // streaming, and its samples would land here with no device.
+    if (deviceId == null) {
+      if (kDebugMode) {
+        debugPrint('history: dropped a sample with no device attribution');
+      }
+      return;
+    }
     final t = s.timestamp;
     final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
-    final deviceId = _session.deviceId;
     final b = _buckets.putIfAbsent(deviceId, _MinuteBucket.new);
     // Only a minute rollover closes a bucket now. The unit cannot change under
     // it: it IS the key.
