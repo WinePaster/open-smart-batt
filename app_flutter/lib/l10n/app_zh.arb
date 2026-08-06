@@ -18,6 +18,8 @@
   "relativeMinutesAgo": "{count, plural, other{{count} 分鐘前}}",
   "relativeHoursAgo": "{count, plural, other{{count} 小時前}}",
   "relativeDaysAgo": "{count, plural, other{{count} 天前}}",
+  "navHome": "主頁",
+  "navDevices": "裝置",
   "navDashboard": "裝置",
   "navHistory": "歷史",
   "navSettings": "設定",

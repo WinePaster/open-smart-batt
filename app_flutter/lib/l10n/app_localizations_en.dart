@@ -99,6 +99,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get navHome => 'Home';
+
+  @override
+  String get navDevices => 'Devices';
+
+  @override
   String get navDashboard => 'Devices';
 
   @override

@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
-import 'package:open_smart_batt/ui/dashboard/dashboard_page.dart';
+import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -106,27 +106,35 @@ void main() {
 
     final gps = services.speed;
     expect(gps.dashboardVisible, isTrue,
-        reason: 'the app opens on the dashboard');
+        reason: 'the app opens on the home tab, which is the tab that can '
+            'carry a speed card since design 0046 R3 moved the dashboard into '
+            'the per-device detail page');
 
     // Route 1: the bottom navigation bar.
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pump();
     expect(gps.dashboardVisible, isFalse);
 
-    await tester.tap(find.byIcon(Icons.speed_outlined));
+    await tester.tap(find.byIcon(Icons.dashboard_outlined));
     await tester.pump();
     expect(gps.dashboardVisible, isTrue);
 
     // Route 2: the one that used to bypass it. Driving it through the shell —
     // rather than calling the callback directly — is the point: a unit test on
     // setDashboardVisible would have passed throughout.
+    // Re-pointed by design 0046, NOT relaxed: the dashboard (and with it the
+    // stale banner that owns this callback) moved into the device detail page,
+    // so the shell now hands the callback down through [DevicesPage]. The
+    // bypass being pinned is unchanged — a route that switches tab without
+    // going through `_setTab` leaves gate condition 3 stuck open.
     final shell = tester.state<State>(find.byType(RootShell));
-    final dash = tester.widget<DashboardPage>(find.byType(DashboardPage));
-    dash.onOpenSettings!();
+    final devices = tester.widget<DevicesPage>(
+        find.byType(DevicesPage, skipOffstage: false));
+    devices.onOpenSettings!();
     await tester.pump();
     expect(gps.dashboardVisible, isFalse,
         reason: 'opening Settings from the stale banner must close the gate '
-            'too — the IndexedStack keeps the dashboard mounted, so nothing '
+            'too — the IndexedStack keeps the home grid mounted, so nothing '
             'else will notice it is no longer on screen');
     expect(shell.mounted, isTrue);
 

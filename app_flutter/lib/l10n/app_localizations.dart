@@ -206,7 +206,19 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day ago} other{{count} days ago}}'**
   String relativeDaysAgo(int count);
 
-  /// No description provided for @navDashboard.
+  /// No description provided for @navHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get navHome;
+
+  /// No description provided for @navDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get navDevices;
+
+  /// Legacy label for the pre-0046 first tab, which was the dashboard but was LABELLED 'Devices'. Unreferenced since design 0046 moved that label to navDevices; kept because deleting a shipped key is how two builds end up disagreeing about what a screenshot showed.
   ///
   /// In en, this message translates to:
   /// **'Devices'**

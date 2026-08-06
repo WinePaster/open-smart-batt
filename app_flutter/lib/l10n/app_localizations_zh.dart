@@ -95,6 +95,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get navHome => '主頁';
+
+  @override
+  String get navDevices => '裝置';
+
+  @override
   String get navDashboard => '裝置';
 
   @override
