@@ -42,8 +42,9 @@ import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:open_smart_batt/ui/dashboard/speed_card.dart';
 import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
 import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
+import 'package:open_smart_batt/ui/devices/watchface_sheet.dart';
 import 'package:open_smart_batt/ui/settings/settings_screen.dart';
-import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
+import 'package:open_smart_batt/ui/widgets/industrial.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Inert BleService with a settable connected id — the layout is bound to a
@@ -76,6 +77,42 @@ class _FakeBleService extends BleService {
     await _telemetryOut.close();
     await super.dispose();
   }
+}
+
+/// A one-button host that raises [showWatchfaceSheet] for a device and records
+/// whether it opened. Standing in for [DeviceDetailPage]'s app-bar button, so
+/// these tests exercise the API rather than that page's chrome.
+class _WatchfaceSheetHost extends StatefulWidget {
+  const _WatchfaceSheetHost({this.deviceId = 'DEV-A'});
+
+  final String deviceId;
+
+  @override
+  State<_WatchfaceSheetHost> createState() => _WatchfaceSheetHostState();
+}
+
+class _WatchfaceSheetHostState extends State<_WatchfaceSheetHost> {
+  bool? _opened;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: () async {
+                  final ok = await showWatchfaceSheet(context,
+                      deviceId: widget.deviceId);
+                  if (mounted) setState(() => _opened = ok);
+                },
+                child: const Text('open'),
+              ),
+              if (_opened != null) Text('opened=$_opened'),
+            ],
+          ),
+        ),
+      );
 }
 
 void main() {
@@ -725,14 +762,23 @@ void main() {
   });
 
   // =========================================================================
-  // The settings entry point (Q6)
+  // The watchface entry point (Q6)
+  //
+  // 📦 RE-POINTED by design 0046 R20, not relaxed: the picker moved out of
+  // Settings and onto the device's own page (`showWatchfaceSheet`). Every
+  // assertion below is the one it was before — what changed is which screen the
+  // test opens to reach the control. Settings now carries a signpost, and
+  // `watchface_single_writer_test.dart` (T-new-7) is what holds it to being
+  // only that.
   // =========================================================================
-  group('the Display card carries the picker and the restore', () {
-    Future<void> pumpSettings(WidgetTester tester, AppServices s) async {
-      await pumpUnder(tester, s, const SettingsScreen());
-      await tester.scrollUntilVisible(find.text('Watchface'), 60,
-          scrollable: find.byType(Scrollable).first);
+  group('the watchface sheet carries the picker and the restore', () {
+    /// Open the picker the way a user now does: from one device's page.
+    Future<void> pumpSettings(WidgetTester tester, AppServices s,
+        {String deviceId = 'DEV-A'}) async {
+      await pumpUnder(tester, s, const _WatchfaceSheetHost());
+      await tester.tap(find.text('open'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
     }
 
     testWidgets('picking a face writes it against the connected device',
@@ -765,44 +811,63 @@ void main() {
       expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults);
     });
 
-    testWidgets('with no device the row is disabled and says why',
+    // ---------------------------------------------------------------------
+    // 0034 Q3's asset, carried over as an API rule (design 0046 plan §4.3 R-1).
+    //
+    // These two used to read "with no device the row is disabled and says why"
+    // and "a connected but UNSAVED device also disables the row". Both described
+    // a Settings row that had to explain itself because it lived among app-wide
+    // settings while being bound to a DEVICE. On the device's own page neither
+    // situation can arise — you got there by picking a saved unit — so the rule
+    // is now enforced at the entry point instead of explained on screen.
+    //
+    // ⚠️ NOT deleted, and not weakened. What 0034 Q3 was protecting is that
+    // changing a DISPLAY setting must never silently add a unit to the user's
+    // device list. That is what is asserted here, one layer lower.
+    // ---------------------------------------------------------------------
+    testWidgets('an UNSAVED device cannot raise the sheet at all',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      ble.connectedId = null;
-      await pumpSettings(tester, s);
+      ble.connectedId = 'DEV-UNSAVED';
+      await pumpUnder(
+          tester, s, const _WatchfaceSheetHost(deviceId: 'DEV-UNSAVED'));
 
-      // Kept visible rather than hidden — the background-monitoring precedent:
-      // a user who has heard of the feature needs to see WHY it is off.
-      expect(find.text('Watchface'), findsOneWidget);
-      expect(
-        find.textContaining('This setting belongs to a device'),
-        findsOneWidget,
-      );
-      // Inert, not merely dimmed: tapping writes nothing anywhere.
-      await tester.tap(find.text('Diagnostic'), warnIfMissed: false);
+      await tester.tap(find.text('open'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Nothing opened…
+      expect(find.text('Standard'), findsNothing);
+      expect(find.text('Compact'), findsNothing);
+      expect(find.text('Restore default display'), findsNothing);
+      expect(find.text('opened=false'), findsOneWidget);
+      // …and, the part that matters, the unit was not saved as a side effect.
       await settleWrite(tester);
+      expect(s.devices.isSaved('DEV-UNSAVED'), isFalse);
       expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults);
       expect(s.devices.layoutFor('DEV-B'), DisplayLayout.defaults);
     });
 
-    testWidgets('a connected but UNSAVED device also disables the row',
+    testWidgets('and Settings no longer offers a picker to reach it by',
         (tester) async {
-      // The layout lives in the saved_devices row. A unit the user declined to
-      // name has nowhere to put one, and adding it to their device list as a
-      // side effect of a display setting would be a surprise.
+      // The other half of the old pair: the Settings row still EXISTS (the path
+      // has shipped since v0.6.17 and a user who learned it must find out where
+      // it went), but it is a link now — see T-new-7.
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      ble.connectedId = 'DEV-UNSAVED';
-      await pumpSettings(tester, s);
+      ble.connectedId = null;
+      await pumpUnder(tester, s, const SettingsScreen());
+      await tester.scrollUntilVisible(find.text('Watchface'), 60,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pump();
 
-      expect(
-        find.textContaining('This setting belongs to a device'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Compact'), warnIfMissed: false);
-      await settleWrite(tester);
-      expect(s.devices.isSaved('DEV-UNSAVED'), isFalse);
+      expect(find.text('Watchface'), findsOneWidget);
+      expect(find.byType(SegmentedControl<Watchface>), findsNothing);
+      expect(find.textContaining('This setting belongs to a device'),
+          findsNothing,
+          reason: 'the state that sentence explained is now expressed by '
+              'navigation: you pick a device, then you get its watchface');
     });
 
     // design 0034 §4.3 — "unavailable is not offered". `riding` exists only to

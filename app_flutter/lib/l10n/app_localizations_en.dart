@@ -1005,6 +1005,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsWatchfaceLabel => 'Watchface';
 
   @override
+  String get settingsWatchfaceGuidance => 'Change it on the device\'s page';
+
+  @override
   String get settingsWatchfaceSub =>
       'Which cards the dashboard shows for the connected device, and in what order.';
 

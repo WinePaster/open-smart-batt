@@ -948,6 +948,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsWatchfaceLabel => '錶盤';
 
   @override
+  String get settingsWatchfaceGuidance => '在裝置頁選擇裝置後更換';
+
+  @override
   String get settingsWatchfaceSub => '目前連線裝置的儀表板要放哪些卡片、依什麼順序。';
 
   @override

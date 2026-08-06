@@ -1688,6 +1688,12 @@ abstract class AppLocalizations {
   /// **'Watchface'**
   String get settingsWatchfaceLabel;
 
+  /// Sub-line of the Settings signpost row (design 0046 R20). The picker itself moved to the device detail page; this row states where it went and nothing else. `settingsWatchfaceSub` and `settingsWatchfaceSubNoDevice` are KEPT even though this screen no longer uses the second one — see the l10n note in the 0046 plan §6.
+  ///
+  /// In en, this message translates to:
+  /// **'Change it on the device\'s page'**
+  String get settingsWatchfaceGuidance;
+
   /// design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'.
   ///
   /// In en, this message translates to:

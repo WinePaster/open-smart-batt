@@ -265,6 +265,7 @@
   "speedQualityNone": "無訊號",
   "watchfaceRiding": "騎乘",
   "settingsWatchfaceLabel": "錶盤",
+  "settingsWatchfaceGuidance": "在裝置頁選擇裝置後更換",
   "settingsWatchfaceSub": "目前連線裝置的儀表板要放哪些卡片、依什麼順序。",
   "settingsWatchfaceSubNoDevice": "此設定綁定裝置。請先連線並儲存裝置，才能在這裡調整。",
   "watchfaceStandard": "標準",

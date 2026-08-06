@@ -413,6 +413,7 @@ class _RootShellState extends State<RootShell> {
             HistoryScreen(key: ValueKey(_historyEpoch)),
             SettingsScreen(
               deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+              onOpenDevices: () => _setTab(_Tab.devices),
             ),
           ],
         ),
