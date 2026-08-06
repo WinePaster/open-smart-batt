@@ -405,7 +405,10 @@ class _RootShellState extends State<RootShell> {
             // callback is threaded down rather than re-derived there. Every tab
             // change in this file goes through `_setTab`, which is the only
             // thing keeping gate condition 3 in step with what is on screen.
-            DevicesPage(onOpenSettings: () => _setTab(_Tab.settings)),
+            DevicesPage(
+              active: _tab == _Tab.devices,
+              onOpenSettings: () => _setTab(_Tab.settings),
+            ),
             // Re-keyed on each switch to 歷史 so it reloads the latest records.
             HistoryScreen(key: ValueKey(_historyEpoch)),
             SettingsScreen(

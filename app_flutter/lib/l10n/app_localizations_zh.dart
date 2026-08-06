@@ -558,6 +558,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesSavedSection => '已儲存裝置';
 
   @override
+  String devicesSavedCount(int count) {
+    return '已儲存 · $count 台';
+  }
+
+  @override
+  String get deviceBadgeConnected => '已連線';
+
+  @override
+  String get deviceBadgeConnecting => '連線中';
+
+  @override
+  String get deviceBadgeOffline => '未連線';
+
+  @override
+  String get deviceBadgeFailed => '連線失敗';
+
+  @override
+  String get deviceBadgeNotAnswering => '沒有回應';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override

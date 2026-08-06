@@ -417,6 +417,19 @@
   },
   "devicesRemove": "Remove",
   "devicesSavedSection": "Saved devices",
+  "devicesSavedCount": "Saved · {count}",
+  "@devicesSavedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deviceBadgeConnected": "Connected",
+  "deviceBadgeConnecting": "Connecting",
+  "deviceBadgeOffline": "Not connected",
+  "deviceBadgeFailed": "Connection failed",
+  "deviceBadgeNotAnswering": "Not answering",
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",
   "devicesScanning": "Scanning…",

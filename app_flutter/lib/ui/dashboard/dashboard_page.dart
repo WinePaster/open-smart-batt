@@ -20,7 +20,6 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import '../devices/device_list_sheet.dart';
 import 'capture_mark_bar.dart';
 import 'class_pending_view.dart';
 import 'disconnected_state.dart';
@@ -49,9 +48,7 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
     if (!online) {
-      return DisconnectedState(
-        onScanRequested: onScanRequested ?? () => showDeviceListSheet(context),
-      );
+      return DisconnectedState(onScanRequested: onScanRequested);
     }
     // A stall is not a disconnect: the link stays ready while Android suspends
     // the app, so the readouts below would otherwise sit frozen with no hint.

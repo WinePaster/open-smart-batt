@@ -1010,6 +1010,42 @@ abstract class AppLocalizations {
   /// **'Saved devices'**
   String get devicesSavedSection;
 
+  /// No description provided for @devicesSavedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved · {count}'**
+  String devicesSavedCount(int count);
+
+  /// No description provided for @deviceBadgeConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get deviceBadgeConnected;
+
+  /// No description provided for @deviceBadgeConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting'**
+  String get deviceBadgeConnecting;
+
+  /// No description provided for @deviceBadgeOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get deviceBadgeOffline;
+
+  /// No description provided for @deviceBadgeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed'**
+  String get deviceBadgeFailed;
+
+  /// No description provided for @deviceBadgeNotAnswering.
+  ///
+  /// In en, this message translates to:
+  /// **'Not answering'**
+  String get deviceBadgeNotAnswering;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

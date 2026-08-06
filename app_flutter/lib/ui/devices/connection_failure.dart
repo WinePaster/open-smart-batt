@@ -200,6 +200,55 @@ ConnectionFailureCopy connectionFailureCopy({
   );
 }
 
+/// The five states a saved row can be in, as ONE WORD each (design 0046 R21).
+///
+/// A list is read by scanning it, and a row carrying
+/// `disconnectedStalledBody` — "close the App completely and open it again…
+/// the same state once lasted forty minutes" — turns the page into a wall of
+/// text while the only thing the user is doing there is picking a unit. The full
+/// report lives one tap away, on the device's own page, and the badge is the tap
+/// (T-new-6).
+enum ConnectionBadge { connected, connecting, notAnswering, failed, offline }
+
+/// Which badge one saved row shows.
+///
+/// The branch order mirrors [connectionFailureCopy]'s and must keep doing so:
+/// a row reading 沒有回應 whose page then shows "could not connect" is two
+/// screens disagreeing about one state, which is the defect design 0034 §12.3
+/// and the FB-44 snackbar work each fixed once already.
+///
+/// [isCurrentDevice] is what keeps the controller's SINGULAR fields from
+/// leaking onto every row: `lastError` belongs to whichever unit the controller
+/// last worked on, so a row that is not that unit reports only 未連線 rather
+/// than borrowing another device's failure. (Design 0046 §3.2 keeps this true
+/// by construction in 交付二, when those fields go per-device.)
+ConnectionBadge connectionBadgeFor({
+  required bool isCurrentDevice,
+  required bool isOnline,
+  required bool working,
+  required bool setupStalled,
+  required String? lastError,
+}) {
+  if (!isCurrentDevice) return ConnectionBadge.offline;
+  if (isOnline) return ConnectionBadge.connected;
+  if (working) return ConnectionBadge.connecting;
+  if (setupStalled || lastError == 'gatt_setup_stalled') {
+    return ConnectionBadge.notAnswering;
+  }
+  if (gaveUpCodes.contains(lastError)) return ConnectionBadge.failed;
+  return ConnectionBadge.offline;
+}
+
+/// The badge's word. Deliberately one word per state — see [ConnectionBadge].
+String connectionBadgeLabel(AppLocalizations l10n, ConnectionBadge b) =>
+    switch (b) {
+      ConnectionBadge.connected => l10n.deviceBadgeConnected,
+      ConnectionBadge.connecting => l10n.deviceBadgeConnecting,
+      ConnectionBadge.notAnswering => l10n.deviceBadgeNotAnswering,
+      ConnectionBadge.failed => l10n.deviceBadgeFailed,
+      ConnectionBadge.offline => l10n.deviceBadgeOffline,
+    };
+
 /// The failure that STAYS on screen, with the one thing left to do about it.
 ///
 /// FB-52 built this for the stalled-setup case; FB-53 gives it the three

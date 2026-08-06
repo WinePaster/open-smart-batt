@@ -589,6 +589,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesSavedSection => 'Saved devices';
 
   @override
+  String devicesSavedCount(int count) {
+    return 'Saved · $count';
+  }
+
+  @override
+  String get deviceBadgeConnected => 'Connected';
+
+  @override
+  String get deviceBadgeConnecting => 'Connecting';
+
+  @override
+  String get deviceBadgeOffline => 'Not connected';
+
+  @override
+  String get deviceBadgeFailed => 'Connection failed';
+
+  @override
+  String get deviceBadgeNotAnswering => 'Not answering';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override
