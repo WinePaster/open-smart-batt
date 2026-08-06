@@ -61,7 +61,14 @@ class SpeedEstimatorConfig {
     this.aRejectM = 50.0,
     this.sRejectMps = 5.0,
     this.alpha = 0.3,
-    this.vStillMps = 1.0 / 3.6,
+    // 3.0 km/h. Ruled 2026-08-07, raised from the 1.0 km/h the design doc
+    // first named. The doc's own justification says stationary GNSS jitter
+    // reads 1–3 km/h and calls a red light showing 2 km/h "an error the user
+    // spots instantly" — so a 1.0 km/h floor sat BELOW the noise it exists to
+    // remove, and let the named failure through. The cost is that a genuine
+    // sub-3 km/h crawl (walking the bike) reads 0, which is accepted for the
+    // scooter use case this module was built for.
+    this.vStillMps = 3.0 / 3.6,
     this.tHold = const Duration(seconds: 2),
     this.tLost = const Duration(seconds: 4),
     this.holdCap = const Duration(seconds: 5),

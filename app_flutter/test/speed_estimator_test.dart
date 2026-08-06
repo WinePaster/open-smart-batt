@@ -73,9 +73,8 @@ void main() {
     test('below the still threshold the speed reads exactly 0', () {
       final (:clock, :est) = build();
       // Position jitter while standing at a light. The threshold is a paper
-      // starting point (0042 §3.2 calls it 起點 1.0 km/h) and Phase F is
-      // expected to raise it — the invariant under test is the clamp, not the
-      // number.
+      // starting point (3.0 km/h, ruled 2026-08-07) and Phase F may retune it —
+      // the invariant under test is the clamp, not the number.
       for (final v in [0.10, 0.22, 0.05, 0.18]) {
         est.addFix(_fix(clock.t, v));
         expect(est.current!.vSmoothMps, 0.0);
@@ -84,6 +83,24 @@ void main() {
       // Pulling away crosses the threshold and the clamp lets go.
       est.addFix(_fix(clock.t, 3.0));
       expect(est.current!.vSmoothMps, greaterThan(0.0));
+    });
+
+    // The band the design doc names as real stationary GNSS jitter — 1–3 km/h,
+    // i.e. 0.28–0.83 m/s — and singles out ("a red light showing 2 km/h is an
+    // error the user spots instantly"). It is pinned SEPARATELY from the test
+    // above because it is the case the original 1.0 km/h floor let through: the
+    // threshold had been set below the noise it was written to remove. If a
+    // future retune lowers `vStillMps` back under 0.83 m/s, this fails and the
+    // reviewer is sent to the ruling rather than to a mystery.
+    test('the 1-3 km/h jitter band the doc names still reads exactly 0', () {
+      final (:clock, :est) = build();
+      for (final v in [0.30, 0.56, 0.80, 0.42]) {
+        est.addFix(_fix(clock.t, v));
+        expect(est.current!.vSmoothMps, 0.0,
+            reason: '${(v * 3.6).toStringAsFixed(1)} km/h is stationary jitter, '
+                'not motion (design 0042 §3.2, ruled 2026-08-07)');
+        clock.advance(const Duration(seconds: 1));
+      }
     });
   });
 
