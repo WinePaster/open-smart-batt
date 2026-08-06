@@ -110,9 +110,16 @@ class OpenSmartBattApp extends StatefulWidget {
 
 class _OpenSmartBattAppState extends State<OpenSmartBattApp>
     with WidgetsBindingObserver {
+  /// Debounces `inactive` before it is allowed to close the GNSS gate. See
+  /// [SpeedLifecycleGate] — the short version is that a notification banner is
+  /// not the user leaving.
+  late final SpeedLifecycleGate _speedLifecycle;
+
   @override
   void initState() {
     super.initState();
+    _speedLifecycle =
+        SpeedLifecycleGate(setAppResumed: widget.services.speed.setAppResumed);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -139,8 +146,14 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
     // which design 0039 deliberately keeps alive in the background, a location
     // stream buys nothing while nobody can see the number — and it is the one
     // permission a battery app has to justify.
-    widget.services.speed
-        .setAppResumed(state == AppLifecycleState.resumed);
+    //
+    // Through [SpeedLifecycleGate] rather than
+    // `setAppResumed(state == resumed)`: `inactive` also fires for a
+    // notification banner, the app switcher and the system permission dialog
+    // this feature's own consent flow raises. See that class for why treating
+    // those as "left the foreground" empties the card and probably costs MORE
+    // battery than it saves.
+    _speedLifecycle.onLifecycle(state);
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
@@ -161,6 +174,8 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Before the services go: its timer's callback drives one of them.
+    _speedLifecycle.dispose();
     // Fire-and-forget teardown of streams / BLE link / DB on app exit.
     widget.services.dispose();
     super.dispose();
