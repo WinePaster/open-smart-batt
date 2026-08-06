@@ -159,6 +159,8 @@
   "deviceBadgeFailed": "連線失敗",
   "deviceBadgeNotAnswering": "沒有回應",
   "deviceDetailWatchface": "錶盤",
+  "homeAddFirstDevice": "加入第一台裝置",
+  "homeModuleSpeed": "速度",
   "devicesNoSaved": "尚無已儲存裝置",
   "devicesUnnamed": "未命名裝置",
   "devicesScanning": "掃描中…",

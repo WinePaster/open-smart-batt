@@ -612,6 +612,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceDetailWatchface => 'Watchface';
 
   @override
+  String get homeAddFirstDevice => 'Add your first device';
+
+  @override
+  String get homeModuleSpeed => 'Speed';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override

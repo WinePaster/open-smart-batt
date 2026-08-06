@@ -431,6 +431,11 @@
   "deviceBadgeFailed": "Connection failed",
   "deviceBadgeNotAnswering": "Not answering",
   "deviceDetailWatchface": "Watchface",
+  "homeAddFirstDevice": "Add your first device",
+  "homeModuleSpeed": "Speed",
+  "@homeModuleSpeed": {
+    "description": "Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own."
+  },
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",
   "devicesScanning": "Scanning…",

@@ -32,6 +32,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../devices/connection_failure.dart';
 import '../devices/signal_bars.dart';
+import '../util/relative_time.dart';
 
 /// The dashboard's disconnected placeholder.
 class DisconnectedState extends StatelessWidget {
@@ -270,7 +271,7 @@ class _QuickPick extends StatelessWidget {
     if (d.lastValue != null) {
       parts.add(l10n.quickPickLastValue(d.lastValue!.toStringAsFixed(2)));
     }
-    parts.add(_relativeTime(l10n, d.lastSeen));
+    parts.add(relativeTime(l10n, d.lastSeen));
     return parts.join(' · ');
   }
 }
@@ -303,14 +304,4 @@ int _recencyLevel(DateTime? lastSeen) {
   if (d < const Duration(hours: 1)) return 3;
   if (d < const Duration(days: 1)) return 2;
   return 1;
-}
-
-/// Coarse relative-time label (e.g. "Just now / 2 minutes ago / 2 days ago").
-String _relativeTime(AppLocalizations l10n, DateTime? t) {
-  if (t == null) return l10n.relativeNever;
-  final d = DateTime.now().difference(t);
-  if (d.inSeconds < 60) return l10n.relativeJustNow;
-  if (d.inMinutes < 60) return l10n.relativeMinutesAgo(d.inMinutes);
-  if (d.inHours < 24) return l10n.relativeHoursAgo(d.inHours);
-  return l10n.relativeDaysAgo(d.inDays);
 }

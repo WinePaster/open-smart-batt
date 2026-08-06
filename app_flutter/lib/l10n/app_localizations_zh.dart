@@ -581,6 +581,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get deviceDetailWatchface => '錶盤';
 
   @override
+  String get homeAddFirstDevice => '加入第一台裝置';
+
+  @override
+  String get homeModuleSpeed => '速度';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override

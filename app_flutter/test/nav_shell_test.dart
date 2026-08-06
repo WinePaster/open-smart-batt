@@ -24,6 +24,7 @@ import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
 import 'package:open_smart_batt/state/state.dart';
+import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/home/home_page.dart';
@@ -41,6 +42,17 @@ class _FakeBleService extends BleService {
 
   @override
   bool get isScanning => false;
+
+  // The devices tab starts a scan when it becomes visible. Left to the real
+  // implementation that would await the adapter behind a 6 s timer this test's
+  // fake-async zone never advances, and the suite would report a pending timer
+  // instead of the thing under test.
+  @override
+  Future<void> startScan(
+      {Duration timeout = const Duration(seconds: 15)}) async {}
+
+  @override
+  Future<void> stopScan() async {}
 }
 
 void main() {
@@ -149,5 +161,69 @@ void main() {
     await tester.pump();
     await drain(tester);
     expect(historyKey(), isNot(second));
+  });
+
+  // ==========================================================================
+  // design 0046 Step 8c — the GNSS gate, driven through the REAL shell
+  // ==========================================================================
+  //
+  // The 2026-08-07 review established the rule this follows: a unit test on the
+  // controller's setters would have passed throughout the defect it was written
+  // for, because the defect was in the CALLER. So this drives the tab bar and a
+  // pushed route and reads the gate's own condition.
+  testWidgets('the home tab is what condition 3 now means', (tester) async {
+    final s = await pumpShell(tester);
+    final gps = s.speed;
+
+    expect(gps.dashboardVisible, isTrue, reason: 'the app opens on 主頁');
+    expect(gps.speedSurfaceVisible, isTrue);
+
+    await tester.tap(find.byIcon(Icons.list_alt_outlined));
+    await tester.pump();
+    expect(gps.speedSurfaceVisible, isFalse,
+        reason: 'the devices LIST carries no speed card, so nothing on screen '
+            'justifies a GNSS stream');
+
+    await tester.tap(find.byIcon(Icons.dashboard_outlined));
+    await tester.pump();
+    expect(gps.speedSurfaceVisible, isTrue);
+  });
+
+  testWidgets('a device page pushed over another tab counts as well',
+      (tester) async {
+    final s = await pumpShell(tester);
+    final gps = s.speed;
+    await tester.runAsync(() => s.devices.saveNew('DEV-A', 'Cap #1'));
+    await tester.pump();
+
+    // Onto the devices tab: the home grid is covered, so the gate closes…
+    await tester.tap(find.byIcon(Icons.list_alt_outlined));
+    await tester.pump();
+    await drain(tester);
+    expect(gps.speedSurfaceVisible, isFalse);
+
+    // …and opening one unit's page — where the dashboard now lives — reopens
+    // it. Without this the detail page's own speed card would sit on "waiting
+    // for a fix" for as long as it was on screen, with nothing to explain why.
+    await tester.tap(find.text('Cap #1'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await drain(tester);
+    expect(find.byType(DeviceDetailPage), findsOneWidget);
+    expect(gps.detailVisible, isTrue);
+    expect(gps.speedSurfaceVisible, isTrue);
+
+    // Back out: neither surface is up, so it closes again (design 0042 G4).
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pump();
+    // Two frames past the transition: the page's `dispose` defers its report to
+    // a post-frame callback (same reason `SpeedCard` does), so the value lands
+    // one frame after the route is actually gone.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    await drain(tester);
+    expect(find.byType(DeviceDetailPage), findsNothing);
+    expect(gps.detailVisible, isFalse);
+    expect(gps.speedSurfaceVisible, isFalse);
   });
 }

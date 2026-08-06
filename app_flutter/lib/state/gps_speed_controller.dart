@@ -195,12 +195,31 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
 
 /// Owns the GNSS stream's lifetime and feeds [SpeedEstimator].
 ///
-/// The gate (0042 §3.4) is three booleans that must ALL hold for a stream to
+/// The gate (0042 §3.4) is three conditions that must ALL hold for a stream to
 /// exist; any one going false cancels it immediately:
 ///
-/// 1. the effective watchface renders the `speed` module ([setFaceWantsSpeed]);
+/// 1. a speed card is mounted ([setFaceWantsSpeed], driven by `SpeedCard`'s own
+///    lifecycle);
 /// 2. the app is in the foreground ([setAppResumed]);
-/// 3. the dashboard is the visible tab ([setDashboardVisible]).
+/// 3. a surface that can CARRY a speed card is on screen —
+///    [setDashboardVisible] for the tab, [setDetailVisible] for the pushed
+///    device page.
+///
+/// 🔴 Condition 3 grew a second input in design 0046 Step 8c, and the reason is
+/// worth stating because the failure it prevents is SILENT. Before 0046 there
+/// was exactly one surface that could hold a speed card — the dashboard tab —
+/// so `setDashboardVisible(_tab == dashboard)` said everything. After 0046 the
+/// dashboard lives inside a PUSHED route (the device detail page) while the tab
+/// underneath it is 裝置, and the home grid can hold a speed card of its own. A
+/// single tab-derived flag would therefore have kept the gate SHUT for the whole
+/// time the user is on the page that shows speed: the card would sit there
+/// forever displaying "waiting for a fix", with no error, and the user would
+/// conclude the GPS could not get a signal. That is precisely the class of
+/// defect this project is worst at diagnosing.
+///
+/// ⚠️ What did NOT change is that the gate exists. 0042 G4 (battery cost is
+/// controlled) is a hard goal; what widened is WHICH SCREENS COUNT, not whether
+/// screens are counted. With neither surface up, the stream closes.
 ///
 /// Continuous GNSS costs an order of magnitude more battery than the BLE link
 /// this app already holds open (0042 G4), and unlike the BLE link it buys
@@ -228,8 +247,10 @@ class GpsSpeedController extends ChangeNotifier {
   // on a CHANGE, so starting this false would need a resume that never comes.
   bool _appResumed = true;
   bool _dashboardVisible = false;
+  bool _detailVisible = false;
 
-  /// Gate condition 3, readable so a test can drive it through the real shell.
+  /// Gate condition 3's TAB half, readable so a test can drive it through the
+  /// real shell.
   ///
   /// It is exposed because the 2026-08-07 review found a route that set the tab
   /// without telling this controller, and a unit test on [setDashboardVisible]
@@ -238,6 +259,14 @@ class GpsSpeedController extends ChangeNotifier {
   /// shell's behaviour instead of on this class's.
   @visibleForTesting
   bool get dashboardVisible => _dashboardVisible;
+
+  /// Gate condition 3's PUSHED-ROUTE half. See [setDetailVisible].
+  @visibleForTesting
+  bool get detailVisible => _detailVisible;
+
+  /// Whether condition 3 holds at all — either surface counts.
+  @visibleForTesting
+  bool get speedSurfaceVisible => _dashboardVisible || _detailVisible;
 
   StreamSubscription<SpeedFix>? _fixes;
   Timer? _ticker;
@@ -277,10 +306,33 @@ class GpsSpeedController extends ChangeNotifier {
     _onGateChanged();
   }
 
-  /// Gate condition 3 — the dashboard tab being the visible one.
+  /// Gate condition 3, TAB half — the speed-carrying tab being the visible one.
+  ///
+  /// Since design 0046 that is the HOME tab: the dashboard moved into a pushed
+  /// route, which reports itself through [setDetailVisible] instead.
   void setDashboardVisible(bool v) {
     if (_dashboardVisible == v) return;
     _dashboardVisible = v;
+    _onGateChanged();
+  }
+
+  /// Gate condition 3, PUSHED-ROUTE half — a device detail page is on screen.
+  ///
+  /// Separate from [setDashboardVisible] because the two are produced by
+  /// different owners: the shell knows its tab, and only the pushed route knows
+  /// it was pushed. ORing them is what lets the detail page's own speed card
+  /// stream while the tab underneath it is 裝置.
+  ///
+  /// ⚠️ Known and accepted over-approximation: with a speed tile on the home
+  /// grid AND a detail page open that has no speed card, condition 1 is still
+  /// true (the home tile stays mounted in the IndexedStack) and this makes
+  /// condition 3 true, so GNSS runs with nobody looking at a speed. Being exact
+  /// would need per-surface accounting of condition 1, i.e. a redesign of the
+  /// gate; the window here is bounded by "a detail page is open" and was judged
+  /// not to be worth it. Design 0046 交付二 revisits the gate anyway.
+  void setDetailVisible(bool v) {
+    if (_detailVisible == v) return;
+    _detailVisible = v;
     _onGateChanged();
   }
 
@@ -316,7 +368,8 @@ class GpsSpeedController extends ChangeNotifier {
   // Internals
   // -------------------------------------------------------------------------
 
-  bool get _wantsStream => _faceWantsSpeed && _appResumed && _dashboardVisible;
+  bool get _wantsStream =>
+      _faceWantsSpeed && _appResumed && (_dashboardVisible || _detailVisible);
 
   /// Closing is synchronous and unconditional; opening is not (it may have to
   /// await a permission read first). Splitting them this way is what guarantees

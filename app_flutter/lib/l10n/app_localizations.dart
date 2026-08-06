@@ -1052,6 +1052,18 @@ abstract class AppLocalizations {
   /// **'Watchface'**
   String get deviceDetailWatchface;
 
+  /// No description provided for @homeAddFirstDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your first device'**
+  String get homeAddFirstDevice;
+
+  /// Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed'**
+  String get homeModuleSpeed;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

@@ -28,7 +28,16 @@ import 'connection_failure.dart';
 import 'watchface_sheet.dart';
 
 /// The per-device page, pushed from the devices tab.
-class DeviceDetailPage extends StatelessWidget {
+///
+/// 🔴 Stateful for ONE reason (design 0046 Step 8c): it has to tell
+/// [GpsSpeedController] that it is on screen. The GNSS gate's condition 3 is
+/// "a surface that can carry a speed card is visible", and before design 0046
+/// the only such surface was a TAB, which the shell could report. This page is
+/// a PUSHED ROUTE — while it is up, the shell's tab is 裝置, so a tab-derived
+/// flag would hold the gate shut for exactly as long as the user is looking at
+/// the page that shows speed. The card would sit on "waiting for a fix"
+/// forever, with no error anywhere, and the user would blame their GPS.
+class DeviceDetailPage extends StatefulWidget {
   const DeviceDetailPage({
     super.key,
     required this.deviceId,
@@ -48,7 +57,42 @@ class DeviceDetailPage extends StatelessWidget {
   final VoidCallback? onOpenSettings;
 
   @override
+  State<DeviceDetailPage> createState() => _DeviceDetailPageState();
+}
+
+class _DeviceDetailPageState extends State<DeviceDetailPage> {
+  /// Captured rather than read in [dispose]: by then this element is detached
+  /// and `context.read` is no longer legal.
+  GpsSpeedController? _gps;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _gps = context.read<GpsSpeedController>();
+    _setVisible(true);
+  }
+
+  @override
+  void dispose() {
+    _setVisible(false);
+    super.dispose();
+  }
+
+  /// Deferred to the end of the frame for `SpeedCard`'s reason: the setter
+  /// notifies listeners, and both call sites run inside the build/teardown
+  /// phase, where notifying would mark widgets dirty while they are being
+  /// built. Post-frame callbacks fire in registration order, so a page that
+  /// unmounts and remounts within one frame still ends on the right value.
+  void _setVisible(bool v) {
+    final gps = _gps;
+    if (gps == null) return;
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => gps.setDetailVisible(v));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final deviceId = widget.deviceId;
     final devices = context.watch<DeviceController>();
     final conn = context.watch<ConnectionController>();
     final saved = devices.deviceFor(deviceId);
@@ -94,7 +138,7 @@ class DeviceDetailPage extends StatelessWidget {
         ],
       ),
       body: live
-          ? DashboardPage(onOpenSettings: onOpenSettings)
+          ? DashboardPage(onOpenSettings: widget.onOpenSettings)
           : _OfflineBody(deviceId: deviceId),
     );
   }

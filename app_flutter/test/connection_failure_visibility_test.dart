@@ -134,6 +134,10 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(
               value: services.telemetry),
+          // The page reports its own visibility to the GNSS gate (design 0046
+          // Step 8c), so the controller has to be reachable from it.
+          ChangeNotifierProvider<GpsSpeedController>.value(
+              value: services.speed),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -255,6 +259,10 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(
               value: services.telemetry),
+          // The page reports its own visibility to the GNSS gate (design 0046
+          // Step 8c), so the controller has to be reachable from it.
+          ChangeNotifierProvider<GpsSpeedController>.value(
+              value: services.speed),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),

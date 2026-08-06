@@ -14,6 +14,7 @@ import 'models/models.dart';
 import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
+import 'ui/devices/device_detail_page.dart';
 import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
 import 'ui/home/home_page.dart';
@@ -399,7 +400,17 @@ class _RootShellState extends State<RootShell> {
         child: IndexedStack(
           index: _tab.index,
           children: [
-            HomePage(onOpenDevices: () => _setTab(_Tab.devices)),
+            HomePage(
+              onOpenDevices: () => _setTab(_Tab.devices),
+              onOpenDetail: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => DeviceDetailPage(
+                    deviceId: id,
+                    onOpenSettings: () => _setTab(_Tab.settings),
+                  ),
+                ),
+              ),
+            ),
             // The dashboard's stale-telemetry banner links to Settings, and the
             // dashboard now lives inside a route this page pushes — so the
             // callback is threaded down rather than re-derived there. Every tab
