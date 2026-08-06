@@ -9,6 +9,17 @@ enum AppLang { system, zhHant, en }
 /// Temperature display unit.
 enum TempUnit { celsius, fahrenheit }
 
+/// Speed display unit (design 0042 §3.6).
+///
+/// APP-WIDE, unlike the watchface (design 0034 Q3, bound to the device). The
+/// reason the layout is per device — "each unit is asked a different question"
+/// — has no counterpart here: a unit preference follows the PERSON, and nobody
+/// reads km/h on one battery and mph on the next.
+///
+/// The name is a wire value: it is written to `settings.speed_unit`. Internally
+/// speed is always metres per second; this only decides how it is rendered.
+enum SpeedUnit { kmh, mph }
+
 /// App theme preference. [auto] follows the OS (system) brightness. DEFAULT is
 /// [light].
 enum AppThemeMode { light, dark, auto }
@@ -77,6 +88,24 @@ class AppSettings {
   final AppLang lang;
   final TempUnit tempUnit;
 
+  /// Master switch for the GPS speed feature (design 0042 §3.9). DEFAULT OFF.
+  ///
+  /// Off is not a cosmetic default. Turning it on costs a location permission
+  /// on a battery app, continuous GNSS while the dashboard is open, and — the
+  /// part the consent dialog has to say out loud — a timestamped speed series
+  /// inside every diagnostic export. So it is reached only through an explicit
+  /// four-point confirmation, and the OS prompt follows the user's "enable"
+  /// rather than arriving out of nowhere.
+  ///
+  /// Its reach is wider than one card: with this off, [Watchface.riding] falls
+  /// back to `standard` at the render layer, so no `speed` module is ever laid
+  /// out, the GNSS gate's first condition never opens, and "off ⇒ nothing
+  /// lands" is true by construction rather than by a second check.
+  final bool speedDetection;
+
+  /// km/h or mph for every speed on screen. DEFAULT [SpeedUnit.kmh].
+  final SpeedUnit speedUnit;
+
   // --- data ---
   /// How long history is kept. Telemetry is ALWAYS recorded while connected —
   /// there is no longer a switch that stops it — and this only decides when old
@@ -113,6 +142,8 @@ class AppSettings {
     this.themeMode = AppThemeMode.light,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
+    this.speedDetection = false,
+    this.speedUnit = SpeedUnit.kmh,
     this.retention = RetentionPolicy.forever,
     this.rawPacketLog = false,
     this.logMaxBytes = defaultLogMaxBytes,
@@ -129,6 +160,8 @@ class AppSettings {
     AppThemeMode? themeMode,
     AppLang? lang,
     TempUnit? tempUnit,
+    bool? speedDetection,
+    SpeedUnit? speedUnit,
     RetentionPolicy? retention,
     bool? rawPacketLog,
     int? logMaxBytes,
@@ -141,11 +174,28 @@ class AppSettings {
         themeMode: themeMode ?? this.themeMode,
         lang: lang ?? this.lang,
         tempUnit: tempUnit ?? this.tempUnit,
+        speedDetection: speedDetection ?? this.speedDetection,
+        speedUnit: speedUnit ?? this.speedUnit,
         retention: retention ?? this.retention,
         rawPacketLog: rawPacketLog ?? this.rawPacketLog,
         logMaxBytes: logMaxBytes ?? this.logMaxBytes,
       );
 
+  /// The persisted row.
+  ///
+  /// 🔴 EVERY column this app owns must appear here. `SettingsRepo.saveSettings`
+  /// writes with `ConflictAlgorithm.replace`, which is `INSERT OR REPLACE` —
+  /// SQLite DELETEs the whole row and inserts a new one, so a column missing
+  /// from this map is silently reset to its DEFAULT (or NULL) the next time the
+  /// user changes ANY other setting. A column that is added to the schema but
+  /// not to this map therefore does not merely fail to persist; it erases
+  /// itself later, at a moment unrelated to whatever wrote it.
+  ///
+  /// v12 adds three columns on PURPOSE not listed here — `home_layout`
+  /// (design 0046), `g_meter_enabled` and `g_calibration` (design 0045). They
+  /// have no writer yet, so today the omission is harmless; the day either
+  /// design lands, its fields must join this map in the same change that starts
+  /// writing them. See the v12 note in `app_database.dart`.
   Map<String, Object?> toMap() => {
         'auto_reconnect': autoReconnect ? 1 : 0,
         'poll_interval_ms': pollIntervalMs,
@@ -156,6 +206,8 @@ class AppSettings {
         'theme_mode': themeMode.name,
         'lang': lang.name,
         'temp_unit': tempUnit.name,
+        'speed_detection': speedDetection ? 1 : 0,
+        'speed_unit': speedUnit.name,
         'retention': retention.name,
         'raw_packet_log': rawPacketLog ? 1 : 0,
         'log_max_bytes': logMaxBytes,
@@ -177,6 +229,16 @@ class AppSettings {
         tempUnit: TempUnit.values.firstWhere(
           (e) => e.name == m['temp_unit'],
           orElse: () => TempUnit.celsius,
+        ),
+        // Pre-v12 rows have no such column (NULL) — and NULL must read as OFF.
+        // `!= 0` (the shape used by the two switches above) would turn a
+        // missing column into "on", which for this switch means an upgrade
+        // silently granting itself a feature the user has never been shown the
+        // consent dialog for.
+        speedDetection: (m['speed_detection'] as num?)?.toInt() == 1,
+        speedUnit: SpeedUnit.values.firstWhere(
+          (e) => e.name == m['speed_unit'],
+          orElse: () => SpeedUnit.kmh,
         ),
         retention: RetentionPolicy.values.firstWhere(
           (r) => r.name == m['retention'],

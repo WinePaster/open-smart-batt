@@ -71,7 +71,54 @@ class Db {
   /// only living on the connected sample). Both nullable with NO default and NO
   /// backfill: a pre-v11 row keeps NULL, meaning "not yet observed", rather than
   /// being stamped with whatever unit connected next. Same reasoning as v5–v7.
-  static const int schemaVersion = 11;
+  /// v12: the GPS speed feature (design 0042) — and, deliberately, four columns
+  /// it does not use. NINE columns in one migration, because this list is a
+  /// one-way ratchet: `_onUpgrade` is a cumulative `if (from < N)` chain, so a
+  /// column left out of v12 can only ever be added by a v13, and design 0044 Q2
+  /// ruled there is not going to be one ("speed + accel + g_long + g_lat in one
+  /// go, no v13"). A forgotten column here does not cost a follow-up migration;
+  /// it overturns a ruling.
+  ///
+  ///   history.speed / accel     REAL, nullable — the PHONE's speed (m/s) and
+  ///     its first derivative (m/s²), averaged over the same minute the rest of
+  ///     the row averages. 🔑 They describe the PHONE, not the unit named by
+  ///     this row's `device_id`: one phone, N connected devices, so every open
+  ///     bucket in a minute receives the SAME value (design 0042 §3.9, ruling
+  ///     (b)+(d) of 2026-08-07). Per-device queries must therefore not SUM
+  ///     them. With nothing connected there is no bucket and no row, so those
+  ///     minutes are absent rather than NULL — deliberately, since opening a
+  ///     device-less bucket is exactly what design 0043 §3.1 forbids.
+  ///     `accel` is written by design 0044; v12 only makes the room.
+  ///   history.g_long / g_lat    REAL, nullable — reserved for design 0045's
+  ///     G meter (its Q4/Q7). Nothing writes them yet.
+  ///   settings.speed_detection  INTEGER NOT NULL DEFAULT 0 — the master switch
+  ///     (design 0042 §3.9). DEFAULT 0 so an upgrade never turns on a feature
+  ///     whose consent dialog the user has not seen.
+  ///   settings.speed_unit       TEXT NOT NULL DEFAULT 'kmh'.
+  ///   settings.home_layout      TEXT, nullable, NO default — reserved for
+  ///     design 0046. It was claimed as ITS v12; the collision was resolved on
+  ///     2026-08-06 by folding the column in here, which left that delivery
+  ///     with no schema change at all. NULL for the same reason
+  ///     `saved_devices.display_layout` is (v10): "this app has no custom home"
+  ///     is already what NULL says, and a written-in empty layout would claim
+  ///     every existing user had chosen one.
+  ///   settings.g_meter_enabled  INTEGER NOT NULL DEFAULT 0 — reserved for
+  ///     design 0045 §3.8. NOT NULL because it is a boolean: nullable would
+  ///     invent a third state (NULL/0/1) with two of them meaning "off".
+  ///   settings.g_calibration    TEXT, nullable, NO default — reserved for
+  ///     design 0045 §3.8 (a JSON rotation matrix plus a timestamp). Nullable
+  ///     because "never calibrated" is not some matrix; encoding it as an empty
+  ///     string would invent a sentinel worse than NULL.
+  ///
+  /// ⚠️ The four reserved columns have NO writer, and must not gain one before
+  /// their own design lands. `SettingsRepo.saveSettings` is INSERT OR REPLACE,
+  /// so a settings column absent from `AppSettings.toMap()` is reset on the next
+  /// change to ANY setting — harmless while nothing writes them, silent data
+  /// loss the moment something does. See the note on [AppSettings.toMap].
+  ///
+  /// 🔴 SQLite cannot ALTER an existing column's constraints, so the NOT NULL /
+  /// DEFAULT decisions above are welded in from the moment v12 ships.
+  static const int schemaVersion = 12;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -356,6 +403,43 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN serial TEXT',
       );
     }
+    if (from < 12) {
+      // design 0042 (GPS speed) plus four columns reserved for designs 0044 /
+      // 0045 / 0046. The full rationale — including why all nine land at once
+      // and why each constraint is what it is — is on [Db.schemaVersion]; this
+      // is the one place it can still be changed, and after it ships it is not.
+      //
+      // `speed`/`accel` are nullable with NO default: a minute with no live GPS
+      // sample genuinely has no speed, and a written-in 0.0 would claim the
+      // phone was stationary.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN speed REAL',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN accel REAL',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN g_long REAL',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} ADD COLUMN g_lat REAL',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN speed_detection INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        "ALTER TABLE ${Db.tableSettings} ADD COLUMN speed_unit TEXT NOT NULL DEFAULT 'kmh'",
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN home_layout TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN g_meter_enabled INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN g_calibration TEXT',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -383,7 +467,11 @@ class AppDatabase {
       soc INTEGER,
       device_id TEXT,
       samples INTEGER,
-      app_build TEXT
+      app_build TEXT,
+      speed REAL,
+      accel REAL,
+      g_long REAL,
+      g_lat REAL
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',
@@ -416,7 +504,12 @@ class AppDatabase {
       auto_log INTEGER NOT NULL DEFAULT 1,
       raw_packet_log INTEGER NOT NULL DEFAULT 0,
       retention TEXT NOT NULL DEFAULT 'forever',
-      log_max_bytes INTEGER NOT NULL DEFAULT ${20 * 1024 * 1024}
+      log_max_bytes INTEGER NOT NULL DEFAULT ${20 * 1024 * 1024},
+      speed_detection INTEGER NOT NULL DEFAULT 0,
+      speed_unit TEXT NOT NULL DEFAULT 'kmh',
+      home_layout TEXT,
+      g_meter_enabled INTEGER NOT NULL DEFAULT 0,
+      g_calibration TEXT
     )
     ''',
     '''
