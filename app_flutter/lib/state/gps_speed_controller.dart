@@ -127,7 +127,24 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
   /// the platform offers is left behind with the object it came on.
   @visibleForTesting
   static SpeedFix toFix(Position p) => SpeedFix(
-        speedMps: p.speed,
+        // 🔴 "No speed reported" and "stopped" arrive as the SAME bytes.
+        //
+        // Both mappers omit the key when the chip has no speed solution
+        // (`LocationMapper.java:29` guards on `hasSpeed()`), and
+        // `Position._toDouble(null)` renders an absent key as `0.0`. The design
+        // doc's `speed < 0` filter was written for CoreLocation's documented
+        // invalid marker, which geolocator never lets through — so an
+        // unmeasured reading used to be published as `0 km/h, good, live`.
+        //
+        // The disambiguator is the accuracy: a chip with a real speed solution
+        // reports its uncertainty alongside (API 26+ / iOS 10+). Zero speed
+        // AND no uncertainty is the shape of "nothing to report".
+        //
+        // ⚠️ This deliberately errs toward silence. A genuinely stationary
+        // vehicle on a pre-API-26 device also lands here and shows "waiting"
+        // rather than "0 km/h" — which is the honest side to be wrong on, and
+        // the only side G2 allows.
+        speedMps: (p.speed == 0.0 && p.speedAccuracy <= 0) ? null : p.speed,
         // Non-nullable on the platform side, so "not reported" arrives as 0 or
         // -1 (0042 §2.3 #3, still unverified in the field on old Android).
         // Both are mapped to null, which is what makes the card omit the ±

@@ -136,9 +136,26 @@ class SpeedFix {
     required this.timestamp,
   });
 
-  /// Doppler speed from the GNSS chipset, m/s. Negative means "invalid" on iOS
-  /// and is rejected rather than clamped.
-  final double speedMps;
+  /// Doppler speed from the GNSS chipset in m/s, or **null when the platform
+  /// did not report one at all**.
+  ///
+  /// 🔴 Nullable since 2026-08-07, and the nullability is the whole point.
+  /// The design doc's filter said "reject `speed < 0`", borrowed from
+  /// CoreLocation's documented invalid marker. **That value never arrives.**
+  /// Both platform mappers OMIT the key when the reading is unavailable
+  /// (`LocationMapper.java:29` guards on `hasSpeed()`; the iOS mapper does the
+  /// same), and `Position._toDouble(null)` turns an absent key into `0.0`
+  /// (geolocator_platform_interface `position.dart:200-206`).
+  ///
+  /// So "we have no speed yet" used to arrive as a perfectly ordinary
+  /// `0.0 m/s`, sail through every filter, and be published as
+  /// `0 km/h, quality good, state live` — a number nobody measured, presented
+  /// as measured, in the first seconds the user is watching. That is the exact
+  /// thing G2 forbids.
+  ///
+  /// There is no value that can mean both, so the absence is carried in the
+  /// type instead. The adapter decides; the estimator just rejects null.
+  final double? speedMps;
 
   /// Reported uncertainty of [speedMps] in m/s, or null where the platform does
   /// not report one (pre-API-26 Android, pre-iOS-10).
@@ -283,9 +300,9 @@ class SpeedEstimator {
     // is looking to see whether the reading came back (0042 §3.2).
     final resuming = _state != null && _state != SpeedState.live;
     if (_ewma == null || resuming) {
-      _ewma = fix.speedMps;
+      _ewma = fix.speedMps!;
     } else {
-      _ewma = config.alpha * fix.speedMps + (1 - config.alpha) * _ewma!;
+      _ewma = config.alpha * fix.speedMps! + (1 - config.alpha) * _ewma!;
     }
 
     _lastFixAt = fix.timestamp;
@@ -407,7 +424,10 @@ class SpeedEstimator {
 
   /// Sample-level filters (0042 §3.2). All three reject the whole sample.
   bool _accepts(SpeedFix fix) {
-    if (fix.speedMps.isNaN || fix.speedMps < 0) return false;
+    // Null is "the platform reported no speed" — see [SpeedFix.speedMps].
+    // Rejecting it here is what keeps an unmeasured 0 off the screen.
+    final v = fix.speedMps;
+    if (v == null || v.isNaN || v < 0) return false;
     if (fix.horizontalAccuracyM.isNaN ||
         fix.horizontalAccuracyM > config.aRejectM) {
       return false;

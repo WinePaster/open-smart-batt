@@ -336,5 +336,27 @@ void main() {
       expect(good.horizontalAccuracyM, 8.0);
       expect(good.speedAccuracyMps, 0.5);
     });
+
+    test('an unreported speed arrives as null, not as a measured 0', () {
+      Position at({required double speed, required double speedAcc}) => Position(
+            latitude: 25.0, longitude: 121.0, timestamp: DateTime(2026, 8, 7),
+            accuracy: 8.0, altitude: 0, altitudeAccuracy: 0, heading: 0,
+            headingAccuracy: 0, speed: speed, speedAccuracy: speedAcc,
+          );
+
+      // The shape of "the chip has no speed solution": both keys omitted, both
+      // rendered as 0.0 by the platform interface. This used to be published as
+      // `0 km/h, quality good, state live` — a number nobody measured.
+      expect(GeolocatorSpeedSource.toFix(at(speed: 0.0, speedAcc: 0.0)).speedMps,
+          isNull);
+
+      // A real stop: the chip reports zero AND says how sure it is.
+      expect(GeolocatorSpeedSource.toFix(at(speed: 0.0, speedAcc: 0.4)).speedMps,
+          0.0);
+
+      // Moving is never ambiguous, with or without an uncertainty.
+      expect(GeolocatorSpeedSource.toFix(at(speed: 9.5, speedAcc: 0.0)).speedMps,
+          9.5);
+    });
   });
 }

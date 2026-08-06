@@ -105,6 +105,10 @@ void main() {
   });
 
   group('sample filtering', () {
+    // ⚠️ Kept, but it is no longer the case that matters on a real phone.
+    // The 2026-08-07 review found that geolocator NEVER delivers -1: the
+    // platform mappers omit the key and the interface renders that as 0.0, so
+    // this vector only ever existed on paper. The one below is the real one.
     test("iOS's -1 invalid speed is rejected and does not refresh the age", () {
       final (:clock, :est) = build();
       est.addFix(_fix(clock.t, 10.0));
@@ -119,6 +123,27 @@ void main() {
       // state machine has moved on.
       est.tick();
       expect(est.current!.state, SpeedState.holding);
+    });
+
+    test('a fix with no reported speed is rejected, not read as a stop', () {
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 10.0));
+      expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
+
+      // What "the chip has no speed solution" actually looks like after the
+      // adapter has done its job. If this were accepted it would both publish
+      // an unmeasured 0 AND refresh the age, so the state machine would sit in
+      // `live` forever on a phone that is telling us nothing.
+      clock.advance(const Duration(seconds: 3));
+      est.addFix(SpeedFix(
+        speedMps: null,
+        horizontalAccuracyM: 5.0,
+        timestamp: clock.t,
+      ));
+      expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
+      est.tick();
+      expect(est.current!.state, SpeedState.holding,
+          reason: 'a null speed must not count as a recent sample');
     });
 
     test('a fix worse than the accuracy floor is rejected whole', () {
