@@ -89,7 +89,8 @@ String? deviceLine(ExportDeviceIdentity d) {
 ///
 /// The shape is a fixed head (four lines, positions relied on by the ingest
 /// scripts), an optional middle, and a fixed tail. New optional lines join the
-/// middle; the layout line stays last.
+/// middle; the layout line stays last. [home] is required for the same reason
+/// [layout] is — see its line.
 List<String> exportHeaderLines({
   required String title,
   required DateTime exportedAt,
@@ -97,6 +98,7 @@ List<String> exportHeaderLines({
   required String platform,
   required String scope,
   required String layout,
+  required String home,
   required bool speedDetection,
   int? connections,
   bool? rawPacketLog,
@@ -149,6 +151,16 @@ List<String> exportHeaderLines({
     // reports `face=riding modules=speed,…` while DRAWING `standard`. The two
     // lines read together say why. Neither line alone can.
     'speed detection: ${speedDetection ? 'on' : 'off'}',
+    // design 0046 Step 10. The same argument as `layout:` below, applied to the
+    // page most screenshots are now OF: since design 0046 R3 the home grid is
+    // the default entry point, so "there is no charge reading on screen" needs
+    // this line to be readable at all.
+    //
+    // In the OPTIONAL MIDDLE rather than after `layout:`, deliberately: the
+    // ingest scripts anchor on `layout:` being the LAST line
+    // (`export_layout_header_test.dart`'s T10 constraint 1), and a value that
+    // has shipped for two months is not worth re-negotiating to save a line.
+    'home: $home',
     // Design 0034 §8. Our problem-reading runs on screenshots: every entry in
     // `feedback-attachments/our-app.md` is a field read off a picture, and
     // sentences like "SOC shows --" or "four DVOL bars of similar length" are

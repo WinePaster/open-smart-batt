@@ -73,6 +73,7 @@ void main() {
         platform: 'ios 18.5',
         scope: 'device=battery/1206',
         layout: layout,
+        home: 'tiles=auto',
         speedDetection: false,
       );
       expect(lines.first, 'OpenSmartBatt history export');
@@ -90,6 +91,7 @@ void main() {
         platform: 'p',
         scope: 'all devices',
         layout: layout,
+        home: 'tiles=auto',
         speedDetection: false,
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
@@ -111,6 +113,10 @@ void main() {
       // and this is the test that made it show up: the equality did its job,
       // the line was written down, and the four original lines are STILL
       // verbatim in position. Do not relax it now either.
+      //
+      // Design 0046 Step 10 adds `home:`, also in the optional middle and also
+      // written down here rather than absorbed by a looser matcher. `layout:`
+      // is still last, which is the constraint the ingest scripts depend on.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
@@ -118,6 +124,7 @@ void main() {
         platform: 'android 15',
         scope: 'device=capacitor/7809 session=3',
         layout: layout,
+        home: 'tiles=auto',
         speedDetection: false,
         connections: 2,
       );
@@ -127,6 +134,7 @@ void main() {
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
         'speed detection: off',
+        'home: tiles=auto',
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);
     });

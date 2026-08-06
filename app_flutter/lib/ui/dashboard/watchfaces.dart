@@ -293,3 +293,57 @@ String currentExportLayoutValue(BuildContext context) {
   if (!conn.isOnline) return exportLayoutValue(cls: null, layout: null);
   return exportLayoutValue(cls: conn.displayClass, layout: conn.displayLayout);
 }
+
+/// Machine-readable summary of the HOME grid, for the export preamble
+/// (design 0046 Step 10 / §9 Q-A).
+///
+/// Design 0034 §8 made the watchface line required because "our problem-reading
+/// runs on screenshots": a customisable dashboard makes "there is no charge
+/// reading on screen" mean either "the data never came" or "that card is not on
+/// their page". 🔑 That argument is STRONGER here than it was there, because
+/// since design 0046 R3 the home grid is the DEFAULT ENTRY POINT — so most
+/// screenshots we are sent are now screenshots of this page.
+///
+/// It obeys the same six constraints as [exportLayoutValue], for the same
+/// reasons: its own line, in the OPTIONAL MIDDLE so `layout:` stays last; no
+/// `: ` in the value (the analysis recipes read it with a greedy
+/// `sed 's/.*: //'`); never localized; one line; emitted unconditionally,
+/// default included — if only a customised grid were written, a missing line
+/// would mean both "they kept the default" and "an older build wrote this",
+/// which is the FB-32 ambiguity.
+///
+/// 🔴 Device ids are NOT written. They are replaced by per-export ordinals
+/// (`d1`, `d2`, …) assigned in order of first appearance. That is enough to see
+/// that two tiles name the SAME unit — the only thing a reader needs from them
+/// — while design 0027 §3.1's rule (a raw device id never reaches an exported
+/// file; on Android it is the MAC) is kept without adding a second hashing
+/// scheme beside `# devices:`.
+///
+/// `tiles=auto` means the user has never customised it, so what they saw is
+/// whatever [HomeLayout.defaultFor] produced for the devices listed above.
+String exportHomeValue(HomeLayout? layout) {
+  if (layout == null) return 'tiles=auto';
+  final ordinals = <String, String>{};
+  String token(String id) =>
+      ordinals.putIfAbsent(id, () => 'd${ordinals.length + 1}');
+  final parts = <String>[
+    for (final t in layout.tiles)
+      switch (t.kind) {
+        HomeTileKind.addDevice => 'addDevice',
+        HomeTileKind.deviceCard => 'deviceCard@${token(t.deviceId!)}',
+        HomeTileKind.module => t.deviceId == null
+            ? t.module!.name
+            : '${t.module!.name}@${token(t.deviceId!)}',
+      },
+  ];
+  return 'tiles=${parts.join(',')}';
+}
+
+/// [exportHomeValue] for whatever the home grid is at this instant.
+///
+/// Reads with `context.read` for [currentExportLayoutValue]'s reason: every
+/// caller is an export handler responding to a tap, and must capture this
+/// BEFORE its first `await`.
+String currentExportHomeValue(BuildContext context) =>
+    exportHomeValue(
+        HomeLayout.decode(context.read<SettingsController>().homeLayout));

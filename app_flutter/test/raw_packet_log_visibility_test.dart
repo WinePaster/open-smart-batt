@@ -30,6 +30,7 @@ void main() {
         platform: 'ios 26.6',
         scope: 'all devices',
         layout: kLayout,
+        home: 'tiles=auto',
         speedDetection: false,
         connections: 1,
         rawPacketLog: rawPacketLog,

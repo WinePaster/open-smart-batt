@@ -348,6 +348,10 @@ class _DataCardState extends State<_DataCard> {
     // with the other context reads — by the time the CSV is built this screen
     // may be gone.
     final layout = currentExportLayoutValue(context);
+    // design 0046 Step 10. Same capture rule as `layout` above: read before the
+    // first await, because by the time the file is written the screen may be
+    // gone.
+    final home = currentExportHomeValue(context);
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
     final speedDetection = context.read<SettingsController>().speedDetection;
@@ -363,6 +367,7 @@ class _DataCardState extends State<_DataCard> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           layout: layout,
+          home: home,
           speedDetection: speedDetection,
         ),
       );
@@ -532,8 +537,10 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final rawLog = context.read<SettingsController>().rawPacketLog;
     final speedOn = context.read<SettingsController>().speedDetection;
     // The dashboard layout in force right now (design 0034 §8), captured with
-    // the other context reads for the same reason.
+    // the other context reads for the same reason. The home grid likewise
+    // (design 0046 Step 10).
     final layout = currentExportLayoutValue(context);
+    final home = currentExportHomeValue(context);
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
@@ -543,7 +550,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       final identities = await exportDeviceIdentities(devices, tele, target);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, speedOn, layout, identities);
+              tele, services, target, rawLog, speedOn, layout, home,
+              identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -677,6 +685,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     bool rawPacketLog,
     bool speedDetection,
     String layout,
+    String home,
     List<ExportDeviceIdentity> devices,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
@@ -689,6 +698,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       platform: services.platform,
       scope: exportScopeLabel(target),
       layout: layout,
+      home: home,
       speedDetection: speedDetection,
       connections: sessions,
       rawPacketLog: rawPacketLog,

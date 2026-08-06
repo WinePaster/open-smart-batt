@@ -30,7 +30,10 @@ void main() {
         exportLayoutValue(cls: null, layout: null),
       ];
 
-  List<String> header({required String layout, bool speedDetection = false}) =>
+  List<String> header(
+          {required String layout,
+          String home = 'tiles=auto',
+          bool speedDetection = false}) =>
       exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: DateTime.utc(2026, 8, 4, 9, 30),
@@ -38,6 +41,7 @@ void main() {
         platform: 'android 15',
         scope: 'device=battery/1206',
         layout: layout,
+        home: home,
         speedDetection: speedDetection,
       );
 
@@ -387,6 +391,106 @@ void main() {
       // Still inside the commented preamble, above the column header.
       expect(lines.indexOf(layoutLine),
           lessThan(lines.indexWhere((l) => !l.startsWith('#'))));
+    });
+  });
+
+  // =========================================================================
+  // design 0046 Step 10 — the same six constraints, for the home grid.
+  //
+  // WHY THIS LINE EXISTS AT ALL. The argument for `layout:` above is that our
+  // problem-reading runs on screenshots, and a customisable page makes "there
+  // is no charge reading on screen" mean two different things. Design 0046 R3
+  // made the home grid the app's DEFAULT ENTRY POINT — so most screenshots we
+  // are sent from now on are of THIS page, and the argument is stronger here
+  // than it was there.
+  //
+  // Copied from the `layout` group rather than merged with it, deliberately:
+  // the two lines have different positions in the preamble (one is the required
+  // tail, one is in the optional middle) and a shared loop would stop being
+  // able to say so.
+  // =========================================================================
+  group('T10 for home: the value obeys the same grammar', () {
+    List<String> homeValues() => [
+          exportHomeValue(null),
+          exportHomeValue(HomeLayout.defaultFor(const [])),
+          exportHomeValue(HomeLayout.defaultFor(
+              const [SavedDevice(id: 'AA:BB', alias: 'one')])),
+          exportHomeValue(HomeLayout.defaultFor(const [
+            SavedDevice(id: 'AA:BB', alias: 'one'),
+            SavedDevice(id: 'CC:DD', alias: 'two'),
+          ])),
+          exportHomeValue(HomeLayout(const [
+            HomeTile.module(DisplayModule.speed, span: HomeSpan.half),
+            HomeTile.device('AA:BB'),
+            HomeTile.module(DisplayModule.readouts, deviceId: 'AA:BB'),
+          ])),
+        ];
+
+    test('one line, and never merged into another', () {
+      for (final v in homeValues()) {
+        expect(v, isNot(contains('\n')));
+        expect(v, isNot(contains('\r')));
+        final lines = header(layout: 'face=- modules=-', home: v);
+        expect(lines.where((l) => l.startsWith('home: ')), hasLength(1));
+      }
+    });
+
+    test('the value carries no ": " for the greedy sed to eat', () {
+      // The analysis recipes read a preamble value with `sed 's/.*: //'`, which
+      // takes everything up to the LAST occurrence.
+      for (final v in homeValues()) {
+        expect(v, isNot(contains(': ')));
+      }
+    });
+
+    test('it sits in the optional middle — layout: is still last', () {
+      // The one constraint `home:` must NOT copy. The ingest scripts anchor on
+      // `layout:` closing the preamble (constraint 1 above), and that contract
+      // has shipped for two months.
+      for (final v in homeValues()) {
+        final lines = header(layout: 'face=- modules=-', home: v);
+        expect(lines.last, 'layout: face=- modules=-');
+        expect(lines.indexWhere((l) => l.startsWith('home: ')),
+            lessThan(lines.length - 1));
+      }
+    });
+
+    test('it is emitted unconditionally, "never customised" included', () {
+      // FB-32's rule. If only a customised grid were written, a missing line
+      // would mean both "they kept the default" and "an older build wrote
+      // this".
+      final lines = header(layout: 'face=- modules=-', home: exportHomeValue(null));
+      expect(lines, contains('home: tiles=auto'));
+    });
+
+    test('it is not localized', () {
+      // A preamble is read by whoever RECEIVES the file, not by the phone that
+      // exported it.
+      for (final v in homeValues()) {
+        expect(v, matches(RegExp(r'^tiles=[A-Za-z0-9@,]+$')));
+      }
+    });
+
+    test('raw device ids never reach the file', () {
+      // design 0027 §3.1: on Android the device id is the MAC. Tiles that name
+      // the same unit share an ordinal, which is the only thing a reader needs
+      // from them.
+      final v = exportHomeValue(HomeLayout(const [
+        HomeTile.device('AA:BB:CC:DD:EE:FF'),
+        HomeTile.module(DisplayModule.readouts, deviceId: 'AA:BB:CC:DD:EE:FF'),
+        HomeTile.device('11:22:33:44:55:66'),
+      ]));
+      expect(v, isNot(contains('AA:BB')));
+      expect(v, isNot(contains('11:22')));
+      expect(v, 'tiles=deviceCard@d1,readouts@d1,deviceCard@d2');
+    });
+
+    test('a device-free module carries no ordinal at all', () {
+      // design 0042's `speed` reads the phone, not a unit — inventing a device
+      // token for it would tell a reader it was about a battery.
+      expect(exportHomeValue(HomeLayout(const [
+        HomeTile.module(DisplayModule.speed),
+      ])), 'tiles=speed');
     });
   });
 }

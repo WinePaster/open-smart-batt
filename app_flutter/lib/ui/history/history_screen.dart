@@ -188,6 +188,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // is bound to the connected unit, so an offline export honestly reports
     // that no layout was in force.
     final layout = currentExportLayoutValue(context);
+    final home = currentExportHomeValue(context);
     // design 0042 §3.9: unconditional, `off` included — otherwise an empty
     // `speed` column means both "the feature was off" and "the signal never
     // arrived", which is the ambiguity FB-32 exists to prevent.
@@ -206,6 +207,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           layout: layout,
+          home: home,
           speedDetection: speedDetection,
         ),
       );
