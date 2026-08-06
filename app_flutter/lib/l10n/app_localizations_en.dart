@@ -609,6 +609,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceBadgeNotAnswering => 'Not answering';
 
   @override
+  String get deviceDetailWatchface => 'Watchface';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override

@@ -430,6 +430,7 @@
   "deviceBadgeOffline": "Not connected",
   "deviceBadgeFailed": "Connection failed",
   "deviceBadgeNotAnswering": "Not answering",
+  "deviceDetailWatchface": "Watchface",
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",
   "devicesScanning": "Scanning…",

@@ -158,6 +158,7 @@
   "deviceBadgeOffline": "未連線",
   "deviceBadgeFailed": "連線失敗",
   "deviceBadgeNotAnswering": "沒有回應",
+  "deviceDetailWatchface": "錶盤",
   "devicesNoSaved": "尚無已儲存裝置",
   "devicesUnnamed": "未命名裝置",
   "devicesScanning": "掃描中…",

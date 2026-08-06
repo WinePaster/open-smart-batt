@@ -29,6 +29,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/dashboard_page.dart';
 import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -42,6 +43,9 @@ class _FakeBle extends BleService {
 
   @override
   String get connectedDeviceName => connectedId == null ? '' : 'RCE-CarBatt';
+
+  @override
+  String? get connectedDeviceId => connectedId;
 
   @override
   Stream<BleLinkState> get linkState => _linkOut.stream;
@@ -92,6 +96,33 @@ class _FakeBle extends BleService {
     await _linkOut.close();
     await _scanOut.close();
     await super.dispose();
+  }
+}
+
+/// A controller whose `lastError` / stall latch a test can simply state.
+///
+/// Same device as `give_up_visibility_test.dart`'s `_ErrorConn`, and for the
+/// same reason: two of these states are reached only by waiting (the backoff
+/// ladder needs its full 60 s, the autoConnect watchdog 180 s) on a wall clock a
+/// widget test cannot fake while a real database is in play. Which failure
+/// produces which code is a pure function pinned elsewhere; all this page has to
+/// be asked is what it draws once the code exists.
+class _StateConn extends ConnectionController {
+  _StateConn(super.ble, {required super.settings});
+
+  String? error;
+  bool stalledLatch = false;
+
+  @override
+  String? get lastError => error;
+
+  @override
+  bool get isSetupStalled => stalledLatch;
+
+  void state({String? error, bool stalled = false}) {
+    this.error = error;
+    stalledLatch = stalled;
+    notifyListeners();
   }
 }
 
@@ -230,5 +261,115 @@ void main() {
     expect(s.connection.isOnline, isFalse);
     expect(find.byType(DevicesPage), findsOneWidget);
     expect(find.text('Connect'), findsOneWidget);
+  });
+
+  // ==========================================================================
+  // T-new-6 — the badge is a door, not a dead end
+  // ==========================================================================
+  //
+  // Design 0046 R21 puts ONE WORD on the row and the full report on the device's
+  // own page. That trade is only acceptable while the word is a LINK: FB-53's
+  // complaint, word for word, was that the app had stopped trying and "the only
+  // clue was that the spinner had gone". A badge that changes colour and does
+  // nothing else is that same screen with a colour added.
+  group('T-new-6: every badge state is a door, not a dead end', () {
+    late _StateConn conn;
+
+    Future<AppServices> pumpWithState(WidgetTester tester) async {
+      final s = await makeServices(tester);
+      conn = _StateConn(ble, settings: s.settings);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<BleService>.value(value: s.ble),
+            ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+            ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+            ChangeNotifierProvider<ConnectionController>.value(value: conn),
+            ChangeNotifierProvider<TelemetryController>.value(
+                value: s.telemetry),
+            ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: const Scaffold(body: DevicesPage()),
+          ),
+        ),
+      );
+      await tester.pump();
+      return s;
+    }
+
+    /// badge word -> the FULL sentence its page must carry. The empty string is
+    /// the connected case, whose "full report" is the dashboard itself.
+    const cases = <String, String>{
+      'Not connected': 'No device connected',
+      'Connecting': 'Connecting…',
+      'Connection failed': 'Could not connect to this device',
+      'Not answering': 'Connected, but the device is not answering',
+      'Connected': '',
+    };
+
+    for (final entry in cases.entries) {
+      testWidgets('${entry.key}: the badge opens the full text', (tester) async {
+        final s = await pumpWithState(tester);
+        addTearDown(() {
+          conn.dispose();
+          return teardown(tester, s);
+        });
+
+        switch (entry.key) {
+          case 'Not connected':
+            break;
+          case 'Connecting':
+            ble.connectedId = 'DEV-A';
+            ble._linkOut.add(BleLinkState.connecting);
+          case 'Connection failed':
+            ble.connectedId = 'DEV-A';
+            conn.state(error: 'connect_failed');
+          case 'Not answering':
+            ble.connectedId = 'DEV-A';
+            conn.state(error: 'gatt_setup_stalled', stalled: true);
+          case 'Connected':
+            ble.connectedId = 'DEV-A';
+            ble._linkOut.add(BleLinkState.ready);
+        }
+        await settle(tester);
+
+        expect(find.text(entry.key), findsOneWidget,
+            reason: 'the row must carry the one-word status');
+
+        await tester.tap(find.text(entry.key));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400)); // route transition
+        await settle(tester);
+
+        expect(find.byType(DeviceDetailPage), findsOneWidget,
+            reason: 'R21 puts the full report here; a badge that leads nowhere '
+                'is FB-53 with a colour added');
+        // Scoped to the pushed page's subtree: the list route stays mounted
+        // underneath, so an unscoped finder would be reading the row we came
+        // from rather than the page we arrived at.
+        Finder onPage(String text) => find.descendant(
+              of: find.byType(DeviceDetailPage),
+              matching: find.text(text),
+            );
+        if (entry.value.isEmpty) {
+          // Connected: the "full report" IS the dashboard, so what this asserts
+          // is that the page is showing telemetry rather than a failure copy.
+          expect(find.descendant(
+                of: find.byType(DeviceDetailPage),
+                matching: find.byType(DashboardPage),
+              ), findsOneWidget);
+        } else {
+          expect(onPage(entry.value), findsOneWidget,
+              reason: 'the page says it in full, not in the badge\'s one word');
+          expect(onPage(entry.key), findsNothing,
+              reason: 'the badge word is a summary; the page is the report');
+        }
+      });
+    }
   });
 }

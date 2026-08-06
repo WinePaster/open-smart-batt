@@ -1046,6 +1046,12 @@ abstract class AppLocalizations {
   /// **'Not answering'**
   String get deviceBadgeNotAnswering;
 
+  /// No description provided for @deviceDetailWatchface.
+  ///
+  /// In en, this message translates to:
+  /// **'Watchface'**
+  String get deviceDetailWatchface;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

@@ -25,6 +25,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
 import 'connection_failure.dart';
+import 'watchface_sheet.dart';
 
 /// The per-device page, pushed from the devices tab.
 class DeviceDetailPage extends StatelessWidget {
@@ -74,6 +75,23 @@ class DeviceDetailPage extends StatelessWidget {
             color: context.colors.text,
           ),
         ),
+        actions: [
+          // design 0046 R20: the watchface belongs to the DEVICE (0034 Q3), so
+          // its entry point belongs on the device's own page. Settings keeps a
+          // signpost, not a second editor — see `watchface_sheet.dart`.
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () =>
+                  unawaited(showWatchfaceSheet(context, deviceId: deviceId)),
+              icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
+              label: Text(
+                l10n.deviceDetailWatchface,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+        ],
       ),
       body: live
           ? DashboardPage(onOpenSettings: onOpenSettings)

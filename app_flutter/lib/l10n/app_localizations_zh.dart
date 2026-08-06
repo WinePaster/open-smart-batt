@@ -578,6 +578,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get deviceBadgeNotAnswering => '沒有回應';
 
   @override
+  String get deviceDetailWatchface => '錶盤';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override
