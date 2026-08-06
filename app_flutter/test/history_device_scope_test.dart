@@ -17,8 +17,16 @@
 //      others.
 //   2. Scoping must not invent attribution. 23 of that capture's 79 rows (29 %)
 //      have no device_id, they span BOTH units' voltages, and they must belong
-//      to neither — while remaining countable, so the screen can say how many
-//      it is hiding rather than repeating FB-21 one layer up.
+//      to neither — while remaining countable, so an export can say how many it
+//      is leaving out rather than repeating FB-21 one layer up.
+//
+// AMENDED BY DESIGN 0043. Everything below still holds of the REPOSITORY, which
+// is what it tests: an unscoped query still returns every row, and the
+// unattributed ones still belong to no unit. What changed is one layer up — the
+// History screen no longer issues an unscoped query at all, and no longer
+// footnotes the rows it is not showing. Those screen-level properties live in
+// history_default_scope_test.dart; this file deliberately keeps asserting the
+// repo's own behaviour, because the export depends on it.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -109,14 +117,17 @@ void main() {
       }
     });
 
-    test('unscoped still returns everything — no behaviour change by default',
-        () async {
+    test('unscoped still returns everything — the repo filters nothing on its '
+        'own', () async {
+      // Still the repo's default after design 0043. The screen now opts in to
+      // `attributedOnly`; keeping the DEFAULT unfiltered is what stops that
+      // opt-in from ever reaching the export by accident.
       final all = await repo.queryBuckets(bucketMs: 60000);
       expect(all.fold<int>(0, (a, b) => a + b.count), 7);
     });
   });
 
-  group('countUnattributed — say what the scope hides', () {
+  group('countUnattributed — say what an export leaves out', () {
     test('counts exactly the rows a device scope drops', () async {
       expect(await repo.countUnattributed(), 2);
     });

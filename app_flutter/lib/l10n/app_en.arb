@@ -504,6 +504,14 @@
   "historyEmptyToday": "No records today.\nThey start accumulating once a device is connected.",
   "historyEmptyWarning": "No warning or event records.",
   "historyEmptyAll": "No history yet.\nIt starts accumulating once a device is connected.",
+  "historyEmptyNoDevices": "No device records yet.\nThey start accumulating once you connect a device and give it a name.",
+  "@historyEmptyNoDevices": {
+    "description": "History is empty because no device has any rows yet. It names the naming step on purpose: saving a device is a manual step the user can cancel, which is where people get stuck."
+  },
+  "historyEmptyDeviceRange": "No records for this device in the selected range.",
+  "@historyEmptyDeviceRange": {
+    "description": "The view is always scoped to one device, so 'no records' has to say WHOSE — history may well hold plenty of rows, just for another unit."
+  },
   "historyFooter": "{count, plural, =1{1 record · Local SQLite · Export CSV / Share} other{{count} records · Local SQLite · Export CSV / Share}}",
   "@historyFooter": {
     "placeholders": {
