@@ -106,6 +106,20 @@ class AppSettings {
   /// km/h or mph for every speed on screen. DEFAULT [SpeedUnit.kmh].
   final SpeedUnit speedUnit;
 
+  /// The home page's stored grid, as `HomeLayout.encode()`'s JSON — or NULL
+  /// when the user has never opened the editor (design 0046 §3.3).
+  ///
+  /// 🔴 NULL is a MEANING, not an absence of data: it says "generate the layout
+  /// from the devices I have", so a unit saved next week appears by itself.
+  /// Writing a snapshot of today's default instead would freeze that. It is
+  /// also why "restore default layout" writes NULL rather than a computed
+  /// layout (design 0046 §4.9).
+  ///
+  /// Stored as TEXT in a column design 0042's v12 migration created on this
+  /// feature's behalf (0046 R24) — hence a column that existed for a release
+  /// before anything wrote it.
+  final String? homeLayout;
+
   // --- data ---
   /// How long history is kept. Telemetry is ALWAYS recorded while connected —
   /// there is no longer a switch that stops it — and this only decides when old
@@ -144,6 +158,7 @@ class AppSettings {
     this.tempUnit = TempUnit.celsius,
     this.speedDetection = false,
     this.speedUnit = SpeedUnit.kmh,
+    this.homeLayout,
     this.retention = RetentionPolicy.forever,
     this.rawPacketLog = false,
     this.logMaxBytes = defaultLogMaxBytes,
@@ -162,6 +177,10 @@ class AppSettings {
     TempUnit? tempUnit,
     bool? speedDetection,
     SpeedUnit? speedUnit,
+    // 🔴 Nullable AND meaningful, so `copyWith` cannot express "set it back to
+    // null" the usual way — [clearHomeLayout] is how "restore defaults" does it.
+    String? homeLayout,
+    bool clearHomeLayout = false,
     RetentionPolicy? retention,
     bool? rawPacketLog,
     int? logMaxBytes,
@@ -176,6 +195,7 @@ class AppSettings {
         tempUnit: tempUnit ?? this.tempUnit,
         speedDetection: speedDetection ?? this.speedDetection,
         speedUnit: speedUnit ?? this.speedUnit,
+        homeLayout: clearHomeLayout ? null : (homeLayout ?? this.homeLayout),
         retention: retention ?? this.retention,
         rawPacketLog: rawPacketLog ?? this.rawPacketLog,
         logMaxBytes: logMaxBytes ?? this.logMaxBytes,
@@ -191,11 +211,11 @@ class AppSettings {
   /// not to this map therefore does not merely fail to persist; it erases
   /// itself later, at a moment unrelated to whatever wrote it.
   ///
-  /// v12 adds three columns on PURPOSE not listed here — `home_layout`
-  /// (design 0046), `g_meter_enabled` and `g_calibration` (design 0045). They
-  /// have no writer yet, so today the omission is harmless; the day either
-  /// design lands, its fields must join this map in the same change that starts
-  /// writing them. See the v12 note in `app_database.dart`.
+  /// v12 added three columns with no writer. `home_layout` GAINED one in design
+  /// 0046 and is now in this map, exactly as that note required. The two
+  /// remaining omissions — `g_meter_enabled` and `g_calibration` (design 0045)
+  /// — are still deliberate and must join the map in the same change that
+  /// starts writing them. See the v12 note in `app_database.dart`.
   Map<String, Object?> toMap() => {
         'auto_reconnect': autoReconnect ? 1 : 0,
         'poll_interval_ms': pollIntervalMs,
@@ -208,6 +228,8 @@ class AppSettings {
         'temp_unit': tempUnit.name,
         'speed_detection': speedDetection ? 1 : 0,
         'speed_unit': speedUnit.name,
+        // NULL when never customised — the column's own meaning, see the field.
+        'home_layout': homeLayout,
         'retention': retention.name,
         'raw_packet_log': rawPacketLog ? 1 : 0,
         'log_max_bytes': logMaxBytes,
@@ -240,6 +262,13 @@ class AppSettings {
           (e) => e.name == m['speed_unit'],
           orElse: () => SpeedUnit.kmh,
         ),
+        // Pre-v12 rows have no such column; an empty string is normalised to
+        // null so "written and then cleared" cannot become a third state the
+        // decoder has to think about.
+        homeLayout: switch (m['home_layout']) {
+          final String v when v.isNotEmpty => v,
+          _ => null,
+        },
         retention: RetentionPolicy.values.firstWhere(
           (r) => r.name == m['retention'],
           orElse: () => RetentionPolicy.forever,

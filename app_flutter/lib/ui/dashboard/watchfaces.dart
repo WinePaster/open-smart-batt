@@ -79,7 +79,6 @@ import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
-import 'display_modules.dart';
 
 /// The ordered cards a [Watchface] draws for a product class, top to bottom.
 ///

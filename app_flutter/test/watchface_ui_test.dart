@@ -33,7 +33,6 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
-import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
