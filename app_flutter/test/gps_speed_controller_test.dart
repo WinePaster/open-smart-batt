@@ -11,6 +11,8 @@
 // reachable without a GNSS chip.
 import 'dart:async';
 
+import 'package:geolocator/geolocator.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/state/gps_speed_controller.dart';
 import 'package:open_smart_batt/state/speed_estimator.dart';
@@ -287,6 +289,52 @@ void main() {
       ctl.dispose();
       await pumpEventQueue();
       expect(src.cancels, 1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 2026-08-07 adversarial review. Both tests exist because a real defect got
+  // past 940 green tests: nothing in the suite looked at what we hand to the
+  // plugin, or at what we read back off it.
+  // -------------------------------------------------------------------------
+  group('what we ask the platform for', () {
+    test('Android is asked for a 1 s interval, explicitly', () {
+      final s = GeolocatorSpeedSource.locationSettings(isAndroid: true);
+      // The base LocationSettings drops the interval on the floor: its toJson()
+      // emits only accuracy and distanceFilter, and the Java side then defaults
+      // to 5000 ms AND makes it a floor (setMinUpdateIntervalMillis). Against
+      // T_hold = 2 s that produces a permanent live -> holding -> lost cycle on
+      // a clear-sky ride. The subtype IS the fix, so the subtype is the assert.
+      expect(s, isA<AndroidSettings>());
+      expect((s as AndroidSettings).intervalDuration,
+          GeolocatorSpeedSource.speedSamplingPeriod);
+      expect(GeolocatorSpeedSource.speedSamplingPeriod,
+          lessThanOrEqualTo(const Duration(seconds: 1)),
+          reason: 'the sampling period must stay at or below T_hold/2, or the '
+              'state machine declares a tunnel between two good fixes');
+    });
+
+    test('a fix with no reported accuracy is not scored as a perfect one', () {
+      // Both platforms OMIT the key when the value is unavailable, and
+      // Position._toDouble(null) turns an absent key into 0.0 — the best
+      // possible accuracy. iOS reports a negative accuracy for an invalid fix.
+      // Either way "we do not know" used to read as "0 m, excellent".
+      final unknown = GeolocatorSpeedSource.toFix(Position(
+        latitude: 25.0, longitude: 121.0, timestamp: DateTime(2026, 8, 7),
+        accuracy: 0.0, altitude: 0, altitudeAccuracy: 0, heading: 0,
+        headingAccuracy: 0, speed: 4.0, speedAccuracy: 0.0,
+      ));
+      expect(unknown.horizontalAccuracyM, double.infinity,
+          reason: 'unknown accuracy must fail the reject floor, not pass it');
+      expect(unknown.speedAccuracyMps, isNull);
+
+      final good = GeolocatorSpeedSource.toFix(Position(
+        latitude: 25.0, longitude: 121.0, timestamp: DateTime(2026, 8, 7),
+        accuracy: 8.0, altitude: 0, altitudeAccuracy: 0, heading: 0,
+        headingAccuracy: 0, speed: 4.0, speedAccuracy: 0.5,
+      ));
+      expect(good.horizontalAccuracyM, 8.0);
+      expect(good.speedAccuracyMps, 0.5);
     });
   });
 }

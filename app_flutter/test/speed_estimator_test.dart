@@ -369,4 +369,75 @@ void main() {
         .toList();
     expect(imports, ['dart:async']);
   });
+
+  // -------------------------------------------------------------------------
+  // 2026-08-07 adversarial review. Both defects were invisible to the suite
+  // because the suite only ever asked "what does the estimator say now" —
+  // never "is the SERIES it produced coherent", which is the only thing design
+  // 0044 will care about when it differentiates it.
+  // -------------------------------------------------------------------------
+  group('the series design 0044 will differentiate', () {
+    test('reset ends the series on `transitions`, it is not silent', () async {
+      final (:clock, :est) = build();
+      final edges = <SpeedStateTransition>[];
+      final sub = est.transitions.listen(edges.add);
+
+      est.addFix(_fix(clock.t, 25.0));
+      await pumpEventQueue();
+      edges.clear();
+
+      est.reset();
+      await pumpEventQueue();
+
+      // Without this edge, a 25 m/s sample and a 3 m/s sample half an hour
+      // apart look like one continuous series, and 0044 differentiates across
+      // the join. Every AppLifecycleState.inactive takes this path.
+      expect(edges, hasLength(1));
+      expect(edges.single.from, SpeedState.live);
+      expect(edges.single.to, SpeedState.lost);
+
+      // A reset with nothing to end stays quiet: `from` is non-nullable and
+      // there is no prior state to name.
+      edges.clear();
+      est.reset();
+      await pumpEventQueue();
+      expect(edges, isEmpty);
+
+      await sub.cancel();
+    });
+
+    test('`t` is stamped on the injected clock and never goes backwards',
+        () async {
+      final (:clock, :est) = build();
+      final ts = <DateTime>[];
+      final sub = est.estimates.listen((e) => ts.add(e.t));
+
+      // The sequence is built so the OLD code would fail it. Stamping addFix
+      // with the fix's own platform timestamp while tick() used our clock put
+      // two time bases in one series; it only shows up when a tick lands
+      // BETWEEN two late-delivered fixes.
+      //
+      //   fix measured 400 ms before we saw it  -> old t = t0-0.4s, new t = t0
+      //   tick that trips live -> holding       ->     t = t0+2.5s
+      //   fix measured 400 ms before we saw it  -> old t = t0+2.2s  ← backwards
+      //                                            new t = t0+2.6s
+      est.addFix(_fix(
+          clock.t.subtract(const Duration(milliseconds: 400)), 10.0));
+      clock.advance(const Duration(milliseconds: 2500));
+      est.tick(); // age is now 2.9 s > T_hold, so this one really does emit
+      clock.advance(const Duration(milliseconds: 100));
+      est.addFix(_fix(
+          clock.t.subtract(const Duration(milliseconds: 400)), 11.0));
+      await pumpEventQueue();
+
+      expect(ts, hasLength(3),
+          reason: 'the middle tick must emit, or this test proves nothing');
+      for (var i = 1; i < ts.length; i++) {
+        expect(ts[i].isBefore(ts[i - 1]), isFalse,
+            reason: 'estimate $i went backwards: ${ts[i - 1]} -> ${ts[i]} — '
+                'design 0044 divides by this dt');
+      }
+      await sub.cancel();
+    });
+  });
 }

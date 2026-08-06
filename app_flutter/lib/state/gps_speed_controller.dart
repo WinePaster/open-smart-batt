@@ -6,7 +6,7 @@
 /// pure Dart and does the arithmetic.
 ///
 /// 🔴 PRIVACY RED LINE (design 0042 G5). The platform hands us a position
-/// object that DOES carry a coordinate. [GeolocatorSpeedSource._toFix] is the
+/// object that DOES carry a coordinate. [GeolocatorSpeedSource.toFix] is the
 /// single line where that object is read, and it copies four scalars out of it —
 /// none of them a coordinate. Downstream of that line no latitude or longitude
 /// exists, so none can be logged, stored or exported. `speed_privacy_test.dart`
@@ -23,6 +23,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -71,24 +72,77 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
   /// which is exactly when the estimator would then age its last sample out and
   /// declare a tunnel that is not there. Battery is bought by the lifecycle
   /// gate instead — no stream at all when the dashboard is not on screen.
+  /// 🔴 The sampling period must be requested EXPLICITLY on Android.
+  ///
+  /// The base [LocationSettings] looks like it asks for "as fast as the chip
+  /// will go". It does not, and the gap is silent: its `toJson()` emits only
+  /// `accuracy` and `distanceFilter` (geolocator_platform_interface 4.2.8,
+  /// `location_settings.dart:38-43`), so no interval crosses the channel; the
+  /// Java side then falls back to its own default of **5000 ms**
+  /// (`LocationOptions.java:59`) and — the part that actually bites —
+  /// `FusedLocationClient.java:106-107` sets it as `setIntervalMillis` AND
+  /// `setMinUpdateIntervalMillis`, so 5 s becomes a floor as well as a target.
+  ///
+  /// Against a state machine whose T_hold is 2 s and T_lost is 4 s, a 5 s
+  /// period means a clear-sky ride cycles live → holding → lost → live forever:
+  /// the screen would say "no signal" roughly 60 % of the time, every sample
+  /// would arrive as a post-gap sample and re-seed the EWMA (so the smoothing
+  /// would not exist), and `transitions` would emit three edges every 5 s.
+  ///
+  /// None of the 940 tests caught it because none of them looks at what is
+  /// handed to the plugin. [speedSamplingPeriod] and the test that pins it are
+  /// the correction: the settings object is now an argument the suite can read.
+  ///
+  /// iOS is unaffected (CoreLocation delivers ~1 Hz on its own) but is given
+  /// the same object for one behaviour on both platforms.
+  static const Duration speedSamplingPeriod = Duration(seconds: 1);
+
+  /// The settings actually handed to the plugin. Exposed so a test can assert
+  /// the interval survives the trip — see the note above.
+  ///
+  /// [isAndroid] is injectable because the host test VM is neither platform,
+  /// so the branch that actually matters would otherwise be the one branch no
+  /// test can reach — which is precisely how the 5 s default got in.
+  @visibleForTesting
+  static LocationSettings locationSettings({bool? isAndroid}) {
+    if (isAndroid ?? Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration: speedSamplingPeriod,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
+  }
+
   @override
-  Stream<SpeedFix> fixes() => Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 0,
-        ),
-      ).map(_toFix);
+  Stream<SpeedFix> fixes() =>
+      Geolocator.getPositionStream(locationSettings: locationSettings())
+          .map(toFix);
 
   /// 🔴 G5's enforcement point. Four scalars are copied out; everything else
   /// the platform offers is left behind with the object it came on.
-  static SpeedFix _toFix(Position p) => SpeedFix(
+  @visibleForTesting
+  static SpeedFix toFix(Position p) => SpeedFix(
         speedMps: p.speed,
         // Non-nullable on the platform side, so "not reported" arrives as 0 or
         // -1 (0042 §2.3 #3, still unverified in the field on old Android).
         // Both are mapped to null, which is what makes the card omit the ±
         // line rather than print a meaningless "±0.0".
         speedAccuracyMps: p.speedAccuracy > 0 ? p.speedAccuracy : null,
-        horizontalAccuracyM: p.accuracy,
+        // B3: the same guard the line above has, for the same reason. Both
+        // platforms omit the key when the value is unavailable and
+        // `Position._toDouble(null)` turns that into 0.0
+        // (geolocator_platform_interface `position.dart:200-206`), while iOS
+        // reports a NEGATIVE accuracy for an invalid fix. Ungrounded, "no
+        // accuracy reported" scored as 0 m — the best possible reading — and
+        // the estimator called it `good`. Anything <= 0 is "not reported", and
+        // the estimator's reject floor is what should then throw it out.
+        horizontalAccuracyM:
+            p.accuracy > 0 ? p.accuracy : double.infinity,
         timestamp: p.timestamp,
       );
 

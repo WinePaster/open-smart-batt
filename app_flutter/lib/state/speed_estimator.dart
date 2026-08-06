@@ -295,7 +295,20 @@ class SpeedEstimator {
 
     final previous = _state;
     _state = SpeedState.live;
-    final estimate = _estimateAt(fix.timestamp);
+    // M2: stamp on OUR clock, not the platform's.
+    //
+    // This used to be `_estimateAt(fix.timestamp)` while `tick()` used
+    // `_estimateAt(now())` — one series carrying two time bases. Delivery
+    // latency between the GNSS chip and this isolate then made `t` run
+    // BACKWARDS across an addFix/tick boundary (measured: 0 ms → 2100 ms →
+    // 1750 ms), which hands design 0044 a negative dt to divide by. It also
+    // contradicted [SpeedEstimate.t]'s own doc, which has always said "on the
+    // estimator's injected clock".
+    //
+    // The fix's own timestamp is still what ages it — see [_ageAt] — because
+    // "how stale is this reading" is a question about when it was MEASURED.
+    // `t` answers a different one: when did this app learn it.
+    final estimate = _estimateAt(now());
     _current = estimate;
 
     // No transition is emitted for the very first fix: there is no prior state
@@ -346,7 +359,29 @@ class SpeedEstimator {
   /// card must be back to "waiting for a fix" rather than showing a speed from
   /// the previous session. Emits nothing — [current] going null IS the signal,
   /// and a synthetic estimate here would be a reading nobody measured.
+  /// Drop everything and start a new series.
+  ///
+  /// 🔴 A reset ENDS the series, and it says so on [transitions].
+  ///
+  /// It used to be silent, and silence was wrong for one specific consumer:
+  /// design 0044 differentiates [estimates] to get acceleration, and it decides
+  /// when to suppress that derivative from the transition edges. A silent reset
+  /// therefore spliced two unrelated segments into what looked like one
+  /// continuous series — measured: a 25 m/s sample, a reset, then a 3 m/s
+  /// sample thirty minutes later, with `transitions` empty. 0044 would have
+  /// differentiated straight across the join.
+  ///
+  /// That path is not hypothetical: every `AppLifecycleState.inactive` (pulling
+  /// down the notification shade is enough) runs `_stop()` → `reset()`.
+  ///
+  /// `lost` is the honest edge to emit rather than a new member: from the
+  /// consumer's side "the signal is gone and the series it belonged to is over"
+  /// is exactly what happened, and 0044 already suppresses on it. Keeping the
+  /// vocabulary as-is is also what keeps the frozen interface (impl plan §1.4)
+  /// frozen — a new stream or state would have unfrozen it and forced 0044 to
+  /// re-align before it has even started.
   void reset() {
+    final previous = _state;
     _state = null;
     _ewma = null;
     _lastFixAt = null;
@@ -354,6 +389,11 @@ class SpeedEstimator {
     _lastSpeedAccuracyMps = null;
     _holdingSince = null;
     _current = null;
+    // Nothing to leave if the series never started, and `from` is non-nullable.
+    if (previous != null && previous != SpeedState.lost) {
+      _transitions.add(SpeedStateTransition(
+          from: previous, to: SpeedState.lost, at: now()));
+    }
   }
 
   Future<void> dispose() async {
