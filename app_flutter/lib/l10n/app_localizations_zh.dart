@@ -836,6 +836,86 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsThemeAuto => '自動';
 
   @override
+  String get settingsSpeedDetectionLabel => '速度偵測';
+
+  @override
+  String get settingsSpeedDetectionSub => '在儀表板顯示 GPS 速度（新增「騎乘」錶盤）。預設關閉。';
+
+  @override
+  String get settingsSpeedUnitLabel => '速度單位';
+
+  @override
+  String get speedConsentTitle => '開啟速度偵測？';
+
+  @override
+  String get speedConsentIntro => '這個功能會用到手機的定位。開啟前請先確認以下四件事：';
+
+  @override
+  String get speedConsentPointForeground => '只在儀表板畫面、App 位於前景時使用 GPS；退到背景就停止。';
+
+  @override
+  String get speedConsentPointRecorded => '連線期間的速度會寫入紀錄，並包含在你匯出的診斷檔裡。';
+
+  @override
+  String get speedConsentPointNoLocationStored => '位置座標永遠不會被儲存，也不會出現在任何匯出檔中。';
+
+  @override
+  String get speedConsentPointBattery => '會增加電池消耗。';
+
+  @override
+  String get speedConsentEnable => '啟用';
+
+  @override
+  String get speedCardWaitingTitle => '等待定位';
+
+  @override
+  String get speedCardWaitingBody => '正在取得第一筆 GPS 讀數。剛開始或在室內可能要等幾秒。';
+
+  @override
+  String get speedCardPermissionDeniedTitle => '沒有定位權限';
+
+  @override
+  String get speedCardPermissionDeniedBody => '系統尚未允許本 App 取得定位，因此無法顯示速度。';
+
+  @override
+  String get speedCardPermissionPermanentBody =>
+      '定位權限已被永久拒絕，系統不會再詢問。請到系統設定開啟「使用 App 期間」的定位權限。';
+
+  @override
+  String get speedCardOpenSystemSettings => '前往系統設定';
+
+  @override
+  String get speedCardHeld => '保持中';
+
+  @override
+  String get speedCardNoSignal => '無訊號';
+
+  @override
+  String speedCardAccuracy(String value, String unit) {
+    return '誤差 ±$value $unit';
+  }
+
+  @override
+  String speedCardLastMeasured(String value, String unit, int seconds) {
+    return '最後量到 $value $unit，$seconds 秒前';
+  }
+
+  @override
+  String get speedQualityGood => '訊號好';
+
+  @override
+  String get speedQualityFair => '訊號普通';
+
+  @override
+  String get speedQualityPoor => '訊號差';
+
+  @override
+  String get speedQualityNone => '無訊號';
+
+  @override
+  String get watchfaceRiding => '騎乘';
+
+  @override
   String get settingsWatchfaceLabel => '錶盤';
 
   @override

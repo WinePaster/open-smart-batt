@@ -6,6 +6,7 @@
 /// [SettingsController]; data/log actions go through [TelemetryController].
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
+import 'speed_consent_dialog.dart';
 
 
 /// Community project links (mockup startup disclaimer + About card).
@@ -176,8 +178,83 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _SpeedDetectionRow(),
+          if (s.speedDetection)
+            SettingsRow(
+              label: l10n.settingsSpeedUnitLabel,
+              trailing: SegmentedControl<SpeedUnit>(
+                selected: s.speedUnit,
+                onChanged: s.setSpeedUnit,
+                options: const [
+                  (value: SpeedUnit.kmh, label: 'km/h'),
+                  (value: SpeedUnit.mph, label: 'mph'),
+                ],
+              ),
+            ),
           const _WatchfaceRow(),
         ],
+      ),
+    );
+  }
+}
+
+/// The GPS speed master switch (design 0042 §3.9).
+///
+/// Stateful only to hold [_busy]: the consent dialog and the OS permission
+/// prompt are two awaits, and a second tap on the switch while either is up
+/// would start a parallel flow whose two answers race to write the setting.
+///
+/// ⚠️ The switch reflects the STORED value at all times, never an optimistic
+/// one. A switch that flips first and reverts on cancel makes cancelling look
+/// like a failure; this one simply does not move until consent is given.
+class _SpeedDetectionRow extends StatefulWidget {
+  const _SpeedDetectionRow();
+
+  @override
+  State<_SpeedDetectionRow> createState() => _SpeedDetectionRowState();
+}
+
+class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
+  bool _busy = false;
+
+  Future<void> _onChanged(bool next) async {
+    if (_busy) return;
+    final settings = context.read<SettingsController>();
+    // Turning it OFF is not a decision anyone has to be walked through, and
+    // asking would train the user to dismiss the dialog that matters.
+    if (!next) {
+      await settings.setSpeedDetection(false);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final gps = context.read<GpsSpeedController>();
+      final agreed = await showSpeedDetectionConsentDialog(context);
+      // Cancel is ZERO side effects: nothing written, nothing asked of the OS.
+      if (!agreed) return;
+      await settings.setSpeedDetection(true);
+      // Straight into the OS prompt, while the user is still inside the context
+      // they just agreed to (design 0042 §3.5). A refusal leaves the switch ON
+      // — consent was given, the OS is what is missing — and the card says so
+      // with a route to the settings page.
+      await gps.requestPermission();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final on = context.select<SettingsController, bool>(
+        (s) => s.settings.speedDetection);
+    return SettingsRow(
+      label: l10n.settingsSpeedDetectionLabel,
+      sub: l10n.settingsSpeedDetectionSub,
+      subHighlight: !on,
+      trailing: _Toggle(
+        value: on,
+        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }

@@ -1478,6 +1478,156 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get settingsThemeAuto;
 
+  /// No description provided for @settingsSpeedDetectionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed detection'**
+  String get settingsSpeedDetectionLabel;
+
+  /// design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export.
+  ///
+  /// In en, this message translates to:
+  /// **'Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.'**
+  String get settingsSpeedDetectionSub;
+
+  /// No description provided for @settingsSpeedUnitLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed unit'**
+  String get settingsSpeedUnitLabel;
+
+  /// No description provided for @speedConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on speed detection?'**
+  String get speedConsentTitle;
+
+  /// No description provided for @speedConsentIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'This feature uses your phone\'s location. Before turning it on, please note all four of these:'**
+  String get speedConsentIntro;
+
+  /// No description provided for @speedConsentPointForeground.
+  ///
+  /// In en, this message translates to:
+  /// **'GPS is used only on the dashboard while the app is in the foreground; it stops when the app is backgrounded.'**
+  String get speedConsentPointForeground;
+
+  /// design 0042 §3.9 point 2, scoped by the (b)+(d) ruling of 2026-08-07: history rows exist per connected device, so with nothing connected there is no row for a speed to join and none is written.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed recorded while connected is written to history and is included in the diagnostic files you export.'**
+  String get speedConsentPointRecorded;
+
+  /// No description provided for @speedConsentPointNoLocationStored.
+  ///
+  /// In en, this message translates to:
+  /// **'Location coordinates are never stored and never appear in any export.'**
+  String get speedConsentPointNoLocationStored;
+
+  /// No description provided for @speedConsentPointBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'It increases battery use.'**
+  String get speedConsentPointBattery;
+
+  /// No description provided for @speedConsentEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable'**
+  String get speedConsentEnable;
+
+  /// No description provided for @speedCardWaitingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a fix'**
+  String get speedCardWaitingTitle;
+
+  /// No description provided for @speedCardWaitingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Acquiring the first GPS reading. This can take a few seconds after starting, or indoors.'**
+  String get speedCardWaitingBody;
+
+  /// No description provided for @speedCardPermissionDeniedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No location permission'**
+  String get speedCardPermissionDeniedTitle;
+
+  /// No description provided for @speedCardPermissionDeniedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The system has not granted this app location access, so speed cannot be shown.'**
+  String get speedCardPermissionDeniedBody;
+
+  /// No description provided for @speedCardPermissionPermanentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Location permission was permanently denied, so the system will not ask again. Grant \"While Using the App\" access in system settings.'**
+  String get speedCardPermissionPermanentBody;
+
+  /// No description provided for @speedCardOpenSystemSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open system settings'**
+  String get speedCardOpenSystemSettings;
+
+  /// design 0042 G2: the badge on a frozen reading. Without it a held value and a live one are indistinguishable, which is the one thing the state machine exists to prevent.
+  ///
+  /// In en, this message translates to:
+  /// **'Held'**
+  String get speedCardHeld;
+
+  /// No description provided for @speedCardNoSignal.
+  ///
+  /// In en, this message translates to:
+  /// **'No signal'**
+  String get speedCardNoSignal;
+
+  /// No description provided for @speedCardAccuracy.
+  ///
+  /// In en, this message translates to:
+  /// **'±{value} {unit}'**
+  String speedCardAccuracy(String value, String unit);
+
+  /// No description provided for @speedCardLastMeasured.
+  ///
+  /// In en, this message translates to:
+  /// **'Last measured {value} {unit}, {seconds} s ago'**
+  String speedCardLastMeasured(String value, String unit, int seconds);
+
+  /// No description provided for @speedQualityGood.
+  ///
+  /// In en, this message translates to:
+  /// **'Good'**
+  String get speedQualityGood;
+
+  /// No description provided for @speedQualityFair.
+  ///
+  /// In en, this message translates to:
+  /// **'Fair'**
+  String get speedQualityFair;
+
+  /// No description provided for @speedQualityPoor.
+  ///
+  /// In en, this message translates to:
+  /// **'Poor'**
+  String get speedQualityPoor;
+
+  /// No description provided for @speedQualityNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No signal'**
+  String get speedQualityNone;
+
+  /// No description provided for @watchfaceRiding.
+  ///
+  /// In en, this message translates to:
+  /// **'Riding'**
+  String get watchfaceRiding;
+
   /// No description provided for @settingsWatchfaceLabel.
   ///
   /// In en, this message translates to:

@@ -886,6 +886,93 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsThemeAuto => 'Auto';
 
   @override
+  String get settingsSpeedDetectionLabel => 'Speed detection';
+
+  @override
+  String get settingsSpeedDetectionSub =>
+      'Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.';
+
+  @override
+  String get settingsSpeedUnitLabel => 'Speed unit';
+
+  @override
+  String get speedConsentTitle => 'Turn on speed detection?';
+
+  @override
+  String get speedConsentIntro =>
+      'This feature uses your phone\'s location. Before turning it on, please note all four of these:';
+
+  @override
+  String get speedConsentPointForeground =>
+      'GPS is used only on the dashboard while the app is in the foreground; it stops when the app is backgrounded.';
+
+  @override
+  String get speedConsentPointRecorded =>
+      'Speed recorded while connected is written to history and is included in the diagnostic files you export.';
+
+  @override
+  String get speedConsentPointNoLocationStored =>
+      'Location coordinates are never stored and never appear in any export.';
+
+  @override
+  String get speedConsentPointBattery => 'It increases battery use.';
+
+  @override
+  String get speedConsentEnable => 'Enable';
+
+  @override
+  String get speedCardWaitingTitle => 'Waiting for a fix';
+
+  @override
+  String get speedCardWaitingBody =>
+      'Acquiring the first GPS reading. This can take a few seconds after starting, or indoors.';
+
+  @override
+  String get speedCardPermissionDeniedTitle => 'No location permission';
+
+  @override
+  String get speedCardPermissionDeniedBody =>
+      'The system has not granted this app location access, so speed cannot be shown.';
+
+  @override
+  String get speedCardPermissionPermanentBody =>
+      'Location permission was permanently denied, so the system will not ask again. Grant \"While Using the App\" access in system settings.';
+
+  @override
+  String get speedCardOpenSystemSettings => 'Open system settings';
+
+  @override
+  String get speedCardHeld => 'Held';
+
+  @override
+  String get speedCardNoSignal => 'No signal';
+
+  @override
+  String speedCardAccuracy(String value, String unit) {
+    return '±$value $unit';
+  }
+
+  @override
+  String speedCardLastMeasured(String value, String unit, int seconds) {
+    return 'Last measured $value $unit, $seconds s ago';
+  }
+
+  @override
+  String get speedQualityGood => 'Good';
+
+  @override
+  String get speedQualityFair => 'Fair';
+
+  @override
+  String get speedQualityPoor => 'Poor';
+
+  @override
+  String get speedQualityNone => 'No signal';
+
+  @override
+  String get watchfaceRiding => 'Riding';
+
+  @override
   String get settingsWatchfaceLabel => 'Watchface';
 
   @override
