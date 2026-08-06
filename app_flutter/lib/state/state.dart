@@ -9,6 +9,7 @@ export 'app_services.dart';
 export 'build_info.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';
+export 'gps_speed_controller.dart';
 export 'live_trend_buffer.dart';
 export 'session_context.dart';
 export 'settings_controller.dart';

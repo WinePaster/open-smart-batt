@@ -135,6 +135,12 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     widget.services.connection.logAppLifecycle(state.name);
+    // GPS is foreground-only (design 0042 §3.4 / N1). Unlike the BLE link,
+    // which design 0039 deliberately keeps alive in the background, a location
+    // stream buys nothing while nobody can see the number — and it is the one
+    // permission a battery app has to justify.
+    widget.services.speed
+        .setAppResumed(state == AppLifecycleState.resumed);
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
@@ -177,6 +183,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
         ChangeNotifierProvider<DeviceController>.value(value: s.devices),
         ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
         ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+        ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
       ],
       // Rebuild MaterialApp when the theme preference changes.
       child: Consumer<SettingsController>(

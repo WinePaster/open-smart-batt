@@ -67,6 +67,12 @@ dependencies:
   package_info_plus: ^8.0.0
   # GitHub release update check
   http: ^1.2.0
+  # GNSS speed for the riding watchface (design 0042). Chosen over `location`
+  # for `LocationAccuracy.bestForNavigation` and for exposing speedAccuracy
+  # alongside speed; permissions stay on the app's existing permission_handler
+  # flow rather than the plugin's, so there is one location grant, not two.
+  # Foreground only — no background modes are declared (0042 N1).
+  geolocator: ^14.0.2
 
 dev_dependencies:
   flutter_test:
