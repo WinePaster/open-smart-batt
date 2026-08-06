@@ -135,6 +135,11 @@ class AppServices {
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).
     connection.bindTelemetryHealth(telemetry);
+    // The phone's speed reaches recorded history here and nowhere else
+    // (design 0042 §3.9). Wired at the composition root for the same reason as
+    // the line above: it is the only place both controllers exist, and neither
+    // has to learn about the other's domain to be tested.
+    telemetry.bindSpeedEstimates(speed.estimates);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);

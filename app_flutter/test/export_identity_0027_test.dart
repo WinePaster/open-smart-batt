@@ -341,6 +341,7 @@ void main() {
           platform: 'ios',
           scope: 'all devices',
           layout: 'default',
+          speedDetection: false,
           devices: const [
             ExportDeviceIdentity(
               deviceId: deviceId,
@@ -403,6 +404,7 @@ void main() {
         platform: 'ios',
         scope: 'all devices',
         layout: 'default',
+        speedDetection: false,
       );
       expect(lines.any((l) => l.startsWith('devices:')), isFalse);
     });

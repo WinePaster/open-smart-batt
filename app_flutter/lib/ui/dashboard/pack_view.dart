@@ -44,6 +44,7 @@ import 'pvlt_gauge.dart';
 import 'live_trend_chart.dart';
 import 'readout_grid.dart';
 import 'readouts_card.dart';
+import 'speed_card.dart';
 import 'dvol_bars.dart';
 import 'status_controls.dart';
 import 'watchfaces.dart';
@@ -124,8 +125,15 @@ class PackScaffold extends StatelessWidget {
     final deviceId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
     final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    // The speed master switch reaches the layout, not just one card: with it
+    // off a stored `riding` renders as `standard` rather than as a copy of
+    // `compact` (design 0042 §3.9, revised 2026-08-07). Selected on the whole
+    // settings object because its identity only changes when something is
+    // written — this is not on the telemetry rebuild path.
+    final settings =
+        context.select<SettingsController, AppSettings>((s) => s.settings);
     final order = watchfaceModules(
-        shellClass, effectiveWatchface(shellClass, stored.watchface));
+        shellClass, renderedWatchface(shellClass, stored.watchface, settings));
     // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once
     // the connect burst arrives; else the tail-only serial; else NOTHING — the
     // row hides itself below.
@@ -291,6 +299,14 @@ class PackScaffold extends StatelessWidget {
             );
           }
           return null;
+        // design 0042. UNCONDITIONAL, and that is the design: the master switch
+        // is applied by [renderedWatchface] above, so reaching this line means
+        // the switch is on. A second `settings.speedDetection ? … : null` here
+        // would be a duplicate decision point — the exact shape that let a
+        // `riding` face render as a copy of `compact` (design 0042 §3.9). The
+        // card has its own waiting / no-permission states and never vanishes.
+        case DisplayModule.speed:
+          return const SpeedCard();
         case DisplayModule.gaugeSoc:
         case DisplayModule.energyPath:
           // Not cards of the pack shell, and unreachable through [order] — it

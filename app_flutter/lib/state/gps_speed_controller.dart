@@ -95,6 +95,18 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
   ///
   /// iOS is unaffected (CoreLocation delivers ~1 Hz on its own) but is given
   /// the same object for one behaviour on both platforms.
+  ///
+  /// 🔴 **This is the eleventh road-test knob, and the only one not inside
+  /// [SpeedEstimatorConfig]** — so retuning after Phase F means editing TWO
+  /// files, not one. It is here rather than there because it is an argument to
+  /// a plugin, and `speed_estimator.dart` deliberately imports nothing but
+  /// `dart:async`; a platform constant is not worth breaking that for.
+  ///
+  /// The pairing is not optional to remember: `tHold` (2 s) and `tLost` (4 s)
+  /// are ages measured against THIS interval. Keep it comfortably below `tHold`
+  /// or a clear sky cycles live → holding → lost forever — which is precisely
+  /// what the plugin's own 5 s default did. `SpeedEstimatorConfig`'s doc
+  /// comment carries the mirror of this note.
   static const Duration speedSamplingPeriod = Duration(seconds: 1);
 
   /// The settings actually handed to the plugin. Exposed so a test can assert

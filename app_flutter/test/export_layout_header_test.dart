@@ -30,13 +30,15 @@ void main() {
         exportLayoutValue(cls: null, layout: null),
       ];
 
-  List<String> header({required String layout}) => exportHeaderLines(
+  List<String> header({required String layout, bool speedDetection = false}) =>
+      exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: DateTime.utc(2026, 8, 4, 9, 30),
         appBuild: '0.6.16+1',
         platform: 'android 15',
         scope: 'device=battery/1206',
         layout: layout,
+        speedDetection: speedDetection,
       );
 
   group('T10 constraint 1+6: last, and exactly one line', () {
@@ -242,12 +244,14 @@ void main() {
         Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=chart,readouts,cells,gaugeVoltage',
+        Watchface.riding: 'face=riding modules=speed,gaugeVoltage,cells',
       },
       ProductClass.supercapacitor: {
         Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
         Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=chart,readouts,cells,gaugeVoltage',
+        Watchface.riding: 'face=riding modules=speed,gaugeVoltage,cells',
       },
       ProductClass.powerBank: {
         Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
@@ -257,6 +261,13 @@ void main() {
         Watchface.compact: 'face=compact modules=gaugeSoc,energyPath',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=chart,readouts,energyPath,gaugeSoc',
+        // design 0042: `compact`'s shell with the speed card on top. The value
+        // is what the LAYOUT declares and is emitted even when the master
+        // switch is off and the phone is actually drawing `standard` — the
+        // `speed detection: off` line beside it is what resolves the two. A
+        // preamble filtered by the switch would delete exactly the evidence a
+        // reader needs to explain the screenshot.
+        Watchface.riding: 'face=riding modules=speed,gaugeSoc,energyPath',
       },
     };
 
@@ -276,6 +287,74 @@ void main() {
       for (final byFace in expected.values) {
         expect(byFace.keys.toSet(), Watchface.values.toSet());
       }
+    });
+  });
+
+  // =========================================================================
+  // design 0042 §3.9 — `speed detection: on/off`
+  // =========================================================================
+  //
+  // The same rule as FB-32's `raw packet log:`, applied to a second switch, and
+  // for the same reason: without it an empty `speed` column in a CSV has TWO
+  // readings — the feature was off, or it was on and no minute ever had a live
+  // fix — which call for opposite replies to a reporter.
+  group('the preamble states the speed switch', () {
+    test('off is stated, not omitted', () {
+      expect(header(layout: 'face=standard modules=x', speedDetection: false),
+          contains('speed detection: off'));
+    });
+
+    test('on is stated too', () {
+      expect(header(layout: 'face=riding modules=speed,x', speedDetection: true),
+          contains('speed detection: on'));
+    });
+
+    test('exactly one line, in both states', () {
+      for (final on in [true, false]) {
+        final lines = header(layout: 'face=standard modules=x', speedDetection: on);
+        expect(lines.where((l) => l.startsWith('speed detection: ')),
+            hasLength(1));
+      }
+    });
+
+    test('it comes BEFORE the layout line, which stays last', () {
+      // Constraint 1 of the six: the layout line closes the preamble. A new
+      // optional line joins the middle; putting it after would move the one
+      // line the ingest scripts index from the end.
+      final lines = header(layout: 'face=riding modules=speed,x', speedDetection: true);
+      expect(lines.last, startsWith('layout: '));
+      expect(lines.indexWhere((l) => l.startsWith('speed detection: ')),
+          lessThan(lines.length - 1));
+    });
+
+    test('the value carries no second `: ` and no newline', () {
+      // Constraints 4 and 6: the collection recipes read a value with a greedy
+      // `sed 's/.*: //'`, which would eat everything up to the LAST colon-space.
+      for (final on in [true, false]) {
+        final line = header(layout: 'face=standard modules=x', speedDetection: on)
+            .firstWhere((l) => l.startsWith('speed detection: '));
+        expect(line.substring('speed detection: '.length), isNot(contains(': ')));
+        expect(line, isNot(contains('\n')));
+        expect(line, isNot(contains('\r')));
+      }
+    });
+
+    test('the two lines together explain a riding face that drew standard', () {
+      // The layout line reports what the LAYOUT declares, deliberately
+      // unfiltered by the switch. A phone with `riding` stored and detection
+      // off draws `standard` while still declaring `face=riding` — and it is
+      // ONLY the pair of lines that says why. Filtering the layout line would
+      // delete the evidence; omitting the switch line would leave the
+      // contradiction unexplained.
+      final lines = header(
+        layout: exportLayoutValue(
+          cls: ProductClass.smartBattery,
+          layout: const DisplayLayout(watchface: Watchface.riding),
+        ),
+        speedDetection: false,
+      );
+      expect(lines, contains('speed detection: off'));
+      expect(lines.last, 'layout: face=riding modules=speed,gaugeVoltage,cells');
     });
   });
 

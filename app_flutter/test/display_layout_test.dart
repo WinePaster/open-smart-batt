@@ -45,6 +45,19 @@ void main() {
       expect(Watchface.standard.slug, 'standard');
       expect(Watchface.compact.slug, 'compact');
       expect(Watchface.diagnostic.slug, 'diagnostic');
+      expect(Watchface.riding.slug, 'riding');
+    });
+
+    test('a build that predates riding reads it as the default, not a crash',
+        () {
+      // The downgrade direction of design 0034's zero-migration claim, and the
+      // reason design 0042 needed no schema change for the face itself: a
+      // `riding` slug written by this build lands on `defaults` in an older
+      // one, through the same path an unknown slug has always taken.
+      expect(Watchface.fromSlug('riding'), Watchface.riding);
+      expect(Watchface.fromSlug('a-face-from-2027'), isNull);
+      expect(DisplayLayout.decode('{"face":"a-face-from-2027"}'),
+          DisplayLayout.defaults);
     });
 
     test('the default encodes the standard face and knows it is the default',

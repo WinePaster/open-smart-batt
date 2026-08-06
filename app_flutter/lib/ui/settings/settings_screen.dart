@@ -294,6 +294,19 @@ class _WatchfaceRow extends StatelessWidget {
       await devices.setDisplayLayout(target, next);
     }
 
+    // design 0034 §4.3, "unavailable is not offered". `riding` exists only to
+    // carry the speed card, so with the master switch off there is nothing for
+    // it to be — and the SAME predicate keeps a stored `riding` from rendering
+    // (see `ridingSelectable`), which is what stops it collapsing into a copy
+    // of `compact`.
+    //
+    // ⚠️ The picker's `selected` is the STORED face, which can be `riding`
+    // while the option is absent. `SegmentedControl` matches on `==`, so it
+    // simply highlights nothing — the honest rendering of "your stored choice
+    // is not currently available", and better than silently re-pointing the
+    // control at `standard`, which would look like the setting had been
+    // changed for the user.
+    final settings = context.watch<SettingsController>().settings;
     final picker = SegmentedControl<Watchface>(
       selected: layout.watchface,
       onChanged: (v) => apply(DisplayLayout(watchface: v)),
@@ -301,6 +314,8 @@ class _WatchfaceRow extends StatelessWidget {
         (value: Watchface.standard, label: l10n.watchfaceStandard),
         (value: Watchface.compact, label: l10n.watchfaceCompact),
         (value: Watchface.diagnostic, label: l10n.watchfaceDiagnostic),
+        if (ridingSelectable(settings))
+          (value: Watchface.riding, label: l10n.watchfaceRiding),
       ],
     );
 
@@ -377,6 +392,9 @@ class _DataCardState extends State<_DataCard> {
     // with the other context reads — by the time the CSV is built this screen
     // may be gone.
     final layout = currentExportLayoutValue(context);
+    // design 0042 §3.9: emitted unconditionally, `off` included, so that an
+    // empty `speed` column has one reading instead of two.
+    final speedDetection = context.read<SettingsController>().speedDetection;
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
@@ -389,6 +407,7 @@ class _DataCardState extends State<_DataCard> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           layout: layout,
+          speedDetection: speedDetection,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
@@ -555,6 +574,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
+    final speedOn = context.read<SettingsController>().speedDetection;
     // The dashboard layout in force right now (design 0034 §8), captured with
     // the other context reads for the same reason.
     final layout = currentExportLayoutValue(context);
@@ -566,7 +586,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       // even an all-devices export where the rows carry only nicknames.
       final identities = await exportDeviceIdentities(devices, tele, target);
       final header =
-          await _logHeader(tele, services, target, rawLog, layout, identities);
+          await _logHeader(
+              tele, services, target, rawLog, speedOn, layout, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -698,6 +719,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    bool speedDetection,
     String layout,
     List<ExportDeviceIdentity> devices,
   ) async {
@@ -711,6 +733,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       platform: services.platform,
       scope: exportScopeLabel(target),
       layout: layout,
+      speedDetection: speedDetection,
       connections: sessions,
       rawPacketLog: rawPacketLog,
       devices: devices,

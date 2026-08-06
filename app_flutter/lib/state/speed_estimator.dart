@@ -56,6 +56,22 @@ enum SpeedSignalQuality { good, fair, poor, none }
 /// (Phase F) a release gate precisely because none of them has met a real
 /// motorcycle yet — collecting them here is what makes that retune a one-file
 /// edit instead of a hunt through the state machine.
+///
+/// 🔴 **ONE knob is not here, and the road test needs it: the SAMPLING PERIOD**
+/// (`GeolocatorSpeedSource.speedSamplingPeriod`, `gps_speed_controller.dart`).
+///
+/// It lives there because it is a platform argument, not estimator arithmetic —
+/// this file has no Flutter or plugin import and is not going to acquire one
+/// for a constant. But the omission is exactly the kind that costs an afternoon
+/// in a car park, because [tHold] and [tLost] are meaningless without it:
+/// they are ages measured against the interval at which samples are requested,
+/// and the plugin's own default (5 s) is longer than BOTH. So retuning is
+/// "edit two files", and this note plus the mirror note beside
+/// `speedSamplingPeriod` is what makes the second one findable.
+///
+/// Rule of thumb when changing either: `speedSamplingPeriod` must stay
+/// comfortably below [tHold], or a perfectly clear sky cycles
+/// live → holding → lost forever.
 class SpeedEstimatorConfig {
   const SpeedEstimatorConfig({
     this.aRejectM = 50.0,

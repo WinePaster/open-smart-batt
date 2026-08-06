@@ -296,6 +296,13 @@ class _RootShellState extends State<RootShell> {
     // rather than in build(): this is the first place l10n is resolved, and it
     // re-fires when the user switches language. The live reading is formatted
     // by the controller from telemetry, so this runs rarely.
+    // Gate condition 3 (design 0042 §3.4). It has to come from HERE and cannot
+    // be inferred from the dashboard subtree: the three screens live in an
+    // IndexedStack, so DashboardPage — and any speed card inside it — stays
+    // MOUNTED while the user reads History or Settings. Without this, "the
+    // dashboard is on screen" would silently mean "the app is running", and
+    // the GNSS receiver would stay up on every tab.
+    _syncDashboardVisible();
     final l10n = AppLocalizations.of(context);
     context.read<ConnectionController>().setNotificationStrings(
           title: l10n.monitorNotificationTitle,
@@ -306,6 +313,11 @@ class _RootShellState extends State<RootShell> {
           channelDescription: l10n.monitorChannelDescription,
         );
   }
+
+  void _syncDashboardVisible() =>
+      context.read<GpsSpeedController>().setDashboardVisible(
+            _tab == _Tab.dashboard,
+          );
 
   Future<void> _maybeShowDisclaimer() async {
     if (await Disclaimer.acknowledged()) return;
@@ -364,10 +376,16 @@ class _RootShellState extends State<RootShell> {
         ),
         child: NavigationBar(
           selectedIndex: _tab.index,
-          onDestinationSelected: (i) => setState(() {
-            _tab = _Tab.values[i];
-            if (_tab == _Tab.history) _historyEpoch++;
-          }),
+          onDestinationSelected: (i) {
+            setState(() {
+              _tab = _Tab.values[i];
+              if (_tab == _Tab.history) _historyEpoch++;
+            });
+            // OUTSIDE the setState closure: this notifies a ChangeNotifier,
+            // and doing that inside a state update marks other widgets dirty
+            // in the middle of one.
+            _syncDashboardVisible();
+          },
           destinations: [
             NavigationDestination(
               icon: const Icon(Icons.speed_outlined),

@@ -160,6 +160,19 @@ void main() {
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
+      // speed (design 0042) — TRUE on all four, and the only row of this table
+      // that is uniform for a reason rather than by coincidence: it is the
+      // phone's own GNSS reading, so there is no property of the hardware for a
+      // column to differ on. `unknown` gets it too — the registry says the
+      // module EXISTS for the class; whether an unclassified unit can reach the
+      // face that carries it is `effectiveWatchface`'s question (design 0034
+      // Q4), asked somewhere else on purpose.
+      DisplayModule.speed: {
+        ProductClass.smartBattery: true,
+        ProductClass.supercapacitor: true,
+        ProductClass.powerBank: true,
+        ProductClass.unknown: true,
+      },
     };
 
     test('availability matches §4 for all six modules × four classes', () {

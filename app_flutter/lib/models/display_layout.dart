@@ -34,7 +34,7 @@ library;
 
 import 'dart:convert';
 
-/// The three named watchfaces offered per product class (design 0034 §7 Q2:
+/// The named watchfaces offered per product class (design 0034 §7 Q2:
 /// interface A — pick one, no free editing yet).
 ///
 /// The slug is the enum NAME and is a WIRE VALUE: it is written to the
@@ -49,7 +49,26 @@ enum Watchface {
   compact,
 
   /// Numbers and the per-cell detail first, instrument last.
-  diagnostic;
+  diagnostic,
+
+  /// Speed on top, then the compact shell (design 0042 §3.3).
+  ///
+  /// The one face carrying `speed`, which is what keeps design 0034's G4
+  /// literal: nobody who has not chosen this face sees a pixel change.
+  ///
+  /// ⚠️ Unlike the other three, this face is CONDITIONAL. It is offered only
+  /// while the speed master switch is on, and — the part that is easy to leave
+  /// out — a stored `riding` also RENDERS as `standard` while the switch is
+  /// off. That is not the same rule twice: without the render half, `riding`
+  /// with the switch off draws `[gauge, extra]`, which is `compact` card for
+  /// card, and the two faces collapse into one page. Design 0041 was written
+  /// about exactly that collapse on `standard`/`compact`; accepting it here
+  /// would be redoing a defect that was fixed two days earlier in a new place.
+  /// Both halves go through the single decision point `ridingSelectable`.
+  ///
+  /// The stored slug is untouched by the fallback, so turning the switch back
+  /// on brings the face back with no migration and no lost setting.
+  riding;
 
   /// Stable storage/export identifier. Deliberately the enum name, so adding a
   /// face cannot silently renumber the others (contrast an ordinal).

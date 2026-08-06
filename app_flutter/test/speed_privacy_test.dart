@@ -12,11 +12,21 @@
 // shares"), and two MAC addresses were still recovered from a log a reporter
 // shared with us. A GPS track is worth considerably more than a MAC.
 //
-// Half two — "detection off ⇒ speed never lands" — is a Phase E test: it needs
-// the settings key and the history column, neither of which exists yet.
+// Half two — "detection off ⇒ speed never lands" — arrived with Phase E and is
+// the last group in this file. It is pinned SEPARATELY from the coordinate rule
+// on purpose: they are different promises with different consequences. A
+// coordinate leak is permanent and unbounded; a speed leak is bounded by what
+// the user agreed to in the consent dialog. Merging them into one test would
+// let a change that weakens either one be argued past on the strength of the
+// other.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
+import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Package root regardless of the runner's cwd, so the source scans below can
 /// read `lib/`. Same shape as the guard in `power_path_test.dart`.
@@ -118,5 +128,90 @@ void main() {
           reason: '$serialiser on a speed type would make bulk persistence a '
               'one-liner, and the red line depends on it not being one');
     }
+  });
+
+  // =========================================================================
+  // 🔴 G5 half two — with the switch off, speed never lands (design 0042 §3.9)
+  // =========================================================================
+  //
+  // Off is the DEFAULT, so this is the promise made to everyone who never opens
+  // the setting: no GNSS stream, no rows, nothing in an export. It is enforced
+  // structurally rather than by a check at the write, and the structure is a
+  // chain — each link is asserted below, because a chain argued in prose is how
+  // FB-33 happened.
+  group('detection off ⇒ nothing to land in the first place', () {
+    const off = AppSettings();
+    const on = AppSettings(speedDetection: true);
+
+    test('the switch is off unless someone turned it on', () {
+      expect(AppSettings.defaults.speedDetection, isFalse);
+      expect(off.speedDetection, isFalse);
+    });
+
+    test('with it off, NO face on ANY class lays out the speed module', () {
+      // Link 1, and the load-bearing one. The GNSS gate's first condition is
+      // "the effective face renders speed", and the speed card is what reports
+      // it. No module ⇒ no card ⇒ no stream ⇒ no sample ⇒ no row. Everything
+      // downstream is unreachable rather than merely unwritten.
+      for (final cls in ProductClass.values) {
+        for (final stored in Watchface.values) {
+          final drawn = watchfaceModules(cls, renderedWatchface(cls, stored, off));
+          expect(drawn, isNot(contains(DisplayModule.speed)),
+              reason: '$cls / ${stored.slug} would draw the speed card with '
+                  'detection off, which would open the GNSS stream');
+        }
+      }
+    });
+
+    test('and with it on, exactly one face does', () {
+      // The mirror image: a guard that held because the module was unreachable
+      // in BOTH states would be vacuous.
+      for (final cls in ProductClass.values) {
+        final withSpeed = [
+          for (final f in Watchface.values)
+            if (watchfaceModules(cls, renderedWatchface(cls, f, on))
+                .contains(DisplayModule.speed))
+              f,
+        ];
+        // `unknown` is forced to `standard` by design 0034 Q4, so it gets none.
+        expect(withSpeed, cls == ProductClass.unknown ? isEmpty : [Watchface.riding],
+            reason: '$cls');
+      }
+    });
+
+    test('a row written with no speed keeps the column NULL, not 0.0', () {
+      // Link 2, at the storage end. Null is the only value that can mean "no
+      // measurement"; 0.0 would claim the phone was measured standing still,
+      // which is the same lie in the database that G2 forbids on screen.
+      sqfliteFfiInit();
+      return () async {
+        final db = await AppDatabase.open(
+            path: inMemoryDatabasePath, factory: databaseFactoryFfi);
+        addTearDown(db.close);
+        final repo = HistoryRepo(db.db);
+        await repo.insertSample(
+          TelemetrySample(
+              timestamp: DateTime.fromMillisecondsSinceEpoch(60000), pvlt: 12.5),
+          deviceId: 'AA',
+        );
+        final row = (await db.db.query(Db.tableHistory)).single;
+        expect(row['speed'], isNull);
+        expect(row['accel'], isNull);
+        // And it exports as an absent cell, not as a number. ⚠️ "Absent"
+        // renders as the literal `null` here — that is this app's existing CSV
+        // convention for every nullable column (`soc`, `device`, `app_build`
+        // …), not something these two columns do differently, and changing it
+        // would move every recipient's spreadsheet. What matters for G2 is only
+        // that it is not `0`.
+        final csv = await repo.exportCsv();
+        final body = csv.text.split(RegExp(r'\r?\n'));
+        expect(body.first.split(',').last.replaceAll('"', ''), 'accel');
+        final cells = body[1].split(',');
+        expect(cells[cells.length - 2], 'null', reason: 'speed');
+        expect(cells.last, 'null', reason: 'accel');
+        expect(cells.last, isNot('0'));
+        expect(cells.last, isNot('0.0'));
+      }();
+    });
   });
 }
