@@ -1064,6 +1064,24 @@ abstract class AppLocalizations {
   /// **'Speed'**
   String get homeModuleSpeed;
 
+  /// No description provided for @homeEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit home'**
+  String get homeEditTitle;
+
+  /// No description provided for @homeEditAddCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Add card'**
+  String get homeEditAddCard;
+
+  /// No description provided for @homeEditRestoreDefaults.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore default layout'**
+  String get homeEditRestoreDefaults;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

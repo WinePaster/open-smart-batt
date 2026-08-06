@@ -618,6 +618,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeModuleSpeed => 'Speed';
 
   @override
+  String get homeEditTitle => 'Edit home';
+
+  @override
+  String get homeEditAddCard => 'Add card';
+
+  @override
+  String get homeEditRestoreDefaults => 'Restore default layout';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override

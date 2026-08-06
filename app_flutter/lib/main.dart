@@ -17,6 +17,7 @@ import 'theme/app_theme.dart';
 import 'ui/devices/device_detail_page.dart';
 import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
+import 'ui/home/home_editor_page.dart';
 import 'ui/home/home_page.dart';
 import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
@@ -389,7 +390,18 @@ class _RootShellState extends State<RootShell> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: _BrandAppBar(onOpenDevices: () => _setTab(_Tab.devices)),
+      appBar: _BrandAppBar(
+        onOpenDevices: () => _setTab(_Tab.devices),
+        // Only on 主頁, and only there: an "edit" action on top of History or
+        // Settings would be an action with no object.
+        onEditHome: _tab == _Tab.home
+            ? () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HomeEditorPage(),
+                  ),
+                )
+            : null,
+      ),
       // The AppBar already insets the top (status bar / notch / Dynamic Island)
       // and the NavigationBar insets the bottom (home indicator); guard the
       // body's horizontal edges too (top: false / bottom: false avoid double
@@ -486,11 +498,14 @@ class _RootShellState extends State<RootShell> {
 /// `.appbar` / `.conn`). Tapping the pill is wired by the device-list screen;
 /// here it surfaces the current link state.
 class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _BrandAppBar({required this.onOpenDevices});
+  const _BrandAppBar({required this.onOpenDevices, this.onEditHome});
 
   /// Where the connection pill goes. Design 0046 R2: the device list is a tab,
   /// not a modal, so the pill switches tab instead of covering the page.
   final VoidCallback onOpenDevices;
+
+  /// Open the home editor (design 0046 P3). Null on every tab but 主頁.
+  final VoidCallback? onEditHome;
 
   @override
   Size get preferredSize => const Size.fromHeight(58);
@@ -532,6 +547,13 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        if (onEditHome != null)
+          IconButton(
+            onPressed: onEditHome,
+            iconSize: 18,
+            icon: const Icon(Icons.tune),
+            color: context.colors.muted,
+          ),
         Padding(
           padding: const EdgeInsets.only(right: 14),
           child: Center(child: _ConnectionPill(onTap: onOpenDevices)),

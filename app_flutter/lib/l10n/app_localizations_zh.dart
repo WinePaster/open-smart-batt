@@ -587,6 +587,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeModuleSpeed => '速度';
 
   @override
+  String get homeEditTitle => '編輯主頁';
+
+  @override
+  String get homeEditAddCard => '新增卡片';
+
+  @override
+  String get homeEditRestoreDefaults => '回復預設版面';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override
