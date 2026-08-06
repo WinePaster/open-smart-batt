@@ -35,6 +35,16 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>本 App 需要使用藍牙以連線並控制您的 智慧電池或電容模組（BLE）。</string>
+	<!-- design 0042 §3.5. The parenthesis is not marketing copy — it is G5's
+	     promise to the user, and the wording was corrected once already: an
+	     earlier draft said "速度資訊不會被儲存或上傳", which the same design
+	     contradicts (speed DOES go to history and to exports; only the
+	     coordinate is forbidden). Keep the promise and the implementation
+	     saying the same thing.
+	     WhenInUse only. No NSLocationAlways* key and no UIBackgroundModes:
+	     this feature is foreground-only (0042 N1). -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>顯示騎乘速度時需要取得定位（位置座標不會被儲存或上傳）。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

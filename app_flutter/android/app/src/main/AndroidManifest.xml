@@ -14,8 +14,22 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- Two purposes now, which is why the maxSdkVersion="30" cap that used to
+         be on this line is gone (design 0042 §3.5):
+           1. pre-API-31 BLE scanning, as before;
+           2. GNSS speed for the riding watchface, on every API level.
+         The runtime prompt is still not something a normal user meets: it is
+         reached only by turning on the speed-detection switch and accepting the
+         consent dialog (0042 §3.9), and BLE scanning on API 31+ continues to go
+         through BLUETOOTH_SCAN with neverForLocation above.
+         NOT added, deliberately: no background location, no ACCESS_BACKGROUND_
+         LOCATION, and no FOREGROUND_SERVICE_LOCATION — the foreground service
+         below keeps its connectedDevice type (design 0008 unchanged, 0042 N1).
+         ⚠️ Merge note (verified 2026-08-07): geolocator_android's own manifest
+         contributes a GeolocatorLocationService declared with
+         foregroundServiceType="location". We never start it, so it stays inert
+         and needs no permission — but it does appear in the merged manifest. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Foreground service that keeps the process alive while a pack is
          connected, so the screen going off does not freeze the BLE loop
