@@ -12,5 +12,6 @@ export 'device_controller.dart';
 export 'live_trend_buffer.dart';
 export 'session_context.dart';
 export 'settings_controller.dart';
+export 'speed_estimator.dart';
 export 'telemetry_controller.dart';
 export 'telemetry_health.dart';
