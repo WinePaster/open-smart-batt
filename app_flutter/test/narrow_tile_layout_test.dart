@@ -26,7 +26,6 @@ import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
-import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/g_force_card.dart';
