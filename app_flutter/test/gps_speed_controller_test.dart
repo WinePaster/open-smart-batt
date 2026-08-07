@@ -154,6 +154,68 @@ void main() {
       ctl.dispose();
     });
 
+    // ---------------------------------------------------------------------
+    // design 0046 Step 8c — condition 3 has TWO producers now.
+    //
+    // Before design 0046 the only surface that could carry a speed card was the
+    // dashboard TAB, so one tab-derived flag said everything. After it, the
+    // dashboard lives inside a PUSHED route (the device detail page) while the
+    // tab underneath is 裝置, and the home grid can carry a speed card of its
+    // own. With one flag the gate would have stayed SHUT for exactly as long as
+    // the user was on the page showing speed — a card stuck on "waiting for a
+    // fix", no error anywhere, and a user concluding their GPS was broken.
+    // ---------------------------------------------------------------------
+    test('a speed tile on the home page opens the GPS gate', () async {
+      final (:clock, :src, :ctl) = build();
+      ctl
+        ..setFaceWantsSpeed(true)
+        ..setDashboardVisible(true);
+      await pumpEventQueue();
+      expect(ctl.streaming, isTrue);
+      expect(ctl.speedSurfaceVisible, isTrue);
+      ctl.dispose();
+    });
+
+    test('so does a detail page pushed over another tab', () async {
+      final (:clock, :src, :ctl) = build();
+      ctl
+        ..setFaceWantsSpeed(true)
+        // The shell is on 裝置 — the home tab is NOT visible.
+        ..setDashboardVisible(false)
+        ..setDetailVisible(true);
+      await pumpEventQueue();
+      expect(ctl.streaming, isTrue,
+          reason: 'the detail page is where the dashboard went; a gate that '
+              'only knows about tabs keeps it shut there forever');
+      ctl.dispose();
+    });
+
+    test('leaving both the home page and the detail page closes it', () async {
+      // 🔒 THIS is the half that keeps design 0042 G4. Widening condition 3 to
+      // "either surface" must not become "the app is running": with neither up,
+      // the receiver goes off even though the card is still MOUNTED in the
+      // IndexedStack (condition 1 stays true) and the app is in the foreground
+      // (condition 2 stays true).
+      final (:clock, :src, :ctl) = build();
+      ctl
+        ..setFaceWantsSpeed(true)
+        ..setDashboardVisible(true)
+        ..setDetailVisible(true);
+      await pumpEventQueue();
+      expect(ctl.streaming, isTrue);
+
+      ctl.setDashboardVisible(false);
+      expect(ctl.streaming, isTrue, reason: 'the detail page is still up');
+
+      ctl.setDetailVisible(false);
+      // Synchronous, for the same reason every other cancel here is.
+      expect(ctl.streaming, isFalse);
+      expect(ctl.speedSurfaceVisible, isFalse);
+      await pumpEventQueue();
+      expect(src.cancels, 1);
+      ctl.dispose();
+    });
+
     test('closing the gate forgets the reading', () async {
       final (:clock, :src, :ctl) = build();
       await openGate(ctl);

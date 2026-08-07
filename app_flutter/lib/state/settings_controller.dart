@@ -43,6 +43,7 @@ class SettingsController extends ChangeNotifier {
   TempUnit get tempUnit => _settings.tempUnit;
   bool get speedDetection => _settings.speedDetection;
   SpeedUnit get speedUnit => _settings.speedUnit;
+  String? get homeLayout => _settings.homeLayout;
   RetentionPolicy get retention => _settings.retention;
   bool get rawPacketLog => _settings.rawPacketLog;
   int get logMaxBytes => _settings.logMaxBytes;
@@ -91,6 +92,15 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setSpeedUnit(SpeedUnit v) =>
       update(_settings.copyWith(speedUnit: v));
+
+  /// Persist the home page's grid, or NULL to go back to the generated one.
+  ///
+  /// 🔴 NULL is the "restore defaults" write (design 0046 §4.9), and it is not
+  /// the same as storing today's generated layout: the generator reflects the
+  /// devices the user has AT RENDER TIME, so a unit saved next week appears by
+  /// itself. A snapshot would freeze the list at the moment of the reset.
+  Future<void> setHomeLayout(String? v) => update(
+      _settings.copyWith(homeLayout: v, clearHomeLayout: v == null));
   /// Change how long history is kept, then apply it immediately.
   ///
   /// Applying on change is the honest behaviour: the user picked "30 days"

@@ -206,7 +206,19 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day ago} other{{count} days ago}}'**
   String relativeDaysAgo(int count);
 
-  /// No description provided for @navDashboard.
+  /// No description provided for @navHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get navHome;
+
+  /// No description provided for @navDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get navDevices;
+
+  /// Legacy label for the pre-0046 first tab, which was the dashboard but was LABELLED 'Devices'. Unreferenced since design 0046 moved that label to navDevices; kept because deleting a shipped key is how two builds end up disagreeing about what a screenshot showed.
   ///
   /// In en, this message translates to:
   /// **'Devices'**
@@ -998,6 +1010,78 @@ abstract class AppLocalizations {
   /// **'Saved devices'**
   String get devicesSavedSection;
 
+  /// No description provided for @devicesSavedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved · {count}'**
+  String devicesSavedCount(int count);
+
+  /// No description provided for @deviceBadgeConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get deviceBadgeConnected;
+
+  /// No description provided for @deviceBadgeConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting'**
+  String get deviceBadgeConnecting;
+
+  /// No description provided for @deviceBadgeOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get deviceBadgeOffline;
+
+  /// No description provided for @deviceBadgeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed'**
+  String get deviceBadgeFailed;
+
+  /// No description provided for @deviceBadgeNotAnswering.
+  ///
+  /// In en, this message translates to:
+  /// **'Not answering'**
+  String get deviceBadgeNotAnswering;
+
+  /// No description provided for @deviceDetailWatchface.
+  ///
+  /// In en, this message translates to:
+  /// **'Watchface'**
+  String get deviceDetailWatchface;
+
+  /// No description provided for @homeAddFirstDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your first device'**
+  String get homeAddFirstDevice;
+
+  /// Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed'**
+  String get homeModuleSpeed;
+
+  /// No description provided for @homeEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit home'**
+  String get homeEditTitle;
+
+  /// No description provided for @homeEditAddCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Add card'**
+  String get homeEditAddCard;
+
+  /// No description provided for @homeEditRestoreDefaults.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore default layout'**
+  String get homeEditRestoreDefaults;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:
@@ -1633,6 +1717,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Watchface'**
   String get settingsWatchfaceLabel;
+
+  /// Sub-line of the Settings signpost row (design 0046 R20). The picker itself moved to the device detail page; this row states where it went and nothing else. `settingsWatchfaceSub` and `settingsWatchfaceSubNoDevice` are KEPT even though this screen no longer uses the second one — see the l10n note in the 0046 plan §6.
+  ///
+  /// In en, this message translates to:
+  /// **'Change it on the device\'s page'**
+  String get settingsWatchfaceGuidance;
 
   /// design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'.
   ///

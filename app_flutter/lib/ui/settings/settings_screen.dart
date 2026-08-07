@@ -37,7 +37,17 @@ const String kProtocolUrl =
     'https://github.com/WinePaster/open-smart-batt/blob/main/docs/PROTOCOL.md';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, this.deviceInfoPanelBuilder});
+  const SettingsScreen({
+    super.key,
+    this.deviceInfoPanelBuilder,
+    this.onOpenDevices,
+  });
+
+  /// Switch to the devices tab (design 0046 R20). The watchface picker moved to
+  /// the device detail page, and this screen keeps a SIGNPOST pointing at it —
+  /// threaded from the shell for the same reason every other tab change is:
+  /// `_setTab` is the single writer that keeps the GNSS gate honest.
+  final VoidCallback? onOpenDevices;
 
   /// Optional device-info panel supplied by a closed-source build. NULL on the
   /// open build, where nothing is rendered and the screen is byte-identical to
@@ -57,7 +67,7 @@ class SettingsScreen extends StatelessWidget {
       children: [
         const _ConnectionCard(),
         if (panel != null) panel(context),
-        const _DisplayCard(),
+        _DisplayCard(onOpenDevices: onOpenDevices),
         const _DataCard(),
         const _DiagnosticsCard(),
         const _AboutCard(),
@@ -130,7 +140,9 @@ class _ConnectionCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _DisplayCard extends StatelessWidget {
-  const _DisplayCard();
+  const _DisplayCard({this.onOpenDevices});
+
+  final VoidCallback? onOpenDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +203,7 @@ class _DisplayCard extends StatelessWidget {
                 ],
               ),
             ),
-          const _WatchfaceRow(),
+          _WatchfaceGuidanceRow(onOpenDevices: onOpenDevices),
         ],
       ),
     );
@@ -260,98 +272,42 @@ class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
   }
 }
 
-/// Watchface picker + "restore defaults" (design 0034 Phase 5, Q6).
+/// A SIGNPOST to the watchface picker, which now lives on the device's own page.
 ///
-/// Two rows rather than one because they answer different questions and one of
-/// them is destructive-ish; kept in the same card because Q6 ruled that restore
-/// belongs beside the thing it restores.
+/// Design 0046 R20 moved the picker (see `ui/devices/watchface_sheet.dart`).
+/// This row is kept rather than deleted because "設定 → 錶盤" has shipped since
+/// v0.6.17: a user who learned that path must find out where it went, not find
+/// nothing.
 ///
-/// ⚠️ The setting is bound to the DEVICE (Q3), which the rest of this card is
-/// not — everything above it is app-wide. The row therefore has a state the
-/// others cannot have: nothing to apply to. It is DISABLED and says why rather
-/// than being hidden, on the precedent of the background-monitoring row on iOS:
-/// "a user who has heard of the feature needs to see WHY it is unavailable".
-class _WatchfaceRow extends StatelessWidget {
-  const _WatchfaceRow();
+/// 🔴 T-new-7 — it is a LINK, never a second editor. It renders no
+/// `SegmentedControl<Watchface>` and calls no `setDisplayLayout`. Two entry
+/// points writing one column is the double-knob problem design 0046 R18 had
+/// just finished removing; having the second one be the OLD one would be worse,
+/// because it is the one people already know.
+///
+/// The row it replaced carried a sentence explaining that the setting belongs to
+/// a device and there was none connected. That sentence is gone, and its absence
+/// is the point (§4.7): the state it explained is now expressed by navigation —
+/// you pick a device, then you get its watchface.
+class _WatchfaceGuidanceRow extends StatelessWidget {
+  const _WatchfaceGuidanceRow({this.onOpenDevices});
+
+  final VoidCallback? onOpenDevices;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // Both are watched: the id changes on connect/disconnect, the stored layout
-    // changes when this very control writes it.
-    final id = context.select<ConnectionController, String?>(
-        (c) => c.connectedDeviceId);
-    final devices = context.watch<DeviceController>();
-    // Not merely "connected": the layout lives in the `saved_devices` row, so a
-    // unit the user declined to name has nowhere to put it. Saving it here as a
-    // side effect would add a row to their device picker that they never asked
-    // for (see DeviceController.setDisplayLayout).
-    final target = id != null && devices.isSaved(id) ? id : null;
-    final layout = devices.layoutFor(target);
-
-    Future<void> apply(DisplayLayout next) async {
-      if (target == null) return;
-      await devices.setDisplayLayout(target, next);
-    }
-
-    // design 0034 §4.3, "unavailable is not offered". `riding` exists only to
-    // carry the speed card, so with the master switch off there is nothing for
-    // it to be — and the SAME predicate keeps a stored `riding` from rendering
-    // (see `ridingSelectable`), which is what stops it collapsing into a copy
-    // of `compact`.
-    //
-    // ⚠️ The picker's `selected` is the STORED face, which can be `riding`
-    // while the option is absent. `SegmentedControl` matches on `==`, so it
-    // simply highlights nothing — the honest rendering of "your stored choice
-    // is not currently available", and better than silently re-pointing the
-    // control at `standard`, which would look like the setting had been
-    // changed for the user.
-    final settings = context.watch<SettingsController>().settings;
-    final picker = SegmentedControl<Watchface>(
-      selected: layout.watchface,
-      onChanged: (v) => apply(DisplayLayout(watchface: v)),
-      options: [
-        (value: Watchface.standard, label: l10n.watchfaceStandard),
-        (value: Watchface.compact, label: l10n.watchfaceCompact),
-        (value: Watchface.diagnostic, label: l10n.watchfaceDiagnostic),
-        if (ridingSelectable(settings))
-          (value: Watchface.riding, label: l10n.watchfaceRiding),
-      ],
-    );
-
-    return Column(
-      children: [
-        SettingsRow(
-          label: l10n.settingsWatchfaceLabel,
-          sub: target == null
-              ? l10n.settingsWatchfaceSubNoDevice
-              : l10n.settingsWatchfaceSub,
-          trailing: target == null
-              // Dimmed AND inert. Opacity alone would still accept taps, and a
-              // control that looks disabled but silently writes nothing is the
-              // worse of the two failures.
-              ? Opacity(
-                  opacity: 0.45,
-                  child: IgnorePointer(child: picker),
-                )
-              : picker,
-        ),
-        SettingsLinkRow(
-          icon: Icons.restore,
-          label: l10n.settingsRestoreDisplayLabel,
-          last: true,
-          onTap: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            final done = l10n.settingsRestoreDisplayDone;
-            if (target == null) return;
-            await apply(DisplayLayout.defaults);
-            messenger.showSnackBar(SnackBar(
-              duration: const Duration(milliseconds: 1600),
-              content: Text(done),
-            ));
-          },
-        ),
-      ],
+    // `SettingsRow` + `InkWell` rather than `SettingsLinkRow`, which has no
+    // sub-line: the row has to say WHERE the picker went, and one short line is
+    // exactly the amount of explanation §4.7 allows here.
+    return InkWell(
+      onTap: onOpenDevices,
+      child: SettingsRow(
+        label: l10n.settingsWatchfaceLabel,
+        sub: l10n.settingsWatchfaceGuidance,
+        trailing:
+            Icon(Icons.chevron_right, size: 16, color: context.colors.muted),
+      ),
     );
   }
 }
@@ -392,6 +348,10 @@ class _DataCardState extends State<_DataCard> {
     // with the other context reads — by the time the CSV is built this screen
     // may be gone.
     final layout = currentExportLayoutValue(context);
+    // design 0046 Step 10. Same capture rule as `layout` above: read before the
+    // first await, because by the time the file is written the screen may be
+    // gone.
+    final home = currentExportHomeValue(context);
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
     final speedDetection = context.read<SettingsController>().speedDetection;
@@ -407,6 +367,7 @@ class _DataCardState extends State<_DataCard> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           layout: layout,
+          home: home,
           speedDetection: speedDetection,
         ),
       );
@@ -576,8 +537,10 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final rawLog = context.read<SettingsController>().rawPacketLog;
     final speedOn = context.read<SettingsController>().speedDetection;
     // The dashboard layout in force right now (design 0034 §8), captured with
-    // the other context reads for the same reason.
+    // the other context reads for the same reason. The home grid likewise
+    // (design 0046 Step 10).
     final layout = currentExportLayoutValue(context);
+    final home = currentExportHomeValue(context);
     String labelFor(String? id) => deviceLabelFor(devices, id);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
@@ -587,7 +550,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       final identities = await exportDeviceIdentities(devices, tele, target);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, speedOn, layout, identities);
+              tele, services, target, rawLog, speedOn, layout, home,
+              identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -721,6 +685,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     bool rawPacketLog,
     bool speedDetection,
     String layout,
+    String home,
     List<ExportDeviceIdentity> devices,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
@@ -733,6 +698,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       platform: services.platform,
       scope: exportScopeLabel(target),
       layout: layout,
+      home: home,
       speedDetection: speedDetection,
       connections: sessions,
       rawPacketLog: rawPacketLog,

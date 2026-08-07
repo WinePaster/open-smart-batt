@@ -27,7 +27,7 @@ import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
 import 'package:open_smart_batt/state/state.dart';
-import 'package:open_smart_batt/ui/devices/device_list_sheet.dart';
+import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Inert BleService so the harness never touches the (Simulator-absent)
@@ -51,7 +51,7 @@ void main() {
     sqfliteFfiInit();
   });
 
-  testWidgets('app boots to first frame and the device sheet opens',
+  testWidgets('app boots to first frame and the devices tab opens',
       (tester) async {
     late final AppServices services;
     await tester.runAsync(() async {
@@ -74,13 +74,15 @@ void main() {
     expect(find.byType(RootShell), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // Open the device-list sheet from the connection pill ("OFFLINE" while
-    // disconnected). This exercises the sheet's scan-start entry path.
+    // Reach the device list from the connection pill ("OFFLINE" while
+    // disconnected). Design 0046 R2 made that list a TAB rather than a modal
+    // sheet, so the pill switches tab; the path being exercised — the list's
+    // scan-start entry — is the same one.
     await tester.tap(find.text('OFFLINE').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.byType(DeviceListSheet), findsOneWidget);
+    expect(find.byType(DevicesPage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -14,9 +14,11 @@ import 'models/models.dart';
 import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
-import 'ui/dashboard/dashboard_page.dart';
-import 'ui/devices/device_list_sheet.dart';
+import 'ui/devices/device_detail_page.dart';
+import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
+import 'ui/home/home_editor_page.dart';
+import 'ui/home/home_page.dart';
 import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
@@ -259,14 +261,23 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
 }
 
 // ---------------------------------------------------------------------------
-// Root shell: brand app bar + bottom nav (Dashboard / History / Settings) and
-// the one-time community disclaimer gate.
+// Root shell: brand app bar + bottom nav (Home / Devices / History / Settings)
+// and the one-time community disclaimer gate.
 // ---------------------------------------------------------------------------
 
-/// The three bottom-nav destinations (mockup: 儀表板 / 歷史 / 設定).
-enum _Tab { dashboard, history, settings }
+/// The four bottom-nav destinations (design 0046 §3.1: 主頁 / 裝置 / 歷史 / 設定).
+///
+/// 🔴 `dashboard` is gone as a DESTINATION, not as a screen. Until design 0046
+/// the first tab was `_Tab.dashboard` — labelled "裝置" / "Devices" on screen,
+/// which is why the owner described the app as opening on "the device page"
+/// while the code called it the dashboard. That name now belongs to the LIST
+/// ([DevicesPage]); the dashboard itself moved one level down, into the
+/// per-device detail page. An upgrading user therefore finds the same word
+/// pointing at a different screen, which is a silent semantic swap and belongs
+/// in the release note (design 0046 §1.3).
+enum _Tab { home, devices, history, settings }
 
-/// Top-level navigation shell. Replaces the placeholder home: hosts the three
+/// Top-level navigation shell. Replaces the placeholder home: hosts the four
 /// screens in an [IndexedStack] (state preserved across tab switches) and shows
 /// the startup community disclaimer once on first launch.
 class RootShell extends StatefulWidget {
@@ -283,7 +294,9 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell> {
-  _Tab _tab = _Tab.dashboard;
+  // Design 0046 R3, which overturns design 0034 G4 on the owner's ruling: the
+  // app opens on the home grid rather than on one device's dashboard.
+  _Tab _tab = _Tab.home;
   int _historyEpoch = 0; // bumped on each switch to 歷史 to force a reload
 
   @override
@@ -312,11 +325,11 @@ class _RootShellState extends State<RootShell> {
     // re-fires when the user switches language. The live reading is formatted
     // by the controller from telemetry, so this runs rarely.
     // Gate condition 3 (design 0042 §3.4). It has to come from HERE and cannot
-    // be inferred from the dashboard subtree: the three screens live in an
-    // IndexedStack, so DashboardPage — and any speed card inside it — stays
-    // MOUNTED while the user reads History or Settings. Without this, "the
-    // dashboard is on screen" would silently mean "the app is running", and
-    // the GNSS receiver would stay up on every tab.
+    // be inferred from the subtree: the four screens live in an IndexedStack,
+    // so the home grid — and any speed card inside it — stays MOUNTED while the
+    // user reads History or Settings. Without this, "a speed card is on screen"
+    // would silently mean "the app is running", and the GNSS receiver would
+    // stay up on every tab.
     _syncDashboardVisible();
     final l10n = AppLocalizations.of(context);
     context.read<ConnectionController>().setNotificationStrings(
@@ -356,9 +369,14 @@ class _RootShellState extends State<RootShell> {
     _syncDashboardVisible();
   }
 
+  /// Gate condition 3's TAB half (design 0042 §3.4, re-scoped by design 0046
+  /// Step 8c). Before 0046 the only surface that could carry a speed card was
+  /// the dashboard tab; now it is the HOME tab, and the device detail page —
+  /// a pushed route this shell does not own — reports itself separately through
+  /// [GpsSpeedController.setDetailVisible].
   void _syncDashboardVisible() =>
       context.read<GpsSpeedController>().setDashboardVisible(
-            _tab == _Tab.dashboard,
+            _tab == _Tab.home,
           );
 
   Future<void> _maybeShowDisclaimer() async {
@@ -372,7 +390,18 @@ class _RootShellState extends State<RootShell> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: const _BrandAppBar(),
+      appBar: _BrandAppBar(
+        onOpenDevices: () => _setTab(_Tab.devices),
+        // Only on 主頁, and only there: an "edit" action on top of History or
+        // Settings would be an action with no object.
+        onEditHome: _tab == _Tab.home
+            ? () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HomeEditorPage(),
+                  ),
+                )
+            : null,
+      ),
       // The AppBar already insets the top (status bar / notch / Dynamic Island)
       // and the NavigationBar insets the bottom (home indicator); guard the
       // body's horizontal edges too (top: false / bottom: false avoid double
@@ -383,13 +412,31 @@ class _RootShellState extends State<RootShell> {
         child: IndexedStack(
           index: _tab.index,
           children: [
-            DashboardPage(
+            HomePage(
+              onOpenDevices: () => _setTab(_Tab.devices),
+              onOpenDetail: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => DeviceDetailPage(
+                    deviceId: id,
+                    onOpenSettings: () => _setTab(_Tab.settings),
+                  ),
+                ),
+              ),
+            ),
+            // The dashboard's stale-telemetry banner links to Settings, and the
+            // dashboard now lives inside a route this page pushes — so the
+            // callback is threaded down rather than re-derived there. Every tab
+            // change in this file goes through `_setTab`, which is the only
+            // thing keeping gate condition 3 in step with what is on screen.
+            DevicesPage(
+              active: _tab == _Tab.devices,
               onOpenSettings: () => _setTab(_Tab.settings),
             ),
             // Re-keyed on each switch to 歷史 so it reloads the latest records.
             HistoryScreen(key: ValueKey(_historyEpoch)),
             SettingsScreen(
               deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+              onOpenDevices: () => _setTab(_Tab.devices),
             ),
           ],
         ),
@@ -421,9 +468,14 @@ class _RootShellState extends State<RootShell> {
           onDestinationSelected: (i) => _setTab(_Tab.values[i]),
           destinations: [
             NavigationDestination(
-              icon: const Icon(Icons.speed_outlined),
-              selectedIcon: const Icon(Icons.speed),
-              label: l10n.navDashboard,
+              icon: const Icon(Icons.dashboard_outlined),
+              selectedIcon: const Icon(Icons.dashboard),
+              label: l10n.navHome,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.list_alt_outlined),
+              selectedIcon: const Icon(Icons.list_alt),
+              label: l10n.navDevices,
             ),
             NavigationDestination(
               icon: const Icon(Icons.history_outlined),
@@ -446,7 +498,14 @@ class _RootShellState extends State<RootShell> {
 /// `.appbar` / `.conn`). Tapping the pill is wired by the device-list screen;
 /// here it surfaces the current link state.
 class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _BrandAppBar();
+  const _BrandAppBar({required this.onOpenDevices, this.onEditHome});
+
+  /// Where the connection pill goes. Design 0046 R2: the device list is a tab,
+  /// not a modal, so the pill switches tab instead of covering the page.
+  final VoidCallback onOpenDevices;
+
+  /// Open the home editor (design 0046 P3). Null on every tab but 主頁.
+  final VoidCallback? onEditHome;
 
   @override
   Size get preferredSize => const Size.fromHeight(58);
@@ -487,10 +546,17 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ],
       ),
-      actions: const [
+      actions: [
+        if (onEditHome != null)
+          IconButton(
+            onPressed: onEditHome,
+            iconSize: 18,
+            icon: const Icon(Icons.tune),
+            color: context.colors.muted,
+          ),
         Padding(
-          padding: EdgeInsets.only(right: 14),
-          child: Center(child: _ConnectionPill()),
+          padding: const EdgeInsets.only(right: 14),
+          child: Center(child: _ConnectionPill(onTap: onOpenDevices)),
         ),
       ],
     );
@@ -500,7 +566,9 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// Compact connection indicator (mockup `.conn` pill). Green when the link is
 /// ready, amber while connecting, danger-red otherwise.
 class _ConnectionPill extends StatelessWidget {
-  const _ConnectionPill();
+  const _ConnectionPill({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -514,7 +582,7 @@ class _ConnectionPill extends StatelessWidget {
       BleLinkState.disconnected => (AppColors.danger, 'OFFLINE'),
     };
     return InkWell(
-      onTap: () => showDeviceListSheet(context),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

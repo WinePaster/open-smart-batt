@@ -1,7 +1,14 @@
 /// OpenSmartBatt — dashboard screen + product-class router (mockup `#page-dash`).
 ///
-/// When no device is connected this shows [DisconnectedState] (quick-select +
-/// scan). Once online, [DashboardRouter] picks the view from the device-type
+/// 📦 Since design 0046 this page is the body of ONE DEVICE'S detail page, and
+/// it no longer owns the "nothing is connected" case: the detail page decides
+/// that, because after 0046 the question is "is THIS unit live" rather than "is
+/// anything live". [DisconnectedState] is still the dashboard's own empty state
+/// and is still exercised by `give_up_visibility_test.dart` /
+/// `setup_stall_test.dart` / `waiting_states_test.dart`; what moved is who
+/// chooses to show it.
+///
+/// [DashboardRouter] picks the view from the device-type
 /// byte the unit reports — the ONLY deterministic signal there is: a confirmed
 /// power bank (device-type 0x22) gets [PowerBankView]; a confirmed pack
 /// (super-capacitor or smart battery) gets the data-driven [PackView]; a unit
@@ -20,19 +27,14 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import '../devices/device_list_sheet.dart';
 import 'capture_mark_bar.dart';
 import 'class_pending_view.dart';
-import 'disconnected_state.dart';
 import 'pack_view.dart';
 import 'power_bank_view.dart';
 
 /// Dashboard body (intended to sit inside the app shell's [Scaffold] body).
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key, this.onScanRequested, this.onOpenSettings});
-
-  /// Forwarded to [DisconnectedState]'s scan button (open device-list sheet).
-  final VoidCallback? onScanRequested;
+  const DashboardPage({super.key, this.onOpenSettings});
 
   /// Switch to the Settings tab. The stale banner links there, because that is
   /// where the platform-specific explanation now lives — next to the
@@ -47,12 +49,6 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final online = context.select<ConnectionController, bool>((c) => c.isOnline);
-    if (!online) {
-      return DisconnectedState(
-        onScanRequested: onScanRequested ?? () => showDeviceListSheet(context),
-      );
-    }
     // A stall is not a disconnect: the link stays ready while Android suspends
     // the app, so the readouts below would otherwise sit frozen with no hint.
     final stalled =

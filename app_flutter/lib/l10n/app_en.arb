@@ -60,7 +60,12 @@
       }
     }
   },
+  "navHome": "Home",
+  "navDevices": "Devices",
   "navDashboard": "Devices",
+  "@navDashboard": {
+    "description": "Legacy label for the pre-0046 first tab, which was the dashboard but was LABELLED 'Devices'. Unreferenced since design 0046 moved that label to navDevices; kept because deleting a shipped key is how two builds end up disagreeing about what a screenshot showed."
+  },
   "navHistory": "History",
   "navSettings": "Settings",
   "disclaimerCommunityEdition": "Community Self-Help Edition · COMMUNITY EDITION",
@@ -412,6 +417,28 @@
   },
   "devicesRemove": "Remove",
   "devicesSavedSection": "Saved devices",
+  "devicesSavedCount": "Saved · {count}",
+  "@devicesSavedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deviceBadgeConnected": "Connected",
+  "deviceBadgeConnecting": "Connecting",
+  "deviceBadgeOffline": "Not connected",
+  "deviceBadgeFailed": "Connection failed",
+  "deviceBadgeNotAnswering": "Not answering",
+  "deviceDetailWatchface": "Watchface",
+  "homeAddFirstDevice": "Add your first device",
+  "homeModuleSpeed": "Speed",
+  "homeEditTitle": "Edit home",
+  "homeEditAddCard": "Add card",
+  "homeEditRestoreDefaults": "Restore default layout",
+  "@homeModuleSpeed": {
+    "description": "Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own."
+  },
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",
   "devicesScanning": "Scanning…",
@@ -610,6 +637,10 @@
   "speedQualityNone": "No signal",
   "watchfaceRiding": "Riding",
   "settingsWatchfaceLabel": "Watchface",
+  "settingsWatchfaceGuidance": "Change it on the device's page",
+  "@settingsWatchfaceGuidance": {
+    "description": "Sub-line of the Settings signpost row (design 0046 R20). The picker itself moved to the device detail page; this row states where it went and nothing else. `settingsWatchfaceSub` and `settingsWatchfaceSubNoDevice` are KEPT even though this screen no longer uses the second one — see the l10n note in the 0046 plan §6."
+  },
   "settingsWatchfaceSub": "Which cards the dashboard shows for the connected device, and in what order.",
   "@settingsWatchfaceSub": {
     "description": "design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'."

@@ -13,7 +13,7 @@
 /// prevents.
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -64,4 +64,21 @@ Color powerFlowColor(BuildContext context, PowerFlow flow) => switch (flow) {
       PowerFlow.charging => AppColors.good,
       PowerFlow.discharging => AppColors.amber,
       PowerFlow.idle || PowerFlow.unknown => context.colors.muted,
+    };
+
+/// The glyph a direction is drawn with, wherever it is drawn.
+///
+/// Beside [powerFlowColor] for the same reason: the type chip, the SOC readout
+/// tile and the energy-path row all show a direction, and a second copy of this
+/// table is how one page ends up telling three stories. [PowerFlow.unknown]
+/// keeps the icon the page has always drawn — with no direction to show, a
+/// different glyph would be a different guess, not fewer guesses.
+///
+/// 📦 Was `_flowIcon`, private to `power_bank_view.dart`; hoisted by design
+/// 0046 Step 7 when the card factory left that file. Value for value unchanged.
+IconData powerFlowIcon(PowerFlow f) => switch (f) {
+      PowerFlow.charging => Icons.battery_charging_full,
+      PowerFlow.discharging => Icons.bolt,
+      PowerFlow.idle => Icons.pause_circle_outline,
+      PowerFlow.unknown => Icons.battery_charging_full,
     };

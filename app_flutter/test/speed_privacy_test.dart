@@ -24,7 +24,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
-import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

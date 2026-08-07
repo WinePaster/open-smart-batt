@@ -32,16 +32,8 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
-import '../../theme/app_theme.dart';
-import '../widgets/industrial_card.dart';
-import 'display_modules.dart';
-import 'pvlt_gauge.dart';
-import 'live_trend_chart.dart';
+import 'dashboard_cards.dart';
 import 'power_flow.dart';
-import 'power_path_row.dart';
-import 'readout_grid.dart';
-import 'readouts_card.dart';
-import 'speed_card.dart';
 import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
@@ -52,34 +44,10 @@ class PowerBankView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tele = context.watch<TelemetryController>();
-    // This view is only ever built for a confirmed power bank, so the class is
-    // a constant here rather than a lookup on a label. Going through the
-    // registry anyway is what keeps the declaration honest: an entry that no
-    // code reads is an entry nothing can contradict (design 0034 Phase 0).
-    const modules = DisplayModules.powerBank;
-
-    final soc = tele.socPercent;
-    // The ONE derivation of direction on this page (FB-47). Everything that
-    // claims a direction below reads this variable, so the icon, the badge and
-    // the SVLT label cannot end up telling three different stories.
+    // The ONE derivation of direction on this page (FB-47). The type chip below
+    // and every card in `dashboard_cards.dart` read the same function, so they
+    // cannot end up telling different stories.
     final flow = powerFlowOf(tele.current);
-    // Sub-line under the SOC value: the DIRECTION, which is what the caption
-    // above it has always promised ("電量 · 充電狀態" / "CHARGE · STATE").
-    //
-    // It used to be the single-cell voltage, and that was wrong twice over: the
-    // caption named a charging state the dial never drew, and the same `pvlt`
-    // was printed a second time in the readouts grid below — the duplication
-    // this file's own Q5+Q12 note forbids for current and port voltage. Both
-    // were both reported from the field on v0.7.2, in a 2026-08-04 owner-run
-    // controlled capture.
-    // `unknown` is the absence of a reading, not a fourth state, so it renders
-    // as a placeholder rather than a word.
-    final subText = switch (flow) {
-      PowerFlow.charging => l10n.powerBankDirectionCharging,
-      PowerFlow.discharging => l10n.powerBankDirectionDischarging,
-      PowerFlow.idle => l10n.powerBankDirectionIdle,
-      PowerFlow.unknown => l10n.powerBankSocSubUnknown,
-    };
 
     // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
     // against the connected unit (Q3), so both providers are read: the id moves
@@ -94,144 +62,6 @@ class PowerBankView extends StatelessWidget {
         context.select<SettingsController, AppSettings>((s) => s.settings);
     final order = watchfaceModules(ProductClass.powerBank,
         renderedWatchface(ProductClass.powerBank, stored.watchface, settings));
-
-    /// One module → one card. Every card here is unconditional — nothing on a
-    /// power bank is in `dataGated`. A missing SOC renders as `--` inside the
-    /// ring, the energy-path row renders "waiting for device" before its first
-    /// `0x4B` (design 0035 §4.6), and the chart renders its own waiting label
-    /// until a track has points (design 0040 Q3). All three are WAITING states,
-    /// which is why none of them removes a card.
-    Widget? cardFor(DisplayModule m) {
-      switch (m) {
-        case DisplayModule.gaugeSoc:
-          // SOC ring (percent mode, direct 0x96 b6).
-          return IndustrialCard(
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final s = AppTheme.gaugeDiameter(context, c.maxWidth);
-                return Center(
-                  child: PvltGauge.percent(
-                    percent: soc,
-                    caption: l10n.powerBankSocCaption,
-                    subText: subText,
-                    // Same glyph as the type chip above (this file's
-                    // [_flowIcon]) and the same colour as the energy-path row
-                    // below ([powerFlowColor]) — one direction, three places,
-                    // no chance of them disagreeing.
-                    subIcon: flow == PowerFlow.unknown ? null : _flowIcon(flow),
-                    subColor: flow == PowerFlow.unknown
-                        ? null
-                        : powerFlowColor(context, flow),
-                    size: s,
-                  ),
-                );
-              },
-            ),
-          );
-        case DisplayModule.chart:
-          return TrendChartCard(
-            buffer: tele.trend,
-            // A power bank's current has its direction spread over two
-            // registers — 0x49 while charging, 0x4A while discharging — and
-            // since FB-46 both reach `current` as one signed number. The track
-            // stays signed and zero-crossing, and MUST: a sign flip mid-window
-            // is how a start-up load is recognised at a glance, which no
-            // magnitude plot can show. Nothing here is direction-switched.
-            tracks: [
-              if (modules.hasTrack(TrendField.current))
-                TrendTrack(
-                  field: TrendField.current,
-                  label: l10n.powerBankTrackCurrent,
-                  unit: 'A',
-                  color: AppColors.cyan,
-                  decimals: 2,
-                  spanZero: true,
-                  minSpan: 1,
-                  height: 92,
-                ),
-              if (modules.hasTrack(TrendField.svlt))
-                TrendTrack(
-                  field: TrendField.svlt,
-                  // Direction-aware, exactly like the energy-path row's own
-                  // voltage label. The two are now separate CARDS on the same
-                  // page (design 0040 split the chart out of the readouts
-                  // card), which makes this matter more, not less: a legend
-                  // reading "output voltage" a few centimetres below a row
-                  // reading "input" is self-contradictory on one screen.
-                  label: flow == PowerFlow.charging
-                      ? l10n.powerBankTrackInput
-                      : l10n.powerBankTrackOutput,
-                  unit: 'V',
-                  color: AppColors.amber,
-                  decimals: 2,
-                  minSpan: 0.5,
-                ),
-              if (modules.hasTrack(TrendField.soc))
-                TrendTrack(
-                  field: TrendField.soc,
-                  label: l10n.powerBankTrackSoc,
-                  unit: '%',
-                  color: AppColors.good,
-                  minSpan: 5,
-                ),
-            ],
-          );
-        case DisplayModule.readouts:
-          return ReadoutsCard(
-            items: [
-              // Order (design 0035 §6, Q5+Q12): SOC, temperature, design
-              // capacity. The 0037 "output voltage" and "current" tiles are
-              // GONE from here — the energy-path row carries both now, so
-              // showing them again would print the same number twice. The
-              // capacity tile still collapses when absent; the surviving order
-              // holds.
-              //
-              // The CELL VOLTAGE tile is gone too (2026-08-05, owner's call on
-              // 2026-08-04 controlled capture). On a 1S bank it duplicated
-              // the dial's sub-line, and the sub-line is now the direction. If
-              // it ever comes back it belongs in ONE place, not two.
-              Readout(
-                icon: _flowIcon(flow),
-                label: l10n.powerBankSocReadoutLabel,
-                value: soc == null ? '--' : soc.toString(),
-                unit: '%',
-              ),
-              Readout(
-                icon: Icons.thermostat,
-                label: l10n.dashboardReadoutTemperatureLabel,
-                value: _fmtInt(tele.temperatureDisplay),
-                unit: tele.temperatureUnitLabel,
-              ),
-              if (tele.sample.designCapacityMah != null)
-                Readout(
-                  icon: Icons.battery_std,
-                  label: l10n.powerBankDesignCapacityLabel,
-                  value: tele.sample.designCapacityMah!.toString(),
-                  unit: 'mAh',
-                ),
-            ],
-          );
-        case DisplayModule.energyPath:
-          // design 0035 Phase 2: the two-port "USB" card (whose halves
-          // permanently said "unknown") is replaced by the energy-path row.
-          // It carries the port-side voltage AND the current, which is why the
-          // 0037 "output voltage" and "current" tiles were removed from the
-          // grid above (Q5+Q12: the same number must not appear twice).
-          return const PowerPathRow();
-        // design 0042. Unconditional for the reason spelled out in
-        // `pack_view.dart`: the master switch is applied once, by
-        // [renderedWatchface], not again per card.
-        case DisplayModule.speed:
-          return const SpeedCard();
-        case DisplayModule.gaugeVoltage:
-        case DisplayModule.cells:
-          // Not cards of this view, and unreachable through [order] — it is
-          // built from this class's own registry entry. Listed explicitly so
-          // that a NEW module fails to compile here rather than silently
-          // drawing nothing.
-          return null;
-      }
-    }
 
     return Center(
       child: ConstrainedBox(
@@ -248,7 +78,7 @@ class PowerBankView extends StatelessWidget {
                   // The glyph follows the flow. It used to be a hardwired
                   // charging battery, which meant a bank being drained down
                   // still showed a charging icon (FB-47, symptom 1).
-                  Icon(_flowIcon(flow),
+                  Icon(powerFlowIcon(flow),
                       size: 14, color: const Color(0xFFF0A030)),
                   const SizedBox(width: 6),
                   Text(
@@ -267,30 +97,13 @@ class PowerBankView extends StatelessWidget {
             // controls, and must not grow an empty control card for the sake of
             // looking like the pack page. An always-empty card is the same
             // mistake as a permanent `--`.
-            for (final m in order) ?cardFor(m),
+            for (final m in order)
+              ?dashboardCardFor(context, m,
+                  shellClass: ProductClass.powerBank),
           ],
         ),
       ),
     );
   }
 
-  static String _fmtInt(double? v) => v == null ? '--' : v.round().toString();
 }
-
-// ---------------------------------------------------------------------------
-// Direction (FB-47) — the [PowerFlow] derivation itself lives in
-// `power_flow.dart` (shared with the energy-path row, design 0035 §6). What
-// stays here is only how THIS page's tiles present it: since design 0035
-// Phase 2 the current/voltage tiles moved to the energy-path row, so all that
-// remains here is the glyph on the type chip and the SOC tile.
-// ---------------------------------------------------------------------------
-
-/// Glyph for [f]. [PowerFlow.unknown] keeps the icon this page has always drawn:
-/// with no direction to show, a different glyph would be a different guess,
-/// not fewer guesses.
-IconData _flowIcon(PowerFlow f) => switch (f) {
-      PowerFlow.charging => Icons.battery_charging_full,
-      PowerFlow.discharging => Icons.bolt,
-      PowerFlow.idle => Icons.pause_circle_outline,
-      PowerFlow.unknown => Icons.battery_charging_full,
-    };

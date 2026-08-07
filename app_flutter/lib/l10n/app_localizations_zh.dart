@@ -95,6 +95,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get navHome => '主頁';
+
+  @override
+  String get navDevices => '裝置';
+
+  @override
   String get navDashboard => '裝置';
 
   @override
@@ -552,6 +558,44 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesSavedSection => '已儲存裝置';
 
   @override
+  String devicesSavedCount(int count) {
+    return '已儲存 · $count 台';
+  }
+
+  @override
+  String get deviceBadgeConnected => '已連線';
+
+  @override
+  String get deviceBadgeConnecting => '連線中';
+
+  @override
+  String get deviceBadgeOffline => '未連線';
+
+  @override
+  String get deviceBadgeFailed => '連線失敗';
+
+  @override
+  String get deviceBadgeNotAnswering => '沒有回應';
+
+  @override
+  String get deviceDetailWatchface => '錶盤';
+
+  @override
+  String get homeAddFirstDevice => '加入第一台裝置';
+
+  @override
+  String get homeModuleSpeed => '速度';
+
+  @override
+  String get homeEditTitle => '編輯主頁';
+
+  @override
+  String get homeEditAddCard => '新增卡片';
+
+  @override
+  String get homeEditRestoreDefaults => '回復預設版面';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override
@@ -917,6 +961,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsWatchfaceLabel => '錶盤';
+
+  @override
+  String get settingsWatchfaceGuidance => '在裝置頁選擇裝置後更換';
 
   @override
   String get settingsWatchfaceSub => '目前連線裝置的儀表板要放哪些卡片、依什麼順序。';

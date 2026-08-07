@@ -99,6 +99,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get navHome => 'Home';
+
+  @override
+  String get navDevices => 'Devices';
+
+  @override
   String get navDashboard => 'Devices';
 
   @override
@@ -583,6 +589,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesSavedSection => 'Saved devices';
 
   @override
+  String devicesSavedCount(int count) {
+    return 'Saved · $count';
+  }
+
+  @override
+  String get deviceBadgeConnected => 'Connected';
+
+  @override
+  String get deviceBadgeConnecting => 'Connecting';
+
+  @override
+  String get deviceBadgeOffline => 'Not connected';
+
+  @override
+  String get deviceBadgeFailed => 'Connection failed';
+
+  @override
+  String get deviceBadgeNotAnswering => 'Not answering';
+
+  @override
+  String get deviceDetailWatchface => 'Watchface';
+
+  @override
+  String get homeAddFirstDevice => 'Add your first device';
+
+  @override
+  String get homeModuleSpeed => 'Speed';
+
+  @override
+  String get homeEditTitle => 'Edit home';
+
+  @override
+  String get homeEditAddCard => 'Add card';
+
+  @override
+  String get homeEditRestoreDefaults => 'Restore default layout';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override
@@ -974,6 +1018,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWatchfaceLabel => 'Watchface';
+
+  @override
+  String get settingsWatchfaceGuidance => 'Change it on the device\'s page';
 
   @override
   String get settingsWatchfaceSub =>
