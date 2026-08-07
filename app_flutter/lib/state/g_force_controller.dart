@@ -110,28 +110,8 @@ class GForceController extends ChangeNotifier {
     this.source = const SensorsPlusGForceSource(),
     this.config = const GForceConfig(),
     DateTime Function()? now,
-    this.onCalibrationInvalidated,
   }) : _now = now ?? DateTime.now;
 
-  /// Called once when the mount is detected to have moved, so the caller can
-  /// make that durable.
-  ///
-  /// 🔴 A CALLBACK rather than a settings write, and the indirection is the
-  /// point. This class deliberately imports no repository and no database —
-  /// that is what makes the `INSERT OR REPLACE` column-wipe trap (see
-  /// `settings_repo.dart`) unreachable here rather than merely avoided. Giving
-  /// it a write path to close one hole would open a worse one.
-  ///
-  /// Why it has to be durable at all: the invalidation used to live only in
-  /// memory, while this file's own header said "Once tripped it stays tripped
-  /// … There is no path back". Across a restart it was not tripped at all — the
-  /// old matrix read back, `available` returned true, and the card drew G
-  /// values on axes the phone no longer had. Move the mount, restart, ride off
-  /// without ever standing still for the two seconds the still-window check
-  /// needs, and the whole session is wrong AND lands in `g_long`/`g_lat`. That
-  /// is the "confident, plausible, wrong" failure this feature is most exposed
-  /// to, so it does not get to be memory-only.
-  final Future<void> Function(String encoded)? onCalibrationInvalidated;
 
   final GForceSensorSource source;
   final GForceConfig config;
@@ -141,13 +121,19 @@ class GForceController extends ChangeNotifier {
   bool _enabled = false;
   String? _storedCalibration;
   GForceCalibration? _calibration;
-  bool _invalidated = false;
 
   /// The master switch.
   bool get enabled => _enabled;
 
-  /// A usable matrix exists and has not been invalidated since it was stored.
-  bool get calibrated => _calibration != null && !_invalidated;
+  /// A usable matrix exists.
+  ///
+  /// 🔴 There is no "and has not been invalidated" half any more. The automatic
+  /// invalidation check was removed 2026-08-07 — see the note on
+  /// [GForceEstimator]'s library comment. It asked whether gravity still points
+  /// up in VEHICLE coordinates, which is the same number for "the mount was
+  /// knocked 12°" and "the bike is on its side stand", and every motorcycle has
+  /// a side stand. Recalibration is a button in Settings, always available.
+  bool get calibrated => _calibration != null;
 
   /// 🔑 The predicate design 0045 Q8 calls "可用", and the ONLY thing the UI
   /// should ask. Both the watchface layer (`renderedModules`) and the settings
@@ -155,10 +141,6 @@ class GForceController extends ChangeNotifier {
   /// never disagree.
   bool get available => _enabled && calibrated;
 
-  /// True when a stored calibration was rejected by the still-window check —
-  /// i.e. the mount moved. Distinct from "never calibrated" because the
-  /// settings page says different things about them.
-  bool get calibrationInvalidated => _invalidated;
 
   /// When the stored calibration was made, for the settings row.
   DateTime? get calibratedAt => _calibration?.calibratedAt;
@@ -174,13 +156,7 @@ class GForceController extends ChangeNotifier {
     if (_storedCalibration != s.gCalibration) {
       _storedCalibration = s.gCalibration;
       _calibration = GForceCalibration.decode(s.gCalibration);
-      // A NEW matrix is trusted again — recalibrating is the documented way out
-      // of the invalidated state. But a matrix that comes back CARRYING the
-      // flag stays invalidated: that is what makes "the mount moved" survive a
-      // restart instead of being forgotten the moment the process dies.
-      _invalidated = _calibration?.invalidated ?? false;
       _estimator = null;
-      _monitor = null;
       _reading = null;
       changed = true;
     }
@@ -249,7 +225,6 @@ class GForceController extends ChangeNotifier {
   StreamSubscription<Vec3>? _rideLinear;
   StreamSubscription<Vec3>? _rideRaw;
   GForceEstimator? _estimator;
-  CalibrationValidityMonitor? _monitor;
 
   GForceReading? _reading;
   DateTime? _readingPublishedAt;
@@ -301,24 +276,16 @@ class GForceController extends ChangeNotifier {
     final cal = _calibration;
     if (cal == null) return;
     _estimator = GForceEstimator(cal, config: config);
-    _monitor = CalibrationValidityMonitor(cal, config: config);
     _rideLinear = source
         .linear(samplingPeriod: config.samplingPeriod)
         .listen(_onLinearSample);
-    // Raw is subscribed here ONLY so the still-window check can notice a mount
-    // that has been moved. Nothing it carries is ever displayed.
-    _rideRaw =
-        source.raw(samplingPeriod: config.samplingPeriod).listen(_onRawSample);
   }
 
   void _stopRide() {
     final was = _rideLinear != null;
     _rideLinear?.cancel();
-    _rideRaw?.cancel();
     _rideLinear = null;
-    _rideRaw = null;
     _estimator = null;
-    _monitor = null;
     if (!was) return;
     // design 0045 Q5: peaks do not survive the stream. A peak is "the hardest
     // you braked THIS ride"; carrying one across a gap in the recording would
@@ -332,7 +299,6 @@ class GForceController extends ChangeNotifier {
     final e = _estimator;
     if (e == null) return;
     final t = _now();
-    _monitor?.addLinearSample(v, t);
     final r = e.process(v);
 
     // 🔴 The RECORDED series is published FIRST and UNCONDITIONALLY.
@@ -360,31 +326,7 @@ class GForceController extends ChangeNotifier {
     _notify();
   }
 
-  void _onRawSample(Vec3 v) {
-    final m = _monitor;
-    if (m == null) return;
-    m.addRawSample(v, _now());
-    if (!m.invalidated || _invalidated) return;
-    // The mount moved. Stop drawing immediately — a G reading on stale axes is
-    // the one thing design 0045 G1/G2 will not allow, and it is worse than no
-    // reading because it looks like one.
-    _invalidated = true;
-    _stopRide();
-    // Fire-and-forget: the screen must stop drawing NOW, and a slow write must
-    // not hold that up. Failing to persist leaves the pre-fix behaviour (a
-    // stale matrix returning after a restart), which is bad but no worse than
-    // before; failing to stop drawing is the thing G1/G2 forbid outright.
-    //
-    // The matrix goes WITH the flag, not away: the settings page has two
-    // different sentences for "never calibrated" and "the mount moved", and
-    // the second one needs the date the first calibration was taken.
-    final marked = _calibration?.markedInvalid;
-    if (marked != null) {
-      unawaited(onCalibrationInvalidated?.call(marked.encode()) ??
-          Future<void>.value());
-    }
-    _notify();
-  }
+
 
   // --- the wizard ----------------------------------------------------------
   CalibrationSession? _session;

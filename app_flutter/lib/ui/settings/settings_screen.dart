@@ -385,7 +385,6 @@ class _GCalibrationRow extends StatelessWidget {
     final g = context.watch<GForceController>();
     final at = g.calibratedAt;
     final sub = switch (g) {
-      _ when g.calibrationInvalidated => l10n.settingsGCalibrationInvalid,
       _ when at == null => l10n.settingsGCalibrationNever,
       _ => l10n.settingsGCalibrationDone(_calibratedWhen(at)),
     };

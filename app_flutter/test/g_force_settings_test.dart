@@ -191,57 +191,31 @@ void main() {
             'decision');
   });
 
-  test('a moved mount survives a restart, WITH the reason and the date', () {
-    // 🔴 Three attempts, recorded because the middle one looked right.
-    //
-    //  1. memory-only        — forgot across a restart; the stale matrix came
-    //                          back and the meter drew on wrong axes.
-    //  2. clear the column   — durable, but collapsed 「校準已失效」 into
-    //                          「尚未校準」 and threw away the date. design
-    //                          0045 §3.6 specifies BOTH sentences and the date,
-    //                          and settings_screen.dart renders them. Q8's "the
-    //                          card simply does not appear" governs the CARD,
-    //                          not the settings page.
-    //  3. flag in the same JSON column — durable, keeps both, and stays off the
-    //                          schema (v12 is the last migration; 0044 Q2
-    //                          forbids a v13).
-    const at = 1770000000000;
-    final fresh = GForceCalibration(
-      rotation: const [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      calibratedAt: DateTime.fromMillisecondsSinceEpoch(at, isUtc: true),
-    );
-    expect(fresh.invalidated, isFalse);
-
-    final moved = fresh.markedInvalid;
-    final restored = GForceCalibration.decode(moved.encode())!;
-    expect(restored.invalidated, isTrue,
-        reason: 'the mount moved, and a restart must not forget that');
-    expect(restored.calibratedAt, fresh.calibratedAt,
-        reason: 'the settings page needs the date to say WHEN it was good');
-    expect(restored.rotation, fresh.rotation);
-
-    // A calibration written before the flag existed decodes as valid, which is
-    // what it was.
-    expect(GForceCalibration.decode(fresh.encode())!.invalidated, isFalse);
-    expect(fresh.encode().contains('invalid'), isFalse,
-        reason: 'the key is written only when true — no churn on every save');
-  });
-
-  test('the invalidation is signalled and somebody listens', () {
-    // The header claimed "Once tripped it stays tripped … There is no path
-    // back". It was memory-only: restart, and the stale matrix read back with
-    // `available` true. Move the mount, restart, ride off without ever
-    // standing still for the two seconds the still-window needs, and the whole
-    // session is wrong AND lands in g_long/g_lat.
-    final ctrl = File('lib/state/g_force_controller.dart').readAsStringSync();
-    expect(ctrl, contains('onCalibrationInvalidated'),
-        reason: 'the controller must be able to signal it, without importing '
-            'a repository — that import ban is what keeps the INSERT OR '
-            'REPLACE trap unreachable from here');
-
-    final wiring = File('lib/state/app_services.dart').readAsStringSync();
-    expect(wiring, contains('onCalibrationInvalidated:'),
-        reason: 'a signal nobody listens to is the same defect with extra '
-            'steps — see visibleFor, which shipped with no caller');
-  });
+  // ---------------------------------------------------------------------------
+  // 🔴 The automatic invalidation check was REMOVED on 2026-08-07, and the two
+  // tests that used to live here went with it. Recorded rather than silently
+  // deleted, because the removal reversed two same-day decisions and the reason
+  // is the interesting part.
+  //
+  // The check asked: at rest, is gravity still pointing "up" in VEHICLE
+  // coordinates? Over `thetaInvalidDeg` (10°) it declared the mount moved.
+  //
+  //   mount knocked 12°        → gravity is 12° off vehicle-up
+  //   bike on its side stand   → gravity is 12° off vehicle-up
+  //
+  // The same number. The predicate had no power to separate them, because the
+  // vehicle frame leans WITH the bike — and every motorcycle has a side stand.
+  // What it actually detected was "the bike is not upright right now", which is
+  // not what it claimed to detect and is not a fault.
+  //
+  // Two earlier fixes had made it worse rather than better: persisting the flag
+  // (so a false positive survived a restart) and requiring an upright bike in
+  // the wizard copy (which fixes calibrating ON the stand, not parking on it).
+  // The owner's reading settled it — a leaning bike showing a lateral reading
+  // is CORRECT; concluding "your calibration is broken" from it is not.
+  //
+  // What remains: "Recalibrate" is a row in Settings, always available. If a
+  // mount really is knocked, the rider sees implausible numbers and presses it.
+  // We do not claim to detect what we cannot measure.
+  // ---------------------------------------------------------------------------
 }

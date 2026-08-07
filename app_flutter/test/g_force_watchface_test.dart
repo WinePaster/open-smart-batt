@@ -677,7 +677,6 @@ void main() {
           gMeterEnabled: true,
           gCalibration: '{"m":[0,1,0,-1,0,0,0,0,1],"at":1}'));
       expect(c.calibrated, isTrue);
-      expect(c.calibrationInvalidated, isFalse);
     });
 
     test('recalibrating while the card is up REBUILDS the open stream', () {

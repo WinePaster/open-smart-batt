@@ -108,8 +108,12 @@ void main() {
       await pumpCard(tester);
       expect(controller.streaming, isTrue);
       expect(sensors.linearSubscriptions, 1);
-      expect(sensors.rawSubscriptions, 1,
-          reason: 'raw is subscribed for the still-window validity check only');
+      expect(sensors.rawSubscriptions, 0,
+          reason: 'raw existed ONLY for the still-window validity check, which '
+              'was removed 2026-08-07 (it could not tell a knocked mount from '
+              'a bike on its side stand). One fewer sensor stream open the '
+              'whole time the card is up — the removal paid for itself twice, '
+              'in a defect and in battery.');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pump();

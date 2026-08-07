@@ -139,23 +139,7 @@ class AppServices {
     // Holds no resources until its gate opens; see [GpsSpeedController].
     final speed = GpsSpeedController();
     // Same contract; see [GForceController].
-    // The mount moved ⇒ persist the flag, KEEP the matrix.
-    //
-    // 🔴 Clearing was tried first and was wrong. design 0045 §3.6 specifies two
-    // different sentences on the settings page — 「尚未校準」 and 「校準已失效
-    // —— 手機位置似乎被移動過」 — plus the date of the last calibration, and
-    // `settings_screen.dart` renders both. Clearing collapses them into the
-    // first, so the app loses the ability to tell the user WHY the meter
-    // vanished. Q8's "the card simply does not appear" is about the CARD; the
-    // settings page was designed to carry the distinction.
-    //
-    // The controller supplies the signal and not the write: it imports no
-    // repository, which is what keeps the `INSERT OR REPLACE` column-wipe trap
-    // structurally unreachable from it. See `onCalibrationInvalidated`.
-    late final GForceController gforce;
-    gforce = GForceController(
-      onCalibrationInvalidated: (encoded) => settings.setGCalibration(encoded),
-    );
+    final gforce = GForceController();
     // One judgement about link freshness, two presentations: the dashboard's
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).

@@ -25,8 +25,6 @@ class GForceConfig {
     this.stillEpsMs2 = 0.15,
     this.tFwd = const Duration(milliseconds: 1500),
     this.aFwdMs2 = 0.8,
-    this.tStill = const Duration(seconds: 2),
-    this.thetaInvalidDeg = 10.0,
     this.ewmaAlpha = 0.2,
     this.deadbandG = 0.03,
     this.quantumG = 0.01,
@@ -52,15 +50,7 @@ class GForceConfig {
 
   /// How long the phone must be still before the validity check may run.
   ///
-  /// 🔴 The check is NOT run while moving. Cornering tilts the apparent gravity
-  /// vector by design, so a moving comparison would declare the calibration
-  /// broken every time the rider leaned. (§3.2, paper-level judgement, road
-  /// test to confirm.)
-  final Duration tStill;
 
-  /// Gravity may drift this far from the stored "up" before the calibration is
-  /// declared stale.
-  final double thetaInvalidDeg;
 
   /// Per-axis EWMA weight on new samples.
   final double ewmaAlpha;
