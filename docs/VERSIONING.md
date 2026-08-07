@@ -244,6 +244,35 @@ git tag v0.6.8 && git push origin v0.6.8
 
 若 tag 與 pubspec 版號不符，release workflow 會**直接失敗**並告訴你要改哪裡。
 
+#### 🔴 tag push 不觸發 workflow 時（2026-08-07 記，已三次）
+
+**推了 tag、Actions 什麼都沒發生，而且沒有任何錯誤訊息。** 補救：對著 tag ref
+手動 dispatch，出來的結果與 tag 觸發完全相同。
+
+```bash
+gh workflow run release.yml --ref v0.7.7
+```
+
+之所以等價：`version` job 判斷的是 `GITHUB_REF` 是不是 `refs/tags/v*`。dispatch
+到 tag ref 時它就是，所以走的是流程 B（讀 tag 算版號、**不**回寫 pubspec、不重打
+tag），`bump` 那個 input 完全不會被用到。
+
+**原因未查明。** 已知的事實只有這些：
+
+| tag | 觸發方式 | `push` 事件 |
+|---|---|---|
+| `v0.6.15`–`v0.7.2` | 本機 `git push origin <tag>` | ✅ 正常觸發 |
+| `v0.7.5` / `v0.7.6` / `v0.7.7` | 同上 | ❌ 靜默 |
+
+三次都確認 tag 已經到 `origin`（`git ls-remote --tags`），workflow 是 `active`，
+`on.push.tags` 沒有改過，且 `.github/workflows/release.yml` 在該 tag 的 commit
+上存在。
+
+⚠️ **曾經以為原因是 bump commit 帶了 `[skip ci]`。那個診斷是錯的** —— v0.7.7 的
+bump commit 刻意不帶，一樣沒觸發。目前寫下來的只有現象與補救，沒有結論；
+要下結論得先查 repo 的 Actions 設定與推送用的憑證型別。
+
+
 ### 本機建置（不經 CI）
 
 **永遠要帶 `--build-number`**，否則會取 pubspec 的 `+0`：
