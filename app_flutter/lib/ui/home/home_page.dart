@@ -79,23 +79,24 @@ class HomePage extends StatelessWidget {
             for (final row in layout.rows)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                // 🔴 A row of one fills the row, WHATEVER its span.
+                // 🔴 1x1 MEANS 1x1 — including when it is alone.
                 //
-                // `rows` pairs two ADJACENT halves; a half whose neighbour is
-                // full, or whose partner was filtered out by `renderedFor`,
-                // arrives here alone. Ruled 2026-08-07, from rendered
-                // comparisons rather than description: a lone 1x1 keeping its
-                // half left a ragged empty column that reads as broken rather
-                // than deliberate — and it is the COMMON case, not an edge
-                // one, because `speed_detection` defaults off and so the G
-                // meter is orphaned on almost every phone.
+                // Ruled twice, and the second ruling is the one that stands.
+                // On 2026-08-07 a lone half was promoted to fill its row,
+                // because the default layout was orphaning the G meter
+                // (`speed_detection` defaults off, so its partner was filtered
+                // away) and a ragged empty column read as broken. Reported the
+                // next day from TestFlight: setting one tile to 1x1 and its
+                // neighbour to 1x2 drew BOTH full width, which is the same
+                // control failing to work — just from the other direction.
                 //
-                // The cost is named rather than hidden: on this page you
-                // cannot see that a tile is 1x1 when it is alone. That is
-                // half of what「按了沒反應」was. The other half — the editor
-                // drawing every preview full width — is fixed, so the shape
-                // button still has visible feedback where it is pressed.
-                child: row.length == 1
+                // The two reports are not in conflict; the first rule was
+                // fixing the wrong thing. An orphan made by FILTERING is not a
+                // layout the user asked for, and the answer to it is to stop
+                // producing it: `_phoneTiles` is full-span now, so the default
+                // has no pair to lose. An orphan the user MADE is a layout
+                // they asked for, and it is drawn as asked.
+                child: row.length == 1 && row.single.span == HomeSpan.full
                     ? HomeTileView(
                         tile: row.single,
                         onOpenDevices: onOpenDevices,
@@ -112,6 +113,11 @@ class HomePage extends StatelessWidget {
                                 onOpenDetail: onOpenDetail,
                               ),
                             ),
+                          // The empty half of a lone 1x1. Without it the tile
+                          // is stretched and the shape control is invisible on
+                          // this page.
+                          if (row.length == 1)
+                            const Expanded(child: SizedBox.shrink()),
                         ],
                       ),
               ),

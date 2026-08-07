@@ -453,20 +453,22 @@ void main() {
   });
 
   // ===========================================================================
-  // 🔴 A lone 1x1 FILLS the row — ruled 2026-08-07 from rendered comparisons.
+  // 🔴 1x1 MEANS 1x1 — ruled 2026-08-08, reversing the previous day's ruling.
   // ===========================================================================
-  testWidgets('a half tile with no partner fills the row', (tester) async {
-    // `HomeLayout.rows` pairs two ADJACENT halves and otherwise emits a row of
-    // one. The alternative — the lone tile keeping its half and leaving the
-    // rest empty — was built, rendered and rejected: it reads as broken rather
-    // than deliberate, and it is the COMMON case, because `speed_detection`
-    // defaults off and so the G meter loses its partner on almost every phone.
+  testWidgets('a half tile with no partner keeps its half', (tester) async {
+    // The previous rule promoted a lone half to fill its row. It was fixing the
+    // wrong thing: the orphan that looked broken was made by FILTERING (the
+    // default paired speed with the G meter, and `speed_detection` defaults
+    // off), not by anybody's choice. That is now fixed at the source —
+    // `_phoneTiles` is full-span, so the default has no pair to lose — and a
+    // half tile is drawn at half width, because someone asked for one.
     //
-    // ⚠️ This is the reason the home page cannot show that a tile is 1x1 when
-    // it is alone. The editor preview is where that feedback lives now
-    // (`home_editor_test.dart`, 'halving a tile halves its preview'), and the
-    // two tests must be read together — changing either one alone re-opens
-    // 「按了沒反應」.
+    // Reported from TestFlight the day the old rule shipped: one tile set to
+    // 1x1 and its neighbour to 1x2 drew BOTH full width.
+    //
+    // ⚠️ Read together with `home_editor_test.dart`'s 'halving a tile halves
+    // its preview'. Those two are the whole of the shape control's feedback,
+    // in the editor and on the page it edits.
     final s = await boot(tester, devices: [
       SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
           lastSeen: DateTime.now()),
@@ -487,8 +489,29 @@ void main() {
         tester.getSize(find.byType(HomeTileView).at(i)).width,
     ];
     expect(widths[1], greaterThan(200), reason: 'sanity: the full tile');
-    expect(widths[0], closeTo(widths[1], 1.0),
-        reason: 'a lone half must fill its row, not leave a ragged column');
+    expect(widths[0], closeTo(widths[1] / 2, 1.0),
+        reason: 'the 1x1 the user asked for must be drawn at 1x1');
+  });
+
+  testWidgets('🔴 and the default layout never produces a lone half',
+      (tester) async {
+    // The other half of the ruling, and the one that makes it safe. If a
+    // default ever pairs two halves again, one of them will be filtered away
+    // on most phones and the orphan is back — with the rule above, drawn as a
+    // ragged empty column. So: no half tiles in a generated layout at all.
+    final s = await boot(tester, devices: [
+      SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+          lastSeen: DateTime.now()),
+    ]);
+    addTearDown(() => teardown(tester, s));
+    for (final n in [0, 1, 2, 4]) {
+      final generated = HomeLayout.defaultFor(
+          [for (var i = 0; i < n; i++)
+            SavedDevice(id: 'D$i', alias: 'u$i')]);
+      expect(generated.tiles.where((t) => t.span == HomeSpan.half), isEmpty,
+          reason: 'with $n device(s): a generated pair can be broken by '
+              '`renderedFor`, and nobody chose the result');
+    }
   });
 }
 

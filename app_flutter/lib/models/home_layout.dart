@@ -231,9 +231,20 @@ class HomeLayout {
   ///
   /// Half width: two phone readouts fit one row, and they belong together
   /// visually — neither is about the battery above them.
+  /// 🔴 FULL span, not a half pair — changed 2026-08-08.
+  ///
+  /// They were a 1x1 pair, which reads well only when both survive. They do
+  /// not: `speed_detection` defaults OFF, so [renderedFor] drops the speed tile
+  /// on almost every phone and the G meter is left as an orphaned half. That
+  /// orphan is what made the home page look broken, and it is a layout no user
+  /// ever chose.
+  ///
+  /// Full span removes the pair, so there is nothing to be orphaned FROM. A
+  /// lone 1x1 now only exists when someone made one in the editor — where it
+  /// is drawn at half width, because that is what they asked for.
   static const List<HomeTile> _phoneTiles = [
-    HomeTile.module(DisplayModule.speed, span: HomeSpan.half),
-    HomeTile.module(DisplayModule.gForce, span: HomeSpan.half),
+    HomeTile.module(DisplayModule.speed),
+    HomeTile.module(DisplayModule.gForce),
   ];
 
   static HomeLayout defaultFor(List<SavedDevice> devices) {
