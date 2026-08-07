@@ -98,6 +98,9 @@ class _GForceCardState extends State<GForceCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            // A gutter, because three Expandeds share an edge and `−0.42+0.18`
+            // with no gap between them reads as one number.
+            spacing: 8,
             children: [
               Expanded(
                 child: _GReadout(

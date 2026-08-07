@@ -79,7 +79,23 @@ class HomePage extends StatelessWidget {
             for (final row in layout.rows)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: row.length == 1 && row.single.span == HomeSpan.full
+                // 🔴 A row of one fills the row, WHATEVER its span.
+                //
+                // `rows` pairs two ADJACENT halves; a half whose neighbour is
+                // full, or whose partner was filtered out by `renderedFor`,
+                // arrives here alone. Ruled 2026-08-07, from rendered
+                // comparisons rather than description: a lone 1x1 keeping its
+                // half left a ragged empty column that reads as broken rather
+                // than deliberate — and it is the COMMON case, not an edge
+                // one, because `speed_detection` defaults off and so the G
+                // meter is orphaned on almost every phone.
+                //
+                // The cost is named rather than hidden: on this page you
+                // cannot see that a tile is 1x1 when it is alone. That is
+                // half of what「按了沒反應」was. The other half — the editor
+                // drawing every preview full width — is fixed, so the shape
+                // button still has visible feedback where it is pressed.
+                child: row.length == 1
                     ? HomeTileView(
                         tile: row.single,
                         onOpenDevices: onOpenDevices,
@@ -96,21 +112,6 @@ class HomePage extends StatelessWidget {
                                 onOpenDetail: onOpenDetail,
                               ),
                             ),
-                          // 🔴 A LONE 1x1 keeps its half and leaves the rest
-                          // empty. `rows` only pairs two ADJACENT halves, so
-                          // without this a half tile whose neighbour is full
-                          // was stretched back to the whole row — and the
-                          // shape button in the editor then had no visible
-                          // effect whatsoever unless you happened to toggle
-                          // two tiles that sat next to each other.
-                          // Reported 2026-08-07 as「改形狀…按了沒反應」.
-                          //
-                          // Empty space beside a small card is the iOS
-                          // home-screen behaviour this grid was modelled on,
-                          // and it is what 1x1 has to mean for the control to
-                          // be honest.
-                          if (row.length == 1)
-                            const Expanded(child: SizedBox.shrink()),
                         ],
                       ),
               ),

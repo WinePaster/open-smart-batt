@@ -47,6 +47,24 @@ const double kOneLineMax = 30;
 
 const String kCal = '{"m":[1,0,0,0,1,0,0,0,1],"at":1754524800000}';
 
+/// Reports a fixed, non-zero reading so the three columns carry three
+/// different strings — a row of identical `+0.00`s cannot show a gutter defect.
+class _StubG extends GForceController {
+  _StubG() : super(source: _DeadSensors());
+
+  @override
+  bool get available => true;
+  @override
+  bool get calibrated => true;
+  @override
+  bool get enabled => true;
+  @override
+  GForceReading get reading => const GForceReading(
+      longG: -0.42, latG: 0.18, peakLongG: 0.55, peakLatG: 0.44, peakG: 0.71);
+  @override
+  void setFaceWantsGForce(bool v) {}
+}
+
 class _DeadSensors implements GForceSensorSource {
   @override
   Stream<Vec3> linear({required Duration samplingPeriod}) =>
@@ -111,9 +129,7 @@ void main() {
     late GForceController g;
 
     setUp(() {
-      g = GForceController(source: _DeadSensors())
-        ..applySettings(
-            const AppSettings(gMeterEnabled: true, gCalibration: kCal));
+      g = _StubG();
     });
 
     tearDown(() => g.dispose());
@@ -148,7 +164,7 @@ void main() {
 
         // All three readouts are at their resting value, which is the exact
         // string the field photo showed split in half.
-        final values = find.text('+0.00');
+        final values = find.text('−0.42');
         expect(values, findsWidgets, reason: 'the numbers must be on screen '
             'for their height to mean anything');
         for (var i = 0; i < tester.widgetList(values).length; i++) {
@@ -160,12 +176,28 @@ void main() {
       });
     }
 
+    testWidgets('🔴 the three readings do not touch each other', (tester) async {
+      // Three Expandeds share an edge. With no gutter each column is exactly
+      // as wide as its number, so `−0.42` and `+0.18` render flush against one
+      // another and read as one value — visible in the 2026-08-07 renders and
+      // fixed with an 8 px `spacing`. Narrow is where it shows, because that
+      // is where the columns shrink to their contents.
+      await pump(tester, kHalfTile);
+      final long = tester.getRect(find.text('−0.42'));
+      final lat = tester.getRect(find.text('+0.18'));
+      final peak = tester.getRect(find.text('0.71'));
+      expect(lat.left - long.right, greaterThanOrEqualTo(4.0),
+          reason: 'longitudinal and lateral run together');
+      expect(peak.left - lat.right, greaterThanOrEqualTo(4.0),
+          reason: 'lateral and peak run together');
+    });
+
     testWidgets('and the full-width rendering is untouched', (tester) async {
       // scaleDown only shrinks when it must. The riding watchface is where this
       // card was designed, and this pins that the fix costs nothing there —
       // 22 px type, full size, exactly as before.
       await pump(tester, 530);
-      final size = tester.getSize(find.text('+0.00').first);
+      final size = tester.getSize(find.text('−0.42').first);
       expect(size.height, lessThan(kOneLineMax));
       expect(size.height, greaterThan(20),
           reason: 'at full width the number must NOT have been shrunk');

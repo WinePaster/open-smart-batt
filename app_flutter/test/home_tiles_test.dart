@@ -446,15 +446,20 @@ void main() {
   });
 
   // ===========================================================================
-  // 🔴 A lone 1x1 keeps its half — the home-page half of the「按了沒反應」fix.
+  // 🔴 A lone 1x1 FILLS the row — ruled 2026-08-07 from rendered comparisons.
   // ===========================================================================
-  testWidgets('a half tile beside a full one really is half wide',
-      (tester) async {
+  testWidgets('a half tile with no partner fills the row', (tester) async {
     // `HomeLayout.rows` pairs two ADJACENT halves and otherwise emits a row of
-    // one. That row used to be stretched to the whole width, so a half tile
-    // whose neighbour was full rendered identically to a full one — and the
-    // editor's shape button therefore appeared to do nothing at all unless you
-    // happened to toggle two tiles that sat next to each other.
+    // one. The alternative — the lone tile keeping its half and leaving the
+    // rest empty — was built, rendered and rejected: it reads as broken rather
+    // than deliberate, and it is the COMMON case, because `speed_detection`
+    // defaults off and so the G meter loses its partner on almost every phone.
+    //
+    // ⚠️ This is the reason the home page cannot show that a tile is 1x1 when
+    // it is alone. The editor preview is where that feedback lives now
+    // (`home_editor_test.dart`, 'halving a tile halves its preview'), and the
+    // two tests must be read together — changing either one alone re-opens
+    // 「按了沒反應」.
     final s = await boot(tester, devices: [
       SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
           lastSeen: DateTime.now()),
@@ -475,10 +480,8 @@ void main() {
         tester.getSize(find.byType(HomeTileView).at(i)).width,
     ];
     expect(widths[1], greaterThan(200), reason: 'sanity: the full tile');
-    expect(widths[0], closeTo(widths[1] / 2, 1.0),
-        reason: 'the lone half tile must keep its half and leave the rest '
-            'empty — that is what 1x1 means, and it is the only thing that '
-            'makes the editor\'s shape button observable');
+    expect(widths[0], closeTo(widths[1], 1.0),
+        reason: 'a lone half must fill its row, not leave a ragged column');
   });
 }
 
