@@ -65,6 +65,10 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     return List<HomeTile>.of(
       (HomeLayout.decode(settings.homeLayout) ??
               HomeLayout.defaultFor(devices.devices))
+          // Same view the home page draws — editing a list that still contains
+          // ghosts would let the user reorder cards they cannot see, and would
+          // write those ghosts straight back on save.
+          .visibleFor(devices.devices)
           .tiles,
     );
   }

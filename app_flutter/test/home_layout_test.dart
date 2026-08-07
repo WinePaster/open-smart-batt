@@ -13,6 +13,8 @@
 // blank screen".
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -268,5 +270,34 @@ void main() {
       expect(layout.visibleFor([dev('DEV-NEW')]).tiles, isNotEmpty);
       expect(layout.visibleFor([]).tiles, isNotEmpty);
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07: `visibleFor` shipped with NO caller in `lib/` and the four
+  // tests above were green the whole time.
+  //
+  // The W-1 fix was applied by a script whose first assertion failed; the two
+  // call-site edits that followed it in the same script never ran, and the
+  // failure was read as "the anchor was wrong" rather than "nothing after it
+  // executed". The function, its documentation and its tests all landed. The
+  // app never called it, so deleting a device still left an unremovable card.
+  //
+  // 🔑 This is the same class of defect this project keeps finding in others —
+  // the caller is where it breaks — arriving via the one route nobody audits:
+  // a fix that tests itself. A unit test cannot notice that nothing uses the
+  // unit, so the guard has to be about the wiring.
+  // ---------------------------------------------------------------------------
+  test('visibleFor is actually wired into both surfaces that draw a layout',
+      () {
+    for (final f in [
+      'lib/ui/home/home_page.dart',
+      'lib/ui/home/home_editor_page.dart',
+    ]) {
+      final src = File(f).readAsStringSync();
+      expect(src, contains('.visibleFor('),
+          reason: '$f resolves a stored HomeLayout but never prunes it — a '
+              'deleted device leaves a card with no way to remove it, and the '
+              'editor would write the ghost straight back on save');
+    }
   });
 }

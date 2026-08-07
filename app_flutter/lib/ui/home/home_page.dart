@@ -43,8 +43,12 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final devices = context.watch<DeviceController>();
-    final layout = HomeLayout.decode(settings.homeLayout) ??
-        HomeLayout.defaultFor(devices.devices);
+    // `visibleFor` drops tiles whose device is gone WITHOUT rewriting storage —
+    // see its doc. A deleted unit must not leave an unremovable empty card, and
+    // a unit that comes back must find its card where the user left it.
+    final layout = (HomeLayout.decode(settings.homeLayout) ??
+            HomeLayout.defaultFor(devices.devices))
+        .visibleFor(devices.devices);
 
     return Center(
       child: ConstrainedBox(

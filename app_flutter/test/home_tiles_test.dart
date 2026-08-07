@@ -314,6 +314,56 @@ void main() {
     expect(src, contains('_touchLastSeen(id, value: s.pvlt)'),
         reason: 'the per-frame path must hand over the sample it already has');
   });
+
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 0044/0045 查核, B1. The home grid is the THIRD path that can
+  // mount a card, and it never went through `renderedModules` — so a stored
+  // `speed` tile opened the GNSS stream with 速度偵測 OFF and the consent
+  // dialog never shown, while the export preamble said `speed detection: off`.
+  //
+  // ⚠️ The main agent's own reflexive check (delete the filter inside
+  // `renderedModules` ⇒ tests red) could not reach this by construction: this
+  // path does not call that function. Recorded because "I verified the fix"
+  // and "I verified every path" are different claims.
+  // ---------------------------------------------------------------------------
+  test('B1: a phone module is only drawable when its own switch says so', () {
+    // Source-level, because the leak is about WHICH SURFACES ask the question.
+    // A widget test proves one surface; this proves no surface was forgotten.
+    final tiles = File('lib/ui/home/home_tiles.dart').readAsStringSync();
+    expect(tiles, contains('phoneModuleAvailable('),
+        reason: 'the home grid mounts cards without going through '
+            'renderedModules, so it must ask the shared predicate itself');
+
+    // And every caller of the card factory must gate phone modules somehow.
+    // If a fourth surface appears, this is what notices.
+    final callers = <String>[
+      'lib/ui/home/home_tiles.dart',
+      'lib/ui/dashboard/pack_view.dart',
+      'lib/ui/dashboard/power_bank_view.dart',
+    ];
+    for (final f in callers) {
+      final src = File(f).readAsStringSync();
+      expect(
+          src.contains('phoneModuleAvailable(') ||
+              src.contains('renderedModules('),
+          isTrue,
+          reason: '$f calls dashboardCardFor but asks neither '
+              'renderedModules nor phoneModuleAvailable — a phone module can '
+              'reach the screen there with its switch off');
+    }
+    // The list above is only honest if it is complete.
+    final grep = Process.runSync('grep',
+        ['-rl', 'dashboardCardFor(', 'lib/'], runInShell: false);
+    final actual = (grep.stdout as String)
+        .trim()
+        .split('\n')
+        .where((l) => l.isNotEmpty && !l.endsWith('dashboard_cards.dart'))
+        .toSet();
+    expect(actual, callers.toSet(),
+        reason: 'a new caller of dashboardCardFor appeared; add it above and '
+            'make sure it gates phone modules');
+  });
 }
 
 /// Minimal stand-in: [homeTileShellClass] reads exactly one getter.
