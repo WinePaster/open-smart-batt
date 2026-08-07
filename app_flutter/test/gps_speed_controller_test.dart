@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/state/accel_estimator.dart';
 import 'package:open_smart_batt/state/gps_speed_controller.dart';
 import 'package:open_smart_batt/state/speed_estimator.dart';
 
@@ -419,6 +420,143 @@ void main() {
       // Moving is never ambiguous, with or without an uncertainty.
       expect(GeolocatorSpeedSource.toFix(at(speed: 9.5, speedAcc: 0.0)).speedMps,
           9.5);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Design 0044 Phase G — the acceleration wiring.
+  //
+  // Two values leave this controller and they are deliberately NOT the same
+  // one: [accelEstimates] is the raw series that gets recorded, [currentAccel]
+  // is what a rider is shown. The throttle lives on the second only, and these
+  // tests are what stop a later "simplification" from collapsing them.
+  // -------------------------------------------------------------------------
+  group('acceleration (design 0044)', () {
+    ({_Clock clock, _FakeSource src, GpsSpeedController ctl}) buildAccel({
+      AccelEstimatorConfig accel = const AccelEstimatorConfig(),
+      Duration tick = const Duration(hours: 1),
+    }) {
+      final clock = _Clock(t0);
+      final src = _FakeSource();
+      return (
+        clock: clock,
+        src: src,
+        ctl: GpsSpeedController(
+          source: src,
+          now: () => clock.t,
+          // Long by default, so the ticker never fires on its own: every one
+          // of these tests wants the clock under its own control.
+          tickInterval: tick,
+          accelConfig: accel,
+        ),
+      );
+    }
+
+    /// Feed a 1 Hz ramp of [n] fixes starting at [from] m/s, +[step] each.
+    Future<void> ramp(
+      _Clock clock,
+      _FakeSource src, {
+      required int n,
+      double from = 10.0,
+      double step = 1.0,
+    }) async {
+      for (var i = 0; i < n; i++) {
+        src.emit(_fix(clock.t, from + step * i));
+        await pumpEventQueue();
+        clock.advance(const Duration(seconds: 1));
+      }
+    }
+
+    test('the window fills, then a slope appears on both outputs', () async {
+      final (:clock, :src, :ctl) = buildAccel();
+      final raw = <AccelEstimate>[];
+      final sub = ctl.accelEstimates.listen(raw.add);
+      await openGate(ctl);
+
+      await ramp(clock, src, n: 2);
+      expect(ctl.currentAccel, isNull,
+          reason: 'two samples are not a two second average');
+      expect(ctl.accelState, AccelState.warming);
+      expect(raw, isEmpty);
+
+      await ramp(clock, src, n: 1, from: 12.0);
+      expect(ctl.accelState, AccelState.live);
+      expect(raw, hasLength(1));
+      expect(ctl.currentAccel!.aMps2, greaterThan(0));
+      await sub.cancel();
+      ctl.dispose();
+    });
+
+    test('a tunnel clears the displayed value immediately, throttle or not',
+        () async {
+      // The throttle must never delay SILENCE. A held speed with a leftover
+      // acceleration beside it is exactly the pairing design 0044 G2 forbids,
+      // and a throttle that applied to disappearance would produce it for as
+      // long as the throttle lasts.
+      final (:clock, :src, :ctl) = buildAccel(
+        accel: const AccelEstimatorConfig(displayThrottle: Duration(hours: 1)),
+        tick: const Duration(milliseconds: 5),
+      );
+      await openGate(ctl);
+      await ramp(clock, src, n: 3);
+      expect(ctl.currentAccel, isNotNull);
+
+      // Into the tunnel: no more fixes, only time and the real ticker.
+      clock.advance(const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(ctl.current!.state, SpeedState.holding);
+      expect(ctl.accelState, AccelState.suppressed);
+      expect(ctl.currentAccel, isNull,
+          reason: 'a frozen speed must not keep an acceleration beside it');
+      ctl.dispose();
+    });
+
+    test('the display throttle does not thin the recorded series', () async {
+      final (:clock, :src, :ctl) = buildAccel(
+        accel: const AccelEstimatorConfig(displayThrottle: Duration(hours: 1)),
+      );
+      final raw = <AccelEstimate>[];
+      final sub = ctl.accelEstimates.listen(raw.add);
+      await openGate(ctl);
+
+      await ramp(clock, src, n: 6);
+      expect(raw.length, greaterThanOrEqualTo(4),
+          reason: 'every live sample past the warm-up produces a slope');
+      // …while the card was handed exactly one value, an hour being the
+      // throttle. The recorded series is untouched by that decision.
+      expect(ctl.currentAccel, isNotNull);
+      expect(identical(ctl.currentAccel, raw.first), isTrue);
+      await sub.cancel();
+      ctl.dispose();
+    });
+
+    test('with the default throttle a 1 Hz series updates every sample',
+        () async {
+      final (:clock, :src, :ctl) = buildAccel();
+      await openGate(ctl);
+      await ramp(clock, src, n: 4);
+      final first = ctl.currentAccel;
+      await ramp(clock, src, n: 1, from: 20.0);
+      expect(identical(ctl.currentAccel, first), isFalse,
+          reason: '500 ms of throttle must not swallow a 1 Hz update');
+      ctl.dispose();
+    });
+
+    test('closing the gate takes the acceleration with it', () async {
+      // `_stop()` resets the estimator, and the reset announces itself only on
+      // `transitions`. If this controller wired the acceleration module to
+      // `estimates` alone, the value below would survive the gate closing and
+      // reappear beside the next session's first speed.
+      final (:clock, :src, :ctl) = buildAccel();
+      await openGate(ctl);
+      await ramp(clock, src, n: 3);
+      expect(ctl.currentAccel, isNotNull);
+
+      ctl.setDashboardVisible(false);
+      await pumpEventQueue();
+      expect(ctl.currentAccel, isNull);
+      expect(ctl.accelState, AccelState.suppressed);
+      ctl.dispose();
     });
   });
 }

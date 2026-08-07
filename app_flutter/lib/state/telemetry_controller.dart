@@ -17,6 +17,7 @@ import '../models/models.dart';
 import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
+import 'accel_estimator.dart';
 import 'speed_estimator.dart';
 import 'telemetry_health.dart';
 
@@ -700,6 +701,31 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
     foldSpeedSample(speedMps: e.vSmoothMps);
   }
 
+  /// Subscribe to the acceleration stream (design 0044 §3.5 / Phase 2).
+  ///
+  /// A second subscription rather than a field on the speed estimate, because
+  /// the two series do not have the same length: acceleration needs a full
+  /// window before it exists, so the first couple of seconds of every ride have
+  /// a speed and no slope. Folding them separately is what lets that minute
+  /// record the speed it did measure and leave `accel` null.
+  ///
+  /// 🔑 This stream carries the RAW slope. The deadband and quantisation that
+  /// keep the card readable are applied on the way to the screen and nowhere
+  /// else — a recorded 0.0 must mean "measured zero", never "rounded to zero".
+  ///
+  /// Nothing arrives while the acceleration estimator is warming or suppressed,
+  /// so "a frozen speed must not record an acceleration" needs no check here
+  /// either (0044 G2 is enforced at the source).
+  void bindAccelEstimates(Stream<AccelEstimate> estimates) {
+    _accelSub?.cancel();
+    _accelSub = estimates.listen(_onAccelEstimate);
+  }
+
+  StreamSubscription<AccelEstimate>? _accelSub;
+
+  void _onAccelEstimate(AccelEstimate e) =>
+      foldSpeedSample(accelMps2: e.aMps2);
+
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;
     // The event names the link it crossed. Prefer that over "whichever unit is
@@ -757,6 +783,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   void dispose() {
     _stallTimer?.cancel();
     _speedSub?.cancel();
+    _accelSub?.cancel();
     _telemetrySub?.cancel();
     _packetSub?.cancel();
     _linkSub?.cancel();

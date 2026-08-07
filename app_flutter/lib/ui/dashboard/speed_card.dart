@@ -61,6 +61,54 @@ double speedIn(double mps, SpeedUnit unit) =>
 /// both of this app's languages.
 String speedUnitLabel(SpeedUnit unit) => unit == SpeedUnit.mph ? 'mph' : 'km/h';
 
+/// Suffix for acceleration: the speed unit, per second (design 0044 §3.3, Q5).
+///
+/// No preference of its own — it follows the speed setting, so `km/h` becomes
+/// `km/h/s` and `mph` becomes `mph/s`. The unit is deliberately NOT m/s²: this
+/// app's reader is a rider, not an engineer, and "how many km/h it gains each
+/// second" is a sentence they already think in. m/s² lands in history, where
+/// the reader IS an engineer.
+String accelUnitLabel(SpeedUnit unit) => '${speedUnitLabel(unit)}/s';
+
+/// Acceleration in the user's unit, one decimal, always carrying its sign.
+///
+/// The sign is explicit because the whole reading is a direction: `1.2` and
+/// `-1.2` are launching and braking, and a minus sign that only appears half
+/// the time is easy to miss at a glance on a moving vehicle (§3.3). Zero gets
+/// no sign — it has no direction — and it is reachable ONLY as a measurement,
+/// because a suppressed or warming estimator renders no row at all.
+///
+/// [displayAccel] runs first: deadband, then quantisation. It is the reason
+/// this can disagree with the value written to history, and that disagreement
+/// is intended in exactly one direction — the record is the raw one.
+String formatAccel(double mps2, SpeedUnit unit) {
+  final v = speedIn(displayAccel(mps2), unit);
+  final s = v.abs().toStringAsFixed(1);
+  // Catches -0.0 and anything that rounds into it: "-0.0" reads as a tiny
+  // deceleration that was never measured.
+  if (s == '0.0') return '0.0';
+  return v > 0 ? '+$s' : '-$s';
+}
+
+/// The acceleration to render beside a speed reading, or null for no row.
+///
+/// A named function rather than a condition inside `build`, for the reason this
+/// project has learned three times over: a judgement that only exists inside a
+/// widget is a judgement the suite can only reach through a rendered frame, and
+/// the defects here have all been in what was passed IN.
+///
+/// Two independent gates, both required (0044 §3.4):
+///   * the SPEED must be live — beside a held or lost speed, an acceleration
+///     would be describing a moment the speed itself is no longer describing;
+///   * the acceleration must exist — [GpsSpeedController.currentAccel] is null
+///     while warming and while suppressed.
+///
+/// 🔴 There is no third branch that renders `0.0`. "No acceleration reading"
+/// and "measured zero acceleration" are different facts and the row's absence
+/// is how they are told apart (§3.3).
+AccelEstimate? accelReadoutFor(SpeedState speed, AccelEstimate? accel) =>
+    speed == SpeedState.live ? accel : null;
+
 /// GPS speed, its signal state, and how much to trust it.
 class SpeedCard extends StatefulWidget {
   const SpeedCard({super.key});
@@ -154,9 +202,12 @@ class _SpeedCardState extends State<SpeedCard> {
         body: l10n.speedCardWaitingBody,
       );
     }
+    final accel = accelReadoutFor(e.state, gps.currentAccel);
     return switch (e.state) {
-      SpeedState.live => _Reading(estimate: e, unit: unit, held: false),
-      SpeedState.holding => _Reading(estimate: e, unit: unit, held: true),
+      SpeedState.live =>
+        _Reading(estimate: e, unit: unit, held: false, accel: accel),
+      SpeedState.holding =>
+        _Reading(estimate: e, unit: unit, held: true, accel: accel),
       SpeedState.lost => _LostState(estimate: e, unit: unit),
     };
   }
@@ -168,6 +219,7 @@ class _Reading extends StatelessWidget {
     required this.estimate,
     required this.unit,
     required this.held,
+    this.accel,
   });
 
   final SpeedEstimate estimate;
@@ -177,6 +229,10 @@ class _Reading extends StatelessWidget {
   /// one. Rendered muted with a badge — the visual difference is the whole
   /// point of the state (G2).
   final bool held;
+
+  /// Design 0044's sub-readout, or null for no row at all. Decided by
+  /// [accelReadoutFor]; this widget only draws what it is given.
+  final AccelEstimate? accel;
 
   @override
   Widget build(BuildContext context) {
@@ -215,6 +271,14 @@ class _Reading extends StatelessWidget {
             _QualityPill(quality: estimate.quality),
           ],
         ),
+        // Design 0044's sub-readout. Absent — not zeroed — whenever there is no
+        // measured slope, which is what makes the row's presence meaningful.
+        // A sub-readout appearing and disappearing does not move the page the
+        // way a whole card would, which is why 0044 Q1 was corrected to (b).
+        if (accel != null) ...[
+          const SizedBox(height: 8),
+          _AccelRow(aMps2: accel!.aMps2, unit: unit),
+        ],
         if (held) ...[
           const SizedBox(height: 10),
           _HeldBadge(label: l10n.speedCardHeld),
@@ -232,6 +296,58 @@ class _Reading extends StatelessWidget {
             style: TextStyle(fontSize: 10.5, color: colors.muted),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// The acceleration sub-readout: an arrow, a label, and a signed number
+/// (design 0044 §3.3 / Q1 ruling (b)).
+///
+/// Direction is carried by the ARROW and the SIGN, not by colour. One accent
+/// for both directions on purpose: braking is not a fault and launching is not
+/// a success, so a green/red pairing would be editorialising — and this
+/// project's diagnosis routinely runs on monochrome screenshots, where colour
+/// carries nothing at all (same reasoning as [_QualityPill]).
+class _AccelRow extends StatelessWidget {
+  const _AccelRow({required this.aMps2, required this.unit});
+
+  final double aMps2;
+  final SpeedUnit unit;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = context.colors;
+    final shown = displayAccel(aMps2);
+    final icon = shown > 0
+        ? Icons.trending_up
+        : shown < 0
+            ? Icons.trending_down
+            : Icons.trending_flat;
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: AppColors.cyan),
+        const SizedBox(width: 6),
+        Text(
+          l10n.speedCardAccelLabel,
+          style: TextStyle(fontSize: 11, color: colors.muted),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          formatAccel(aMps2, unit),
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
+            color: colors.text,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          accelUnitLabel(unit),
+          style: TextStyle(fontSize: 10.5, color: colors.muted),
+        ),
       ],
     );
   }

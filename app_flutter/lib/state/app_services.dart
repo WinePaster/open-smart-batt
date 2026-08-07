@@ -140,6 +140,10 @@ class AppServices {
     // the line above: it is the only place both controllers exist, and neither
     // has to learn about the other's domain to be tested.
     telemetry.bindSpeedEstimates(speed.estimates);
+    // …and its acceleration with it (design 0044 §3.5). Separate stream, same
+    // reasoning: the recorded value is the estimator's raw slope, so what the
+    // analyst reads and what the rider saw come from one source.
+    telemetry.bindAccelEstimates(speed.accelEstimates);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);

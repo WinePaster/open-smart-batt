@@ -264,6 +264,7 @@
   "speedCardNoSignal": "無訊號",
   "speedCardAccuracy": "誤差 ±{value} {unit}",
   "speedCardLastMeasured": "最後量到 {value} {unit}，{seconds} 秒前",
+  "speedCardAccelLabel": "加速度",
   "speedQualityGood": "訊號好",
   "speedQualityFair": "訊號普通",
   "speedQualityPoor": "訊號差",

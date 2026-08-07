@@ -1002,6 +1002,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get speedCardAccelLabel => 'Accel';
+
+  @override
   String get speedQualityGood => 'Good';
 
   @override

@@ -5,6 +5,7 @@
 /// pure Dart. Wire them via `MultiProvider` in `main.dart`.
 library;
 
+export 'accel_estimator.dart';
 export 'app_services.dart';
 export 'background_window_tracker.dart';
 export 'build_info.dart';
