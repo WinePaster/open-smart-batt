@@ -242,6 +242,35 @@ class HomeLayout {
       };
 
   /// The exact string stored in `settings.home_layout`.
+  /// The tiles worth drawing, given the devices that still exist.
+  ///
+  /// 🔴 Pruning happens at RENDER time and never touches storage, and that
+  /// split is the whole design.
+  ///
+  /// Without it, deleting a device leaves a permanent card reading
+  /// "— / Never connected / --" with no way to remove it short of "restore
+  /// default layout", which discards every other customisation too. Rewriting
+  /// the stored layout instead would fix the screen and lose the user's
+  /// arrangement the moment a unit is removed and re-paired — an iOS NSUUID
+  /// rotation (design 0027 D.3) does exactly that without anybody asking.
+  ///
+  /// Filtering the view keeps both: the ghost disappears now, and if the unit
+  /// comes back its card comes back with it, in the place the user put it.
+  ///
+  /// `addDevice` and device-less modules (speed, and later the G meter) are
+  /// never pruned — they belong to the phone, not to any unit.
+  HomeLayout visibleFor(List<SavedDevice> devices) {
+    final known = {for (final d in devices) d.id};
+    final kept = tiles
+        .where((t) => t.deviceId == null || known.contains(t.deviceId))
+        .toList(growable: false);
+    // An all-ghost layout would otherwise render an empty page, which T-new-2
+    // forbids outright. Falling back to the generated default is the same
+    // answer `decode` gives for content it cannot use.
+    if (kept.isEmpty) return HomeLayout.defaultFor(devices);
+    return HomeLayout(kept);
+  }
+
   String encode() => jsonEncode(toJson());
 
   /// Read a stored column value. NEVER throws — see the library comment.

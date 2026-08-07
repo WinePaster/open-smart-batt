@@ -171,6 +171,20 @@ void main() {
   // controller's setters would have passed throughout the defect it was written
   // for, because the defect was in the CALLER. So this drives the tab bar and a
   // pushed route and reads the gate's own condition.
+  //
+  // ⚠️ SCOPE, stated precisely because the review caught these two overclaiming
+  // (W-5). What they pin is the INPUT: does every navigation route actually
+  // reach the controller. They deliberately do NOT pin the EFFECT — a shell
+  // test cannot, because conditions 1 (a speed card is mounted) and 2 (permission
+  // granted) are unreachable here, so `streaming` is false throughout no matter
+  // what the gate does.
+  //
+  // Measured: deleting condition 3 from `_wantsStream` leaves BOTH of these
+  // green and turns FOUR tests in `gps_speed_controller_test.dart` red. That
+  // split is correct and intentional — the shell owns "did the signal arrive",
+  // the controller owns "what the gate does with it" — but it is only safe
+  // while both halves exist. **Do not delete either side thinking the other
+  // covers it.**
   testWidgets('the home tab is what condition 3 now means', (tester) async {
     final s = await pumpShell(tester);
     final gps = s.speed;
@@ -181,8 +195,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.list_alt_outlined));
     await tester.pump();
     expect(gps.speedSurfaceVisible, isFalse,
-        reason: 'the devices LIST carries no speed card, so nothing on screen '
-            'justifies a GNSS stream');
+        reason: 'the devices LIST carries no speed card, so the shell must '
+            'tell the controller the surface is gone. Whether the controller '
+            'then closes the stream is pinned in gps_speed_controller_test');
 
     await tester.tap(find.byIcon(Icons.dashboard_outlined));
     await tester.pump();

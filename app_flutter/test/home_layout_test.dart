@@ -218,4 +218,54 @@ void main() {
               'INSERT OR REPLACE turns into silent data loss');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // W-1 (2026-08-07 交付一查核): deleting a device used to leave an unremovable
+  // empty card. The fix filters the VIEW and leaves storage alone, so these two
+  // tests are a pair — either half alone is a different, worse design.
+  // ---------------------------------------------------------------------------
+  group('W-1: a deleted device leaves no ghost, and no scorched earth', () {
+    SavedDevice dev(String id) => SavedDevice(id: id, alias: id, name: id);
+
+    test('a tile whose device is gone is not drawn', () {
+      final layout = HomeLayout(const [
+        HomeTile.device('DEV-A'),
+        HomeTile.device('DEV-B'),
+      ]);
+      final visible = layout.visibleFor([dev('DEV-A')]);
+      expect(visible.tiles.map((t) => t.deviceId), ['DEV-A']);
+    });
+
+    test('storage is untouched, so the card returns with the device', () {
+      final layout = HomeLayout(const [
+        HomeTile.device('DEV-A'),
+        HomeTile.device('DEV-B'),
+      ]);
+      // The user's arrangement survives the absence...
+      expect(layout.visibleFor([dev('DEV-A')]).tiles, hasLength(1));
+      // ...and comes back intact when the unit does. This is the half that
+      // rules out "prune by rewriting the stored layout": an iOS NSUUID
+      // rotation removes and re-adds a device without anybody asking.
+      final back = layout.visibleFor([dev('DEV-A'), dev('DEV-B')]);
+      expect(back.tiles.map((t) => t.deviceId), ['DEV-A', 'DEV-B']);
+    });
+
+    test('phone-owned tiles are never pruned', () {
+      final layout = HomeLayout(const [
+        HomeTile.module(DisplayModule.speed),
+        HomeTile.device('DEV-GONE'),
+      ]);
+      final visible = layout.visibleFor([]);
+      expect(visible.tiles.any((t) => t.module == DisplayModule.speed), isTrue,
+          reason: 'speed belongs to the phone, not to any unit');
+    });
+
+    test('an all-ghost layout falls back to the default, never to empty', () {
+      // T-new-2 forbids an empty page outright, and "every card you had names
+      // a device you deleted" is a real path to one.
+      final layout = HomeLayout(const [HomeTile.device('DEV-GONE')]);
+      expect(layout.visibleFor([dev('DEV-NEW')]).tiles, isNotEmpty);
+      expect(layout.visibleFor([]).tiles, isNotEmpty);
+    });
+  });
 }

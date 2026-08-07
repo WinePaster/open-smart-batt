@@ -466,8 +466,25 @@ void main() {
     test('it is not localized', () {
       // A preamble is read by whoever RECEIVES the file, not by the phone that
       // exported it.
+      //
+      // `:` joined the alphabet on 2026-08-07 for the `:half` span suffix — a
+      // grammar EXTENSION, deliberately additive so a reader that predates it
+      // still parses the module name. This test caught the change, which is
+      // what it is for; widening it was the ruling, not the workaround.
       for (final v in homeValues()) {
-        expect(v, matches(RegExp(r'^tiles=[A-Za-z0-9@,]+$')));
+        expect(v, matches(RegExp(r'^tiles=[A-Za-z0-9@,:]+$')));
+      }
+    });
+
+    test('the span suffix never introduces the one sequence the parser splits on',
+        () {
+      // The header is `key: value`, and analysis scripts split on the FIRST
+      // ': '. A colon inside the value is harmless; a colon-SPACE is not. The
+      // six hard constraints on the layout line (design 0034 §12.3 #3) apply
+      // here verbatim, and `:half` is the first thing that ever put a colon in
+      // one of these values — so it gets its own test rather than an assumption.
+      for (final v in homeValues()) {
+        expect(v.contains(': '), isFalse, reason: v);
       }
     });
 

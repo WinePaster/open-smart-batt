@@ -326,14 +326,25 @@ String exportHomeValue(HomeLayout? layout) {
   final ordinals = <String, String>{};
   String token(String id) =>
       ordinals.putIfAbsent(id, () => 'd${ordinals.length + 1}');
+  // `:half` is appended for half-width tiles and omitted for full-width ones.
+  //
+  // Without it two genuinely different pages produce the same `home:` line: a
+  // column of full-width cards and a two-up grid of the same modules read
+  // identically, while the difference decides how many cards fit on one screen
+  // — which is exactly what this line exists to reconstruct from a screenshot
+  // (the reason design 0046 Step 10 gave for adding it at all).
+  //
+  // Omitting the common case keeps the line short and keeps the grammar
+  // additive: a reader that does not know `:half` still parses the module name.
+  String span(HomeTile t) => t.span == HomeSpan.half ? ':half' : '';
   final parts = <String>[
     for (final t in layout.tiles)
       switch (t.kind) {
-        HomeTileKind.addDevice => 'addDevice',
-        HomeTileKind.deviceCard => 'deviceCard@${token(t.deviceId!)}',
+        HomeTileKind.addDevice => 'addDevice${span(t)}',
+        HomeTileKind.deviceCard => 'deviceCard@${token(t.deviceId!)}${span(t)}',
         HomeTileKind.module => t.deviceId == null
-            ? t.module!.name
-            : '${t.module!.name}@${token(t.deviceId!)}',
+            ? '${t.module!.name}${span(t)}'
+            : '${t.module!.name}@${token(t.deviceId!)}${span(t)}',
       },
   ];
   return 'tiles=${parts.join(',')}';

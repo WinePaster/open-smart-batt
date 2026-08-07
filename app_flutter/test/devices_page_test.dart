@@ -69,12 +69,22 @@ class _FakeBle extends BleService {
   @override
   Future<bool> ensurePermissions() async => true;
 
-  @override
-  Future<void> startScan(
-      {Duration timeout = const Duration(seconds: 15)}) async {}
+  /// Call counters. `isScanning` is stubbed false here, so "is the radio on"
+  /// cannot be read off it — these are the hard evidence a scan-lifecycle test
+  /// needs (W-3).
+  int startScans = 0;
+  int stopScans = 0;
 
   @override
-  Future<void> stopScan() async {}
+  Future<void> startScan(
+      {Duration timeout = const Duration(seconds: 15)}) async {
+    startScans++;
+  }
+
+  @override
+  Future<void> stopScan() async {
+    stopScans++;
+  }
 
   @override
   Future<void> connect(String deviceId,
@@ -166,7 +176,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: const Scaffold(body: DevicesPage()),
+          home: const Scaffold(body: DevicesPage(active: true)),
         ),
       ),
     );
@@ -294,7 +304,7 @@ void main() {
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             locale: const Locale('en'),
-            home: const Scaffold(body: DevicesPage()),
+            home: const Scaffold(body: DevicesPage(active: true)),
           ),
         ),
       );
@@ -371,5 +381,40 @@ void main() {
         }
       });
     }
+  });
+
+
+  // ---------------------------------------------------------------------------
+  // W-3 (2026-08-07 交付一查核): pushing the detail page left the BLE scan
+  // running for as long as the user read it. The old bottom sheet stopped on
+  // dispose the moment it closed; promoting it to a tab quietly took that away,
+  // because `active` is derived from the TAB and the tab is still 裝置 with a
+  // route on top of it.
+  // ---------------------------------------------------------------------------
+  testWidgets('W-3: opening a device page stops the scan, closing resumes it',
+      (tester) async {
+    final s = await makeServices(tester);
+    addTearDown(() => teardown(tester, s));
+    await pumpPage(tester, s);
+    await settle(tester);
+
+    expect(ble.startScans, greaterThan(0),
+        reason: 'the tab scans while shown');
+    final beforeOpen = ble.stopScans;
+
+    await tester.tap(find.text('Cap #1'));
+    await settle(tester);
+    expect(ble.stopScans, greaterThan(beforeOpen),
+        reason: 'a detail page covers the list — the same window the GNSS gate '
+            'calls "somebody is looking at one device". Leaving a radio on for '
+            'it is the disagreement that only ever shows up as battery.');
+
+    final beforeBack = ble.startScans;
+    // Popped directly rather than via `pageBack()`: the detail page draws its
+    // own back affordance, so the framework's stock finder sees nothing.
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await settle(tester);
+    expect(ble.startScans, greaterThan(beforeBack),
+        reason: 'and it comes back when the page does');
   });
 }

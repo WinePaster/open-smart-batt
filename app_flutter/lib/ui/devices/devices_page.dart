@@ -44,17 +44,18 @@ import 'signal_bars.dart';
 
 /// The devices tab's body (sits inside the app shell's [Scaffold]).
 class DevicesPage extends StatefulWidget {
-  const DevicesPage({super.key, this.active = true, this.onOpenSettings});
+  const DevicesPage({super.key, required this.active, this.onOpenSettings});
 
   /// Whether this tab is the one on screen.
   ///
-  /// 🔴 A BLE scan is not free, and this page is no longer a modal that only
-  /// exists while it is open: the shell keeps all four tabs MOUNTED in an
-  /// [IndexedStack], so a scan started in [initState] would run from app launch
-  /// for as long as the process lives, on a phone whose owner never opened this
-  /// tab. Same reasoning as the GNSS gate's condition 3 (design 0042 §3.4) —
-  /// the shell knows which tab is showing, and nothing below it can work that
-  /// out reliably.
+  /// Whether this page is the visible tab.
+  ///
+  /// 🔴 `required`, not defaulted. It used to default to `true`, which reads as
+  /// harmless and is not: this page lives in an `IndexedStack`, so it stays
+  /// MOUNTED on every other tab. A caller that forgets the argument gets a BLE
+  /// scan running from app start until the process dies — the exact defect this
+  /// parameter was added to fix, restored silently by an omission rather than
+  /// by an edit. Making it required means the compiler asks the question.
   final bool active;
 
   /// Switch to the Settings tab, handed down from the shell.
@@ -292,13 +293,27 @@ class _DevicesPageState extends State<DevicesPage> {
 
   /// The full report for one unit (R21): everything this list deliberately does
   /// not have room for.
-  void _openDetail(SavedDevice d) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
+  Future<void> _openDetail(SavedDevice d) async {
+    // 🔴 Stop scanning for the duration, and start again on the way back.
+    //
+    // [active] cannot express this: the shell derives it from the TAB, and the
+    // tab is still 裝置 while a detail route sits on top of it. So without this
+    // the scan ran for the whole time the user was reading a device page — the
+    // old bottom sheet stopped on `dispose` the moment it closed, and the
+    // promotion to a tab quietly took that away.
+    //
+    // It is also the same window the GNSS gate calls "a detail page is open".
+    // Having one of them treat it as "somebody is looking" while the other left
+    // a radio running is the kind of disagreement that only shows up as battery.
+    _conn?.stopScan();
+    await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => DeviceDetailPage(
         deviceId: d.id,
         onOpenSettings: widget.onOpenSettings,
       ),
     ));
+    if (!mounted || !widget.active) return;
+    unawaited(_startScan());
   }
 
   @override
@@ -366,7 +381,7 @@ class _DevicesPageState extends State<DevicesPage> {
                 setupStalled: conn.isSetupStalled,
                 lastError: conn.lastError,
               ),
-              onOpenDetail: () => _openDetail(d),
+              onOpenDetail: () => unawaited(_openDetail(d)),
               onEdit: () => _rename(d),
               onDelete: () => _removeDevice(d),
               onDisconnect: _disconnect,
