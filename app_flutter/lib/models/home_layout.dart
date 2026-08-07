@@ -52,6 +52,7 @@ library;
 
 import 'dart:convert';
 
+import 'app_settings.dart';
 import 'display_module.dart';
 import 'product_class.dart';
 import 'saved_device.dart';
@@ -242,31 +243,62 @@ class HomeLayout {
       };
 
   /// The exact string stored in `settings.home_layout`.
-  /// The tiles worth drawing, given the devices that still exist.
+  /// What the home page ACTUALLY draws, given the devices and the switches.
   ///
-  /// 🔴 Pruning happens at RENDER time and never touches storage, and that
-  /// split is the whole design.
+  /// 🔑 The home surface's own resolver — the twin of `renderedModules`, not a
+  /// user of it.
   ///
-  /// Without it, deleting a device leaves a permanent card reading
-  /// "— / Never connected / --" with no way to remove it short of "restore
-  /// default layout", which discards every other customisation too. Rewriting
-  /// the stored layout instead would fix the screen and lose the user's
-  /// arrangement the moment a unit is removed and re-paired — an iOS NSUUID
-  /// rotation (design 0027 D.3) does exactly that without anybody asking.
+  /// Ruled 2026-08-07: **the home grid and the watchface layer are two separate
+  /// systems and stay separate.** The watchface layer resolves a stored
+  /// `Watchface` into a module list; the home grid has no watchface at all, so
+  /// forcing it through that path would mean inventing a fake face for it. What
+  /// the two share is exactly one thing — [phoneModuleAvailable], a fact about
+  /// the PHONE rather than about either surface.
   ///
-  /// Filtering the view keeps both: the ghost disappears now, and if the unit
-  /// comes back its card comes back with it, in the place the user put it.
+  /// This function is the single place that answers "what is on the home page",
+  /// and it exists as a named function rather than as checks inside widget
+  /// builds for the reason this project keeps rediscovering: a decision buried
+  /// in `build` is a decision no test can reach. Two separate filters used to
+  /// live here — one pruning ghosts, one gating phone modules, added a day
+  /// apart — and merging them is what makes "the home page draws X" a single
+  /// question with a single answer.
   ///
-  /// `addDevice` and device-less modules (speed, and later the G meter) are
-  /// never pruned — they belong to the phone, not to any unit.
-  HomeLayout visibleFor(List<SavedDevice> devices) {
+  /// It removes two kinds of tile:
+  ///
+  /// 1. **Ghosts** — a tile naming a device that no longer exists. Pruning
+  ///    happens at RENDER time and never touches storage: rewriting the stored
+  ///    layout would lose the user's arrangement the moment a unit is removed
+  ///    and re-paired, which an iOS NSUUID rotation (design 0027 D.3) does
+  ///    without anybody asking. Filter the view and both hold — the ghost is
+  ///    gone now, and if the unit returns its card returns where it was.
+  /// 2. 🔴 **Phone modules whose switch is off.** This is link 1 of design
+  ///    0042's privacy chain on this surface. A stored `speed` tile with
+  ///    detection OFF used to mount a `SpeedCard`, which opens the GNSS stream
+  ///    — while the export preamble said `speed detection: off` and the consent
+  ///    dialog had never been shown. `watchfaces.dart` claimed "every render
+  ///    path reads this" of its own resolver; that was true when written, and
+  ///    design 0046 added this surface without anyone checking the seam.
+  ///
+  /// `addDevice` and device-less tiles are never pruned for reason 1 — they
+  /// belong to the phone, not to any unit.
+  HomeLayout renderedFor(
+    List<SavedDevice> devices,
+    AppSettings settings, {
+    required bool gForceAvailable,
+  }) {
     final known = {for (final d in devices) d.id};
-    final kept = tiles
-        .where((t) => t.deviceId == null || known.contains(t.deviceId))
-        .toList(growable: false);
-    // An all-ghost layout would otherwise render an empty page, which T-new-2
-    // forbids outright. Falling back to the generated default is the same
-    // answer `decode` gives for content it cannot use.
+    final kept = tiles.where((t) {
+      if (t.deviceId != null && !known.contains(t.deviceId)) return false;
+      final m = t.module;
+      if (m != null && m.isPhoneModule) {
+        return phoneModuleAvailable(m, settings,
+            gForceAvailable: gForceAvailable);
+      }
+      return true;
+    }).toList(growable: false);
+    // An empty page is forbidden outright (T-new-2), and "every card you had
+    // names a deleted device" is a real path to one. Falling back to the
+    // generated default is the same answer `decode` gives for unusable content.
     if (kept.isEmpty) return HomeLayout.defaultFor(devices);
     return HomeLayout(kept);
   }

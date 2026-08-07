@@ -14,6 +14,8 @@
 /// does this class have" — which genuinely needs `AppLocalizations`.
 library;
 
+import 'app_settings.dart';
+
 /// The display modules a dashboard page is made of (design 0034 §4).
 ///
 /// `big` (§4.1) is deliberately absent: it is a NEW widget scheduled for
@@ -143,3 +145,37 @@ enum DisplayModule {
         DisplayModule.speed || DisplayModule.gForce => true,
       };
 }
+
+/// Whether a phone module has anything to show right now.
+///
+/// 🔑 THE shared fact, and deliberately the only shared thing between the two
+/// surfaces that draw modules.
+///
+/// "Is this phone module available" is a statement about the PHONE — its
+/// switches and its calibration — not about where the module is being drawn.
+/// The watchface surface and the home surface each resolve their own layout
+/// (`renderedModules` / `HomeLayout.renderedFor`), and both ask this. Keeping
+/// the fact in one place and the surfaces separate is what stops the two from
+/// drifting into disagreeing about whether the GNSS stream may open.
+///
+///  * `speed` needs its master switch (design 0042 §3.9). This is link 1 of the
+///    privacy chain: no module ⇒ no card ⇒ no `setFaceWantsSpeed` ⇒ no stream.
+///  * `gForce` needs its switch AND a valid calibration (design 0045 Q8): until
+///    the mount is calibrated there are no axes, and a card that cannot name a
+///    direction is not shown at all.
+///
+/// A device module is never asked — callers consult this only for modules the
+/// enum says belong to the phone.
+///
+/// Lives in the model layer, not beside the watchfaces, so the PURE home-layout
+/// resolver can reach it without importing Flutter.
+bool phoneModuleAvailable(
+  DisplayModule m,
+  AppSettings s, {
+  required bool gForceAvailable,
+}) =>
+    switch (m) {
+      DisplayModule.speed => s.speedDetection,
+      DisplayModule.gForce => gForceAvailable,
+      _ => true,
+    };

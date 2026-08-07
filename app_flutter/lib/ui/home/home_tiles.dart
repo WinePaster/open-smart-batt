@@ -37,7 +37,6 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_cards.dart';
-import '../dashboard/watchfaces.dart';
 import '../widgets/industrial_card.dart';
 import '../util/relative_time.dart';
 
@@ -360,28 +359,10 @@ class _ModuleTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final conn = context.watch<ConnectionController>();
     final id = deviceId;
-    // 🔴 The home grid is the THIRD path that can mount a card, and it does
-    // not go through `renderedModules` — so the phone-module gate has to be
-    // asked here too.
-    //
-    // `watchfaces.dart` says "Every render path reads this" of `renderedModules`.
-    // It was true when written: the two dashboard shells were the only callers.
-    // Design 0046 added this one, and nobody checked the seam — 0046's review
-    // did not look at the privacy chain, and 0042's review predated the home
-    // grid having a speed tile at all. Measured: a stored `speed` tile with
-    // detection OFF mounted a SpeedCard, opened the GNSS stream, and landed
-    // speed rows into a capture whose own preamble said `speed detection: off`.
-    //
-    // This is NOT the duplicate decision point design 0042 W4 removed. That one
-    // was a second gate at the CARD layer re-deciding what the FACE layer had
-    // already decided. The home grid has no face; it is a different surface,
-    // and it asks the SAME predicate — `phoneModuleAvailable` — rather than
-    // inventing a rule of its own.
-    if (module.isPhoneModule &&
-        !phoneModuleAvailable(module, context.watch<SettingsController>().settings,
-            gForceAvailable: context.watch<GForceController>().available)) {
-      return const SizedBox.shrink();
-    }
+    // No phone-module gate here, deliberately: `HomeLayout.renderedFor` — the
+    // home surface's single resolver — has already dropped any module whose
+    // switch is off. A second check would be the duplicate decision point
+    // design 0042 W4 removed, just on a different surface.
     final live =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
     if (!live) return _WaitingTile(module: module);

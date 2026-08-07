@@ -188,16 +188,7 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
 ///
 /// A device module is never asked; [renderedModules] only consults this for
 /// modules the enum says belong to the phone.
-bool phoneModuleAvailable(
-  DisplayModule m,
-  AppSettings s, {
-  required bool gForceAvailable,
-}) =>
-    switch (m) {
-      DisplayModule.speed => s.speedDetection,
-      DisplayModule.gForce => gForceAvailable,
-      _ => true,
-    };
+
 
 /// Whether [Watchface.riding] is available at all.
 ///

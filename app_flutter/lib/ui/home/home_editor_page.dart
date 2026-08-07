@@ -37,7 +37,6 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/display_modules.dart';
-import '../dashboard/watchfaces.dart';
 import '../widgets/industrial_card.dart';
 import 'home_tiles.dart';
 
@@ -65,10 +64,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     return List<HomeTile>.of(
       (HomeLayout.decode(settings.homeLayout) ??
               HomeLayout.defaultFor(devices.devices))
-          // Same view the home page draws — editing a list that still contains
-          // ghosts would let the user reorder cards they cannot see, and would
-          // write those ghosts straight back on save.
-          .visibleFor(devices.devices)
+          // Same view the home page draws — editing a list that still holds
+          // tiles the user cannot see would let them reorder invisible cards,
+          // and would write those tiles straight back on save.
+          .renderedFor(devices.devices, settings.settings,
+              gForceAvailable: context.read<GForceController>().available)
           .tiles,
     );
   }

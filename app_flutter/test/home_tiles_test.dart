@@ -330,28 +330,34 @@ void main() {
   test('B1: a phone module is only drawable when its own switch says so', () {
     // Source-level, because the leak is about WHICH SURFACES ask the question.
     // A widget test proves one surface; this proves no surface was forgotten.
-    final tiles = File('lib/ui/home/home_tiles.dart').readAsStringSync();
-    expect(tiles, contains('phoneModuleAvailable('),
-        reason: 'the home grid mounts cards without going through '
-            'renderedModules, so it must ask the shared predicate itself');
+    // Two surfaces, two resolvers, one shared fact (ruled 2026-08-07: the home
+    // grid and the watchface layer stay separate systems). Each surface must
+    // reach the screen through ITS resolver — that is where the gate lives.
+    final surfaces = <String, String>{
+      'lib/ui/home/home_page.dart': '.renderedFor(',
+      'lib/ui/home/home_editor_page.dart': '.renderedFor(',
+      'lib/ui/dashboard/pack_view.dart': 'renderedModules(',
+      'lib/ui/dashboard/power_bank_view.dart': 'renderedModules(',
+    };
+    for (final e in surfaces.entries) {
+      expect(File(e.key).readAsStringSync(), contains(e.value),
+          reason: '${e.key} puts modules on screen without asking its '
+              'surface resolver — a phone module can reach the screen there '
+              'with its switch off, and for `speed` that opens the GNSS '
+              'stream with the consent dialog never shown');
+    }
 
-    // And every caller of the card factory must gate phone modules somehow.
-    // If a fourth surface appears, this is what notices.
+    // And the tile widget must NOT re-gate: one decision point per surface.
+    expect(File('lib/ui/home/home_tiles.dart').readAsStringSync(),
+        isNot(contains('phoneModuleAvailable(')),
+        reason: 'the resolver already decided; a second check here is the '
+            'duplicate decision point design 0042 W4 removed');
+
     final callers = <String>[
       'lib/ui/home/home_tiles.dart',
       'lib/ui/dashboard/pack_view.dart',
       'lib/ui/dashboard/power_bank_view.dart',
     ];
-    for (final f in callers) {
-      final src = File(f).readAsStringSync();
-      expect(
-          src.contains('phoneModuleAvailable(') ||
-              src.contains('renderedModules('),
-          isTrue,
-          reason: '$f calls dashboardCardFor but asks neither '
-              'renderedModules nor phoneModuleAvailable — a phone module can '
-              'reach the screen there with its switch off');
-    }
     // The list above is only honest if it is complete.
     final grep = Process.runSync('grep',
         ['-rl', 'dashboardCardFor(', 'lib/'], runInShell: false);

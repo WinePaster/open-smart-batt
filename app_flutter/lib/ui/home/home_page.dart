@@ -43,12 +43,17 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final devices = context.watch<DeviceController>();
-    // `visibleFor` drops tiles whose device is gone WITHOUT rewriting storage —
-    // see its doc. A deleted unit must not leave an unremovable empty card, and
-    // a unit that comes back must find its card where the user left it.
+    // `renderedFor` is the home surface's own resolver — the twin of
+    // `renderedModules`, not a user of it (ruled 2026-08-07: the two surfaces
+    // stay separate). It drops ghosts and phone modules whose switch is off,
+    // and it does both WITHOUT rewriting storage. See its doc.
     final layout = (HomeLayout.decode(settings.homeLayout) ??
             HomeLayout.defaultFor(devices.devices))
-        .visibleFor(devices.devices);
+        .renderedFor(
+      devices.devices,
+      settings.settings,
+      gForceAvailable: context.watch<GForceController>().available,
+    );
 
     return Center(
       child: ConstrainedBox(
