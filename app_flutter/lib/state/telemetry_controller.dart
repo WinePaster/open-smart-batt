@@ -18,6 +18,7 @@ import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 import 'accel_estimator.dart';
+import 'g_force_controller.dart';
 import 'speed_estimator.dart';
 import 'telemetry_health.dart';
 
@@ -52,6 +53,19 @@ class _MinuteBucket {
   /// devices counts one journey twice.
   double sSpeed = 0, sAccel = 0;
   int nSpeed = 0, nAccel = 0;
+
+  /// The phone's longitudinal / lateral G for this minute (design 0045 §3.7),
+  /// on exactly the same terms as the two above.
+  ///
+  /// 🔑 SIGNED sums, so a minute of accelerating and braking averages towards
+  /// zero and a minute of alternating corners does too. That is a known cost of
+  /// putting a second-scale quantity in a minute-scale table and it is
+  /// deliberate — the alternative (an absolute-value or peak column) would
+  /// record a number the rider never saw, which design 0034 §8's evidence chain
+  /// forbids. `g_lat` is still the only column in this table that can see
+  /// cornering at all, which is why design 0045 Q4 wanted it.
+  double sGLong = 0, sGLat = 0;
+  int nGLong = 0, nGLat = 0;
 
   /// How many telemetry snapshots this minute has folded in.
   /// Counted per snapshot, not per field, so it answers one question honestly:
@@ -625,6 +639,8 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
         // was not measured standing still, it was not measured at all.
         speedMps: b.nSpeed > 0 ? b.sSpeed / b.nSpeed : null,
         accelMps2: b.nAccel > 0 ? b.sAccel / b.nAccel : null,
+        gLongMs2: b.nGLong > 0 ? b.sGLong / b.nGLong : null,
+        gLatMs2: b.nGLat > 0 ? b.sGLat / b.nGLat : null,
       ));
     }
     b.minute = null;
@@ -633,6 +649,8 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
     b.nPvlt = b.nSvlt = b.nTemp = b.nCur = 0;
     b.sSpeed = b.sAccel = 0;
     b.nSpeed = b.nAccel = 0;
+    b.sGLong = b.sGLat = 0;
+    b.nGLong = b.nGLat = 0;
     b.nSamples = 0;
   }
 
@@ -662,7 +680,12 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// Only LIVE samples are folded ([_onSpeedEstimate] filters): a held or lost
   /// reading is the speed from before the tunnel, and averaging it into the
   /// minute would record a measurement nobody took.
-  void foldSpeedSample({double? speedMps, double? accelMps2}) {
+  void foldSpeedSample({
+    double? speedMps,
+    double? accelMps2,
+    double? gLongMs2,
+    double? gLatMs2,
+  }) {
     if (_buckets.isEmpty) return;
     for (final b in _buckets.values) {
       if (!b.isOpen) continue;
@@ -673,6 +696,14 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
       if (accelMps2 != null) {
         b.sAccel += accelMps2;
         b.nAccel++;
+      }
+      if (gLongMs2 != null) {
+        b.sGLong += gLongMs2;
+        b.nGLong++;
+      }
+      if (gLatMs2 != null) {
+        b.sGLat += gLatMs2;
+        b.nGLat++;
       }
     }
   }
@@ -725,6 +756,32 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
 
   void _onAccelEstimate(AccelEstimate e) =>
       foldSpeedSample(accelMps2: e.aMps2);
+
+  /// Subscribe to the G meter's sample stream (design 0045 §3.7 / Q4).
+  ///
+  /// A third subscription, for the same reason there is a second: the three
+  /// series have different lifetimes. The G meter can be on while the GPS is
+  /// off and the other way round, so a minute may carry any combination of the
+  /// four columns and the ones it did not measure must stay NULL.
+  ///
+  /// 🔑 The stream carries the ESTIMATOR's metres per second squared — before
+  /// the deadband and the 0.01 g quantiser. A recorded 0.0 therefore means
+  /// "measured zero", never "rounded to zero"; and the column's unit matches
+  /// `accel` next to it, so the two can be read together without a conversion.
+  ///
+  /// Nothing arrives unless the ride streams are open, and those are open only
+  /// when the card is on screen — which needs the switch AND a valid
+  /// calibration. "Off or uncalibrated ⇒ nothing recorded" therefore needs no
+  /// check here, exactly as it needs none for speed.
+  void bindGForceSamples(Stream<GForceSample> samples) {
+    _gForceSub?.cancel();
+    _gForceSub = samples.listen(_onGForceSample);
+  }
+
+  StreamSubscription<GForceSample>? _gForceSub;
+
+  void _onGForceSample(GForceSample s) =>
+      foldSpeedSample(gLongMs2: s.longMs2, gLatMs2: s.latMs2);
 
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;
@@ -784,6 +841,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
     _stallTimer?.cancel();
     _speedSub?.cancel();
     _accelSub?.cancel();
+    _gForceSub?.cancel();
     _telemetrySub?.cancel();
     _packetSub?.cancel();
     _linkSub?.cancel();

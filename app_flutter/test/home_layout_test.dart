@@ -39,6 +39,7 @@ void main() {
         'cells',
         'energyPath',
         'speed',
+        'gForce',
       ]);
       for (final n in names) {
         expect(n.toLowerCase(), isNot(contains('control')));

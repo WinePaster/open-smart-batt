@@ -86,11 +86,60 @@ enum DisplayModule {
   ///    the master switch. `dataGated` means "this module is WAITING FOR DATA"
   ///    — a card in that state says so on screen, which for a feature the user
   ///    switched off would be a lie, and would blur the one distinction the two
-  ///    condition kinds exist to keep apart. The switch is handled a level up:
-  ///    with it off, [Watchface.riding] falls back to `standard`, so `speed` is
-  ///    never laid out at all (design 0042 §3.9, revised 2026-08-07).
+  ///    condition kinds exist to keep apart. The switch is handled a level up,
+  ///    in `renderedModules`: with it off this module is dropped from whatever
+  ///    face named it, so no card is built and the GNSS gate's first condition
+  ///    never opens (design 0042 §3.9, revised 2026-08-07; moved from the FACE
+  ///    layer to the MODULE layer by design 0045's ruling (iv), because `riding`
+  ///    can now be kept alive by the G meter alone).
   ///
   /// Only [Watchface.riding] lists it, so design 0034's G4 holds literally: a
   /// user who never opens Settings sees no change.
   speed,
+
+  /// The G meter ([GForceCard], design 0045): longitudinal and lateral G in
+  /// VEHICLE coordinates, plus a ball and a peak hold.
+  ///
+  /// The second module that is not device data, and it carries all three of
+  /// [speed]'s consequences — every class offers it, `modules=gForce` in an
+  /// export is not evidence about the battery, and it is NOT `dataGated`.
+  ///
+  /// 🔴 It has a fourth of its own: availability needs a CALIBRATION, not just
+  /// a switch. Until the mount has been calibrated the app does not know which
+  /// way the phone is pointing, so there are no axes to report — and design
+  /// 0045 G1 forbids inventing them. That is a runtime state, not a class gate,
+  /// which is why it is absent from `dataGated` for the same reason `speed` is:
+  /// `dataGated` means "waiting for data", a card in that state says so on
+  /// screen, and "you have not calibrated yet" is not something a dashboard
+  /// card is allowed to say (design 0045 Q8 — the card simply is not there).
+  /// `renderedModules` drops it instead.
+  gForce;
+
+  /// Whether this module reads the PHONE rather than the connected unit.
+  ///
+  /// 🔑 An exhaustive switch, deliberately, and NOT a set literal or an
+  /// `== speed || == gForce` chain. Adding a value to this enum then becomes a
+  /// COMPILE error here rather than a silent `false`, and the places that
+  /// branch on it are places where a wrong answer is invisible:
+  ///
+  ///  * the home editor offers per-DEVICE tiles for every module a class has,
+  ///    so a phone module that slipped through would be offered as
+  ///    `G meter · <battery name>` — a card bound to a unit that has nothing to
+  ///    do with it;
+  ///  * `renderedModules` filters exactly this set against its availability.
+  ///
+  /// Before design 0045 the first of those was a hardcoded
+  /// `m != DisplayModule.speed`, which is precisely the shape that lets the
+  /// NEXT module through unnoticed. That has happened four times in this
+  /// project already, always in a caller no test looked at.
+  bool get isPhoneModule => switch (this) {
+        DisplayModule.gaugeVoltage ||
+        DisplayModule.gaugeSoc ||
+        DisplayModule.readouts ||
+        DisplayModule.chart ||
+        DisplayModule.cells ||
+        DisplayModule.energyPath =>
+          false,
+        DisplayModule.speed || DisplayModule.gForce => true,
+      };
 }

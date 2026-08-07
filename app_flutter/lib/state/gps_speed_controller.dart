@@ -13,13 +13,24 @@
 /// scans this file for coordinate identifiers.
 ///
 /// **Why there is no `speedDetection` gate here.** The master switch (design
-/// 0042 §3.9, arriving in Phase D) does not need a fourth condition: with the
-/// switch off `riding` falls back to `standard` at the render layer (§3.9
-/// revision of 2026-08-07), the effective face therefore has no `speed` module,
-/// and [setFaceWantsSpeed] is false. The switch gates the stream through
-/// condition 1 rather than beside it — which is also what makes "off ⇒ speed
-/// never lands" true by construction instead of by a second check somebody
-/// could forget.
+/// 0042 §3.9) does not need a fourth condition: with the switch off
+/// `renderedModules` drops `speed` from whatever face named it, no `SpeedCard`
+/// is ever built, and [setFaceWantsSpeed] is therefore never true. The switch
+/// gates the stream through condition 1 rather than beside it — which is also
+/// what makes "off ⇒ speed never lands" true by construction instead of by a
+/// second check somebody could forget.
+///
+/// 🔴 That chain was rebuilt one layer down on 2026-08-07 and it is worth
+/// knowing why, because the version it replaced looked equally sound. Until
+/// design 0045 the filtering happened at the FACE layer: switch off ⇒ `riding`
+/// falls back to `standard` ⇒ no `speed` module exists. Design 0045 Q3 then let
+/// the G meter keep `riding` alive on its own, at which point a face-level
+/// answer would have drawn `riding` — including its speed card — for a user who
+/// had only ever turned the G meter on. GNSS would have opened, and speed rows
+/// would have landed, with the location consent dialog never shown. Moving the
+/// decision from "which face" to "which modules" keeps one decision point and
+/// restores the property; `speed_privacy_test.dart` pins it at the new
+/// layer.
 library;
 
 import 'dart:async';

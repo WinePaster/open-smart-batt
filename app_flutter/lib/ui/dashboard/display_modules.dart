@@ -122,6 +122,7 @@ class DisplayModules {
       DisplayModule.chart,
       DisplayModule.cells,
       DisplayModule.speed,
+      DisplayModule.gForce,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
@@ -144,6 +145,7 @@ class DisplayModules {
       DisplayModule.chart,
       DisplayModule.cells,
       DisplayModule.speed,
+      DisplayModule.gForce,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {
@@ -168,6 +170,7 @@ class DisplayModules {
       DisplayModule.chart,
       DisplayModule.energyPath,
       DisplayModule.speed,
+      DisplayModule.gForce,
     },
     // The SOC ring renders whether or not a value has arrived (a missing SOC
     // shows as `--`). The energy-path row is likewise unconditional: before its
@@ -200,6 +203,7 @@ class DisplayModules {
       DisplayModule.chart,
       DisplayModule.cells,
       DisplayModule.speed,
+      DisplayModule.gForce,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},

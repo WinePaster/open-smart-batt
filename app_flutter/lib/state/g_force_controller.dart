@@ -334,6 +334,9 @@ class GForceController extends ChangeNotifier {
   CalibrationSession startCalibration() {
     final s = _session ?? CalibrationSession(config: config);
     s.start();
+    // A restart must not preview the PREVIOUS attempt's matrix.
+    _preview = null;
+    _previewReading = null;
     _session = s;
     _wizardLinear ??= source
         .linear(samplingPeriod: config.samplingPeriod)
@@ -350,8 +353,27 @@ class GForceController extends ChangeNotifier {
     _wizardLinear = null;
     _wizardRaw = null;
     _session = null;
+    _preview = null;
+    _previewReading = null;
     _notify();
   }
+
+  GForceEstimator? _preview;
+  GForceReading? _previewReading;
+
+  /// A live reading from the calibration the wizard has JUST produced, before
+  /// it is saved.
+  ///
+  /// 🔑 This is the mitigation the whole "define forward from the launch" step
+  /// rests on. Design 0045 §3.2 is candid that a launch taken while turning
+  /// skews the forward axis, and no amount of arithmetic can detect that from
+  /// inside. What CAN detect it is the rider: accelerate in a straight line and
+  /// watch whether the dot goes straight up. So the wizard's last page shows a
+  /// ball driven by this, and "calibrate again" is one tap away.
+  ///
+  /// Null until a session completes; it uses the wizard's own subscription, so
+  /// no extra stream is opened for it.
+  GForceReading? get previewReading => _previewReading;
 
   void _onWizardLinear(Vec3 v) {
     final s = _session;
@@ -359,6 +381,11 @@ class GForceController extends ChangeNotifier {
     final before = s.phase;
     s.addLinearSample(v, _now());
     if (s.phase != before) _notify();
+    final result = s.result;
+    if (result == null) return;
+    _preview ??= GForceEstimator(result, config: config);
+    _previewReading = _preview!.process(v);
+    _notify();
   }
 
   void _onWizardRaw(Vec3 v) {

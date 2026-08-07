@@ -31,7 +31,7 @@ void main() {
         scope: 'all devices',
         layout: kLayout,
         home: 'tiles=auto',
-        speedDetection: false,
+        speedDetection: false, gMeter: false,
         connections: 1,
         rawPacketLog: rawPacketLog,
       );

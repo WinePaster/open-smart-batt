@@ -173,6 +173,16 @@ void main() {
         ProductClass.powerBank: true,
         ProductClass.unknown: true,
       },
+      // gForce (design 0045) — TRUE on all four, for `speed`'s reason exactly:
+      // it reads the phone's accelerometer, so no property of the hardware
+      // gives a column anything to differ on. Whether it can be SEEN is a
+      // different question (switch + calibration), asked by `renderedModules`.
+      DisplayModule.gForce: {
+        ProductClass.smartBattery: true,
+        ProductClass.supercapacitor: true,
+        ProductClass.powerBank: true,
+        ProductClass.unknown: true,
+      },
     };
 
     test('availability matches §4 for all six modules × four classes', () {

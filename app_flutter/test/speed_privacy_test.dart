@@ -147,17 +147,41 @@ void main() {
       expect(off.speedDetection, isFalse);
     });
 
+    // 🔴 RE-POINTED 2026-08-07, by ruling, in the same change that landed
+    // design 0045. The QUESTION is unchanged, word for word: with detection
+    // off, no class and no stored face may lay out `DisplayModule.speed`. What
+    // changed is which function is asked.
+    //
+    // Until design 0045 the filtering happened at the FACE layer, so asking
+    // `watchfaceModules(cls, renderedWatchface(…))` was the whole story: switch
+    // off ⇒ `riding` fell back to `standard` ⇒ no `speed` in the list. Design
+    // 0045 Q3 lets the G meter keep `riding` alive on its own, so `riding` can
+    // now be DRAWN with speed detection off — and a face-level check would have
+    // gone on passing while the speed card was laid out anyway. The decision
+    // moved down one layer, to `renderedModules`, and so does this test.
+    //
+    // This is a MORE precise question, not a weaker one: "which face is drawn"
+    // was only ever a proxy for "what is on it", and the proxy has stopped
+    // being exact.
     test('with it off, NO face on ANY class lays out the speed module', () {
       // Link 1, and the load-bearing one. The GNSS gate's first condition is
-      // "the effective face renders speed", and the speed card is what reports
-      // it. No module ⇒ no card ⇒ no stream ⇒ no sample ⇒ no row. Everything
+      // "a speed card is mounted", and only a laid-out module produces one.
+      // No module ⇒ no card ⇒ no stream ⇒ no sample ⇒ no row. Everything
       // downstream is unreachable rather than merely unwritten.
-      for (final cls in ProductClass.values) {
-        for (final stored in Watchface.values) {
-          final drawn = watchfaceModules(cls, renderedWatchface(cls, stored, off));
-          expect(drawn, isNot(contains(DisplayModule.speed)),
-              reason: '$cls / ${stored.slug} would draw the speed card with '
-                  'detection off, which would open the GNSS stream');
+      //
+      // Both G states are swept, because "G available" is exactly the input
+      // that makes `riding` reachable with speed off — testing only the
+      // convenient one would leave the new hole untested.
+      for (final gAvailable in [false, true]) {
+        for (final cls in ProductClass.values) {
+          for (final stored in Watchface.values) {
+            final drawn = renderedModules(cls, stored, off,
+                gForceAvailable: gAvailable);
+            expect(drawn, isNot(contains(DisplayModule.speed)),
+                reason: '$cls / ${stored.slug} (G available: $gAvailable) '
+                    'would draw the speed card with detection off, which '
+                    'would open the GNSS stream');
+          }
         }
       }
     });
@@ -168,7 +192,7 @@ void main() {
       for (final cls in ProductClass.values) {
         final withSpeed = [
           for (final f in Watchface.values)
-            if (watchfaceModules(cls, renderedWatchface(cls, f, on))
+            if (renderedModules(cls, f, on, gForceAvailable: false)
                 .contains(DisplayModule.speed))
               f,
         ];
@@ -202,14 +226,29 @@ void main() {
         // …), not something these two columns do differently, and changing it
         // would move every recipient's spreadsheet. What matters for G2 is only
         // that it is not `0`.
+        //
+        // 🔴 Columns are located BY NAME, not by counting from the end. This
+        // used to assert that `accel` was the last column and then index
+        // backwards from it; design 0045 appended `g_long`/`g_lat` under the
+        // standing append-only rule and the arithmetic silently pointed at the
+        // wrong cells. Positional indexing into a list that is documented as
+        // growing was the bug, so the fix is to stop doing it — the assertions
+        // themselves are unchanged.
         final csv = await repo.exportCsv();
         final body = csv.text.split(RegExp(r'\r?\n'));
-        expect(body.first.split(',').last.replaceAll('"', ''), 'accel');
+        final header =
+            body.first.split(',').map((c) => c.replaceAll('"', '')).toList();
         final cells = body[1].split(',');
-        expect(cells[cells.length - 2], 'null', reason: 'speed');
-        expect(cells.last, 'null', reason: 'accel');
-        expect(cells.last, isNot('0'));
-        expect(cells.last, isNot('0.0'));
+        String cell(String column) {
+          final i = header.indexOf(column);
+          expect(i, greaterThanOrEqualTo(0), reason: 'no $column column');
+          return cells[i];
+        }
+
+        expect(cell('speed'), 'null', reason: 'speed');
+        expect(cell('accel'), 'null', reason: 'accel');
+        expect(cell('accel'), isNot('0'));
+        expect(cell('accel'), isNot('0.0'));
       }();
     });
   });

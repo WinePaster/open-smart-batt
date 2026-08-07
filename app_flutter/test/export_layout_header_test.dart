@@ -33,7 +33,8 @@ void main() {
   List<String> header(
           {required String layout,
           String home = 'tiles=auto',
-          bool speedDetection = false}) =>
+          bool speedDetection = false,
+          bool gMeter = false}) =>
       exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: DateTime.utc(2026, 8, 4, 9, 30),
@@ -43,6 +44,7 @@ void main() {
         layout: layout,
         home: home,
         speedDetection: speedDetection,
+        gMeter: gMeter,
       );
 
   group('T10 constraint 1+6: last, and exactly one line', () {
@@ -248,14 +250,14 @@ void main() {
         Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=chart,readouts,cells,gaugeVoltage',
-        Watchface.riding: 'face=riding modules=speed,gaugeVoltage,cells',
+        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage,cells',
       },
       ProductClass.supercapacitor: {
         Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
         Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
         Watchface.diagnostic: 'face=diagnostic '
             'modules=chart,readouts,cells,gaugeVoltage',
-        Watchface.riding: 'face=riding modules=speed,gaugeVoltage,cells',
+        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage,cells',
       },
       ProductClass.powerBank: {
         Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
@@ -271,7 +273,7 @@ void main() {
         // `speed detection: off` line beside it is what resolves the two. A
         // preamble filtered by the switch would delete exactly the evidence a
         // reader needs to explain the screenshot.
-        Watchface.riding: 'face=riding modules=speed,gaugeSoc,energyPath',
+        Watchface.riding: 'face=riding modules=speed,gForce,gaugeSoc,energyPath',
       },
     };
 
@@ -358,7 +360,89 @@ void main() {
         speedDetection: false,
       );
       expect(lines, contains('speed detection: off'));
-      expect(lines.last, 'layout: face=riding modules=speed,gaugeVoltage,cells');
+      expect(lines.last,
+          'layout: face=riding modules=speed,gForce,gaugeVoltage,cells');
+    });
+  });
+
+  // =========================================================================
+  // design 0045 §3.7 — `g meter: on/off`
+  // =========================================================================
+  //
+  // The third switch line, on the same terms as the two above. It is what
+  // stops an empty `g_long`/`g_lat` column pair from meaning three things at
+  // once; see the line's own comment in `export_header.dart` for how the
+  // remaining two are separated.
+  group('the preamble states the G meter switch', () {
+    test('off is stated, not omitted', () {
+      expect(header(layout: 'face=standard modules=x', gMeter: false),
+          contains('g meter: off'));
+    });
+
+    test('on is stated too', () {
+      expect(header(layout: 'face=riding modules=gForce,x', gMeter: true),
+          contains('g meter: on'));
+    });
+
+    test('exactly one line, in both states', () {
+      for (final on in [true, false]) {
+        final lines = header(layout: 'face=standard modules=x', gMeter: on);
+        expect(lines.where((l) => l.startsWith('g meter: ')), hasLength(1));
+      }
+    });
+
+    test('it comes BEFORE the layout line, which stays last', () {
+      final lines = header(layout: 'face=riding modules=gForce,x', gMeter: true);
+      expect(lines.last, startsWith('layout: '));
+      expect(lines.indexWhere((l) => l.startsWith('g meter: ')),
+          lessThan(lines.length - 1));
+    });
+
+    test('the value carries no second `: ` and no newline', () {
+      for (final on in [true, false]) {
+        final line = header(layout: 'face=standard modules=x', gMeter: on)
+            .firstWhere((l) => l.startsWith('g meter: '));
+        expect(line.substring('g meter: '.length), isNot(contains(': ')));
+        expect(line, isNot(contains('\n')));
+        expect(line, isNot(contains('\r')));
+      }
+    });
+
+    test('the two switch lines are independent, and both are always present',
+        () {
+      // Design 0045 Q2 ruled the G meter INDEPENDENT of speed detection, so
+      // all four combinations are reachable and a reader has to be able to tell
+      // them apart. A single "riding features" line could not.
+      for (final speed in [true, false]) {
+        for (final g in [true, false]) {
+          final lines = header(
+              layout: 'face=standard modules=x',
+              speedDetection: speed,
+              gMeter: g);
+          expect(lines, contains('speed detection: ${speed ? 'on' : 'off'}'));
+          expect(lines, contains('g meter: ${g ? 'on' : 'off'}'));
+        }
+      }
+    });
+
+    test('three lines read together explain a riding face that drew standard',
+        () {
+      // The design 0045 ruling (iv) case, and the reason `exportLayoutValue`
+      // gained a note about DECLARED versus RENDERED. With both switches off,
+      // `riding` falls back to `standard` — while the layout line still
+      // declares all four of its modules. Only the three lines together say so.
+      final lines = header(
+        layout: exportLayoutValue(
+          cls: ProductClass.smartBattery,
+          layout: const DisplayLayout(watchface: Watchface.riding),
+        ),
+        speedDetection: false,
+        gMeter: false,
+      );
+      expect(lines, contains('speed detection: off'));
+      expect(lines, contains('g meter: off'));
+      expect(lines.last,
+          'layout: face=riding modules=speed,gForce,gaugeVoltage,cells');
     });
   });
 

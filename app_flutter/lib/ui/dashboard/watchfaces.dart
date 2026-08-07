@@ -159,30 +159,64 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // and the per-cell card is the pack's equivalent. Dropping the numbers grid
     // is what makes room for a 52 pt speed without scrolling.
     //
-    // ⚠️ This function is PURE and stays that way. The speed master switch is
-    // NOT consulted here: T1/T2/T2b and the export preamble all read this, and
-    // a face whose composition depended on a setting would make `modules=` in a
-    // capture mean different things on different phones. The switch is applied
-    // one level up, in [renderedWatchface].
+    // ⚠️ This function is PURE and stays that way. Neither master switch is
+    // consulted here: T1/T2/T2b and the export preamble all read this, and a
+    // face whose composition depended on a setting would make `modules=` in a
+    // capture mean different things on different phones. The switches are
+    // applied one level up, in [renderedModules].
     //
-    // 📌 Design 0045 inserts `gForce` after `speed`. When it does, its
-    // availability joins [ridingSelectable] rather than becoming a second
-    // decision point — see that function.
+    // Design 0045 Q1 (a) put `gForce` second: speed stays at the top because it
+    // is the reading that has to be legible at a glance, and the ball sits
+    // directly under it because the two are read together — "what was I doing
+    // when the current spiked" is one question.
     case Watchface.riding:
-      return [DisplayModule.speed, gauge, extra];
+      return [DisplayModule.speed, DisplayModule.gForce, gauge, extra];
   }
 }
 
+/// Whether a PHONE module ([DisplayModule.isPhoneModule]) can draw right now.
+///
+/// The two phone modules have different availability conditions and they are
+/// written out here, once:
+///
+///  * `speed` needs the GPS master switch. Nothing else — the card has its own
+///    honest states for "no permission" and "no fix yet" and must NOT vanish
+///    for those (design 0034 §4.3).
+///  * `gForce` needs its switch AND a valid calibration. Design 0045 Q8: until
+///    the mount is calibrated there are no axes, and a card that cannot name a
+///    direction is not shown at all.
+///
+/// A device module is never asked; [renderedModules] only consults this for
+/// modules the enum says belong to the phone.
+bool phoneModuleAvailable(
+  DisplayModule m,
+  AppSettings s, {
+  required bool gForceAvailable,
+}) =>
+    switch (m) {
+      DisplayModule.speed => s.speedDetection,
+      DisplayModule.gForce => gForceAvailable,
+      _ => true,
+    };
+
 /// Whether [Watchface.riding] is available at all.
 ///
-/// 🔑 ONE decision point, used TWICE — the settings picker asks it before
-/// listing the option, and [renderedWatchface] asks it before drawing the face.
-/// Splitting those into two conditions is what produced the defect this
-/// function is written to prevent: with only the picker guarded, a user who
-/// selected `riding` and then switched speed detection off kept a stored
-/// `riding` that rendered as `[gauge, extra]` — byte for byte `compact`. Test
-/// T2b would have stayed green throughout, because it reasons about module
-/// LISTS and the collapse happens below them.
+/// 🔑 ONE decision point, used in THREE places — the watchface picker asks it
+/// before listing the option, [renderedWatchface] asks it before drawing the
+/// face, and [renderedModules] is built on it. Splitting those into separate
+/// conditions is what produced the defect this function is written to prevent:
+/// with only the picker guarded, a user who selected `riding` and then switched
+/// speed detection off kept a stored `riding` that rendered as `[gauge, extra]`
+/// — byte for byte `compact`. Test T2b would have stayed green throughout,
+/// because it reasons about module LISTS and the collapse happens below them.
+///
+/// ⚠️ There is a FOURTH caller of the old one-argument version that must NOT
+/// use this: the home editor asked `ridingSelectable` when deciding whether to
+/// offer a SPEED tile on the home grid. That is a different question wearing
+/// the same predicate, and once this became "speed OR G" it would have offered
+/// a speed tile — which mounts a `SpeedCard`, which opens the GNSS gate — to
+/// someone who only ever turned the G meter on. It now asks
+/// `phoneModuleAvailable(speed, …)` instead.
 ///
 /// Design 0041 §1.1 is the same defect on `standard`/`compact`, reported from
 /// the field as "I tapped through all three and they are all the same". Owner
@@ -191,11 +225,12 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
 /// face is a bad layout, and design 0034 G2 says a bad layout must be
 /// unreachable, not merely unusual.
 ///
-/// 📌 Design 0045 makes this `s.speedDetection || gForceAvailable`: `riding`
-/// then falls back only when EVERY card that distinguishes it is gone. Keeping
-/// that expression here, rather than adding a second guard beside it, is the
-/// point of the function existing at all.
-bool ridingSelectable(AppSettings s) => s.speedDetection;
+/// Design 0045 Q3 widened it to "speed on **or** G available": `riding` falls
+/// back only when EVERY card that distinguishes it is gone. "G on but not yet
+/// calibrated" does not count — otherwise picking `riding` would land on the
+/// collapsed layout this function exists to make unreachable.
+bool ridingSelectable(AppSettings s, {required bool gForceAvailable}) =>
+    s.speedDetection || gForceAvailable;
 
 /// The face actually DRAWN, given the stored one, the class and the settings.
 ///
@@ -204,27 +239,83 @@ bool ridingSelectable(AppSettings s) => s.speedDetection;
 ///  1. [effectiveWatchface] — an inapplicable CONTEXT (design 0034 Q4: an
 ///     unclassified unit keeps `standard`, because its screen is already asking
 ///     the user what the device is).
-///  2. `riding` with speed detection off — an unavailable FACE.
+///  2. `riding` with NOTHING to put on it — an unavailable FACE.
 ///
 /// Non-destructive: the stored slug is not rewritten, so the face returns by
-/// itself when the switch goes back on.
+/// itself when a switch goes back on.
 ///
-/// ⚠️ The export preamble deliberately does NOT go through here — it reports
-/// [exportLayoutValue], i.e. what the LAYOUT says, not what rendered. A capture
-/// from a phone in this state reads `face=riding modules=speed,…` next to
-/// `speed detection: off`, and those two lines together are what let a reader
-/// work out why the screenshot shows something else. Routing the preamble
-/// through the fallback would erase exactly that evidence.
+/// ⚠️ Callers that are about to draw want [renderedModules], not this. This
+/// answers which face; that answers what is on it, and after design 0045 the
+/// second question has an answer the first cannot give.
 Watchface renderedWatchface(
   ProductClass cls,
   Watchface stored,
-  AppSettings settings,
-) {
+  AppSettings settings, {
+  required bool gForceAvailable,
+}) {
   final face = effectiveWatchface(cls, stored);
-  if (face == Watchface.riding && !ridingSelectable(settings)) {
+  if (face == Watchface.riding &&
+      !ridingSelectable(settings, gForceAvailable: gForceAvailable)) {
     return Watchface.standard;
   }
   return face;
+}
+
+/// 🔑 The cards actually DRAWN: the resolved face, minus any phone module that
+/// is switched off or unavailable. **Every render path reads this.**
+///
+/// ## Why this layer grew a second job (owner ruling, 2026-08-07)
+///
+/// Until design 0045 the resolution layer answered one question — which FACE —
+/// and that was enough, because `riding` had exactly one phone module on it.
+/// With the switch off the whole face fell back to `standard`, so `speed` was
+/// never laid out, and THAT is what made design 0042's privacy chain
+/// structural: no module ⇒ no card ⇒ no GNSS ⇒ no rows. The chain is spelled
+/// out in `gps_speed_controller.dart`, which has no `speedDetection` condition
+/// of its own precisely because it does not need one.
+///
+/// Design 0045 Q3 puts a SECOND phone module on the same face and lets EITHER
+/// one keep it alive. That breaks the face-level answer: with speed off and the
+/// G meter available, `riding` is drawn, and a face-only resolution would have
+/// laid out `speed` — mounting a `SpeedCard`, opening the GNSS stream, and
+/// landing speed rows for a user who never saw the location consent dialog.
+/// Not a test failure: an actual leak.
+///
+/// The fix is NOT a second gate in `dashboardCardFor` (`settings.speedDetection
+/// ? SpeedCard() : null`). That is the duplicate decision point the 2026-08-07
+/// ruling removed, and it would put the privacy guarantee back into a check
+/// somebody can forget. It is to widen THIS layer's output from a `Watchface`
+/// to a `List<DisplayModule>`: still one decision point, asked once, now
+/// answering the question that actually determines what gets built.
+///
+/// ## What the four states look like
+///
+/// | speed | G available | `riding` renders          |
+/// |-------|-------------|---------------------------|
+/// | on    | no          | `[speed, gauge, extra]`   |
+/// | off   | yes         | `[gForce, gauge, extra]`  |
+/// | on    | yes         | `[speed, gForce, gauge, extra]` |
+/// | off   | no          | not selectable → `standard` |
+///
+/// Each of the first three differs from `compact` (`[gauge, extra]`) by
+/// something visible, which is the T2b property; the fourth never happens.
+///
+/// ⚠️ The export preamble deliberately does NOT come through here — see
+/// [exportLayoutValue].
+List<DisplayModule> renderedModules(
+  ProductClass cls,
+  Watchface stored,
+  AppSettings settings, {
+  required bool gForceAvailable,
+}) {
+  final face = renderedWatchface(cls, stored, settings,
+      gForceAvailable: gForceAvailable);
+  return [
+    for (final m in watchfaceModules(cls, face))
+      if (!m.isPhoneModule ||
+          phoneModuleAvailable(m, settings, gForceAvailable: gForceAvailable))
+        m,
+  ];
 }
 
 /// The watchface actually drawn for [cls], given what is stored.
@@ -268,6 +359,29 @@ Watchface effectiveWatchface(ProductClass cls, Watchface stored) =>
 /// includes `cells` reports `cells` even on a session where DVOL never
 /// arrived. That is the whole point — the reader is trying to tell "the data
 /// was missing" apart from "the card was not on the page".
+///
+/// ## 🔑 DECLARED is not RENDERED, and the preamble says both
+///
+/// This value comes from the PURE [watchfaceModules], never from
+/// [renderedModules], so a capture can name cards the screenshot beside it does
+/// not show. There are two ways that happens and the reader needs to be able to
+/// tell them apart — which is why the preamble carries three lines, not one:
+///
+///  1. **The face fell back.** `layout: face=riding modules=speed,gForce,…`
+///     next to `speed detection: off` AND `g meter: off` means the stored face
+///     was `riding`, nothing on it was available, and `standard` was drawn.
+///  2. **The face drew, minus a card.** The same `layout:` line next to
+///     `speed detection: off` and `g meter: on` means `riding` DID draw — as
+///     `[gForce, gauge, extra]`, with no speed card. `g meter: on` with no
+///     `g_long`/`g_lat` values in the CSV narrows it further: the switch was on
+///     but the mount was not calibrated, so the G card was not drawn either
+///     (design 0045 Q8).
+///
+/// Filtering this line by what rendered would collapse both cases into "the
+/// cards you can see", and with them the evidence for WHY. The rule is the same
+/// one design 0034 §8 started from: the preamble records the configuration, the
+/// switch lines record what the configuration was allowed to do, and reading
+/// them together is how a screenshot becomes evidence.
 String exportLayoutValue({
   required ProductClass? cls,
   required DisplayLayout? layout,

@@ -65,10 +65,15 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// and `context.read` is no longer legal.
   GpsSpeedController? _gps;
 
+  /// Same capture, same reason — this page is gate condition 3's pushed-route
+  /// half for BOTH streams (design 0042 §3.4, design 0045 §3.5).
+  GForceController? _gforce;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _gps = context.read<GpsSpeedController>();
+    _gforce = context.read<GForceController>();
     _setVisible(true);
   }
 
@@ -85,9 +90,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// unmounts and remounts within one frame still ends on the right value.
   void _setVisible(bool v) {
     final gps = _gps;
-    if (gps == null) return;
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => gps.setDetailVisible(v));
+    final gforce = _gforce;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      gps?.setDetailVisible(v);
+      gforce?.setDetailVisible(v);
+    });
   }
 
   @override

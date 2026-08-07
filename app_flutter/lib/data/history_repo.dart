@@ -100,11 +100,33 @@ class HistoryRepo {
     // `speed detection: on/off` preamble line, which is emitted unconditionally
     // for exactly that reason; the third by `app_build`.
     //
-    // `g_long`/`g_lat` are deliberately NOT here — design 0045 adds them to
-    // this list when it starts writing them, so a column of blanks never
-    // appears in a recipient's spreadsheet ahead of the feature.
     'speed',
     'accel',
+    // design 0045, appended when it started writing them — the note that used
+    // to stand here reserved the place and said the columns must not appear
+    // before the feature did.
+    //
+    // Same terms as `speed`/`accel` above: they describe the PHONE, and every
+    // row of the same minute carries the same pair. Metres per second squared,
+    // signed, in VEHICLE coordinates — `g_long` positive is accelerating and
+    // negative is braking; `g_lat` positive is a LEFT-hand corner.
+    //
+    // ⚠️ Minute AVERAGES of a signed quantity. A minute spent accelerating and
+    // braking averages towards zero, and so does a minute of alternating
+    // corners; the number is honest about what it is (the mean of what the
+    // rider was shown) rather than a peak nobody saw. Design 0045 §3.7 accepted
+    // that when C1 settled the table's granularity.
+    //
+    // 🔑 `g_lat` is the only column in this table that can see CORNERING.
+    // `accel` is the derivative of a GPS speed, which is a scalar along the
+    // direction of travel — it cannot. That is the increment design 0045 Q4
+    // wanted: "what did the current do through that bend" has no other source.
+    //
+    // Blank means the G meter was off, uncalibrated, or not on screen that
+    // minute — settled by the `g meter: on/off` preamble line together with
+    // `app_build`, exactly as `speed detection:` settles the two above.
+    'g_long',
+    'g_lat',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
@@ -119,7 +141,8 @@ class HistoryRepo {
   /// it. This table accumulates across upgrades, so the two can differ by
   /// months, and an export that only names the exporting build cannot say which
   /// version produced any particular row.
-  /// [speedMps] / [accelMps2] are the PHONE's, not this unit's — same "artefact
+  /// [speedMps] / [accelMps2] / [gLongMs2] / [gLatMs2] are the PHONE's, not
+  /// this unit's — same "artefact
   /// of our own aggregation, not part of [TelemetrySample]" reasoning as
   /// [samples] and [appBuild], and for a sharper reason: the device never
   /// reports them and never could. Folding them onto the sample type would put
@@ -134,11 +157,16 @@ class HistoryRepo {
     String? appBuild,
     double? speedMps,
     double? accelMps2,
+    double? gLongMs2,
+    double? gLatMs2,
   }) {
     return _db.insert(
       Db.tableHistory,
       _row(sample, deviceId, samples, appBuild,
-          speedMps: speedMps, accelMps2: accelMps2),
+          speedMps: speedMps,
+          accelMps2: accelMps2,
+          gLongMs2: gLongMs2,
+          gLatMs2: gLatMs2),
     );
   }
 
@@ -161,13 +189,17 @@ class HistoryRepo {
     String? appBuild, {
     double? speedMps,
     double? accelMps2,
+    double? gLongMs2,
+    double? gLatMs2,
   }) =>
       Map<String, Object?>.from(s.toMap())
         ..['device_id'] = deviceId
         ..['samples'] = samples
         ..['app_build'] = appBuild
         ..['speed'] = speedMps
-        ..['accel'] = accelMps2;
+        ..['accel'] = accelMps2
+        ..['g_long'] = gLongMs2
+        ..['g_lat'] = gLatMs2;
 
   /// Query history newest-first.
   ///

@@ -960,6 +960,121 @@ class AppLocalizationsZh extends AppLocalizations {
   String get speedQualityNone => '無訊號';
 
   @override
+  String get gForceCardHeading => 'G 值錶';
+
+  @override
+  String get gForceLongLabel => '前後';
+
+  @override
+  String get gForceLatLabel => '橫向';
+
+  @override
+  String get gForcePeakLabel => '峰值';
+
+  @override
+  String get gForceAccel => '加速';
+
+  @override
+  String get gForceBrake => '煞車';
+
+  @override
+  String get gForceLeft => '左';
+
+  @override
+  String get gForceRight => '右';
+
+  @override
+  String get gForceResetPeakHint => '點峰值可歸零';
+
+  @override
+  String get settingsGMeterLabel => 'G 值錶';
+
+  @override
+  String get settingsGMeterSub => '在「騎乘」錶盤顯示前後／橫向 G 值。需要先做一次校準。預設關閉。';
+
+  @override
+  String get settingsGCalibrationLabel => '校準車架';
+
+  @override
+  String get settingsGCalibrationNever => '尚未校準 —— 卡片不會出現';
+
+  @override
+  String get settingsGCalibrationInvalid => '校準已失效 —— 手機位置似乎被移動過';
+
+  @override
+  String settingsGCalibrationDone(String when) {
+    return '上次校準：$when';
+  }
+
+  @override
+  String get settingsGCalibrationClear => '校準歸零';
+
+  @override
+  String get settingsGCalibrationCleared => '已清除校準。';
+
+  @override
+  String get gConsentTitle => '要開啟 G 值錶嗎？';
+
+  @override
+  String get gConsentRecorded => '前後與橫向 G 值會寫入紀錄，並隨每一份診斷匯出檔一起送出。';
+
+  @override
+  String get gConsentCalibration => '完成手機與車架的校準之前，功能不會啟用。同意後會直接進入校準。';
+
+  @override
+  String get gConsentEnable => '啟用';
+
+  @override
+  String get gConsentCancel => '取消';
+
+  @override
+  String get gWizardTitle => '校準 G 值錶';
+
+  @override
+  String get gWizardMountTitle => '先把手機固定好';
+
+  @override
+  String get gWizardMountBody =>
+      '請照平常騎乘的方式把手機固定在車架上。校準記住的就是這個位置 —— 之後移動手機就要重做一次。';
+
+  @override
+  String get gWizardStart => '開始';
+
+  @override
+  String get gWizardStillTitle => '保持靜止';
+
+  @override
+  String get gWizardStillBody => '正在量測哪一邊是上。請不要碰手機或車子。';
+
+  @override
+  String get gWizardMovedTitle => '偵測到晃動';
+
+  @override
+  String get gWizardMovedBody => '量測過程中有東西動了，這樣量到的就不只是重力。請重來一次。';
+
+  @override
+  String get gWizardRetry => '重來一次';
+
+  @override
+  String get gWizardLaunchTitle => '接著直線起步';
+
+  @override
+  String get gWizardLaunchBody =>
+      '請緩緩地、直線向前騎兩秒左右。App 就是靠這一段學會哪邊是前 —— 起步時如果帶轉向，前方會被指歪。';
+
+  @override
+  String get gWizardDoneTitle => '校準完成';
+
+  @override
+  String get gWizardDoneBody => '驗證一下：加速時打點應該往正上方跑，煞車往正下方。如果會偏，就再校準一次。';
+
+  @override
+  String get gWizardSave => '儲存';
+
+  @override
+  String get gWizardRecalibrate => '重新校準';
+
+  @override
   String get watchfaceRiding => '騎乘';
 
   @override

@@ -97,10 +97,17 @@ class AppSettings {
   /// four-point confirmation, and the OS prompt follows the user's "enable"
   /// rather than arriving out of nowhere.
   ///
-  /// Its reach is wider than one card: with this off, [Watchface.riding] falls
-  /// back to `standard` at the render layer, so no `speed` module is ever laid
-  /// out, the GNSS gate's first condition never opens, and "off ⇒ nothing
-  /// lands" is true by construction rather than by a second check.
+  /// Its reach is wider than one card: with this off, `renderedModules` drops
+  /// `speed` from whatever face named it, so no speed card is ever built, the
+  /// GNSS gate's first condition never opens, and "off ⇒ nothing lands" is true
+  /// by construction rather than by a second check.
+  ///
+  /// ⚠️ That filtering used to happen at the FACE layer — [Watchface.riding]
+  /// fell back to `standard` outright. Design 0045 moved it down to the MODULE
+  /// layer because `riding` can now be kept alive by the G meter alone, and a
+  /// face-level answer would then have laid out `speed` for someone who never
+  /// saw the location consent dialog. The guarantee is unchanged; the layer it
+  /// is enforced at is not.
   final bool speedDetection;
 
   /// km/h or mph for every speed on screen. DEFAULT [SpeedUnit.kmh].

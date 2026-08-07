@@ -169,6 +169,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<GForceController>.value(value: s.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
         ],
         child: MaterialApp(
@@ -297,6 +298,8 @@ void main() {
             ChangeNotifierProvider<ConnectionController>.value(value: conn),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: s.telemetry),
+            ChangeNotifierProvider<GForceController>.value(
+                value: s.gforce),
             ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
           ],
           child: MaterialApp(

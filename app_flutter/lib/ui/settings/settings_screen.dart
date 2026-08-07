@@ -28,6 +28,8 @@ import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
+import 'g_calibration_wizard.dart';
+import 'g_meter_consent_dialog.dart';
 import 'speed_consent_dialog.dart';
 
 
@@ -203,6 +205,8 @@ class _DisplayCard extends StatelessWidget {
                 ],
               ),
             ),
+          const _GMeterRow(),
+          if (s.gMeterEnabled) const _GCalibrationRow(),
           _WatchfaceGuidanceRow(onOpenDevices: onOpenDevices),
         ],
       ),
@@ -270,6 +274,149 @@ class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
       ),
     );
   }
+}
+
+/// The G meter master switch (design 0045 §3.5 / Q2).
+///
+/// Stateful for [_SpeedDetectionRow]'s reason: the consent dialog and the
+/// wizard are two awaits, and a second tap while either is up would start a
+/// parallel flow. The switch reflects the STORED value at all times.
+///
+/// 🔴 Consent then wizard, in one gesture. Design 0045 R1 calls "switched on
+/// but never calibrated" this feature's biggest risk, because Q8 leaves the
+/// dashboard with nothing at all to say about it — so the flow does not offer a
+/// natural place to stop halfway. Cancelling the wizard is still allowed (a
+/// modal you cannot leave is worse), and the row below then says what is
+/// missing, permanently.
+class _GMeterRow extends StatefulWidget {
+  const _GMeterRow();
+
+  @override
+  State<_GMeterRow> createState() => _GMeterRowState();
+}
+
+class _GMeterRowState extends State<_GMeterRow> {
+  bool _busy = false;
+
+  Future<void> _onChanged(bool next) async {
+    if (_busy) return;
+    final settings = context.read<SettingsController>();
+    if (!next) {
+      // Off needs no walking through, and asking would train the user to
+      // dismiss the dialog that matters. The stored calibration is left alone
+      // — the mount has not moved because a feature was switched off.
+      await settings.setGMeterEnabled(false);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final agreed = await showGMeterConsentDialog(context);
+      if (!agreed) return;
+      await settings.setGMeterEnabled(true);
+      if (!mounted) return;
+      // Straight into the wizard, while the user is still inside the context
+      // they just agreed to.
+      await showGCalibrationWizard(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final on = context.select<SettingsController, bool>(
+        (s) => s.settings.gMeterEnabled);
+    return SettingsRow(
+      label: l10n.settingsGMeterLabel,
+      sub: l10n.settingsGMeterSub,
+      subHighlight: !on,
+      trailing: _Toggle(
+        value: on,
+        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
+      ),
+    );
+  }
+}
+
+/// Calibration state, and the two things you can do about it.
+///
+/// 🔑 This row is where ALL of the feature's guidance lives. Design 0045 Q8
+/// ruled that an uncalibrated G meter shows nothing on the dashboard — no card,
+/// no placeholder, no hint — so if this row does not say what is missing,
+/// nothing does. That is why the sub-line states the CONSEQUENCE ("the card
+/// will not appear") rather than only the state.
+///
+/// Three states, and they are genuinely different:
+///
+///  * never calibrated — the wizard has not been run;
+///  * invalid — it was run, and the still-window check has since decided the
+///    mount moved (§3.2). Distinct because "do it again" means something
+///    different when you have already done it once;
+///  * calibrated — with the date, so "I set this up before I moved the mount"
+///    is answerable without guessing.
+///
+/// "Clear calibration" is separate from the switch on purpose: design 0045
+/// §3.5's "校準歸零" is a statement about the MOUNT, and turning a feature off
+/// is not one.
+class _GCalibrationRow extends StatelessWidget {
+  const _GCalibrationRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final g = context.watch<GForceController>();
+    final at = g.calibratedAt;
+    final sub = switch (g) {
+      _ when g.calibrationInvalidated => l10n.settingsGCalibrationInvalid,
+      _ when at == null => l10n.settingsGCalibrationNever,
+      _ => l10n.settingsGCalibrationDone(_calibratedWhen(at)),
+    };
+    return Column(
+      children: [
+        // `SettingsRow` + `InkWell` rather than `SettingsLinkRow`, which has no
+        // sub-line — and the sub-line is the entire point of this row.
+        InkWell(
+          onTap: () => unawaited(showGCalibrationWizard(context)),
+          child: SettingsRow(
+            label: l10n.settingsGCalibrationLabel,
+            sub: sub,
+            subHighlight: !g.calibrated,
+            trailing:
+                Icon(Icons.chevron_right, size: 16, color: context.colors.muted),
+          ),
+        ),
+        if (at != null)
+          SettingsLinkRow(
+            icon: Icons.restart_alt,
+            label: l10n.settingsGCalibrationClear,
+            last: true,
+            onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final done = l10n.settingsGCalibrationCleared;
+              await context.read<SettingsController>().setGCalibration(null);
+              messenger.showSnackBar(SnackBar(
+                duration: const Duration(milliseconds: 1600),
+                content: Text(done),
+              ));
+            },
+          ),
+      ],
+    );
+  }
+}
+
+/// Local date-time for the calibration row.
+///
+/// Deliberately NOT the export preamble's ISO-8601: this string is read by the
+/// person holding the phone, in their own timezone, and the preamble's rule
+/// (never localized, read by whoever receives the file) does not apply to a
+/// settings row.
+String _calibratedWhen(DateTime at) {
+  final l = at.toLocal();
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${l.year}-${two(l.month)}-${two(l.day)} '
+      '${two(l.hour)}:${two(l.minute)}';
 }
 
 /// A SIGNPOST to the watchface picker, which now lives on the device's own page.
@@ -355,6 +502,7 @@ class _DataCardState extends State<_DataCard> {
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
     final speedDetection = context.read<SettingsController>().speedDetection;
+    final gMeter = context.read<SettingsController>().gMeterEnabled;
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
@@ -369,6 +517,7 @@ class _DataCardState extends State<_DataCard> {
           layout: layout,
           home: home,
           speedDetection: speedDetection,
+          gMeter: gMeter,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
@@ -536,6 +685,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
     final speedOn = context.read<SettingsController>().speedDetection;
+    final gMeterOn = context.read<SettingsController>().gMeterEnabled;
     // The dashboard layout in force right now (design 0034 §8), captured with
     // the other context reads for the same reason. The home grid likewise
     // (design 0046 Step 10).
@@ -550,8 +700,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       final identities = await exportDeviceIdentities(devices, tele, target);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, speedOn, layout, home,
-              identities);
+              tele, services, target, rawLog, speedOn, gMeterOn, layout,
+              home, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -684,6 +834,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
     bool speedDetection,
+    bool gMeter,
     String layout,
     String home,
     List<ExportDeviceIdentity> devices,
@@ -700,6 +851,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       layout: layout,
       home: home,
       speedDetection: speedDetection,
+      gMeter: gMeter,
       connections: sessions,
       rawPacketLog: rawPacketLog,
       devices: devices,

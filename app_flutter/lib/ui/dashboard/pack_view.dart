@@ -118,15 +118,23 @@ class PackScaffold extends StatelessWidget {
     final deviceId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
     final stored = context.watch<DeviceController>().layoutFor(deviceId);
-    // The speed master switch reaches the layout, not just one card: with it
-    // off a stored `riding` renders as `standard` rather than as a copy of
-    // `compact` (design 0042 §3.9, revised 2026-08-07). Selected on the whole
-    // settings object because its identity only changes when something is
-    // written — this is not on the telemetry rebuild path.
+    // The two master switches reach the LAYOUT, not just their own cards: with
+    // both off a stored `riding` renders as `standard` rather than as a copy of
+    // `compact` (design 0042 §3.9, revised 2026-08-07), and with only one on
+    // the face draws without the other's card (design 0045 Q3, ruling (iv) of
+    // 2026-08-07). Selected on the whole settings object because its identity
+    // only changes when something is written — this is not on the telemetry
+    // rebuild path.
     final settings =
         context.select<SettingsController, AppSettings>((s) => s.settings);
-    final order = watchfaceModules(
-        shellClass, renderedWatchface(shellClass, stored.watchface, settings));
+    // 🔴 Runtime, not stored: the G meter is available only while a valid
+    // calibration exists, and the still-window check can withdraw that
+    // mid-ride. `renderedModules` therefore has to be re-evaluated when this
+    // changes, which is what `select` on the controller buys.
+    final gAvailable =
+        context.select<GForceController, bool>((c) => c.available);
+    final order = renderedModules(shellClass, stored.watchface, settings,
+        gForceAvailable: gAvailable);
     // Product serial: the full serial (dealer 0x27 + product 0x26, §10.2) once
     // the connect burst arrives; else the tail-only serial; else NOTHING — the
     // row hides itself below.

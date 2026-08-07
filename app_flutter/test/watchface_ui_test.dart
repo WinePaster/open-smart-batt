@@ -174,6 +174,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<GForceController>.value(value: s.gforce),
           // design 0042: the speed card reads it, and opens the GNSS gate's
           // first condition from its own mount/unmount. Provided here (with a
           // controller whose platform seam is never touched in a test) so that

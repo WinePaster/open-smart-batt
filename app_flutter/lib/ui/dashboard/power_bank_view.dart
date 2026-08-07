@@ -55,13 +55,15 @@ class PowerBankView extends StatelessWidget {
     final deviceId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
     final stored = context.watch<DeviceController>().layoutFor(deviceId);
-    // See the same read in `pack_view.dart`: with speed detection off a stored
-    // `riding` renders as `standard`, so the face cannot collapse into a copy
-    // of `compact` (design 0042 §3.9).
+    // See the same read in `pack_view.dart`: the two master switches reach the
+    // LAYOUT, not just their own cards (design 0042 §3.9 / design 0045 Q3).
     final settings =
         context.select<SettingsController, AppSettings>((s) => s.settings);
-    final order = watchfaceModules(ProductClass.powerBank,
-        renderedWatchface(ProductClass.powerBank, stored.watchface, settings));
+    final gAvailable =
+        context.select<GForceController, bool>((c) => c.available);
+    final order = renderedModules(
+        ProductClass.powerBank, stored.watchface, settings,
+        gForceAvailable: gAvailable);
 
     return Center(
       child: ConstrainedBox(
