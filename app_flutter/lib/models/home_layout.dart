@@ -251,6 +251,20 @@ class HomeLayout {
           ? DisplayModule.gaugeSoc
           : DisplayModule.gaugeVoltage;
       return HomeLayout([
+        // 🔴 The device card comes FIRST, added 2026-08-07.
+        //
+        // The module tiles below read LIVE telemetry, so with the unit not
+        // connected — which is how the app is opened most of the time — they
+        // both fall back to `_WaitingTile` and the whole page says `--` twice.
+        // `_WaitingTile`'s own doc comment excused that on the grounds that
+        // "the device card says when that unit was last seen"; for the
+        // single-device default there was no device card, so the excuse was
+        // never true here.
+        //
+        // This tile reads `saved_devices`, not the link, so it has something
+        // honest to say whether or not anything is connected: the unit's name,
+        // its last voltage, and how long ago that was.
+        HomeTile.device(d.id),
         HomeTile.module(gauge, deviceId: d.id),
         HomeTile.module(DisplayModule.readouts, deviceId: d.id),
         ..._phoneTiles,

@@ -178,10 +178,16 @@ void main() {
 
     testWidgets('an offline module tile waits, it does not borrow lastValue',
         (tester) async {
-      // A single saved device generates [gauge, readouts] MODULE tiles
-      // (design 0046 §4.6). Offline, those have nothing to draw: `SavedDevice`
-      // stores no temperature and no current, and filling the gauge from
-      // `lastValue` without an age would be the same defect one card along.
+      // A single saved device generates [device card, gauge, readouts]
+      // (design 0046 §4.6, card added 2026-08-07). Offline, the two MODULE
+      // tiles have nothing to draw: `SavedDevice` stores no temperature and no
+      // current, and filling the gauge from `lastValue` without an age would be
+      // the same defect one card along.
+      //
+      // The device card DOES print `lastValue` — with its age, which is the
+      // whole distinction this group is about. So the assertion below counts:
+      // exactly one place on the page may show that number, and a module tile
+      // that started borrowing it would make two.
       final s = await boot(tester, devices: [
         SavedDevice(
           id: 'A',
@@ -194,9 +200,10 @@ void main() {
       await pumpHome(tester, s);
 
       expect(find.text('--'), findsWidgets);
-      expect(find.text('12.64'), findsNothing,
+      expect(find.text('12.64'), findsOneWidget,
           reason: 'a module tile has no timestamp to carry, so it shows the '
-              'waiting state instead of a stored number');
+              'waiting state instead of a stored number — only the device '
+              'card, which does carry one, may print it');
       expect(find.text('LIVE'), findsNothing);
     });
 

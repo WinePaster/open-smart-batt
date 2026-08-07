@@ -88,13 +88,34 @@ void main() {
       expect(_deviceTiles(l), hasLength(1));
     });
 
-    test('one device gets its instrument and its numbers', () {
+    test('one device gets its card, its instrument and its numbers', () {
       final l = HomeLayout.defaultFor([_dev('A')]);
       final own = _deviceTiles(l);
-      expect(own, hasLength(2));
-      expect(own[0].module, DisplayModule.gaugeVoltage);
-      expect(own[1].module, DisplayModule.readouts);
+      expect(own, hasLength(3));
+      // 🔴 The card is FIRST and it is not decoration. The two module tiles
+      // read live telemetry, so with nothing connected they both render as
+      // `_WaitingTile` and the page says `--` twice; this tile reads
+      // `saved_devices` and says the unit's name, its last voltage and how
+      // long ago. Added 2026-08-07 after the offline page was photographed.
+      expect(own[0].kind, HomeTileKind.deviceCard);
+      expect(own[1].module, DisplayModule.gaugeVoltage);
+      expect(own[2].module, DisplayModule.readouts);
       expect(own.every((t) => t.deviceId == 'A'), isTrue);
+    });
+
+    test('🔴 the default layout always has something to say when offline', () {
+      // The general form of the rule above, and the one worth keeping: for
+      // EVERY device count, at least one tile draws from stored state rather
+      // than from a live link. Without it the app's default entry point is
+      // blank whenever the unit is out of range, which is most of the time.
+      for (final n in [0, 1, 2, 5]) {
+        final l = HomeLayout.defaultFor(
+            [for (var i = 0; i < n; i++) _dev('D\$i')]);
+        final offlineCapable = l.tiles.where((t) =>
+            t.kind == HomeTileKind.deviceCard ||
+            t.kind == HomeTileKind.addDevice);
+        expect(offlineCapable, isNotEmpty, reason: 'with \$n device(s)');
+      }
     });
 
     test('a single power bank gets the SOC ring, not the rail', () {
@@ -102,7 +123,9 @@ void main() {
       // in a new place: a single cell's 3.79 V drawn on a 12 V pack dial.
       final l =
           HomeLayout.defaultFor([_dev('A', cls: ProductClass.powerBank)]);
-      expect(l.tiles.first.module, DisplayModule.gaugeSoc);
+      final own = _deviceTiles(l);
+      expect(own[0].kind, HomeTileKind.deviceCard);
+      expect(own[1].module, DisplayModule.gaugeSoc);
     });
 
     test('N devices get one card each', () {

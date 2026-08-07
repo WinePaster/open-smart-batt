@@ -108,21 +108,24 @@ void main() {
   }
 
   testWidgets('T-new-2b: the last card cannot be deleted', (tester) async {
-    // One saved device generates TWO tiles, so deleting one gets us to the
-    // floor by the route a user would take rather than by constructing it.
+    // One saved device generates THREE tiles (device card + gauge + readouts;
+    // the card was added 2026-08-07), so deleting down to the floor happens by
+    // the route a user would take rather than by constructing it.
     final s = await boot(tester);
     addTearDown(() => teardown(tester, s));
     await pumpEditor(tester, s);
 
     var deletes = find.byIcon(Icons.close);
-    expect(deletes, findsNWidgets(2));
+    expect(deletes, findsNWidgets(3));
     expect(
       tester.widgetList<IconButton>(find.byType(IconButton)).where((b) =>
           (b.icon as Icon).icon == Icons.close && b.onPressed != null),
-      hasLength(2),
+      hasLength(3),
     );
 
     await tester.tap(deletes.first);
+    await settle(tester);
+    await tester.tap(find.byIcon(Icons.close).first);
     await settle(tester);
 
     // At the floor.
