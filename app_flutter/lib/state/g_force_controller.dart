@@ -75,8 +75,8 @@ class SensorsPlusGForceSource implements GForceSensorSource {
 /// what the estimator produced, so the recorded series and the rendered one
 /// have a single source.
 @immutable
-class GForceSample {
-  const GForceSample({
+class GForceEstimate {
+  const GForceEstimate({
     required this.longMs2,
     required this.latMs2,
     required this.at,
@@ -224,11 +224,19 @@ class GForceController extends ChangeNotifier {
   GForceReading? _reading;
   DateTime? _readingPublishedAt;
 
-  final StreamController<GForceSample> _samples =
-      StreamController<GForceSample>.broadcast();
+  final StreamController<GForceEstimate> _estimates =
+      StreamController<GForceEstimate>.broadcast();
 
   /// Estimator-layer samples for the history table (design 0045 §3.7).
-  Stream<GForceSample> get samples => _samples.stream;
+  ///
+  /// Named `estimates` to match `SpeedEstimator.estimates` and
+  /// `GpsSpeedController.accelEstimates`, and that is not only tidiness:
+  /// `estimate_wiring_test.dart` derives its checklist from
+  /// `bind\w*Estimates` on `TelemetryController`, so a stream named to the
+  /// house pattern is covered by that guard automatically. A third estimate
+  /// stream produced and never bound is exactly the defect that test was
+  /// written for, one release ago.
+  Stream<GForceEstimate> get estimates => _estimates.stream;
 
   /// What the card draws, or null when there is nothing to draw.
   GForceReading? get reading => _reading;
@@ -300,8 +308,8 @@ class GForceController extends ChangeNotifier {
     if (last != null && t.difference(last) < config.readoutThrottle) return;
     _readingPublishedAt = t;
     _reading = r;
-    if (!_samples.isClosed) {
-      _samples.add(GForceSample(
+    if (!_estimates.isClosed) {
+      _estimates.add(GForceEstimate(
           longMs2: e.rawLongMs2, latMs2: e.rawLatMs2, at: t));
     }
     _notify();
@@ -410,7 +418,7 @@ class GForceController extends ChangeNotifier {
     _rideRaw?.cancel();
     _wizardLinear?.cancel();
     _wizardRaw?.cancel();
-    _samples.close();
+    _estimates.close();
     super.dispose();
   }
 }

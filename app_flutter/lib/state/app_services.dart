@@ -158,7 +158,7 @@ class AppServices {
     // applied once more: the three series have different lifetimes, and a
     // minute that measured speed but no G must record the one and leave the
     // other null.
-    telemetry.bindGForceSamples(gforce.samples);
+    telemetry.bindGForceEstimates(gforce.estimates);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);

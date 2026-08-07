@@ -773,14 +773,14 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// when the card is on screen — which needs the switch AND a valid
   /// calibration. "Off or uncalibrated ⇒ nothing recorded" therefore needs no
   /// check here, exactly as it needs none for speed.
-  void bindGForceSamples(Stream<GForceSample> samples) {
+  void bindGForceEstimates(Stream<GForceEstimate> samples) {
     _gForceSub?.cancel();
-    _gForceSub = samples.listen(_onGForceSample);
+    _gForceSub = samples.listen(_onGForceEstimate);
   }
 
-  StreamSubscription<GForceSample>? _gForceSub;
+  StreamSubscription<GForceEstimate>? _gForceSub;
 
-  void _onGForceSample(GForceSample s) =>
+  void _onGForceEstimate(GForceEstimate s) =>
       foldSpeedSample(gLongMs2: s.longMs2, gLatMs2: s.latMs2);
 
   void _onPacket(BlePacketEvent e) {
