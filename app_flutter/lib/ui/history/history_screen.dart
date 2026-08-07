@@ -343,32 +343,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ---- pieces -----------------------------------------------------------
 
-  /// Gap between the range control and the actions, and between the actions.
-  static const double _kToolbarGap = 8;
+  /// Gap between the two actions.
   static const double _kToolbarActionGap = 7;
 
-  /// Range picker + warning filter + export, on one line where that fits and
-  /// on two where it does not.
+  /// The two actions — filter and export — as one right-aligned group.
   ///
-  /// Measured 2026-08-03: on a 320 pt phone the one-line form needs 184.1 px
-  /// for the three zh labels but only gets 175.7 — and the overflow was
-  /// SILENT (the control clips), so the third range was simply missing. The
-  /// breakpoint is therefore measured from the actual labels at the actual
-  /// text scale rather than hard-coded: a pixel constant would go stale the
-  /// moment a label, a language or the OS text size changed.
-  Widget _toolbar() {
+  /// Built here rather than inline because they have TWO homes: normally the
+  /// device-scope card (see [_deviceBar]), and the toolbar line when there is
+  /// no device bar to put them in. Getting that wrong would make export
+  /// unreachable on a phone with nothing saved, which is exactly the phone
+  /// whose owner is most likely to be sending us a file.
+  Widget _actions() {
     final l10n = AppLocalizations.of(context);
-    final ranges = <({HistoryRange value, String label})>[
-      (value: HistoryRange.today, label: l10n.historyRangeToday),
-      (value: HistoryRange.week, label: l10n.historyRangeWeek),
-      (value: HistoryRange.all, label: l10n.historyRangeAll),
-    ];
-
-    final segmented = SegmentedControl<HistoryRange>(
-      selected: _range,
-      onChanged: _setRange,
-      options: ranges,
-    );
     final warning = FilterChip2(
       label: l10n.historyFilterWarning,
       icon: Icons.warning_amber_rounded,
@@ -396,54 +382,58 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onTap: _exportCsv,
           );
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 8, 15, 4),
-      child: LayoutBuilder(
-        builder: (context, c) {
-          final needed = segmentedControlNaturalWidth(
-                context,
-                [for (final r in ranges) r.label],
-              ) +
-              _kToolbarGap +
-              filterChipNaturalWidth(context, l10n.historyFilterWarning,
-                  hasIcon: true) +
-              _kToolbarActionGap +
-              (_exporting
-                  ? 28
-                  : filterChipNaturalWidth(context, l10n.historyExportCsv,
-                      hasIcon: true));
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        warning,
+        const SizedBox(width: _kToolbarActionGap),
+        export,
+      ],
+    );
+  }
 
-          if (needed <= c.maxWidth) {
-            return Row(
+  /// The range picker, alone on its line.
+  ///
+  /// 🔴 It used to share the line with the two actions, and the measured
+  /// breakpoint below is why: on a 320 pt phone the one-line form needed
+  /// 184.1 px for the three zh labels and got 175.7, and the overflow was
+  /// SILENT — the control clips, so 「全部」 was simply missing.
+  ///
+  /// Reported 2026-08-07 as「太擠」, which it was even where it fitted: three
+  /// unrelated groups of controls abutting each other with 7-8 px between
+  /// them. The actions moved into the device-scope card, so this line now has
+  /// the width to itself and the breakpoint arithmetic is gone with the
+  /// problem it measured.
+  Widget _toolbar() {
+    final l10n = AppLocalizations.of(context);
+    final options = _optionsFor(_groups, context.watch<DeviceController>());
+    final hasDeviceBar =
+        options.isNotEmpty && _deviceId != null &&
+            options.any((o) => o.id == _deviceId);
+    final segmented = SegmentedControl<HistoryRange>(
+      selected: _range,
+      onChanged: _setRange,
+      options: <({HistoryRange value, String label})>[
+        (value: HistoryRange.today, label: l10n.historyRangeToday),
+        (value: HistoryRange.week, label: l10n.historyRangeWeek),
+        (value: HistoryRange.all, label: l10n.historyRangeAll),
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(15, 8, 15, 8),
+      child: hasDeviceBar
+          ? segmented
+          // No device card to host them, so the actions stay here rather than
+          // vanishing. Two lines, because that is the shape that fits.
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: segmented),
-                const SizedBox(width: _kToolbarGap),
-                warning,
-                const SizedBox(width: _kToolbarActionGap),
-                export,
+                segmented,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: _actions()),
               ],
-            );
-          }
-          // Two lines: the range control keeps the full width (its labels are
-          // the ones that were being cut), the actions sit under it, still
-          // right-aligned as they are in the one-line form.
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              segmented,
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  warning,
-                  const SizedBox(width: _kToolbarActionGap),
-                  export,
-                ],
-              ),
-            ],
-          );
-        },
-      ),
+            ),
     );
   }
 
@@ -460,34 +450,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // items throws.
     if (options.isEmpty || selected == null) return null;
     if (!options.any((o) => o.id == selected)) return null;
+    // 🔴 In a panel, like every other block on this screen.
+    //
+    // It used to be a bare icon and a dropdown floating on the page
+    // background, wedged between the toolbar and the chart card — reported
+    // 2026-08-07 as wanting「像 block 一樣加入一白框」. It says WHICH unit every
+    // number below belongs to, which is the same kind of statement the cards
+    // make, so it should look like one.
+    //
+    // The two actions ride along on the right. They are scope-and-act
+    // controls, not view options, and this is the only row on the screen that
+    // is already about scope — see [_actions] for what happens when this bar
+    // is absent.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 0, 15, 4),
-      child: Row(
-        children: [
-          Icon(Icons.devices_other, size: 15, color: context.colors.muted),
-          const SizedBox(width: 7),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: selected,
-                isDense: true,
-                isExpanded: true,
-                style: TextStyle(fontSize: 12.5, color: context.colors.text),
-                dropdownColor: context.colors.panel2,
-                items: [
-                  for (final o in options)
-                    DropdownMenuItem<String>(
-                      value: o.id,
-                      child: Text(o.label, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                onChanged: (id) {
-                  if (id != null) _setDevice(id);
-                },
+      padding: const EdgeInsets.fromLTRB(15, 0, 15, 0),
+      child: IndustrialCard(
+        padding: const EdgeInsets.fromLTRB(11, 5, 7, 5),
+        child: Row(
+          children: [
+            Icon(Icons.devices_other, size: 15, color: context.colors.muted),
+            const SizedBox(width: 7),
+            Expanded(
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selected,
+                  isDense: true,
+                  isExpanded: true,
+                  style: TextStyle(fontSize: 12.5, color: context.colors.text),
+                  dropdownColor: context.colors.panel2,
+                  items: [
+                    for (final o in options)
+                      DropdownMenuItem<String>(
+                        value: o.id,
+                        child: Text(o.label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (id) {
+                    if (id != null) _setDevice(id);
+                  },
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            _actions(),
+          ],
+        ),
       ),
     );
   }

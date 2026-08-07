@@ -531,6 +531,41 @@ void main() {
       expect(find.byType(DropdownButton<String>), findsNothing);
     });
 
+    testWidgets('🔴 export is reachable even with no device bar', (t) async {
+      // 2026-08-07: the toolbar was reported as「太擠」— range picker, warning
+      // filter and export chip abutting on one line. The two actions moved into
+      // the device-scope card, which is the only other row on this screen that
+      // is about scope.
+      //
+      // That card is CONDITIONAL (`_deviceBar` returns null with nothing to
+      // pick), so moving them there silently made export unreachable on a
+      // phone with no records — which is precisely the phone whose owner is
+      // most likely to be asked for a file. `_toolbar` keeps a fallback branch
+      // for that, and this is the test that the branch exists.
+      await boot(t);
+      await pumpHistory(t);
+      expect(find.byType(DropdownButton<String>), findsNothing,
+          reason: 'sanity: this is the no-device-bar case');
+      expect(find.text('匯出 CSV'), findsOneWidget,
+          reason: 'the export action must not travel with a card that is not '
+              'always there');
+      expect(find.text('警告'), findsOneWidget);
+    });
+
+    testWidgets('and it rides in the device card when there is one',
+        (t) async {
+      // The other side of the same branch: exactly ONE export control, in the
+      // card. Two would mean the fallback and the card are both rendering.
+      await boot(t);
+      await seed(t, () async {
+        await addRow('A', DateTime.now().subtract(const Duration(minutes: 5)),
+            12.6);
+      });
+      await pumpHistory(t);
+      expect(find.byType(DropdownButton<String>), findsOneWidget);
+      expect(find.text('匯出 CSV'), findsOneWidget);
+    });
+
     testWidgets(
         '🔴 and the SAME sentence when the table holds only pre-attribution '
         'rows', (t) async {

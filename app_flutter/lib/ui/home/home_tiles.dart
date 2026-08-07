@@ -374,9 +374,18 @@ class _ModuleTile extends StatelessWidget {
 
 /// A module with nothing to draw: its name, and `--`.
 ///
-/// No sentence explaining why (design 0046 §4.7) — the device card above it
-/// already says when that unit was last seen, and tapping through is how you
-/// get a live one.
+/// No sentence explaining why (design 0046 §4.7) — the device card says when
+/// that unit was last seen, and tapping through is how you get a live one.
+///
+/// 🔴 COMPACT, on purpose. It used to be a full card: heading, then 28 px
+/// `--` inside 10 px of vertical padding, then the card's own 15 px. A phone
+/// that is not connected — which is how the app is opened most of the time —
+/// therefore showed two tall white rectangles containing four characters
+/// between them. Reported 2026-08-07 with a photo:「這樣的版面設計真的很醜」.
+///
+/// A card with nothing to say should take the room of something with nothing
+/// to say. The heading still identifies it, so the layout is still legible as
+/// the arrangement the user chose; it just stops shouting.
 class _WaitingTile extends StatelessWidget {
   const _WaitingTile({required this.module});
 
@@ -386,17 +395,16 @@ class _WaitingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return IndustrialCard(
+      padding: const EdgeInsets.fromLTRB(15, 11, 15, 11),
       heading: homeModuleLabel(l10n, module),
       headingIcon: homeModuleIcon(module),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Text(
-          '--',
-          style: AppTextStyles.mono(context).copyWith(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: context.colors.muted,
-          ),
+      child: Text(
+        '--',
+        style: AppTextStyles.mono(context).copyWith(
+          fontSize: 18,
+          height: 1,
+          fontWeight: FontWeight.w700,
+          color: context.colors.muted,
         ),
       ),
     );
