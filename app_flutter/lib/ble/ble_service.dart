@@ -33,6 +33,7 @@ import '../models/log_entry.dart' show LogDirection;
 import '../models/telemetry_sample.dart';
 import '../protocol/protocol.dart';
 import 'ble_models.dart';
+import 'exec_gap_tracker.dart';
 
 /// Everything that belongs to ONE BLE link, keyed by the unit it talks to.
 ///
@@ -221,6 +222,20 @@ class BleService {
 
   /// The most recent disconnect reason (see [_lastDisconnect]).
   String? get lastDisconnect => _lastDisconnect;
+
+  /// Execution-gap instrument (design 0047 Phase 0). Ticked by the keep-alive
+  /// callback, asked on every inbound BLE event; its line goes out on
+  /// [diagnostics] because the captures that need it are exactly the ones that
+  /// arrive with the raw-packet log off. Service-level, not per-link: it
+  /// measures the isolate, and the isolate is shared. Reset at teardown so
+  /// idle time between links is never reported as a gap.
+  final ExecGapTracker _execGap = ExecGapTracker();
+
+  /// Ask [_execGap] about one inbound event and publish its line, if any.
+  void _checkExecGap(String endedBy) {
+    final line = _execGap.onEvent(endedBy, DateTime.now());
+    if (line != null) _diagnostics.add(line);
+  }
 
   // Cached guids (cheap, but build once).
   static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
@@ -810,6 +825,9 @@ class BleService {
 
   Future<void> _onConnectionState(
       _LinkState link, BluetoothConnectionState s) async {
+    // Phase 0 instrument, before anything can await: a backlogged event
+    // delivered on thaw must be measured against the last pre-suspension tick.
+    _checkExecGap('conn-state');
     // Capture WHY the link dropped (A: cross-platform disconnect diagnostics)
     // before anything decides what to do about it, and before a teardown can
     // clear the device handle. Reading it first is also what lets the reason
@@ -1032,6 +1050,11 @@ class BleService {
 
   /// Handle a notification chunk from [link]'s notify characteristic.
   void _onNotify(_LinkState link, List<int> chunk) {
+    // Phase 0 instrument: a notify is the event most likely to end a
+    // suspension window once a background mode exists, and today it is what
+    // bounds the window from the app side. One line per gap — the first
+    // backlogged chunk re-ticks the tracker, so the rest stay quiet.
+    _checkExecGap('notify');
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
     final frames = link.reassembler.addBytes(chunk);
@@ -1152,6 +1175,9 @@ class BleService {
     link.keepAlive?.cancel();
     link.keepAlive = null;
     link.keepAliveTick = 0;
+    // The tick source above just stopped; without this, the idle stretch until
+    // the next connection's events would read as an execution gap.
+    _execGap.reset();
     await link.notifySub?.cancel();
     link.notifySub = null;
     link.keepAliveWriteFailed = false;
@@ -1186,6 +1212,11 @@ class BleService {
   }
 
   Future<void> _sendKeepAlive(_LinkState link) async {
+    // Phase 0 instrument: this callback runs at 1 Hz while a link is up, so it
+    // is the "Dart is executing" heartbeat the gap is measured against. Before
+    // every early return, deliberately — a guarded tick still proves the
+    // isolate ran.
+    _execGap.tick(DateTime.now());
     if (link.writeChar == null) return;
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH

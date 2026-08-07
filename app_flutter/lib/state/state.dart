@@ -6,6 +6,7 @@
 library;
 
 export 'app_services.dart';
+export 'background_window_tracker.dart';
 export 'build_info.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';

@@ -26,6 +26,7 @@ import '../data/data.dart';
 import '../models/models.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
+import 'background_window_tracker.dart';
 import 'device_controller.dart';
 import 'pack_class_resolver.dart';
 import 'session_context.dart';
@@ -755,7 +756,21 @@ class ConnectionController extends ChangeNotifier {
   /// straight off the log: `app paused` … gap … `app resumed`. Diagnosing the
   /// 2026-07-27 reports otherwise meant reconstructing that from a hole in the
   /// per-minute frame counts and the 2× backlog burst on resume.
-  void logAppLifecycle(String state) => _event('app $state');
+  ///
+  /// Also feeds the `bg-window:` instrument (design 0047 Phase 0): one line at
+  /// each foreground/background edge, stamping the link state the app carried
+  /// into the window and how long the window lasted. The link snapshot reads
+  /// [_link] — state this controller already holds — so the instrument adds no
+  /// query and cannot change behaviour.
+  void logAppLifecycle(String state) {
+    _event('app $state');
+    final line = _bgWindow.onLifecycle(state,
+        link: BackgroundWindowTracker.linkToken(_link), now: DateTime.now());
+    if (line != null) _event(line);
+  }
+
+  /// Foreground/background window pairing for the `bg-window:` lines.
+  final BackgroundWindowTracker _bgWindow = BackgroundWindowTracker();
 
   /// How long the resume probe waits for telemetry before giving up on a link.
   ///
