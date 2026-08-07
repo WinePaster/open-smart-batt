@@ -149,7 +149,83 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // waiting state rather than a permanent placeholder.
     case Watchface.diagnostic:
       return [DisplayModule.chart, DisplayModule.readouts, extra, gauge];
+    // design 0042 §3.3: `compact`'s shell with a speed card on top. Speed
+    // first because on a moving vehicle it is the only reading that has to be
+    // legible at a glance; the device's state is what you look at when you
+    // stop.
+    //
+    // Why the SAME shell rather than a fourth arrangement: `extra` is here for
+    // design 0035 Q2's reason, and that reason gets STRONGER as the page gets
+    // shorter — the energy-path row IS the answer to which way it is charging,
+    // and the per-cell card is the pack's equivalent. Dropping the numbers grid
+    // is what makes room for a 52 pt speed without scrolling.
+    //
+    // ⚠️ This function is PURE and stays that way. The speed master switch is
+    // NOT consulted here: T1/T2/T2b and the export preamble all read this, and
+    // a face whose composition depended on a setting would make `modules=` in a
+    // capture mean different things on different phones. The switch is applied
+    // one level up, in [renderedWatchface].
+    //
+    // 📌 Design 0045 inserts `gForce` after `speed`. When it does, its
+    // availability joins [ridingSelectable] rather than becoming a second
+    // decision point — see that function.
+    case Watchface.riding:
+      return [DisplayModule.speed, gauge, extra];
   }
+}
+
+/// Whether [Watchface.riding] is available at all.
+///
+/// 🔑 ONE decision point, used TWICE — the settings picker asks it before
+/// listing the option, and [renderedWatchface] asks it before drawing the face.
+/// Splitting those into two conditions is what produced the defect this
+/// function is written to prevent: with only the picker guarded, a user who
+/// selected `riding` and then switched speed detection off kept a stored
+/// `riding` that rendered as `[gauge, extra]` — byte for byte `compact`. Test
+/// T2b would have stayed green throughout, because it reasons about module
+/// LISTS and the collapse happens below them.
+///
+/// Design 0041 §1.1 is the same defect on `standard`/`compact`, reported from
+/// the field as "I tapped through all three and they are all the same". Owner
+/// ruling of 2026-08-07: fix it structurally rather than accept it as a
+/// self-inflicted transient state — a face that renders as a copy of another
+/// face is a bad layout, and design 0034 G2 says a bad layout must be
+/// unreachable, not merely unusual.
+///
+/// 📌 Design 0045 makes this `s.speedDetection || gForceAvailable`: `riding`
+/// then falls back only when EVERY card that distinguishes it is gone. Keeping
+/// that expression here, rather than adding a second guard beside it, is the
+/// point of the function existing at all.
+bool ridingSelectable(AppSettings s) => s.speedDetection;
+
+/// The face actually DRAWN, given the stored one, the class and the settings.
+///
+/// Two rejections in order, and they are different questions:
+///
+///  1. [effectiveWatchface] — an inapplicable CONTEXT (design 0034 Q4: an
+///     unclassified unit keeps `standard`, because its screen is already asking
+///     the user what the device is).
+///  2. `riding` with speed detection off — an unavailable FACE.
+///
+/// Non-destructive: the stored slug is not rewritten, so the face returns by
+/// itself when the switch goes back on.
+///
+/// ⚠️ The export preamble deliberately does NOT go through here — it reports
+/// [exportLayoutValue], i.e. what the LAYOUT says, not what rendered. A capture
+/// from a phone in this state reads `face=riding modules=speed,…` next to
+/// `speed detection: off`, and those two lines together are what let a reader
+/// work out why the screenshot shows something else. Routing the preamble
+/// through the fallback would erase exactly that evidence.
+Watchface renderedWatchface(
+  ProductClass cls,
+  Watchface stored,
+  AppSettings settings,
+) {
+  final face = effectiveWatchface(cls, stored);
+  if (face == Watchface.riding && !ridingSelectable(settings)) {
+    return Watchface.standard;
+  }
+  return face;
 }
 
 /// The watchface actually drawn for [cls], given what is stored.

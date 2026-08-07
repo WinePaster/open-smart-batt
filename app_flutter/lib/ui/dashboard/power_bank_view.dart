@@ -41,6 +41,7 @@ import 'power_flow.dart';
 import 'power_path_row.dart';
 import 'readout_grid.dart';
 import 'readouts_card.dart';
+import 'speed_card.dart';
 import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
@@ -86,8 +87,13 @@ class PowerBankView extends StatelessWidget {
     final deviceId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
     final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    // See the same read in `pack_view.dart`: with speed detection off a stored
+    // `riding` renders as `standard`, so the face cannot collapse into a copy
+    // of `compact` (design 0042 §3.9).
+    final settings =
+        context.select<SettingsController, AppSettings>((s) => s.settings);
     final order = watchfaceModules(ProductClass.powerBank,
-        effectiveWatchface(ProductClass.powerBank, stored.watchface));
+        renderedWatchface(ProductClass.powerBank, stored.watchface, settings));
 
     /// One module → one card. Every card here is unconditional — nothing on a
     /// power bank is in `dataGated`. A missing SOC renders as `--` inside the
@@ -212,6 +218,11 @@ class PowerBankView extends StatelessWidget {
           // 0037 "output voltage" and "current" tiles were removed from the
           // grid above (Q5+Q12: the same number must not appear twice).
           return const PowerPathRow();
+        // design 0042. Unconditional for the reason spelled out in
+        // `pack_view.dart`: the master switch is applied once, by
+        // [renderedWatchface], not again per card.
+        case DisplayModule.speed:
+          return const SpeedCard();
         case DisplayModule.gaugeVoltage:
         case DisplayModule.cells:
           // Not cards of this view, and unreachable through [order] — it is

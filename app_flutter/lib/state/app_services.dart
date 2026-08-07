@@ -17,6 +17,7 @@ import '../protocol/protocol.dart';
 import 'build_info.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
+import 'gps_speed_controller.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
@@ -34,6 +35,7 @@ class AppServices {
     required this.devices,
     required this.connection,
     required this.telemetry,
+    required this.speed,
     required this.pending,
     required this.appBuild,
     required this.platform,
@@ -51,6 +53,11 @@ class AppServices {
   final DeviceController devices;
   final ConnectionController connection;
   final TelemetryController telemetry;
+
+  /// GPS speed (design 0042). Constructed unconditionally but INERT until all
+  /// three of its lifecycle gates are opened, so a build where nobody ever
+  /// selects the `riding` watchface never touches the location plugin.
+  final GpsSpeedController speed;
 
   /// Fire-and-forget database writes still in flight. Drained by [dispose]
   /// before the database closes; see [PendingWrites].
@@ -122,10 +129,17 @@ class AppServices {
       appBuild: env.build,
       pending: pending,
     );
+    // Holds no resources until its gate opens; see [GpsSpeedController].
+    final speed = GpsSpeedController();
     // One judgement about link freshness, two presentations: the dashboard's
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).
     connection.bindTelemetryHealth(telemetry);
+    // The phone's speed reaches recorded history here and nowhere else
+    // (design 0042 §3.9). Wired at the composition root for the same reason as
+    // the line above: it is the only place both controllers exist, and neither
+    // has to learn about the other's domain to be tested.
+    telemetry.bindSpeedEstimates(speed.estimates);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);
@@ -146,6 +160,7 @@ class AppServices {
       devices: devices,
       connection: connection,
       telemetry: telemetry,
+      speed: speed,
       pending: pending,
       appBuild: env.build,
       platform: env.platform,
@@ -179,6 +194,7 @@ class AppServices {
     await pending.drain();
     telemetry.dispose();
     connection.dispose();
+    speed.dispose();
     devices.dispose();
     settings.dispose();
     await appDb.close();

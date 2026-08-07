@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
+import 'package:open_smart_batt/ui/dashboard/dashboard_page.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -71,5 +72,64 @@ void main() {
     // Note: OpenSmartBattApp.dispose() tears down `services` (controllers, BLE,
     // DB) when the test framework unmounts the tree, so we don't dispose here
     // (doing so would double-dispose the ChangeNotifiers).
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 Phase D+E review, B1. The GPS gate's condition 3 ("the dashboard
+  // is on screen") is produced HERE, by RootShell's tab state — and nothing in
+  // the suite had ever driven a tab change through the real shell. That is the
+  // same shape as the Phase A–C defect where the Android sampling period was
+  // pinned at 5 s past 940 green tests: the gate's INPUT had no test looking at
+  // it, only the gate's logic did.
+  //
+  // The concrete bypass this pins: the stale-telemetry banner's "open Settings"
+  // callback wrote `_tab` with its own setState, which does not run
+  // didChangeDependencies, so the controller was never told. The receiver kept
+  // running behind the Settings page.
+  // ---------------------------------------------------------------------------
+  testWidgets('every route to another tab closes the GPS gate', (tester) async {
+    late final AppServices services;
+    await tester.runAsync(() async {
+      final appDb = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      services = await AppServices.create(
+        appDatabase: appDb,
+        ble: _FakeBleService(),
+      );
+    });
+
+    await tester.pumpWidget(OpenSmartBattApp(services: services));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final gps = services.speed;
+    expect(gps.dashboardVisible, isTrue,
+        reason: 'the app opens on the dashboard');
+
+    // Route 1: the bottom navigation bar.
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pump();
+    expect(gps.dashboardVisible, isFalse);
+
+    await tester.tap(find.byIcon(Icons.speed_outlined));
+    await tester.pump();
+    expect(gps.dashboardVisible, isTrue);
+
+    // Route 2: the one that used to bypass it. Driving it through the shell —
+    // rather than calling the callback directly — is the point: a unit test on
+    // setDashboardVisible would have passed throughout.
+    final shell = tester.state<State>(find.byType(RootShell));
+    final dash = tester.widget<DashboardPage>(find.byType(DashboardPage));
+    dash.onOpenSettings!();
+    await tester.pump();
+    expect(gps.dashboardVisible, isFalse,
+        reason: 'opening Settings from the stale banner must close the gate '
+            'too — the IndexedStack keeps the dashboard mounted, so nothing '
+            'else will notice it is no longer on screen');
+    expect(shell.mounted, isTrue);
+
+    expect(tester.takeException(), isNull);
   });
 }

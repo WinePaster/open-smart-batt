@@ -41,6 +41,8 @@ class SettingsController extends ChangeNotifier {
   AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
+  bool get speedDetection => _settings.speedDetection;
+  SpeedUnit get speedUnit => _settings.speedUnit;
   RetentionPolicy get retention => _settings.retention;
   bool get rawPacketLog => _settings.rawPacketLog;
   int get logMaxBytes => _settings.logMaxBytes;
@@ -74,6 +76,21 @@ class SettingsController extends ChangeNotifier {
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));
   Future<void> setTempUnit(TempUnit v) =>
       update(_settings.copyWith(tempUnit: v));
+
+  /// The GPS speed master switch (design 0042 §3.9).
+  ///
+  /// Deliberately NOT the place the consent dialog lives. Turning this on has
+  /// four consequences the user has to have been shown first, and a setter that
+  /// asked for consent itself would make "write the setting" and "obtain
+  /// consent" the same call — so any later caller (a restore-defaults, a test,
+  /// a deep link) would either be blocked by a dialog it cannot answer or
+  /// silently bypass the consent. The dialog belongs to the screen; this only
+  /// records the answer.
+  Future<void> setSpeedDetection(bool v) =>
+      update(_settings.copyWith(speedDetection: v));
+
+  Future<void> setSpeedUnit(SpeedUnit v) =>
+      update(_settings.copyWith(speedUnit: v));
   /// Change how long history is kept, then apply it immediately.
   ///
   /// Applying on change is the honest behaviour: the user picked "30 days"

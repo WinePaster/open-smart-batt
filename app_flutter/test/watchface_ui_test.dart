@@ -39,6 +39,7 @@ import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
+import 'package:open_smart_batt/ui/dashboard/speed_card.dart';
 import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
 import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
 import 'package:open_smart_batt/ui/settings/settings_screen.dart';
@@ -137,6 +138,11 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          // design 0042: the speed card reads it, and opens the GNSS gate's
+          // first condition from its own mount/unmount. Provided here (with a
+          // controller whose platform seam is never touched in a test) so that
+          // the `riding` face can be rendered at all.
+          ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -194,8 +200,13 @@ void main() {
   Future<void> setFace(AppServices s, String id, Watchface f) =>
       s.devices.setDisplayLayout(id, DisplayLayout(watchface: f));
 
+  /// Flip the design 0042 master switch. It persists, so it goes through
+  /// `runAsync` like every other real write in this file.
+  Future<void> setSpeedDetection(WidgetTester tester, AppServices s, bool v) =>
+      tester.runAsync(() => s.settings.setSpeedDetection(v));
+
   // =========================================================================
-  // T2 (G1) — the three faces are pairwise different, on EVERY class
+  // T2 (G1) — the faces are pairwise different, on EVERY class
   // =========================================================================
   //
   // THIS TEST IS THE REASON DESIGN 0040 EXISTS. Pure Dart, no widgets: the
@@ -215,8 +226,10 @@ void main() {
   // picker is short.
   group('T2 (G1): no two faces draw the same layout, for any class', () {
     for (final cls in ProductClass.values) {
-      test('${cls.name}: standard / compact / diagnostic are pairwise unequal',
-          () {
+      // Iterates `Watchface.values`, so design 0042's `riding` joined it with
+      // no change to the assertion — only to this name. A fifth face will do
+      // the same.
+      test('${cls.name}: every pair of faces is unequal', () {
         final byFace = {
           for (final f in Watchface.values) f: watchfaceModules(cls, f),
         };
@@ -790,6 +803,122 @@ void main() {
       await tester.tap(find.text('Compact'), warnIfMissed: false);
       await settleWrite(tester);
       expect(s.devices.isSaved('DEV-UNSAVED'), isFalse);
+    });
+
+    // design 0034 §4.3 — "unavailable is not offered". `riding` exists only to
+    // carry the speed card, so with the master switch off there is nothing for
+    // it to be.
+    testWidgets('the riding face is offered only while speed detection is on',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpSettings(tester, s);
+      expect(find.text('Riding'), findsNothing,
+          reason: 'the switch is off by default');
+
+      await setSpeedDetection(tester, s, true);
+      await tester.pump();
+      expect(find.text('Riding'), findsOneWidget);
+
+      await tester.tap(find.text('Riding'));
+      await settleWrite(tester);
+      expect(s.devices.layoutFor('DEV-A').watchface, Watchface.riding);
+    });
+  });
+
+  // =========================================================================
+  // design 0042 — the riding face
+  // =========================================================================
+  group('riding', () {
+    testWidgets('puts the speed card above the instrument', (tester) async {
+      // §3.3: speed first because on a moving vehicle it is the one reading
+      // that has to be legible at a glance.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await setSpeedDetection(tester, s, true);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await feedDvol(tester);
+
+      expect(find.byType(SpeedCard), findsOneWidget);
+      expect(dy(tester, find.byType(SpeedCard)),
+          lessThan(dy(tester, find.byType(PvltGauge))));
+      expect(dy(tester, find.byType(PvltGauge)),
+          lessThan(dy(tester, find.byType(DvolBars))));
+      expect(find.byType(ReadoutsCard), findsNothing,
+          reason: 'riding uses the compact shell — the grid is what makes room '
+              'for a full-width speed');
+      // §6 is unaffected: the controls are still appended after the loop.
+      expect(dy(tester, find.byType(DvolBars)),
+          lessThan(dy(tester, find.byType(BatteryControls))));
+    });
+
+    testWidgets('a power bank gets the same shape', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await setSpeedDetection(tester, s, true);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
+      await pumpUnder(tester, s, const PowerBankView());
+
+      expect(find.byType(SpeedCard), findsOneWidget);
+      expect(dy(tester, find.byType(SpeedCard)),
+          lessThan(dy(tester, find.byType(PvltGauge))));
+      expect(find.byType(ReadoutsCard), findsNothing);
+    });
+
+    // 🔴 THE ONE THAT MATTERS. Without the render-layer fallback, `riding` with
+    // the switch off draws `[gauge, extra]` — `compact`, card for card — while
+    // T2b stays green, because T2b reasons about module LISTS and this collapse
+    // happens below them. That is the SAME defect design 0041 was written for,
+    // reported from the field as "I tapped through all three and they are all
+    // the same". Owner ruling 2026-08-07: make the state unreachable.
+    testWidgets('riding falls back to standard when speed detection is off',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await setSpeedDetection(tester, s, true);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await feedDvol(tester);
+      expect(find.byType(SpeedCard), findsOneWidget);
+
+      await setSpeedDetection(tester, s, false);
+      await tester.pump();
+
+      expect(find.byType(SpeedCard), findsNothing);
+      // `standard`, NOT `compact`: the grid is back. Were this rendering as
+      // compact, the numbers grid would be absent and the page would be
+      // indistinguishable from the compact face.
+      expect(find.byType(ReadoutsCard), findsOneWidget,
+          reason: 'the fallback is to standard — a page identical to compact '
+              'is exactly what T2b exists to make unreachable');
+      expect(find.byType(PvltGauge), findsOneWidget);
+      expect(find.byType(DvolBars), findsOneWidget);
+    });
+
+    testWidgets('the stored face survives the fallback', (tester) async {
+      // Non-destructive by design: the slug is not rewritten, so turning the
+      // switch back on brings the face back with no migration and no lost
+      // setting. A fallback that "corrected" the stored value would silently
+      // change a choice the user made.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await setSpeedDetection(tester, s, true);
+      await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
+      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+
+      await setSpeedDetection(tester, s, false);
+      await tester.pump();
+      expect(s.devices.layoutFor('DEV-A').watchface, Watchface.riding,
+          reason: 'the fallback is a rendering decision, not a write');
+
+      await setSpeedDetection(tester, s, true);
+      await tester.pump();
+      expect(find.byType(SpeedCard), findsOneWidget,
+          reason: 'and the face comes back by itself');
     });
   });
 }

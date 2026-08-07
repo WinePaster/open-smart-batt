@@ -95,6 +95,32 @@ enum DisplayModule {
   /// (design 0035 §5.3 / R4); storage is unaffected, `DisplayLayout` stores only
   /// the face slug, never a module name.
   energyPath,
+
+  /// GPS speed ([SpeedCard], design 0042). 🔴 **The first module in this
+  /// registry that is not device data.** Everything above decodes a BLE frame
+  /// from the unit on the other end of the link; this one reads the PHONE's own
+  /// GNSS receiver, which has three consequences worth stating where the
+  /// registry can be read:
+  ///
+  ///  * **Every class offers it**, and that is not laziness — it is the point.
+  ///    A capacitor "has no current readout" is a fact about the hardware; the
+  ///    phone's speed is the same fact on all four, so a per-class column here
+  ///    would be inventing a distinction that does not exist.
+  ///  * 🔑 **`modules=speed` in an export preamble is NOT evidence about the
+  ///    device.** The analysis side has to know this before it reads a capture,
+  ///    or a speed reading will end up in a chain of reasoning about a battery.
+  ///    Written into `docs/feedback-index/conventions.md` as well as here.
+  ///  * **It is not `dataGated`**, and it must not be moved there to express
+  ///    the master switch. `dataGated` means "this module is WAITING FOR DATA"
+  ///    — a card in that state says so on screen, which for a feature the user
+  ///    switched off would be a lie, and would blur the one distinction the two
+  ///    condition kinds exist to keep apart. The switch is handled a level up:
+  ///    with it off, [Watchface.riding] falls back to `standard`, so `speed` is
+  ///    never laid out at all (design 0042 §3.9, revised 2026-08-07).
+  ///
+  /// Only [Watchface.riding] lists it, so design 0034's G4 holds literally: a
+  /// user who never opens Settings sees no change.
+  speed,
 }
 
 /// Resolves the gauge's SOH sub-line for a class, given the live bucket.
@@ -170,6 +196,7 @@ class DisplayModules {
       DisplayModule.readouts,
       DisplayModule.chart,
       DisplayModule.cells,
+      DisplayModule.speed,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
@@ -191,6 +218,7 @@ class DisplayModules {
       DisplayModule.readouts,
       DisplayModule.chart,
       DisplayModule.cells,
+      DisplayModule.speed,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {
@@ -214,6 +242,7 @@ class DisplayModules {
       DisplayModule.readouts,
       DisplayModule.chart,
       DisplayModule.energyPath,
+      DisplayModule.speed,
     },
     // The SOC ring renders whether or not a value has arrived (a missing SOC
     // shows as `--`). The energy-path row is likewise unconditional: before its
@@ -245,6 +274,7 @@ class DisplayModules {
       DisplayModule.readouts,
       DisplayModule.chart,
       DisplayModule.cells,
+      DisplayModule.speed,
     },
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},

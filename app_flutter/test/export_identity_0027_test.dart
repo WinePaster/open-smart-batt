@@ -121,26 +121,74 @@ void main() {
       await dir.delete(recursive: true);
     });
 
-    // The v10 saved_devices DDL, verbatim — the table as it existed BEFORE this
-    // design. Opening at version 10 then reopening via AppDatabase (v11) runs
-    // the real _onUpgrade(from:10) branch.
+    // The v10 DDL, verbatim — the schema as it existed BEFORE this design.
+    // Opening at version 10 then reopening via AppDatabase runs the real
+    // `_onUpgrade(from: 10)` chain.
+    //
+    // ⚠️ All FOUR tables, not just `saved_devices`. Until schema v12 this
+    // fixture created only the one table the assertions below read, and it
+    // passed — because v11 happened to ALTER nothing else. That was luck, not
+    // design: `_onUpgrade` is cumulative, so from=10 runs every later branch,
+    // and v12 touches `history` and `settings`. A fixture that omits a table a
+    // real v10 database always had turns "the migration is wrong" and "the
+    // fixture is incomplete" into the same red, which is the more expensive of
+    // the two to diagnose. The assertions are unchanged.
     Future<void> createV10() async {
       final db = await databaseFactoryFfi.openDatabase(
         path,
         options: OpenDatabaseOptions(
           version: 10,
-          onCreate: (db, _) => db.execute('''
-            CREATE TABLE saved_devices (
-              id TEXT PRIMARY KEY,
-              alias TEXT NOT NULL DEFAULT '',
-              name TEXT NOT NULL DEFAULT '',
-              last_seen INTEGER,
-              last_value REAL,
-              stale INTEGER NOT NULL DEFAULT 0,
-              product_class TEXT NOT NULL DEFAULT 'unknown',
-              display_layout TEXT
-            )
-          '''),
+          onCreate: (db, _) async {
+            await db.execute('''
+              CREATE TABLE saved_devices (
+                id TEXT PRIMARY KEY,
+                alias TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                last_seen INTEGER,
+                last_value REAL,
+                stale INTEGER NOT NULL DEFAULT 0,
+                product_class TEXT NOT NULL DEFAULT 'unknown',
+                display_layout TEXT
+              )
+            ''');
+            // history v10 = current minus speed/accel/g_long/g_lat (v12)
+            await db.execute('''
+              CREATE TABLE history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                pvlt REAL, svlt REAL, ampere REAL, temperature INTEGER,
+                dvol1 REAL, dvol2 REAL, dvol3 REAL, dvol4 REAL,
+                soh INTEGER, mode INTEGER, twf INTEGER, serial TEXT,
+                soc INTEGER, device_id TEXT, samples INTEGER, app_build TEXT
+              )
+            ''');
+            // settings v10 = current minus the five v12 columns
+            await db.execute('''
+              CREATE TABLE settings (
+                id INTEGER PRIMARY KEY,
+                auto_reconnect INTEGER NOT NULL DEFAULT 1,
+                poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
+                background_keep_alive INTEGER NOT NULL DEFAULT 0,
+                background_monitoring INTEGER NOT NULL DEFAULT 1,
+                dark_theme INTEGER NOT NULL DEFAULT 1,
+                theme_mode TEXT,
+                lang TEXT NOT NULL DEFAULT 'zhHant',
+                temp_unit TEXT NOT NULL DEFAULT 'celsius',
+                auto_log INTEGER NOT NULL DEFAULT 1,
+                raw_packet_log INTEGER NOT NULL DEFAULT 0,
+                retention TEXT NOT NULL DEFAULT 'forever',
+                log_max_bytes INTEGER NOT NULL DEFAULT 20971520
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE diag_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL, direction TEXT NOT NULL,
+                hex TEXT NOT NULL, note TEXT, device_id TEXT,
+                session_id INTEGER, app_build TEXT
+              )
+            ''');
+          },
         ),
       );
       await db.insert('saved_devices', {'id': 'OLD', 'alias': '舊電池'});
@@ -293,6 +341,7 @@ void main() {
           platform: 'ios',
           scope: 'all devices',
           layout: 'default',
+          speedDetection: false,
           devices: const [
             ExportDeviceIdentity(
               deviceId: deviceId,
@@ -355,6 +404,7 @@ void main() {
         platform: 'ios',
         scope: 'all devices',
         layout: 'default',
+        speedDetection: false,
       );
       expect(lines.any((l) => l.startsWith('devices:')), isFalse);
     });

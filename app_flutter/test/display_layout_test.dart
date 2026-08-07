@@ -45,6 +45,19 @@ void main() {
       expect(Watchface.standard.slug, 'standard');
       expect(Watchface.compact.slug, 'compact');
       expect(Watchface.diagnostic.slug, 'diagnostic');
+      expect(Watchface.riding.slug, 'riding');
+    });
+
+    test('a build that predates riding reads it as the default, not a crash',
+        () {
+      // The downgrade direction of design 0034's zero-migration claim, and the
+      // reason design 0042 needed no schema change for the face itself: a
+      // `riding` slug written by this build lands on `defaults` in an older
+      // one, through the same path an unknown slug has always taken.
+      expect(Watchface.fromSlug('riding'), Watchface.riding);
+      expect(Watchface.fromSlug('a-face-from-2027'), isNull);
+      expect(DisplayLayout.decode('{"face":"a-face-from-2027"}'),
+          DisplayLayout.defaults);
     });
 
     test('the default encodes the standard face and knows it is the default',
@@ -481,8 +494,15 @@ void main() {
       // The registry in Db.schemaVersion's doc comment is the only place two
       // parallel branches would collide; this pins the current head. v10 added
       // display_layout (the migration above); v11 added saved_devices.mac /
-      // serial (design 0027) — bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 11);
+      // serial (design 0027); v12 added nine columns at once — four on history
+      // (speed/accel for design 0042+0044, g_long/g_lat reserved for 0045) and
+      // five on settings (speed_detection/speed_unit for 0042, plus home_layout
+      // reserved for design 0046 and g_meter_enabled/g_calibration for 0045).
+      // That number is the one this line exists for: v12 was claimed by two
+      // plans at once, and the collision was settled by merging them, so the
+      // constant and the migration body have to move together.
+      // Bump this in lockstep with Db.schemaVersion.
+      expect(Db.schemaVersion, 12);
     });
   });
 }

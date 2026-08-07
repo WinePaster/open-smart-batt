@@ -73,6 +73,7 @@ void main() {
         platform: 'ios 18.5',
         scope: 'device=battery/1206',
         layout: layout,
+        speedDetection: false,
       );
       expect(lines.first, 'OpenSmartBatt history export');
       expect(lines, contains('exported: ${at.toIso8601String()}'));
@@ -89,6 +90,7 @@ void main() {
         platform: 'p',
         scope: 'all devices',
         layout: layout,
+        speedDetection: false,
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
     });
@@ -104,6 +106,11 @@ void main() {
       // this preamble has to be written down here too — the four original lines
       // are still asserted verbatim, in position, and the new one is asserted
       // verbatim as the last.
+      //
+      // Design 0042 §3.9 then added `speed detection:` in the optional middle,
+      // and this is the test that made it show up: the equality did its job,
+      // the line was written down, and the four original lines are STILL
+      // verbatim in position. Do not relax it now either.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
@@ -111,6 +118,7 @@ void main() {
         platform: 'android 15',
         scope: 'device=capacitor/7809 session=3',
         layout: layout,
+        speedDetection: false,
         connections: 2,
       );
       expect(lines, <String>[
@@ -118,6 +126,7 @@ void main() {
         'exported: ${at.toIso8601String()}',
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
+        'speed detection: off',
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);
     });

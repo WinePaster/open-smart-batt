@@ -97,6 +97,7 @@ List<String> exportHeaderLines({
   required String platform,
   required String scope,
   required String layout,
+  required bool speedDetection,
   int? connections,
   bool? rawPacketLog,
   List<ExportDeviceIdentity> devices = const [],
@@ -137,6 +138,17 @@ List<String> exportHeaderLines({
     // them (G3). Placed in the optional middle, before the required layout tail.
     if (deviceLines.isNotEmpty) 'devices: ${deviceLines.length}',
     ...deviceLines,
+    // design 0042 §3.9, and the same FB-32 rule as `raw packet log:` above —
+    // which is why it is `required` rather than `bool?`. Without it, a CSV with
+    // no values in the `speed` column has TWO readings: the feature was off, or
+    // it was on and the signal never arrived for a single minute. Those call
+    // for opposite replies to a reporter.
+    //
+    // It also disambiguates the layout line below it, which is deliberately NOT
+    // filtered by the switch: a phone with `riding` stored and the switch off
+    // reports `face=riding modules=speed,…` while DRAWING `standard`. The two
+    // lines read together say why. Neither line alone can.
+    'speed detection: ${speedDetection ? 'on' : 'off'}',
     // Design 0034 §8. Our problem-reading runs on screenshots: every entry in
     // `feedback-attachments/our-app.md` is a field read off a picture, and
     // sentences like "SOC shows --" or "four DVOL bars of similar length" are

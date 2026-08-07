@@ -86,6 +86,25 @@ class HistoryRepo {
     'device',
     'samples',
     'app_build',
+    // design 0042 / 0044, appended under the standing rule above.
+    //
+    // 🔑 These two describe the PHONE, not the unit named in this row's
+    // `device` column. One phone, N connected units: every row of the same
+    // minute carries the SAME speed, deliberately, so a per-device query must
+    // not sum them. Minutes with nothing connected have no row at all rather
+    // than a row with a speed and no device (design 0042 §3.9 (b)+(d); a
+    // device-less history row is what design 0043 §3.1 refuses to write).
+    //
+    // Blank means one of: the feature is off, the signal was never live that
+    // minute, or the build predates this column. The first is settled by the
+    // `speed detection: on/off` preamble line, which is emitted unconditionally
+    // for exactly that reason; the third by `app_build`.
+    //
+    // `g_long`/`g_lat` are deliberately NOT here — design 0045 adds them to
+    // this list when it starts writing them, so a column of blanks never
+    // appears in a recipient's spreadsheet ahead of the feature.
+    'speed',
+    'accel',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
@@ -100,14 +119,27 @@ class HistoryRepo {
   /// it. This table accumulates across upgrades, so the two can differ by
   /// months, and an export that only names the exporting build cannot say which
   /// version produced any particular row.
+  /// [speedMps] / [accelMps2] are the PHONE's, not this unit's — same "artefact
+  /// of our own aggregation, not part of [TelemetrySample]" reasoning as
+  /// [samples] and [appBuild], and for a sharper reason: the device never
+  /// reports them and never could. Folding them onto the sample type would put
+  /// a phone reading inside the object whose entire job is to say what a
+  /// battery said. Null means the minute had no live GPS sample (or the feature
+  /// is off) — never 0.0, which would claim the phone was measured standing
+  /// still.
   Future<int> insertSample(
     TelemetrySample sample, {
     String? deviceId,
     int? samples,
     String? appBuild,
+    double? speedMps,
+    double? accelMps2,
   }) {
     return _db.insert(
-        Db.tableHistory, _row(sample, deviceId, samples, appBuild));
+      Db.tableHistory,
+      _row(sample, deviceId, samples, appBuild,
+          speedMps: speedMps, accelMps2: accelMps2),
+    );
   }
 
   /// Batch-insert many samples in a single transaction.
@@ -126,12 +158,16 @@ class HistoryRepo {
     TelemetrySample s,
     String? deviceId,
     int? samples,
-    String? appBuild,
-  ) =>
+    String? appBuild, {
+    double? speedMps,
+    double? accelMps2,
+  }) =>
       Map<String, Object?>.from(s.toMap())
         ..['device_id'] = deviceId
         ..['samples'] = samples
-        ..['app_build'] = appBuild;
+        ..['app_build'] = appBuild
+        ..['speed'] = speedMps
+        ..['accel'] = accelMps2;
 
   /// Query history newest-first.
   ///

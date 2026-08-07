@@ -17,6 +17,7 @@ import '../models/models.dart';
 import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
+import 'speed_estimator.dart';
 import 'telemetry_health.dart';
 
 /// One minute of samples being accumulated for ONE unit.
@@ -36,6 +37,20 @@ class _MinuteBucket {
   TelemetrySample? last;
   double sPvlt = 0, sSvlt = 0, sTemp = 0, sCur = 0;
   int nPvlt = 0, nSvlt = 0, nTemp = 0, nCur = 0;
+
+  /// The PHONE's speed and acceleration for this minute (design 0042 / 0044).
+  ///
+  /// Two more running sums, NOT a new bucket and NOT a new row: the 900×
+  /// write-amplification failure this class documents came from flushing a row
+  /// per sample, and nothing here changes when a row is written.
+  ///
+  /// 🔑 Every open bucket receives the SAME value each time one arrives — one
+  /// phone, N units — so two units connected through the same minute produce
+  /// two rows carrying an identical speed. That is deliberate and is the reason
+  /// the column is documented as describing the phone: summing it across
+  /// devices counts one journey twice.
+  double sSpeed = 0, sAccel = 0;
+  int nSpeed = 0, nAccel = 0;
 
   /// How many telemetry snapshots this minute has folded in.
   /// Counted per snapshot, not per field, so it answers one question honestly:
@@ -605,13 +620,84 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
         deviceId: deviceId,
         samples: b.nSamples,
         appBuild: _appBuild,
+        // Null, not 0.0, when the minute folded no live GPS sample: the phone
+        // was not measured standing still, it was not measured at all.
+        speedMps: b.nSpeed > 0 ? b.sSpeed / b.nSpeed : null,
+        accelMps2: b.nAccel > 0 ? b.sAccel / b.nAccel : null,
       ));
     }
     b.minute = null;
     b.last = null;
     b.sPvlt = b.sSvlt = b.sTemp = b.sCur = 0;
     b.nPvlt = b.nSvlt = b.nTemp = b.nCur = 0;
+    b.sSpeed = b.sAccel = 0;
+    b.nSpeed = b.nAccel = 0;
     b.nSamples = 0;
+  }
+
+  // ---- the phone's own speed (design 0042 §3.9) --------------------------
+
+  /// Fold one live GPS sample into every OPEN bucket.
+  ///
+  /// Ruling (b)+(d) of 2026-08-07, and both halves matter:
+  ///
+  ///  * **(d) all open buckets, not one.** `_buckets` is keyed by device and
+  ///    each one is opened by that unit's own telemetry, so there is no such
+  ///    thing as "the current bucket" — there are zero to N. Speed is a
+  ///    property of the phone, so with two units connected there is no
+  ///    principled way to pick one, and both get it.
+  ///  * **(b) zero connections ⇒ nothing lands.** No unit connected means no
+  ///    open bucket, and this method then does nothing. It deliberately does
+  ///    NOT open one: a bucket keyed `null` is precisely the device-less
+  ///    history row design 0043 §3.1 refuses to write, and a minute of speed
+  ///    attributed to no unit is unreadable by the History screen, which
+  ///    aggregates by device.
+  ///
+  /// 🔴 The controller upstream KEEPS RUNNING while nothing is connected and
+  /// the card keeps showing live speed — only the recording stops. Written down
+  /// because the shape of it invites a later reader to "fix" the missing rows,
+  /// which would recreate the pressure for a null bucket.
+  ///
+  /// Only LIVE samples are folded ([_onSpeedEstimate] filters): a held or lost
+  /// reading is the speed from before the tunnel, and averaging it into the
+  /// minute would record a measurement nobody took.
+  void foldSpeedSample({double? speedMps, double? accelMps2}) {
+    if (_buckets.isEmpty) return;
+    for (final b in _buckets.values) {
+      if (!b.isOpen) continue;
+      if (speedMps != null) {
+        b.sSpeed += speedMps;
+        b.nSpeed++;
+      }
+      if (accelMps2 != null) {
+        b.sAccel += accelMps2;
+        b.nAccel++;
+      }
+    }
+  }
+
+  /// Subscribe to the GPS estimate stream, so recorded minutes carry the
+  /// phone's speed.
+  ///
+  /// Wired from the composition root rather than constructed here, for the same
+  /// reason as [bindTelemetryHealth]: this controller must not know how to
+  /// obtain a location, only what to do with one that arrives. The stream is
+  /// silent whenever the GNSS gate is shut — and the gate is shut whenever the
+  /// master switch is off, since with it off no face lays out the speed card —
+  /// so "detection off ⇒ nothing recorded" needs no check of its own here.
+  void bindSpeedEstimates(Stream<SpeedEstimate> estimates) {
+    _speedSub?.cancel();
+    _speedSub = estimates.listen(_onSpeedEstimate);
+  }
+
+  StreamSubscription<SpeedEstimate>? _speedSub;
+
+  void _onSpeedEstimate(SpeedEstimate e) {
+    // Held and lost readings are the value from BEFORE the signal went, marked
+    // as such on screen. Averaging one into a recorded minute would strip the
+    // mark and leave a number claiming to be a measurement.
+    if (e.state != SpeedState.live) return;
+    foldSpeedSample(speedMps: e.vSmoothMps);
   }
 
   void _onPacket(BlePacketEvent e) {
@@ -670,6 +756,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   @override
   void dispose() {
     _stallTimer?.cancel();
+    _speedSub?.cancel();
     _telemetrySub?.cancel();
     _packetSub?.cancel();
     _linkSub?.cancel();

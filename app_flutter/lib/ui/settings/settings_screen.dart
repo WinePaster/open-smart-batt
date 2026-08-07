@@ -6,6 +6,7 @@
 /// [SettingsController]; data/log actions go through [TelemetryController].
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
+import 'speed_consent_dialog.dart';
 
 
 /// Community project links (mockup startup disclaimer + About card).
@@ -176,8 +178,83 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _SpeedDetectionRow(),
+          if (s.speedDetection)
+            SettingsRow(
+              label: l10n.settingsSpeedUnitLabel,
+              trailing: SegmentedControl<SpeedUnit>(
+                selected: s.speedUnit,
+                onChanged: s.setSpeedUnit,
+                options: const [
+                  (value: SpeedUnit.kmh, label: 'km/h'),
+                  (value: SpeedUnit.mph, label: 'mph'),
+                ],
+              ),
+            ),
           const _WatchfaceRow(),
         ],
+      ),
+    );
+  }
+}
+
+/// The GPS speed master switch (design 0042 §3.9).
+///
+/// Stateful only to hold [_busy]: the consent dialog and the OS permission
+/// prompt are two awaits, and a second tap on the switch while either is up
+/// would start a parallel flow whose two answers race to write the setting.
+///
+/// ⚠️ The switch reflects the STORED value at all times, never an optimistic
+/// one. A switch that flips first and reverts on cancel makes cancelling look
+/// like a failure; this one simply does not move until consent is given.
+class _SpeedDetectionRow extends StatefulWidget {
+  const _SpeedDetectionRow();
+
+  @override
+  State<_SpeedDetectionRow> createState() => _SpeedDetectionRowState();
+}
+
+class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
+  bool _busy = false;
+
+  Future<void> _onChanged(bool next) async {
+    if (_busy) return;
+    final settings = context.read<SettingsController>();
+    // Turning it OFF is not a decision anyone has to be walked through, and
+    // asking would train the user to dismiss the dialog that matters.
+    if (!next) {
+      await settings.setSpeedDetection(false);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final gps = context.read<GpsSpeedController>();
+      final agreed = await showSpeedDetectionConsentDialog(context);
+      // Cancel is ZERO side effects: nothing written, nothing asked of the OS.
+      if (!agreed) return;
+      await settings.setSpeedDetection(true);
+      // Straight into the OS prompt, while the user is still inside the context
+      // they just agreed to (design 0042 §3.5). A refusal leaves the switch ON
+      // — consent was given, the OS is what is missing — and the card says so
+      // with a route to the settings page.
+      await gps.requestPermission();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final on = context.select<SettingsController, bool>(
+        (s) => s.settings.speedDetection);
+    return SettingsRow(
+      label: l10n.settingsSpeedDetectionLabel,
+      sub: l10n.settingsSpeedDetectionSub,
+      subHighlight: !on,
+      trailing: _Toggle(
+        value: on,
+        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }
@@ -217,6 +294,19 @@ class _WatchfaceRow extends StatelessWidget {
       await devices.setDisplayLayout(target, next);
     }
 
+    // design 0034 §4.3, "unavailable is not offered". `riding` exists only to
+    // carry the speed card, so with the master switch off there is nothing for
+    // it to be — and the SAME predicate keeps a stored `riding` from rendering
+    // (see `ridingSelectable`), which is what stops it collapsing into a copy
+    // of `compact`.
+    //
+    // ⚠️ The picker's `selected` is the STORED face, which can be `riding`
+    // while the option is absent. `SegmentedControl` matches on `==`, so it
+    // simply highlights nothing — the honest rendering of "your stored choice
+    // is not currently available", and better than silently re-pointing the
+    // control at `standard`, which would look like the setting had been
+    // changed for the user.
+    final settings = context.watch<SettingsController>().settings;
     final picker = SegmentedControl<Watchface>(
       selected: layout.watchface,
       onChanged: (v) => apply(DisplayLayout(watchface: v)),
@@ -224,6 +314,8 @@ class _WatchfaceRow extends StatelessWidget {
         (value: Watchface.standard, label: l10n.watchfaceStandard),
         (value: Watchface.compact, label: l10n.watchfaceCompact),
         (value: Watchface.diagnostic, label: l10n.watchfaceDiagnostic),
+        if (ridingSelectable(settings))
+          (value: Watchface.riding, label: l10n.watchfaceRiding),
       ],
     );
 
@@ -300,6 +392,9 @@ class _DataCardState extends State<_DataCard> {
     // with the other context reads — by the time the CSV is built this screen
     // may be gone.
     final layout = currentExportLayoutValue(context);
+    // design 0042 §3.9: emitted unconditionally, `off` included, so that an
+    // empty `speed` column has one reading instead of two.
+    final speedDetection = context.read<SettingsController>().speedDetection;
     try {
       final csv = await tele.exportHistoryCsv(
         deviceId: target.deviceId,
@@ -312,6 +407,7 @@ class _DataCardState extends State<_DataCard> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           layout: layout,
+          speedDetection: speedDetection,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
@@ -478,6 +574,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
+    final speedOn = context.read<SettingsController>().speedDetection;
     // The dashboard layout in force right now (design 0034 §8), captured with
     // the other context reads for the same reason.
     final layout = currentExportLayoutValue(context);
@@ -489,7 +586,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       // even an all-devices export where the rows carry only nicknames.
       final identities = await exportDeviceIdentities(devices, tele, target);
       final header =
-          await _logHeader(tele, services, target, rawLog, layout, identities);
+          await _logHeader(
+              tele, services, target, rawLog, speedOn, layout, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -621,6 +719,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    bool speedDetection,
     String layout,
     List<ExportDeviceIdentity> devices,
   ) async {
@@ -634,6 +733,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       platform: services.platform,
       scope: exportScopeLabel(target),
       layout: layout,
+      speedDetection: speedDetection,
       connections: sessions,
       rawPacketLog: rawPacketLog,
       devices: devices,

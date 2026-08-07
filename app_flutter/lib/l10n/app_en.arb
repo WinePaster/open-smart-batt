@@ -562,6 +562,53 @@
   "settingsThemeLight": "Light",
   "settingsThemeDark": "Dark",
   "settingsThemeAuto": "Auto",
+  "settingsSpeedDetectionLabel": "Speed detection",
+  "settingsSpeedDetectionSub": "Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.",
+  "@settingsSpeedDetectionSub": {
+    "description": "design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export."
+  },
+  "settingsSpeedUnitLabel": "Speed unit",
+  "speedConsentTitle": "Turn on speed detection?",
+  "speedConsentIntro": "This feature uses your phone's location. Before turning it on, please note all four of these:",
+  "speedConsentPointForeground": "GPS is used only on the dashboard while the app is in the foreground; it stops when the app is backgrounded.",
+  "speedConsentPointRecorded": "Speed recorded while connected is written to history and is included in the diagnostic files you export.",
+  "@speedConsentPointRecorded": {
+    "description": "design 0042 §3.9 point 2, scoped by the (b)+(d) ruling of 2026-08-07: history rows exist per connected device, so with nothing connected there is no row for a speed to join and none is written."
+  },
+  "speedConsentPointNoLocationStored": "Location coordinates are never stored and never appear in any export.",
+  "speedConsentPointBattery": "It increases battery use.",
+  "speedConsentEnable": "Enable",
+  "speedCardWaitingTitle": "Waiting for a fix",
+  "speedCardWaitingBody": "Acquiring the first GPS reading. This can take a few seconds after starting, or indoors.",
+  "speedCardPermissionDeniedTitle": "No location permission",
+  "speedCardPermissionDeniedBody": "The system has not granted this app location access, so speed cannot be shown.",
+  "speedCardPermissionPermanentBody": "Location permission was permanently denied, so the system will not ask again. Grant \"While Using the App\" access in system settings.",
+  "speedCardOpenSystemSettings": "Open system settings",
+  "speedCardHeld": "Held",
+  "@speedCardHeld": {
+    "description": "design 0042 G2: the badge on a frozen reading. Without it a held value and a live one are indistinguishable, which is the one thing the state machine exists to prevent."
+  },
+  "speedCardNoSignal": "No signal",
+  "speedCardAccuracy": "±{value} {unit}",
+  "@speedCardAccuracy": {
+    "placeholders": {
+      "value": {"type": "String"},
+      "unit": {"type": "String"}
+    }
+  },
+  "speedCardLastMeasured": "Last measured {value} {unit}, {seconds} s ago",
+  "@speedCardLastMeasured": {
+    "placeholders": {
+      "value": {"type": "String"},
+      "unit": {"type": "String"},
+      "seconds": {"type": "int"}
+    }
+  },
+  "speedQualityGood": "Good",
+  "speedQualityFair": "Fair",
+  "speedQualityPoor": "Poor",
+  "speedQualityNone": "No signal",
+  "watchfaceRiding": "Riding",
   "settingsWatchfaceLabel": "Watchface",
   "settingsWatchfaceSub": "Which cards the dashboard shows for the connected device, and in what order.",
   "@settingsWatchfaceSub": {
