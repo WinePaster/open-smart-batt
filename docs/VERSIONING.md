@@ -263,10 +263,16 @@ tag），`bump` 那個 input 完全不會被用到。
 |---|---|---|
 | `v0.6.15`–`v0.7.2` | 本機 `git push origin <tag>` | ✅ 正常觸發 |
 | `v0.7.5` / `v0.7.6` / `v0.7.7` | 同上 | ❌ 靜默 |
+| `v0.7.8` | 同上 | ✅ 又正常了 |
 
 三次都確認 tag 已經到 `origin`（`git ls-remote --tags`），workflow 是 `active`，
 `on.push.tags` 沒有改過，且 `.github/workflows/release.yml` 在該 tag 的 commit
 上存在。
+
+v0.7.8（2026-08-07，與 v0.7.7 同日、同一台機器、同一套指令）**又正常觸發了**，
+所以這不是設定問題，比較像是 GitHub 端的間歇性行為。**不要為此改流程** ——
+推完 tag 回頭看一眼 `gh run list --workflow=release.yml`，沒有就 dispatch，
+成本是十秒。
 
 ⚠️ **曾經以為原因是 bump commit 帶了 `[skip ci]`。那個診斷是錯的** —— v0.7.7 的
 bump commit 刻意不帶，一樣沒觸發。目前寫下來的只有現象與補救，沒有結論；
