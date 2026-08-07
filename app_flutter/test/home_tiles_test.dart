@@ -444,6 +444,42 @@ void main() {
               'row silently disappears again');
     });
   });
+
+  // ===========================================================================
+  // 🔴 A lone 1x1 keeps its half — the home-page half of the「按了沒反應」fix.
+  // ===========================================================================
+  testWidgets('a half tile beside a full one really is half wide',
+      (tester) async {
+    // `HomeLayout.rows` pairs two ADJACENT halves and otherwise emits a row of
+    // one. That row used to be stretched to the whole width, so a half tile
+    // whose neighbour was full rendered identically to a full one — and the
+    // editor's shape button therefore appeared to do nothing at all unless you
+    // happened to toggle two tiles that sat next to each other.
+    final s = await boot(tester, devices: [
+      SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+          lastSeen: DateTime.now()),
+      SavedDevice(id: 'B', alias: 'Cap #2', lastValue: 12.4,
+          lastSeen: DateTime.now()),
+    ]);
+    addTearDown(() => teardown(tester, s));
+    await tester.runAsync(() => s.settings.setHomeLayout(
+          const HomeLayout([
+            HomeTile.device('A', span: HomeSpan.half),
+            HomeTile.device('B'),
+          ]).encode(),
+        ));
+    await pumpHome(tester, s);
+
+    final widths = [
+      for (var i = 0; i < 2; i++)
+        tester.getSize(find.byType(HomeTileView).at(i)).width,
+    ];
+    expect(widths[1], greaterThan(200), reason: 'sanity: the full tile');
+    expect(widths[0], closeTo(widths[1] / 2, 1.0),
+        reason: 'the lone half tile must keep its half and leave the rest '
+            'empty — that is what 1x1 means, and it is the only thing that '
+            'makes the editor\'s shape button observable');
+  });
 }
 
 /// Minimal stand-in: [homeTileShellClass] reads exactly one getter.

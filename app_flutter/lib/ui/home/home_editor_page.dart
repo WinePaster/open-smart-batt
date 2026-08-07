@@ -351,10 +351,23 @@ class _EditorTile extends StatelessWidget {
               ),
             ],
           ),
-          // The real tile, so what is being arranged is what will be seen.
+          // The real tile, so what is being arranged is what will be seen —
+          // INCLUDING its width. Before 2026-08-07 this was always full width
+          // and the shape button changed nothing but its own 16 px icon, which
+          // is why it was reported as「按了沒反應」. The preview is the only
+          // feedback this control has; if it does not move, the control does
+          // not work as far as anyone can tell.
+          //
           // Inert while editing: a tap here is a drag that has not started yet,
           // not a request to open a device page.
-          AbsorbPointer(child: HomeTileView(tile: tile)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: tile.span == HomeSpan.half ? 0.5 : 1.0,
+              alignment: Alignment.centerLeft,
+              child: AbsorbPointer(child: HomeTileView(tile: tile)),
+            ),
+          ),
         ],
       ),
     );

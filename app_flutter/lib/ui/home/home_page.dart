@@ -79,7 +79,7 @@ class HomePage extends StatelessWidget {
             for (final row in layout.rows)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: row.length == 1
+                child: row.length == 1 && row.single.span == HomeSpan.full
                     ? HomeTileView(
                         tile: row.single,
                         onOpenDevices: onOpenDevices,
@@ -96,6 +96,21 @@ class HomePage extends StatelessWidget {
                                 onOpenDetail: onOpenDetail,
                               ),
                             ),
+                          // 🔴 A LONE 1x1 keeps its half and leaves the rest
+                          // empty. `rows` only pairs two ADJACENT halves, so
+                          // without this a half tile whose neighbour is full
+                          // was stretched back to the whole row — and the
+                          // shape button in the editor then had no visible
+                          // effect whatsoever unless you happened to toggle
+                          // two tiles that sat next to each other.
+                          // Reported 2026-08-07 as「改形狀…按了沒反應」.
+                          //
+                          // Empty space beside a small card is the iOS
+                          // home-screen behaviour this grid was modelled on,
+                          // and it is what 1x1 has to mean for the control to
+                          // be honest.
+                          if (row.length == 1)
+                            const Expanded(child: SizedBox.shrink()),
                         ],
                       ),
               ),

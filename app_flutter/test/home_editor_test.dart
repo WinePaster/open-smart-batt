@@ -31,6 +31,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
+import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeBle extends BleService {
@@ -229,5 +230,57 @@ void main() {
     for (final word in ['Drag', 'drag', 'reorder', 'at least']) {
       expect(find.textContaining(word), findsNothing);
     }
+  });
+
+  // ===========================================================================
+  // 🔴 The shape button — 2026-08-07, from the field:「改形狀…按了沒反應」.
+  //
+  // It always worked. `HomeTile.copyWith(span:)` was right, `_persist` wrote,
+  // the stored layout changed. What did not change was ANYTHING ON SCREEN:
+  //
+  //   * the editor drew every preview at full width regardless of span, so the
+  //     only feedback was a 16 px muted icon swapping between two crop glyphs;
+  //   * `HomeLayout.rows` pairs two ADJACENT halves and otherwise emits a row
+  //     of one, which the home page then stretched to the full width — so a
+  //     half tile next to a full one looked exactly like a full one.
+  //
+  // Both together meant a control that could only be seen to work if you
+  // happened to toggle two neighbours in a row. The state was never the bug;
+  // the RENDERING of the state was, in two places at once.
+  // ===========================================================================
+  group('the shape button', () {
+    testWidgets('🔴 halving a tile halves its preview', (tester) async {
+      final s = await boot(tester, devices: 2);
+      addTearDown(() => teardown(tester, s));
+      await pumpEditor(tester, s);
+
+      final before = tester.getSize(find.byType(HomeTileView).first).width;
+      expect(before, greaterThan(200), reason: 'sanity: a full-width preview');
+
+      await tester.tap(find.byIcon(Icons.crop_16_9).first);
+      await tester.pump();
+
+      final after = tester.getSize(find.byType(HomeTileView).first).width;
+      expect(after, closeTo(before / 2, 1.0),
+          reason: 'the preview is the only feedback this control has; if it '
+              'does not move, the control does not work as far as anyone can '
+              'tell');
+      // …and the icon follows it, so the two agree about what the tile is now.
+      expect(find.byIcon(Icons.crop_square), findsWidgets);
+    });
+
+    testWidgets('and the change is written, not just drawn', (tester) async {
+      final s = await boot(tester, devices: 2);
+      addTearDown(() => teardown(tester, s));
+      await pumpEditor(tester, s);
+
+      await tester.tap(find.byIcon(Icons.crop_16_9).first);
+      await tester.pump();
+      await tester.runAsync(() => s.pending.drain());
+
+      final stored = HomeLayout.decode(s.settings.settings.homeLayout);
+      expect(stored, isNotNull);
+      expect(stored!.tiles.first.span, HomeSpan.half);
+    });
   });
 }
