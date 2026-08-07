@@ -29,6 +29,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'accel_estimator.dart';
 import 'speed_estimator.dart';
 
 /// What the OS currently says about our access to location.
@@ -229,9 +230,20 @@ class GpsSpeedController extends ChangeNotifier {
   GpsSpeedController({
     this.source = const GeolocatorSpeedSource(),
     SpeedEstimatorConfig config = const SpeedEstimatorConfig(),
+    this.accelConfig = const AccelEstimatorConfig(),
     DateTime Function() now = DateTime.now,
     this.tickInterval = const Duration(seconds: 1),
-  }) : _estimator = SpeedEstimator(config: config, now: now);
+  })  : _now = now,
+        _estimator = SpeedEstimator(config: config, now: now),
+        _accel = AccelEstimator(config: accelConfig) {
+    // Design 0044 Phase G. Both of the estimator's streams are needed and the
+    // second one is the easy one to forget: `reset()` announces the end of a
+    // series on `transitions` and emits no estimate at all, so an acceleration
+    // module fed only by `estimates` would differentiate straight across a
+    // notification-shade pull (impl plan §1.4 note 1).
+    _speedToAccel = _estimator.estimates.listen(_feedAccelEstimate);
+    _transitionsToAccel = _estimator.transitions.listen(_feedAccelTransition);
+  }
 
   /// The platform seam. Swapped for a fake in tests; there is exactly one
   /// production implementation.
@@ -240,7 +252,23 @@ class GpsSpeedController extends ChangeNotifier {
   /// How often [SpeedEstimator.tick] runs while the stream is open.
   final Duration tickInterval;
 
+  /// Design 0044's thresholds, including the display throttle this class
+  /// applies on the way to the card.
+  final AccelEstimatorConfig accelConfig;
+
   final SpeedEstimator _estimator;
+  final AccelEstimator _accel;
+
+  /// The same clock the estimator uses, kept so the display throttle is driven
+  /// by injected time rather than by the wall clock — otherwise the one piece
+  /// of timing in this class would be the one piece no test could reach.
+  final DateTime Function() _now;
+
+  StreamSubscription<SpeedEstimate>? _speedToAccel;
+  StreamSubscription<SpeedStateTransition>? _transitionsToAccel;
+
+  AccelEstimate? _publishedAccel;
+  DateTime? _publishedAccelAt;
 
   bool _faceWantsSpeed = false;
   // The app is in the foreground when it starts; lifecycle callbacks only fire
@@ -290,6 +318,34 @@ class GpsSpeedController extends ChangeNotifier {
 
   /// State-change edges. See [SpeedStateTransition].
   Stream<SpeedStateTransition> get transitions => _estimator.transitions;
+
+  /// Raw acceleration slopes, unthrottled and unrounded (design 0044).
+  ///
+  /// This is the RECORDED series: `TelemetryController` folds it into the
+  /// minute bucket. Deliberately not the same value as [currentAccel] — the
+  /// display's deadband and quantisation are decisions about a rider glancing
+  /// at a phone, and baking them into history would leave the analyst unable to
+  /// tell a measured 0 from a rounded one.
+  Stream<AccelEstimate> get accelEstimates => _accel.estimates;
+
+  /// The acceleration to SHOW, or null whenever there is none to show.
+  ///
+  /// Null covers both of design 0044's silent states: warming (the window is
+  /// still filling) and suppressed (the speed underneath is frozen). The card
+  /// renders nothing at all in either — it never shows `0.0`, because a rider
+  /// cannot tell that zero from a measured one (§3.3).
+  ///
+  /// Updates are throttled to [AccelEstimatorConfig.displayThrottle].
+  /// DISAPPEARANCE is not: the moment the value stops being a measurement the
+  /// row goes, throttle or no throttle. Making silence wait would be the one
+  /// direction in which a stale number could survive on screen.
+  AccelEstimate? get currentAccel => _publishedAccel;
+
+  /// Whether an acceleration reading exists, is warming up, or is suppressed.
+  /// Exposed for tests and for the road test's diagnosis, not for the card —
+  /// the card asks [currentAccel] and renders nothing when it is null.
+  @visibleForTesting
+  AccelState get accelState => _accel.state;
 
   /// Gate condition 1 — evaluated after `effectiveWatchface`, so a face the
   /// user picked but cannot currently get does not open the stream.
@@ -360,8 +416,45 @@ class GpsSpeedController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _stop();
+    _speedToAccel?.cancel();
+    _transitionsToAccel?.cancel();
     _estimator.dispose().ignore();
+    _accel.dispose().ignore();
     super.dispose();
+  }
+
+  // ---- design 0044 wiring -------------------------------------------------
+
+  void _feedAccelEstimate(SpeedEstimate e) {
+    _accel.onSpeedEstimate(e);
+    _republishAccel();
+  }
+
+  void _feedAccelTransition(SpeedStateTransition t) {
+    _accel.onTransition(t);
+    _republishAccel();
+  }
+
+  /// Move [AccelEstimator.current] to [currentAccel], subject to the display
+  /// throttle — and drop it immediately when there is nothing to show.
+  void _republishAccel() {
+    final next = _accel.current;
+    if (next == null) {
+      if (_publishedAccel == null) return;
+      _publishedAccel = null;
+      _publishedAccelAt = null;
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    if (identical(next, _publishedAccel)) return;
+    final at = _now();
+    final last = _publishedAccelAt;
+    if (last != null && at.difference(last) < accelConfig.displayThrottle) {
+      return;
+    }
+    _publishedAccel = next;
+    _publishedAccelAt = at;
+    if (!_disposed) notifyListeners();
   }
 
   // -------------------------------------------------------------------------
