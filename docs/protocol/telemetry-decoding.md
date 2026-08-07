@@ -175,7 +175,16 @@ LEN 11:  [u24 standby min][u24 connected min][u16 sleeps][u16 power-ons][u8 cut-
 LEN 10:  [u24 standby min][u24 connected min][u16 sleeps][u16 power-ons]
 ```
 
-All fields big-endian, all cumulative over the unit's life.
+All fields big-endian. The three counters — `[6:8]` sleeps, `[8:10]`
+power-ons, `[10]` cut-offs — are cumulative over the unit's life; corpus-wide
+they only ever step up.
+
+> 🔴 **Corrected 2026-08-07.** This section originally said ~~all cumulative
+> over the unit's life~~. The two **u24 minute fields are not lifetime
+> counters**: four units across three reporters (batteries and a capacitor)
+> have been observed to reset or fall back at a reboot, and on a power bank
+> standby + connected × 67 s matched the uptime since wake in 9/9 bursts.
+> Treat both minute fields as **since-wake timers**, not lifetime totals.
 
 | Field | Meaning |
 |---|---|
@@ -207,11 +216,15 @@ falsifiable rather than taken on trust:
   power-ons 17 / cut-offs 0`. Seven and seventeen power-ons are plausible on
   their face; **no other alignment of these 11 bytes produces two plausible
   counters at once.**
-* **The connected-minutes field advances once per minute of wall clock.** Two
-  independent measurements: 67.0 s/tick over a 10.5 h single-connection capture
-  (counter 11 → 573), and 65–70 s/tick in a second capture — and it advances at
-  the *same* rate under near-zero current and under 2 A, so it is time, not
-  energy.
+* **The connected-minutes field advances once per ~67 s, not once per
+  minute of wall clock.** Four units measured independently agree: 67.0 s/tick
+  over a 10.5 h single-connection capture (counter 11 → 573), 67.1 s/tick
+  median over 109 increments on a capacitor, 67.1 s/tick on a battery checked
+  against the unit's own RTC across 5.9 days (which also rules out a slow
+  oscillator — the tick unit itself is ~67 s; 2⁲⁶ µs = 67.109 s is a
+  candidate, untested), and standby + connected × 67 s ≈ uptime on a power
+  bank (9/9 bursts). It advances at the *same* rate under near-zero current
+  and under 2 A, so it is time, not energy.
 * **The power-on counter increments by exactly 1 at a device reboot**, observed
   alongside two other independent reboot fingerprints (`0x3B` rewinding to a
   checkpoint, and the first telemetry frame after reconnect reading all zeros).
@@ -221,11 +234,16 @@ falsifiable rather than taken on trust:
 
 #### Not settled
 
-* 🔲 **The standby-minutes field is not sanity-checked.** One unit reports
-  2,705,779 — about 5.1 years — which is possible for a cumulative lifetime
-  counter on an old pack but has no corroboration. Do not present it to a user
-  as a duration until a unit of known age is measured.
+* 🔲 **The standby-minutes field has partial corroboration but one open
+  outlier.** On two units, Δstandby + Δconnected accounts for 97–98% of the
+  wall clock between bursts over multi-hour windows, which fits the since-wake
+  reading (a third unit reads 89% — unexplained). The unit reporting 2,705,779
+  was originally read as ~~about 5.1 years … possible for a cumulative
+  lifetime counter on an old pack~~ — 🔴 under the since-wake reading
+  (2026-08-07) that value cannot be a duration since last reboot and is now
+  the anomaly. Do not present either minute field to a user as a duration
+  until that outlier is explained.
 * 🔲 **Why some batteries send 10 and others 11** is unknown; firmware is the
   obvious guess and is untested.
-* 🚫 **Nothing here is decoded by this app.** These are lifetime counters, not
+* 🚫 **Nothing here is decoded by this app.** These are system counters, not
   telemetry; they are documented so the field is not re-opened as "undecoded".
