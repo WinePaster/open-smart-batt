@@ -1512,4 +1512,61 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get capacitorChartNoCurrentNote =>
       'No current track: this unit reports a constant 0 A, which is not a measurement.';
+
+  @override
+  String get explainerSpeedTitle => 'How speed is measured';
+
+  @override
+  String get explainerGForceTitle => 'How G is measured';
+
+  @override
+  String get explainerWhatIsMeasured => 'What is measured';
+
+  @override
+  String get explainerWhatIsNotDone => 'What this does not do';
+
+  @override
+  String get explainerSpeedWhat =>
+      'The speed the phone\'s GNSS chip reports (Doppler), not a figure derived from positions. Coordinates are never stored and never appear in an export.';
+
+  @override
+  String get explainerSpeedHoldingLead =>
+      'When the signal drops, the number shown is a HELD one, not a measured one.';
+
+  @override
+  String get explainerSpeedHolding =>
+      'Tunnels, underpasses and overpasses all do it. The screen says so, and after a while it changes to “no signal”. A number marked as held is not your speed right now.';
+
+  @override
+  String get explainerSpeedStillLead => 'Anything under 3 km/h reads 0.';
+
+  @override
+  String get explainerSpeedStill =>
+      'A stationary GNSS receiver invents 1–3 km/h from position jitter, and 2 km/h at a red light is an error everyone spots. The cost is that wheeling the bike, or crawling, also reads 0.';
+
+  @override
+  String get explainerSpeedNotDone =>
+      'No dead reckoning from the accelerometer (integration drifts), no background recording, no track.';
+
+  @override
+  String get explainerGForceWhat =>
+      'The phone\'s accelerometer, with gravity removed by the OS. Calibration is how the app learns which way the phone is facing on the bike; without it there is no “forward” and no “left” to report.';
+
+  @override
+  String get explainerGForceLeanLead =>
+      'Lateral G in a corner reads low. This is a physical limit of two-wheelers.';
+
+  @override
+  String get explainerGForceLean =>
+      'A motorcycle leans through a corner, and the meter reads the component along the leaned body axis. The harder the corner, the larger the shortfall: about 4% at 0.3 g, 11% at 0.5 g, 22% at 0.8 g. Cars do not have this (they do not lean), so do not compare these numbers with a car\'s.';
+
+  @override
+  String get explainerGForceNotDone =>
+      'No lean angle from the gyroscope, no speed or distance derived. Only what is measured.';
+
+  @override
+  String get settingsSpeedExplainerLabel => 'How speed is measured';
+
+  @override
+  String get settingsGForceExplainerLabel => 'How G is measured';
 }

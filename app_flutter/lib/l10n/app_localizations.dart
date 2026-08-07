@@ -2605,6 +2605,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No current track: this unit reports a constant 0 A, which is not a measurement.'**
   String get capacitorChartNoCurrentNote;
+
+  /// No description provided for @explainerSpeedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How speed is measured'**
+  String get explainerSpeedTitle;
+
+  /// No description provided for @explainerGForceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How G is measured'**
+  String get explainerGForceTitle;
+
+  /// No description provided for @explainerWhatIsMeasured.
+  ///
+  /// In en, this message translates to:
+  /// **'What is measured'**
+  String get explainerWhatIsMeasured;
+
+  /// No description provided for @explainerWhatIsNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'What this does not do'**
+  String get explainerWhatIsNotDone;
+
+  /// No description provided for @explainerSpeedWhat.
+  ///
+  /// In en, this message translates to:
+  /// **'The speed the phone\'s GNSS chip reports (Doppler), not a figure derived from positions. Coordinates are never stored and never appear in an export.'**
+  String get explainerSpeedWhat;
+
+  /// No description provided for @explainerSpeedHoldingLead.
+  ///
+  /// In en, this message translates to:
+  /// **'When the signal drops, the number shown is a HELD one, not a measured one.'**
+  String get explainerSpeedHoldingLead;
+
+  /// No description provided for @explainerSpeedHolding.
+  ///
+  /// In en, this message translates to:
+  /// **'Tunnels, underpasses and overpasses all do it. The screen says so, and after a while it changes to “no signal”. A number marked as held is not your speed right now.'**
+  String get explainerSpeedHolding;
+
+  /// No description provided for @explainerSpeedStillLead.
+  ///
+  /// In en, this message translates to:
+  /// **'Anything under 3 km/h reads 0.'**
+  String get explainerSpeedStillLead;
+
+  /// No description provided for @explainerSpeedStill.
+  ///
+  /// In en, this message translates to:
+  /// **'A stationary GNSS receiver invents 1–3 km/h from position jitter, and 2 km/h at a red light is an error everyone spots. The cost is that wheeling the bike, or crawling, also reads 0.'**
+  String get explainerSpeedStill;
+
+  /// No description provided for @explainerSpeedNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'No dead reckoning from the accelerometer (integration drifts), no background recording, no track.'**
+  String get explainerSpeedNotDone;
+
+  /// No description provided for @explainerGForceWhat.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone\'s accelerometer, with gravity removed by the OS. Calibration is how the app learns which way the phone is facing on the bike; without it there is no “forward” and no “left” to report.'**
+  String get explainerGForceWhat;
+
+  /// No description provided for @explainerGForceLeanLead.
+  ///
+  /// In en, this message translates to:
+  /// **'Lateral G in a corner reads low. This is a physical limit of two-wheelers.'**
+  String get explainerGForceLeanLead;
+
+  /// No description provided for @explainerGForceLean.
+  ///
+  /// In en, this message translates to:
+  /// **'A motorcycle leans through a corner, and the meter reads the component along the leaned body axis. The harder the corner, the larger the shortfall: about 4% at 0.3 g, 11% at 0.5 g, 22% at 0.8 g. Cars do not have this (they do not lean), so do not compare these numbers with a car\'s.'**
+  String get explainerGForceLean;
+
+  /// No description provided for @explainerGForceNotDone.
+  ///
+  /// In en, this message translates to:
+  /// **'No lean angle from the gyroscope, no speed or distance derived. Only what is measured.'**
+  String get explainerGForceNotDone;
+
+  /// No description provided for @settingsSpeedExplainerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How speed is measured'**
+  String get settingsSpeedExplainerLabel;
+
+  /// No description provided for @settingsGForceExplainerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How G is measured'**
+  String get settingsGForceExplainerLabel;
 }
 
 class _AppLocalizationsDelegate
