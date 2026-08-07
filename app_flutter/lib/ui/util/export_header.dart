@@ -100,6 +100,7 @@ List<String> exportHeaderLines({
   required String layout,
   required String home,
   required bool speedDetection,
+  required bool gMeter,
   int? connections,
   bool? rawPacketLog,
   List<ExportDeviceIdentity> devices = const [],
@@ -151,6 +152,22 @@ List<String> exportHeaderLines({
     // reports `face=riding modules=speed,…` while DRAWING `standard`. The two
     // lines read together say why. Neither line alone can.
     'speed detection: ${speedDetection ? 'on' : 'off'}',
+    // design 0045 §3.7, and the same FB-32 rule one more time — `required`
+    // rather than `bool?` so no call site can quietly stop emitting it.
+    //
+    // Empty `g_long`/`g_lat` columns have THREE readings and this line settles
+    // the first: `off` means the feature was off. `on` narrows the remaining
+    // two to "on but never calibrated" and "on, calibrated, but the card was
+    // not on screen that minute" — which the `layout:` line below helps with,
+    // since a face that never lists `gForce` cannot have shown one. Those two
+    // call for different replies to a reporter; neither is "your data is
+    // missing".
+    //
+    // 🔴 It reports the SWITCH, not availability. Availability moves during a
+    // session — the still-window check can withdraw a calibration mid-ride —
+    // and a preamble line written once at export time cannot describe a moving
+    // value honestly. The switch is a fact about the whole file.
+    'g meter: ${gMeter ? 'on' : 'off'}',
     // design 0046 Step 10. The same argument as `layout:` below, applied to the
     // page most screenshots are now OF: since design 0046 R3 the home grid is
     // the default entry point, so "there is no charge reading on screen" needs

@@ -110,6 +110,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<GForceController>.value(value: s.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
         ],
         child: MaterialApp(
@@ -312,6 +313,62 @@ void main() {
     // that nobody feeds is the same bug with extra steps.
     expect(src, contains('_touchLastSeen(id, value: s.pvlt)'),
         reason: 'the per-frame path must hand over the sample it already has');
+  });
+
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 0044/0045 查核, B1. The home grid is the THIRD path that can
+  // mount a card, and it never went through `renderedModules` — so a stored
+  // `speed` tile opened the GNSS stream with 速度偵測 OFF and the consent
+  // dialog never shown, while the export preamble said `speed detection: off`.
+  //
+  // ⚠️ The main agent's own reflexive check (delete the filter inside
+  // `renderedModules` ⇒ tests red) could not reach this by construction: this
+  // path does not call that function. Recorded because "I verified the fix"
+  // and "I verified every path" are different claims.
+  // ---------------------------------------------------------------------------
+  test('B1: a phone module is only drawable when its own switch says so', () {
+    // Source-level, because the leak is about WHICH SURFACES ask the question.
+    // A widget test proves one surface; this proves no surface was forgotten.
+    // Two surfaces, two resolvers, one shared fact (ruled 2026-08-07: the home
+    // grid and the watchface layer stay separate systems). Each surface must
+    // reach the screen through ITS resolver — that is where the gate lives.
+    final surfaces = <String, String>{
+      'lib/ui/home/home_page.dart': '.renderedFor(',
+      'lib/ui/home/home_editor_page.dart': '.renderedFor(',
+      'lib/ui/dashboard/pack_view.dart': 'renderedModules(',
+      'lib/ui/dashboard/power_bank_view.dart': 'renderedModules(',
+    };
+    for (final e in surfaces.entries) {
+      expect(File(e.key).readAsStringSync(), contains(e.value),
+          reason: '${e.key} puts modules on screen without asking its '
+              'surface resolver — a phone module can reach the screen there '
+              'with its switch off, and for `speed` that opens the GNSS '
+              'stream with the consent dialog never shown');
+    }
+
+    // And the tile widget must NOT re-gate: one decision point per surface.
+    expect(File('lib/ui/home/home_tiles.dart').readAsStringSync(),
+        isNot(contains('phoneModuleAvailable(')),
+        reason: 'the resolver already decided; a second check here is the '
+            'duplicate decision point design 0042 W4 removed');
+
+    final callers = <String>[
+      'lib/ui/home/home_tiles.dart',
+      'lib/ui/dashboard/pack_view.dart',
+      'lib/ui/dashboard/power_bank_view.dart',
+    ];
+    // The list above is only honest if it is complete.
+    final grep = Process.runSync('grep',
+        ['-rl', 'dashboardCardFor(', 'lib/'], runInShell: false);
+    final actual = (grep.stdout as String)
+        .trim()
+        .split('\n')
+        .where((l) => l.isNotEmpty && !l.endsWith('dashboard_cards.dart'))
+        .toSet();
+    expect(actual, callers.toSet(),
+        reason: 'a new caller of dashboardCardFor appeared; add it above and '
+            'make sure it gates phone modules');
   });
 }
 

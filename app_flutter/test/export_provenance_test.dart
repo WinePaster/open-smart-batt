@@ -74,7 +74,7 @@ void main() {
         scope: 'device=battery/1206',
         layout: layout,
         home: 'tiles=auto',
-        speedDetection: false,
+        speedDetection: false, gMeter: false,
       );
       expect(lines.first, 'OpenSmartBatt history export');
       expect(lines, contains('exported: ${at.toIso8601String()}'));
@@ -92,7 +92,7 @@ void main() {
         scope: 'all devices',
         layout: layout,
         home: 'tiles=auto',
-        speedDetection: false,
+        speedDetection: false, gMeter: false,
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
     });
@@ -117,6 +117,12 @@ void main() {
       // Design 0046 Step 10 adds `home:`, also in the optional middle and also
       // written down here rather than absorbed by a looser matcher. `layout:`
       // is still last, which is the constraint the ingest scripts depend on.
+      //
+      // Design 0045 §3.7 adds `g meter:`, immediately after `speed detection:`
+      // and for the identical reason — the equality caught it, so it is written
+      // down. The two switch lines sit together because they answer the same
+      // shape of question about two independent features (Q2), and a reader
+      // scanning the middle should find them in one place.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
@@ -125,7 +131,7 @@ void main() {
         scope: 'device=capacitor/7809 session=3',
         layout: layout,
         home: 'tiles=auto',
-        speedDetection: false,
+        speedDetection: false, gMeter: false,
         connections: 2,
       );
       expect(lines, <String>[
@@ -134,6 +140,7 @@ void main() {
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
         'speed detection: off',
+        'g meter: off',
         'home: tiles=auto',
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);

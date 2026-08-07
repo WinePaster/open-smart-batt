@@ -134,6 +134,8 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(
               value: services.telemetry),
+          ChangeNotifierProvider<GForceController>.value(
+              value: services.gforce),
           // The page reports its own visibility to the GNSS gate (design 0046
           // Step 8c), so the controller has to be reachable from it.
           ChangeNotifierProvider<GpsSpeedController>.value(
@@ -259,6 +261,8 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(
               value: services.telemetry),
+          ChangeNotifierProvider<GForceController>.value(
+              value: services.gforce),
           // The page reports its own visibility to the GNSS gate (design 0046
           // Step 8c), so the controller has to be reachable from it.
           ChangeNotifierProvider<GpsSpeedController>.value(

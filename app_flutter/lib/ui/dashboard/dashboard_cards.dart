@@ -42,6 +42,7 @@ import '../widgets/industrial_card.dart';
 import '../widgets/pending_note.dart';
 import 'display_modules.dart';
 import 'dvol_bars.dart';
+import 'g_force_card.dart';
 import 'live_trend_chart.dart';
 import 'power_flow.dart';
 import 'power_path_row.dart';
@@ -361,6 +362,16 @@ Widget? dashboardCardFor(
     // waiting / no-permission states and never vanishes.
     case DisplayModule.speed:
       return const SpeedCard();
+
+    // design 0045. UNCONDITIONAL for the same reason as `speed` above, and it
+    // is worth spelling out because this module has TWO conditions rather than
+    // one: the switch, and a valid calibration. Both are applied by
+    // `renderedModules`, so reaching this line means the card has axes to name.
+    // A `controller.available ? … : null` here would be the duplicate decision
+    // point the 2026-08-07 ruling removed — and a second place for the two
+    // answers to drift apart.
+    case DisplayModule.gForce:
+      return const GForceCard();
   }
 }
 

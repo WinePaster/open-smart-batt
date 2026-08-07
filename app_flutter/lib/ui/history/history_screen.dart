@@ -193,6 +193,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // `speed` column means both "the feature was off" and "the signal never
     // arrived", which is the ambiguity FB-32 exists to prevent.
     final speedDetection = context.read<SettingsController>().speedDetection;
+    final gMeter = context.read<SettingsController>().gMeterEnabled;
     try {
       final csv = await _tele.exportHistoryCsv(
         since: _sinceFor(_range),
@@ -209,6 +210,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           layout: layout,
           home: home,
           speedDetection: speedDetection,
+          gMeter: gMeter,
         ),
       );
       // Row count, not text emptiness: every export carries a provenance

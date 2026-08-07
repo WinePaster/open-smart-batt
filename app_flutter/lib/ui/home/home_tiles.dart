@@ -42,10 +42,14 @@ import '../util/relative_time.dart';
 
 /// The heading a module is named by, on the home grid and in its editor.
 ///
-/// Six of the seven reuse the heading their own card already carries (design
-/// 0046 §4.2 mitigation ①: the home editor and the watchface picker must not
-/// invent a second name for one module). `speed` is the exception because its
-/// card has no heading of its own.
+/// Most reuse the heading their own card already carries (design 0046 §4.2
+/// mitigation ①: the home editor and the watchface picker must not invent a
+/// second name for one module). `speed` and `gForce` are the exceptions because
+/// their cards have no heading of their own.
+///
+/// `gForce` is present for completeness — the enum is exhaustive here — but the
+/// home editor does not offer it, so this entry is only reachable if a future
+/// change starts offering it.
 String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
       DisplayModule.gaugeVoltage => l10n.gaugePvltLabel,
       DisplayModule.gaugeSoc => l10n.powerBankSocReadoutLabel,
@@ -54,6 +58,7 @@ String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
       DisplayModule.cells => l10n.dashboardDvolHeading,
       DisplayModule.energyPath => l10n.powerPathHeading,
       DisplayModule.speed => l10n.homeModuleSpeed,
+      DisplayModule.gForce => l10n.gForceCardHeading,
     };
 
 /// The glyph a module is drawn with, matching its own card's heading icon.
@@ -65,6 +70,7 @@ IconData homeModuleIcon(DisplayModule m) => switch (m) {
       DisplayModule.cells => Icons.battery_std,
       DisplayModule.energyPath => Icons.bolt,
       DisplayModule.speed => Icons.navigation_outlined,
+      DisplayModule.gForce => Icons.adjust,
     };
 
 /// One tile of the home grid.
@@ -353,6 +359,10 @@ class _ModuleTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final conn = context.watch<ConnectionController>();
     final id = deviceId;
+    // No phone-module gate here, deliberately: `HomeLayout.renderedFor` — the
+    // home surface's single resolver — has already dropped any module whose
+    // switch is off. A second check would be the duplicate decision point
+    // design 0042 W4 removed, just on a different surface.
     final live =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
     if (!live) return _WaitingTile(module: module);

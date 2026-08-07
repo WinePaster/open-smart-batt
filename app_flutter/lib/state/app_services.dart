@@ -17,6 +17,7 @@ import '../protocol/protocol.dart';
 import 'build_info.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
+import 'g_force_controller.dart';
 import 'gps_speed_controller.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
@@ -36,6 +37,7 @@ class AppServices {
     required this.connection,
     required this.telemetry,
     required this.speed,
+    required this.gforce,
     required this.pending,
     required this.appBuild,
     required this.platform,
@@ -58,6 +60,11 @@ class AppServices {
   /// three of its lifecycle gates are opened, so a build where nobody ever
   /// selects the `riding` watchface never touches the location plugin.
   final GpsSpeedController speed;
+
+  /// The G meter (design 0045). Constructed unconditionally and, like [speed],
+  /// INERT until its gate opens — a build where nobody turns the switch on and
+  /// calibrates never touches the accelerometer.
+  final GForceController gforce;
 
   /// Fire-and-forget database writes still in flight. Drained by [dispose]
   /// before the database closes; see [PendingWrites].
@@ -131,6 +138,24 @@ class AppServices {
     );
     // Holds no resources until its gate opens; see [GpsSpeedController].
     final speed = GpsSpeedController();
+    // Same contract; see [GForceController].
+    // The mount moved ⇒ persist the flag, KEEP the matrix.
+    //
+    // 🔴 Clearing was tried first and was wrong. design 0045 §3.6 specifies two
+    // different sentences on the settings page — 「尚未校準」 and 「校準已失效
+    // —— 手機位置似乎被移動過」 — plus the date of the last calibration, and
+    // `settings_screen.dart` renders both. Clearing collapses them into the
+    // first, so the app loses the ability to tell the user WHY the meter
+    // vanished. Q8's "the card simply does not appear" is about the CARD; the
+    // settings page was designed to carry the distinction.
+    //
+    // The controller supplies the signal and not the write: it imports no
+    // repository, which is what keeps the `INSERT OR REPLACE` column-wipe trap
+    // structurally unreachable from it. See `onCalibrationInvalidated`.
+    late final GForceController gforce;
+    gforce = GForceController(
+      onCalibrationInvalidated: (encoded) => settings.setGCalibration(encoded),
+    );
     // One judgement about link freshness, two presentations: the dashboard's
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).
@@ -144,9 +169,24 @@ class AppServices {
     // reasoning: the recorded value is the estimator's raw slope, so what the
     // analyst reads and what the rider saw come from one source.
     telemetry.bindAccelEstimates(speed.accelEstimates);
+    // …and the G meter's own two components (design 0045 §3.7). A third stream
+    // rather than a field on either of the others, for design 0044's reason
+    // applied once more: the three series have different lifetimes, and a
+    // minute that measured speed but no G must record the one and leave the
+    // other null.
+    telemetry.bindGForceEstimates(gforce.estimates);
 
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load()]);
+
+    // 🔴 The G meter's ONLY input. It holds no persistence of its own (see
+    // [GForceController]), so the stored switch and matrix reach it here and
+    // nowhere else — once now, and again on every settings write. Forgetting
+    // either half fails CLOSED: the card never appears and Settings reports
+    // "not calibrated", which is wrong but visible, rather than a calibration
+    // that works until the next unrelated settings change.
+    gforce.applySettings(settings.settings);
+    settings.addListener(() => gforce.applySettings(settings.settings));
 
     // Apply the retention window once per launch. The window is measured in
     // days, so there is no reason to prune more often than this —
@@ -165,6 +205,7 @@ class AppServices {
       connection: connection,
       telemetry: telemetry,
       speed: speed,
+      gforce: gforce,
       pending: pending,
       appBuild: env.build,
       platform: env.platform,
@@ -199,6 +240,7 @@ class AppServices {
     telemetry.dispose();
     connection.dispose();
     speed.dispose();
+    gforce.dispose();
     devices.dispose();
     settings.dispose();
     await appDb.close();

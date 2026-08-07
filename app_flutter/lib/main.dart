@@ -117,11 +117,19 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   /// not the user leaving.
   late final SpeedLifecycleGate _speedLifecycle;
 
+  /// The same debounce for the accelerometer streams (design 0045 §3.5, "the
+  /// same shape as 0042 §3.4"). A SECOND instance rather than one gate driving
+  /// both, because each owns a timer and cancelling one must not cancel the
+  /// other's.
+  late final SpeedLifecycleGate _gForceLifecycle;
+
   @override
   void initState() {
     super.initState();
     _speedLifecycle =
         SpeedLifecycleGate(setAppResumed: widget.services.speed.setAppResumed);
+    _gForceLifecycle = SpeedLifecycleGate(
+        setAppResumed: widget.services.gforce.setAppResumed);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -156,6 +164,11 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
     // those as "left the foreground" empties the card and probably costs MORE
     // battery than it saves.
     _speedLifecycle.onLifecycle(state);
+    // The accelerometer costs far less than GNSS, but G4's rule is about
+    // whether screens are counted, not about how much each one costs — and a
+    // sensor stream running for a card nobody can see is the same defect either
+    // way.
+    _gForceLifecycle.onLifecycle(state);
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
@@ -201,6 +214,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
         ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
         ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
         ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
+        ChangeNotifierProvider<GForceController>.value(value: s.gforce),
       ],
       // Rebuild MaterialApp when the theme preference changes.
       child: Consumer<SettingsController>(
@@ -374,10 +388,16 @@ class _RootShellState extends State<RootShell> {
   /// the dashboard tab; now it is the HOME tab, and the device detail page —
   /// a pushed route this shell does not own — reports itself separately through
   /// [GpsSpeedController.setDetailVisible].
-  void _syncDashboardVisible() =>
-      context.read<GpsSpeedController>().setDashboardVisible(
-            _tab == _Tab.home,
-          );
+  void _syncDashboardVisible() {
+    final home = _tab == _Tab.home;
+    context.read<GpsSpeedController>().setDashboardVisible(home);
+    // 🔴 BOTH controllers, from the ONE place the tab is written. Design 0046's
+    // review found a `_tab` assignment that bypassed this sync and no test
+    // noticed, because every test drove the setter rather than the shell —
+    // adding a second gated stream doubles the cost of that mistake, so it is
+    // wired here rather than beside each caller.
+    context.read<GForceController>().setDashboardVisible(home);
+  }
 
   Future<void> _maybeShowDisclaimer() async {
     if (await Disclaimer.acknowledged()) return;

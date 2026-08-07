@@ -206,6 +206,85 @@ void main() {
           reason: 'averaged over the samples that HAD one, not diluted by the '
               'ones that did not');
     });
+
+    // =======================================================================
+    // design 0045 §3.7 / Q4 — the two G columns, on the same path
+    // =======================================================================
+    test('g_long and g_lat ride the same path, independently of the other two',
+        () {
+      // The G meter and the GPS are INDEPENDENT switches (design 0045 Q2), so
+      // every combination of "which columns did this minute measure" is
+      // reachable. A minute with G and no speed must record the G and leave
+      // speed NULL — the same rule that already separates speed from accel.
+      return () async {
+        await feed('AA', sampleAt(10, pvlt: 13.2));
+        tele.foldSpeedSample(gLongMs2: 2.0, gLatMs2: -1.0);
+        tele.foldSpeedSample(gLongMs2: 4.0, gLatMs2: -3.0);
+        tele.flushPendingHistory();
+        await tele.pendingWrites.drain();
+
+        final r = (await rows()).single;
+        expect(r['g_long'], 3.0);
+        expect(r['g_lat'], -2.0);
+        expect(r['speed'], isNull, reason: 'the GPS switch was off');
+        expect(r['accel'], isNull);
+      }();
+    });
+
+    test('the G columns are SIGNED averages, and that is deliberate', () {
+      // Half a minute accelerating and half braking averages towards zero. It
+      // is a known cost of a minute-scale table (design 0045 §3.7, following
+      // C1) and the alternative — recording an absolute value or a peak —
+      // would put a number in the file that the rider was never shown.
+      return () async {
+        await feed('AA', sampleAt(10, pvlt: 13.2));
+        tele.foldSpeedSample(gLongMs2: 3.0, gLatMs2: 1.0);
+        tele.foldSpeedSample(gLongMs2: -3.0, gLatMs2: -1.0);
+        tele.flushPendingHistory();
+        await tele.pendingWrites.drain();
+
+        final r = (await rows()).single;
+        expect(r['g_long'], 0.0);
+        expect(r['g_lat'], 0.0);
+      }();
+    });
+
+    test('a minute with no G samples is NULL, never 0.0', () {
+      return () async {
+        await feed('AA', sampleAt(10, pvlt: 13.2));
+        tele.foldSpeedSample(speedMps: 10.0);
+        tele.flushPendingHistory();
+        await tele.pendingWrites.drain();
+
+        final r = (await rows()).single;
+        expect(r['speed'], 10.0);
+        expect(r['g_long'], isNull);
+        expect(r['g_lat'], isNull);
+      }();
+    });
+
+    test('and they reach the CSV, at the end, under their own names', () {
+      return () async {
+        await feed('AA', sampleAt(10, pvlt: 13.2));
+        tele.foldSpeedSample(gLongMs2: 1.5, gLatMs2: -0.5);
+        tele.flushPendingHistory();
+        await tele.pendingWrites.drain();
+
+        // Appended, in order, after `accel` — the standing rule in
+        // `history_repo.dart` is that columns only ever join the END, because
+        // recipients have spreadsheets built on the existing order.
+        expect(HistoryRepo.csvColumns.sublist(HistoryRepo.csvColumns.length - 4),
+            ['speed', 'accel', 'g_long', 'g_lat']);
+
+        final csv = await HistoryRepo(db.db).exportCsv();
+        final lines = csv.text.split(RegExp(r'\r?\n'));
+        final header =
+            lines.first.split(',').map((c) => c.replaceAll('"', '')).toList();
+        final cells = lines[1].split(',');
+        expect(cells[header.indexOf('g_long')], '1.5');
+        expect(cells[header.indexOf('g_lat')], '-0.5');
+      }();
+    });
   });
 
   group('the fold adds no rows and no samples', () {

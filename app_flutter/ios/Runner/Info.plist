@@ -59,6 +59,19 @@
 	<array>
 		<string>bluetooth-central</string>
 	</array>
+	<!-- design 0045 (G meter). The accelerometer is read through
+	     CoreMotion's raw device-motion path, which by the common account does
+	     NOT prompt — only the activity/pedometer APIs do, and this app uses
+	     neither. 🔲 That is the UNVERIFIED half: design 0045 §2.2 #4 marks it
+	     as platform lore, and R6 rates a missing required key CRASH-level, not
+	     merely a refused permission.
+	     The key is therefore declared DEFENSIVELY. It costs one honest sentence
+	     if it is never shown; the other way round costs a launch crash on a
+	     device we have not tested. It is a motion key only — no location, no
+	     background mode, nothing this app does not do. Phase 1's real-device
+	     check replaces this note with a fact. -->
+	<key>NSMotionUsageDescription</key>
+	<string>顯示騎乘 G 值時需要讀取加速度計（僅在儀表板顯示期間讀取）。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

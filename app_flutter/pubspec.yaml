@@ -73,6 +73,15 @@ dependencies:
   # flow rather than the plugin's, so there is one location grant, not two.
   # Foreground only — no background modes are declared (0042 N1).
   geolocator: ^14.0.2
+  # Accelerometer for the G meter (design 0045). Two streams are used:
+  # `accelerometerEvent` (gravity included) only inside the calibration window
+  # and the still-window validity check, and `userAccelerometerEvent` (the OS's
+  # gravity-free fusion, §3.3 case 甲) while riding.
+  # No permission on Android below 200 Hz — this samples at about 50 (§2.2 #3).
+  # The rotation and smoothing are pure Dart in `state/g_force_estimator.dart`,
+  # which imports nothing from here, so machine-to-machine differences in sensor
+  # quality change the INPUT and never the logic (R4).
+  sensors_plus: ^7.1.0
 
 dev_dependencies:
   flutter_test:

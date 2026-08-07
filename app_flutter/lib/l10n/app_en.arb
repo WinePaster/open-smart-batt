@@ -639,6 +639,157 @@
   "speedQualityFair": "Fair",
   "speedQualityPoor": "Poor",
   "speedQualityNone": "No signal",
+  "gForceCardHeading": "G meter",
+  "@gForceCardHeading": {
+    "description": "Heading of the G meter card and its name in the module vocabulary (design 0045 \u00a73.6). \"G\" is the racing convention for multiples of gravity and is left untranslated in both locales for that reason."
+  },
+  "gForceLongLabel": "Long",
+  "@gForceLongLabel": {
+    "description": "Label of the longitudinal (forward/back) G readout. Short because it sits under a two-decimal number in a three-across row; the accel/brake word beside the value says which way."
+  },
+  "gForceLatLabel": "Lat",
+  "@gForceLatLabel": {
+    "description": "Label of the lateral (side to side) G readout."
+  },
+  "gForcePeakLabel": "Peak",
+  "@gForcePeakLabel": {
+    "description": "Label of the peak-hold readout. Tapping it zeroes the peaks (design 0045 Q5). Peaks never leave the current ride and are never recorded."
+  },
+  "gForceAccel": "accel",
+  "@gForceAccel": {
+    "description": "Direction word beside a POSITIVE longitudinal G. Lower case: it qualifies the number rather than titling it."
+  },
+  "gForceBrake": "brake",
+  "@gForceBrake": {
+    "description": "Direction word beside a NEGATIVE longitudinal G."
+  },
+  "gForceLeft": "left",
+  "@gForceLeft": {
+    "description": "Direction word beside a lateral G pointing left - i.e. a left-hand corner."
+  },
+  "gForceRight": "right",
+  "@gForceRight": {
+    "description": "Direction word beside a lateral G pointing right."
+  },
+  "gForceResetPeakHint": "Tap the peak to reset",
+  "@gForceResetPeakHint": {
+    "description": "One-line hint under the readouts. The peak readout is a tap target and nothing about a number looks tappable."
+  },
+  "settingsGMeterLabel": "G meter",
+  "@settingsGMeterLabel": {
+    "description": "Label of the G meter master switch (design 0045 Q2). Independent of speed detection: it uses the accelerometer, not GPS."
+  },
+  "settingsGMeterSub": "Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.",
+  "@settingsGMeterSub": {
+    "description": "Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that."
+  },
+  "settingsGCalibrationLabel": "Calibrate mount",
+  "@settingsGCalibrationLabel": {
+    "description": "Label of the calibration row, under the switch. It both starts a first calibration and redoes an existing one (design 0045 section 3.5 - the wizard lives in Settings, never on the dashboard)."
+  },
+  "settingsGCalibrationNever": "Not calibrated yet - the card will not appear",
+  "@settingsGCalibrationNever": {
+    "description": "Sub-line when there is no stored calibration. It states the CONSEQUENCE rather than only the state, because design 0045 Q8 removed the dashboard placeholder that used to explain it and R1 warns this is now the likeliest long-term state."
+  },
+  "settingsGCalibrationInvalid": "Calibration is no longer valid - the mount seems to have moved",
+  "@settingsGCalibrationInvalid": {
+    "description": "Sub-line after the still-window check rejected the stored calibration (design 0045 section 3.2)."
+  },
+  "settingsGCalibrationDone": "Last calibrated {when}",
+  "@settingsGCalibrationDone": {
+    "description": "Sub-line when a valid calibration exists.",
+    "placeholders": {
+      "when": {"type": "String"}
+    }
+  },
+  "settingsGCalibrationClear": "Clear calibration",
+  "@settingsGCalibrationClear": {
+    "description": "Destructive-ish row that discards the stored matrix. Separate from the switch: turning the feature off is not a statement about the mount."
+  },
+  "settingsGCalibrationCleared": "Calibration cleared.",
+  "@settingsGCalibrationCleared": {
+    "description": "Snackbar confirming the clear."
+  },
+  "gConsentTitle": "Turn on the G meter?",
+  "@gConsentTitle": {
+    "description": "Title of the confirmation dialog. Design 0045 Q2 ruled the switch independent of GPS but NOT free of consent, because Q4 records G values."
+  },
+  "gConsentRecorded": "Longitudinal and lateral G are written into recorded history and travel inside every diagnostic export.",
+  "@gConsentRecorded": {
+    "description": "First consequence. Same disclosure rule as the speed dialog: what is recorded is stated before it is recorded, not after."
+  },
+  "gConsentCalibration": "The feature stays inactive until you calibrate the phone against the frame. The calibration starts right after this.",
+  "@gConsentCalibration": {
+    "description": "Second consequence. Stated because a switch that turns on and shows nothing reads as broken."
+  },
+  "gConsentEnable": "Enable",
+  "@gConsentEnable": {
+    "description": "Confirm button."
+  },
+  "gConsentCancel": "Cancel",
+  "@gConsentCancel": {
+    "description": "Dismiss button. Cancel writes nothing at all."
+  },
+  "gWizardTitle": "Calibrate G meter",
+  "@gWizardTitle": {
+    "description": "Title of the calibration wizard route."
+  },
+  "gWizardMountTitle": "Mount the phone first",
+  "@gWizardMountTitle": {
+    "description": "Step 0 heading."
+  },
+  "gWizardMountBody": "Fix the phone to the frame the way you ride with it. The calibration describes THAT position - moving the phone afterwards means doing this again.",
+  "@gWizardMountBody": {
+    "description": "Step 0 body."
+  },
+  "gWizardStart": "Start",
+  "@gWizardStart": {
+    "description": "Button that begins the still measurement."
+  },
+  "gWizardStillTitle": "Hold still",
+  "@gWizardStillTitle": {
+    "description": "Step 1 heading."
+  },
+  "gWizardStillBody": "Measuring which way is up. Do not touch the phone or the bike.",
+  "@gWizardStillBody": {
+    "description": "Step 1 body."
+  },
+  "gWizardMovedTitle": "It moved",
+  "@gWizardMovedTitle": {
+    "description": "Shown when the still window was broken."
+  },
+  "gWizardMovedBody": "Something moved while measuring, so the reading would not have been gravity alone. Try again.",
+  "@gWizardMovedBody": {
+    "description": "Body of the failed-motion state."
+  },
+  "gWizardRetry": "Try again",
+  "@gWizardRetry": {
+    "description": "Restarts the wizard from the still step."
+  },
+  "gWizardLaunchTitle": "Now pull away in a straight line",
+  "@gWizardLaunchTitle": {
+    "description": "Step 2 heading."
+  },
+  "gWizardLaunchBody": "Ride off gently and straight ahead for a couple of seconds. That is how the app learns which way is forward - a launch taken while turning will point it the wrong way.",
+  "@gWizardLaunchBody": {
+    "description": "Step 2 body. It says why, because the accuracy of the whole feature depends on the user understanding this one instruction."
+  },
+  "gWizardDoneTitle": "Calibrated",
+  "@gWizardDoneTitle": {
+    "description": "Step 3 heading."
+  },
+  "gWizardDoneBody": "Check it: accelerating should push the dot straight up, braking straight down. If it leans, calibrate again.",
+  "@gWizardDoneBody": {
+    "description": "Step 3 body - the visual check that backs up the straight-launch assumption (design 0045 section 3.2)."
+  },
+  "gWizardSave": "Save",
+  "@gWizardSave": {
+    "description": "Commits the calibration."
+  },
+  "gWizardRecalibrate": "Calibrate again",
+  "@gWizardRecalibrate": {
+    "description": "Discards this attempt and restarts."
+  },
   "watchfaceRiding": "Riding",
   "settingsWatchfaceLabel": "Watchface",
   "settingsWatchfaceGuidance": "Change it on the device's page",

@@ -1712,6 +1712,228 @@ abstract class AppLocalizations {
   /// **'No signal'**
   String get speedQualityNone;
 
+  /// Heading of the G meter card and its name in the module vocabulary (design 0045 §3.6). "G" is the racing convention for multiples of gravity and is left untranslated in both locales for that reason.
+  ///
+  /// In en, this message translates to:
+  /// **'G meter'**
+  String get gForceCardHeading;
+
+  /// Label of the longitudinal (forward/back) G readout. Short because it sits under a two-decimal number in a three-across row; the accel/brake word beside the value says which way.
+  ///
+  /// In en, this message translates to:
+  /// **'Long'**
+  String get gForceLongLabel;
+
+  /// Label of the lateral (side to side) G readout.
+  ///
+  /// In en, this message translates to:
+  /// **'Lat'**
+  String get gForceLatLabel;
+
+  /// Label of the peak-hold readout. Tapping it zeroes the peaks (design 0045 Q5). Peaks never leave the current ride and are never recorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Peak'**
+  String get gForcePeakLabel;
+
+  /// Direction word beside a POSITIVE longitudinal G. Lower case: it qualifies the number rather than titling it.
+  ///
+  /// In en, this message translates to:
+  /// **'accel'**
+  String get gForceAccel;
+
+  /// Direction word beside a NEGATIVE longitudinal G.
+  ///
+  /// In en, this message translates to:
+  /// **'brake'**
+  String get gForceBrake;
+
+  /// Direction word beside a lateral G pointing left - i.e. a left-hand corner.
+  ///
+  /// In en, this message translates to:
+  /// **'left'**
+  String get gForceLeft;
+
+  /// Direction word beside a lateral G pointing right.
+  ///
+  /// In en, this message translates to:
+  /// **'right'**
+  String get gForceRight;
+
+  /// One-line hint under the readouts. The peak readout is a tap target and nothing about a number looks tappable.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the peak to reset'**
+  String get gForceResetPeakHint;
+
+  /// Label of the G meter master switch (design 0045 Q2). Independent of speed detection: it uses the accelerometer, not GPS.
+  ///
+  /// In en, this message translates to:
+  /// **'G meter'**
+  String get settingsGMeterLabel;
+
+  /// Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that.
+  ///
+  /// In en, this message translates to:
+  /// **'Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.'**
+  String get settingsGMeterSub;
+
+  /// Label of the calibration row, under the switch. It both starts a first calibration and redoes an existing one (design 0045 section 3.5 - the wizard lives in Settings, never on the dashboard).
+  ///
+  /// In en, this message translates to:
+  /// **'Calibrate mount'**
+  String get settingsGCalibrationLabel;
+
+  /// Sub-line when there is no stored calibration. It states the CONSEQUENCE rather than only the state, because design 0045 Q8 removed the dashboard placeholder that used to explain it and R1 warns this is now the likeliest long-term state.
+  ///
+  /// In en, this message translates to:
+  /// **'Not calibrated yet - the card will not appear'**
+  String get settingsGCalibrationNever;
+
+  /// Sub-line after the still-window check rejected the stored calibration (design 0045 section 3.2).
+  ///
+  /// In en, this message translates to:
+  /// **'Calibration is no longer valid - the mount seems to have moved'**
+  String get settingsGCalibrationInvalid;
+
+  /// Sub-line when a valid calibration exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Last calibrated {when}'**
+  String settingsGCalibrationDone(String when);
+
+  /// Destructive-ish row that discards the stored matrix. Separate from the switch: turning the feature off is not a statement about the mount.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear calibration'**
+  String get settingsGCalibrationClear;
+
+  /// Snackbar confirming the clear.
+  ///
+  /// In en, this message translates to:
+  /// **'Calibration cleared.'**
+  String get settingsGCalibrationCleared;
+
+  /// Title of the confirmation dialog. Design 0045 Q2 ruled the switch independent of GPS but NOT free of consent, because Q4 records G values.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on the G meter?'**
+  String get gConsentTitle;
+
+  /// First consequence. Same disclosure rule as the speed dialog: what is recorded is stated before it is recorded, not after.
+  ///
+  /// In en, this message translates to:
+  /// **'Longitudinal and lateral G are written into recorded history and travel inside every diagnostic export.'**
+  String get gConsentRecorded;
+
+  /// Second consequence. Stated because a switch that turns on and shows nothing reads as broken.
+  ///
+  /// In en, this message translates to:
+  /// **'The feature stays inactive until you calibrate the phone against the frame. The calibration starts right after this.'**
+  String get gConsentCalibration;
+
+  /// Confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable'**
+  String get gConsentEnable;
+
+  /// Dismiss button. Cancel writes nothing at all.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gConsentCancel;
+
+  /// Title of the calibration wizard route.
+  ///
+  /// In en, this message translates to:
+  /// **'Calibrate G meter'**
+  String get gWizardTitle;
+
+  /// Step 0 heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Mount the phone first'**
+  String get gWizardMountTitle;
+
+  /// Step 0 body.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix the phone to the frame the way you ride with it. The calibration describes THAT position - moving the phone afterwards means doing this again.'**
+  String get gWizardMountBody;
+
+  /// Button that begins the still measurement.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get gWizardStart;
+
+  /// Step 1 heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold still'**
+  String get gWizardStillTitle;
+
+  /// Step 1 body.
+  ///
+  /// In en, this message translates to:
+  /// **'Measuring which way is up. Do not touch the phone or the bike.'**
+  String get gWizardStillBody;
+
+  /// Shown when the still window was broken.
+  ///
+  /// In en, this message translates to:
+  /// **'It moved'**
+  String get gWizardMovedTitle;
+
+  /// Body of the failed-motion state.
+  ///
+  /// In en, this message translates to:
+  /// **'Something moved while measuring, so the reading would not have been gravity alone. Try again.'**
+  String get gWizardMovedBody;
+
+  /// Restarts the wizard from the still step.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get gWizardRetry;
+
+  /// Step 2 heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Now pull away in a straight line'**
+  String get gWizardLaunchTitle;
+
+  /// Step 2 body. It says why, because the accuracy of the whole feature depends on the user understanding this one instruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Ride off gently and straight ahead for a couple of seconds. That is how the app learns which way is forward - a launch taken while turning will point it the wrong way.'**
+  String get gWizardLaunchBody;
+
+  /// Step 3 heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Calibrated'**
+  String get gWizardDoneTitle;
+
+  /// Step 3 body - the visual check that backs up the straight-launch assumption (design 0045 section 3.2).
+  ///
+  /// In en, this message translates to:
+  /// **'Check it: accelerating should push the dot straight up, braking straight down. If it leans, calibrate again.'**
+  String get gWizardDoneBody;
+
+  /// Commits the calibration.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get gWizardSave;
+
+  /// Discards this attempt and restarts.
+  ///
+  /// In en, this message translates to:
+  /// **'Calibrate again'**
+  String get gWizardRecalibrate;
+
   /// No description provided for @watchfaceRiding.
   ///
   /// In en, this message translates to:

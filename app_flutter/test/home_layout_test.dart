@@ -13,6 +13,8 @@
 // blank screen".
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -39,6 +41,7 @@ void main() {
         'cells',
         'energyPath',
         'speed',
+        'gForce',
       ]);
       for (final n in names) {
         expect(n.toLowerCase(), isNot(contains('control')));
@@ -226,13 +229,14 @@ void main() {
   // ---------------------------------------------------------------------------
   group('W-1: a deleted device leaves no ghost, and no scorched earth', () {
     SavedDevice dev(String id) => SavedDevice(id: id, alias: id, name: id);
+    const on = AppSettings.defaults;
 
     test('a tile whose device is gone is not drawn', () {
       final layout = HomeLayout(const [
         HomeTile.device('DEV-A'),
         HomeTile.device('DEV-B'),
       ]);
-      final visible = layout.visibleFor([dev('DEV-A')]);
+      final visible = layout.renderedFor([dev('DEV-A')], on, gForceAvailable: true);
       expect(visible.tiles.map((t) => t.deviceId), ['DEV-A']);
     });
 
@@ -242,20 +246,24 @@ void main() {
         HomeTile.device('DEV-B'),
       ]);
       // The user's arrangement survives the absence...
-      expect(layout.visibleFor([dev('DEV-A')]).tiles, hasLength(1));
+      expect(layout.renderedFor([dev('DEV-A')], on, gForceAvailable: true).tiles, hasLength(1));
       // ...and comes back intact when the unit does. This is the half that
       // rules out "prune by rewriting the stored layout": an iOS NSUUID
       // rotation removes and re-adds a device without anybody asking.
-      final back = layout.visibleFor([dev('DEV-A'), dev('DEV-B')]);
+      final back = layout.renderedFor([dev('DEV-A'), dev('DEV-B')], on, gForceAvailable: true);
       expect(back.tiles.map((t) => t.deviceId), ['DEV-A', 'DEV-B']);
     });
 
-    test('phone-owned tiles are never pruned', () {
+    test('phone-owned tiles are never pruned AS GHOSTS', () {
+      // They answer to their own switch (see the privacy test below), but the
+      // device list must never remove them — they belong to the phone, and
+      // deleting every unit does not delete the speedometer.
       final layout = HomeLayout(const [
         HomeTile.module(DisplayModule.speed),
         HomeTile.device('DEV-GONE'),
       ]);
-      final visible = layout.visibleFor([]);
+      final visible = layout.renderedFor(
+          [], on.copyWith(speedDetection: true), gForceAvailable: true);
       expect(visible.tiles.any((t) => t.module == DisplayModule.speed), isTrue,
           reason: 'speed belongs to the phone, not to any unit');
     });
@@ -264,8 +272,72 @@ void main() {
       // T-new-2 forbids an empty page outright, and "every card you had names
       // a device you deleted" is a real path to one.
       final layout = HomeLayout(const [HomeTile.device('DEV-GONE')]);
-      expect(layout.visibleFor([dev('DEV-NEW')]).tiles, isNotEmpty);
-      expect(layout.visibleFor([]).tiles, isNotEmpty);
+      expect(layout.renderedFor([dev('DEV-NEW')], on, gForceAvailable: true).tiles, isNotEmpty);
+      expect(layout.renderedFor([], on, gForceAvailable: true).tiles, isNotEmpty);
     });
+
+    test('🔴 a phone module whose switch is off is not drawn either', () {
+      // Link 1 of design 0042's privacy chain, on THIS surface. A stored speed
+      // tile with detection off used to mount a SpeedCard, which opens the GNSS
+      // stream — while the export preamble said `speed detection: off` and the
+      // consent dialog had never been shown.
+      const off = AppSettings.defaults;   // speedDetection defaults to false
+      final layout = HomeLayout(const [
+        HomeTile.module(DisplayModule.speed),
+        HomeTile.device('DEV-A'),
+      ]);
+      final drawn = layout.renderedFor([dev('DEV-A')], off, gForceAvailable: false);
+      expect(drawn.tiles.any((t) => t.module == DisplayModule.speed), isFalse,
+          reason: 'no module ⇒ no card ⇒ no setFaceWantsSpeed ⇒ no stream');
+      expect(drawn.tiles, hasLength(1));
+    });
+
+    test('and G needs a calibration, not just its switch', () {
+      final layout = HomeLayout(const [
+        HomeTile.module(DisplayModule.gForce),
+        HomeTile.device('DEV-A'),
+      ]);
+      // Switch on but no calibration: design 0045 Q8 — a card that cannot name
+      // a direction is not shown at all.
+      final uncalibrated = layout.renderedFor([dev('DEV-A')],
+          AppSettings.defaults.copyWith(gMeterEnabled: true),
+          gForceAvailable: false);
+      expect(uncalibrated.tiles.any((t) => t.module == DisplayModule.gForce),
+          isFalse);
+      final ready = layout.renderedFor([dev('DEV-A')],
+          AppSettings.defaults.copyWith(gMeterEnabled: true),
+          gForceAvailable: true);
+      expect(ready.tiles.any((t) => t.module == DisplayModule.gForce), isTrue);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07: `visibleFor` shipped with NO caller in `lib/` and the four
+  // tests above were green the whole time.
+  //
+  // The W-1 fix was applied by a script whose first assertion failed; the two
+  // call-site edits that followed it in the same script never ran, and the
+  // failure was read as "the anchor was wrong" rather than "nothing after it
+  // executed". The function, its documentation and its tests all landed. The
+  // app never called it, so deleting a device still left an unremovable card.
+  //
+  // 🔑 This is the same class of defect this project keeps finding in others —
+  // the caller is where it breaks — arriving via the one route nobody audits:
+  // a fix that tests itself. A unit test cannot notice that nothing uses the
+  // unit, so the guard has to be about the wiring.
+  // ---------------------------------------------------------------------------
+  test('renderedFor is actually wired into both surfaces that draw a layout',
+      () {
+    for (final f in [
+      'lib/ui/home/home_page.dart',
+      'lib/ui/home/home_editor_page.dart',
+    ]) {
+      final src = File(f).readAsStringSync();
+      expect(src, contains('.renderedFor('),
+          reason: '\$f resolves a stored HomeLayout but never calls the home '
+              'surface resolver — a deleted device would leave a card with no '
+              'way to remove it, and a speed tile would open the GNSS stream '
+              'with detection off');
+    }
   });
 }

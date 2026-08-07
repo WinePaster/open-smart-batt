@@ -93,6 +93,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<GForceController>.value(value: s.gforce),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),

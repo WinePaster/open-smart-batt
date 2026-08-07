@@ -74,11 +74,12 @@ class _WatchfaceSheet extends StatelessWidget {
     Future<void> apply(DisplayLayout next) =>
         devices.setDisplayLayout(deviceId, next);
 
-    // design 0034 §4.3, "unavailable is not offered". `riding` exists only to
-    // carry the speed card, so with the master switch off there is nothing for
-    // it to be — and the SAME predicate keeps a stored `riding` from rendering
-    // (see `ridingSelectable`), which is what stops it collapsing into a copy
-    // of `compact`.
+    // design 0034 §4.3, "unavailable is not offered". `riding` exists to carry
+    // the speed card and the G ball, so with BOTH unavailable there is nothing
+    // for it to be — and the SAME predicate keeps a stored `riding` from
+    // rendering (see `ridingSelectable`), which is what stops it collapsing
+    // into a copy of `compact`. With one of the two available it is offered,
+    // and draws with that card only (design 0045 Q3).
     //
     // ⚠️ The picker's `selected` is the STORED face, which can be `riding`
     // while the option is absent. `SegmentedControl` matches on `==`, so it
@@ -87,6 +88,7 @@ class _WatchfaceSheet extends StatelessWidget {
     // control at `standard`, which would look like the setting had been changed
     // for the user.
     final settings = context.watch<SettingsController>().settings;
+    final gAvailable = context.watch<GForceController>().available;
 
     return SafeArea(
       child: Container(
@@ -126,7 +128,8 @@ class _WatchfaceSheet extends StatelessWidget {
                       value: Watchface.diagnostic,
                       label: l10n.watchfaceDiagnostic
                     ),
-                    if (ridingSelectable(settings))
+                    if (ridingSelectable(settings,
+                        gForceAvailable: gAvailable))
                       (value: Watchface.riding, label: l10n.watchfaceRiding),
                   ],
                 ),

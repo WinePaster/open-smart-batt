@@ -37,7 +37,6 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/display_modules.dart';
-import '../dashboard/watchfaces.dart';
 import '../widgets/industrial_card.dart';
 import 'home_tiles.dart';
 
@@ -65,6 +64,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     return List<HomeTile>.of(
       (HomeLayout.decode(settings.homeLayout) ??
               HomeLayout.defaultFor(devices.devices))
+          // Same view the home page draws — editing a list that still holds
+          // tiles the user cannot see would let them reorder invisible cards,
+          // and would write those tiles straight back on save.
+          .renderedFor(devices.devices, settings.settings,
+              gForceAvailable: context.read<GForceController>().available)
           .tiles,
     );
   }
@@ -197,9 +201,31 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   ///
   /// Per-device modules are offered only where the class HAS them (design 0034
   /// §4.3, "unavailable is not offered") — a power bank is not offered a DVOL
-  /// card. `speed` is the exception in both directions: it reads no device, so
-  /// it appears once with no device attached, and only while the master switch
-  /// is on (design 0042 §3.9 — an unavailable card would be permanently blank).
+  /// card. PHONE modules are the exception in both directions: they read no
+  /// device, so they appear once with no device attached, and only while their
+  /// own switch is on (an unavailable card would be permanently blank).
+  ///
+  /// 🔴 Two things here are written the way they are because of design 0045,
+  /// and both are the kind of defect this project keeps shipping — one in a
+  /// CALLER, one in a hardcoded list:
+  ///
+  ///  1. The per-device loop excludes phone modules via
+  ///     [DisplayModule.isPhoneModule], an exhaustive switch, NOT the
+  ///     `m != DisplayModule.speed` it used to be. That comparison silently let
+  ///     the next phone module through, and the next one arrived: the G meter
+  ///     would have been offered as `G meter · <battery name>`, a card bound to
+  ///     a unit that has nothing to do with it.
+  ///  2. The standalone speed entry asks `phoneModuleAvailable(speed, …)`, NOT
+  ///     `ridingSelectable`. It used to ask `ridingSelectable`, which was the
+  ///     same expression by coincidence; design 0045 Q3 widened that to
+  ///     "speed on OR G available", and inheriting it here would have offered a
+  ///     speed tile to someone who only turned the G meter on. A speed tile
+  ///     mounts a `SpeedCard`, which opens the GNSS gate — so the coincidence
+  ///     would have become a location leak on a second route.
+  ///
+  /// The G meter is deliberately NOT offered here. Design 0045 places it on the
+  /// `riding` watchface and says nothing about the home grid; adding it would
+  /// be inventing a ruling.
   void _showAddSheet(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final devices = context.read<DeviceController>().devices;
@@ -210,13 +236,16 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
         (d.alias.isEmpty ? d.id : d.alias, HomeTile.device(d.id)),
       for (final d in devices)
         for (final m in DisplayModule.values)
-          if (m != DisplayModule.speed &&
+          if (!m.isPhoneModule &&
               DisplayModules.forClass(d.productClass).has(m))
             (
               '${homeModuleLabel(l10n, m)} · ${d.alias.isEmpty ? d.id : d.alias}',
               HomeTile.module(m, deviceId: d.id),
             ),
-      if (ridingSelectable(settings))
+      if (phoneModuleAvailable(DisplayModule.speed, settings,
+          // Not consulted for `speed`; passed because the parameter is
+          // required, which is what stops a caller silently defaulting it.
+          gForceAvailable: false))
         (
           homeModuleLabel(l10n, DisplayModule.speed),
           const HomeTile.module(DisplayModule.speed),

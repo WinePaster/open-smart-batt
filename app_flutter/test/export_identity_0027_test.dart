@@ -342,7 +342,7 @@ void main() {
           scope: 'all devices',
           layout: 'default',
           home: 'tiles=auto',
-          speedDetection: false,
+          speedDetection: false, gMeter: false,
           devices: const [
             ExportDeviceIdentity(
               deviceId: deviceId,
@@ -406,7 +406,7 @@ void main() {
         scope: 'all devices',
         layout: 'default',
         home: 'tiles=auto',
-        speedDetection: false,
+        speedDetection: false, gMeter: false,
       );
       expect(lines.any((l) => l.startsWith('devices:')), isFalse);
     });

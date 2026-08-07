@@ -1017,6 +1017,129 @@ class AppLocalizationsEn extends AppLocalizations {
   String get speedQualityNone => 'No signal';
 
   @override
+  String get gForceCardHeading => 'G meter';
+
+  @override
+  String get gForceLongLabel => 'Long';
+
+  @override
+  String get gForceLatLabel => 'Lat';
+
+  @override
+  String get gForcePeakLabel => 'Peak';
+
+  @override
+  String get gForceAccel => 'accel';
+
+  @override
+  String get gForceBrake => 'brake';
+
+  @override
+  String get gForceLeft => 'left';
+
+  @override
+  String get gForceRight => 'right';
+
+  @override
+  String get gForceResetPeakHint => 'Tap the peak to reset';
+
+  @override
+  String get settingsGMeterLabel => 'G meter';
+
+  @override
+  String get settingsGMeterSub =>
+      'Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.';
+
+  @override
+  String get settingsGCalibrationLabel => 'Calibrate mount';
+
+  @override
+  String get settingsGCalibrationNever =>
+      'Not calibrated yet - the card will not appear';
+
+  @override
+  String get settingsGCalibrationInvalid =>
+      'Calibration is no longer valid - the mount seems to have moved';
+
+  @override
+  String settingsGCalibrationDone(String when) {
+    return 'Last calibrated $when';
+  }
+
+  @override
+  String get settingsGCalibrationClear => 'Clear calibration';
+
+  @override
+  String get settingsGCalibrationCleared => 'Calibration cleared.';
+
+  @override
+  String get gConsentTitle => 'Turn on the G meter?';
+
+  @override
+  String get gConsentRecorded =>
+      'Longitudinal and lateral G are written into recorded history and travel inside every diagnostic export.';
+
+  @override
+  String get gConsentCalibration =>
+      'The feature stays inactive until you calibrate the phone against the frame. The calibration starts right after this.';
+
+  @override
+  String get gConsentEnable => 'Enable';
+
+  @override
+  String get gConsentCancel => 'Cancel';
+
+  @override
+  String get gWizardTitle => 'Calibrate G meter';
+
+  @override
+  String get gWizardMountTitle => 'Mount the phone first';
+
+  @override
+  String get gWizardMountBody =>
+      'Fix the phone to the frame the way you ride with it. The calibration describes THAT position - moving the phone afterwards means doing this again.';
+
+  @override
+  String get gWizardStart => 'Start';
+
+  @override
+  String get gWizardStillTitle => 'Hold still';
+
+  @override
+  String get gWizardStillBody =>
+      'Measuring which way is up. Do not touch the phone or the bike.';
+
+  @override
+  String get gWizardMovedTitle => 'It moved';
+
+  @override
+  String get gWizardMovedBody =>
+      'Something moved while measuring, so the reading would not have been gravity alone. Try again.';
+
+  @override
+  String get gWizardRetry => 'Try again';
+
+  @override
+  String get gWizardLaunchTitle => 'Now pull away in a straight line';
+
+  @override
+  String get gWizardLaunchBody =>
+      'Ride off gently and straight ahead for a couple of seconds. That is how the app learns which way is forward - a launch taken while turning will point it the wrong way.';
+
+  @override
+  String get gWizardDoneTitle => 'Calibrated';
+
+  @override
+  String get gWizardDoneBody =>
+      'Check it: accelerating should push the dot straight up, braking straight down. If it leans, calibrate again.';
+
+  @override
+  String get gWizardSave => 'Save';
+
+  @override
+  String get gWizardRecalibrate => 'Calibrate again';
+
+  @override
   String get watchfaceRiding => 'Riding';
 
   @override

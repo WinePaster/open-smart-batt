@@ -1,0 +1,247 @@
+// design 0045 — the two settings columns, and the trap they were laid in.
+//
+// 🔴 `SettingsRepo.saveSettings` writes with `ConflictAlgorithm.replace`, which
+// is `INSERT OR REPLACE`: SQLite DELETEs the whole row and inserts a new one.
+// A column missing from `AppSettings.toMap()` is therefore not merely
+// unpersisted — it is ERASED, later, by an unrelated write. Turn the G meter on,
+// calibrate it, then change the theme, and the calibration is gone.
+//
+// `g_meter_enabled` and `g_calibration` shipped in v12 (design 0042 built them
+// on 0045's behalf) with no writer at all, and both plans wrote down that they
+// must join `toMap` in the same change that starts writing them. This file is
+// that instruction, made executable.
+//
+// The last test is the general form and is the one worth keeping: EVERY column
+// the settings table has must appear in the map. It would have caught this
+// class of defect without anybody having to remember which feature is next.
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/state/state.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+void main() {
+  setUpAll(sqfliteFfiInit);
+
+  Future<AppDatabase> openDb() => AppDatabase.open(
+      path: inMemoryDatabasePath, factory: databaseFactoryFfi);
+
+  test('defaults: off, and never calibrated', () {
+    // Off is the promise made to everyone who never opens the setting, and
+    // "never calibrated" is NULL rather than an identity matrix — see the field
+    // doc for why an identity default would be actively wrong.
+    expect(AppSettings.defaults.gMeterEnabled, isFalse);
+    expect(AppSettings.defaults.gCalibration, isNull);
+  });
+
+  test('a calibration survives an unrelated settings change', () {
+    // The exact defect the INSERT OR REPLACE note warns about, at the model
+    // layer where it starts.
+    const stored = '{"m":[1,0,0,0,1,0,0,0,1],"at":0}';
+    const s = AppSettings(gMeterEnabled: true, gCalibration: stored);
+    final after = s.copyWith(themeMode: AppThemeMode.dark);
+    expect(after.gMeterEnabled, isTrue);
+    expect(after.gCalibration, stored);
+    expect(after.toMap()['g_calibration'], stored);
+    expect(after.toMap()['g_meter_enabled'], 1);
+  });
+
+  test('and survives a real round trip through the database', () async {
+    final db = await openDb();
+    addTearDown(db.close);
+    final repo = SettingsRepo(db.db);
+    const stored = '{"m":[0,1,0,-1,0,0,0,0,1],"at":1754524800000}';
+
+    await repo.saveSettings(
+        const AppSettings(gMeterEnabled: true, gCalibration: stored));
+    // Something completely unrelated writes next — this is the step that
+    // erased the column before it was in the map.
+    final loaded = await repo.loadSettings();
+    await repo.saveSettings(loaded.copyWith(pollIntervalMs: 2000));
+
+    final back = await repo.loadSettings();
+    expect(back.gMeterEnabled, isTrue);
+    expect(back.gCalibration, stored);
+    expect(GForceCalibration.decode(back.gCalibration), isNotNull);
+  });
+
+  test('an unreadable stored matrix reads as "not calibrated", not as axes',
+      () async {
+    // Storage keeps the string; the DECODER is what refuses. Splitting it this
+    // way means a corrupt value cannot be silently rewritten over the user's
+    // real one, and cannot be used either.
+    final db = await openDb();
+    addTearDown(db.close);
+    final repo = SettingsRepo(db.db);
+    await repo.saveSettings(const AppSettings(
+        gMeterEnabled: true, gCalibration: 'not json at all'));
+    final back = await repo.loadSettings();
+    expect(back.gCalibration, 'not json at all');
+    expect(GForceCalibration.decode(back.gCalibration), isNull);
+
+    final c = GForceController()..applySettings(back);
+    expect(c.calibrated, isFalse);
+    expect(c.available, isFalse, reason: 'the switch alone is not enough');
+    c.dispose();
+  });
+
+  test('an empty string is normalised to null, not kept as a third state',
+      () {
+    expect(
+      AppSettings.fromMap(const {'g_calibration': ''}).gCalibration,
+      isNull,
+    );
+  });
+
+  test('a pre-v12 row reads as OFF, not as ON', () {
+    // `!= 0` on a missing column would read NULL as "on", which for a switch
+    // gated by a consent dialog means an upgrade granting itself a feature the
+    // user was never shown. Same shape, same reason, as speed_detection.
+    expect(AppSettings.fromMap(const {}).gMeterEnabled, isFalse);
+    expect(AppSettings.fromMap(const {'g_meter_enabled': null}).gMeterEnabled,
+        isFalse);
+    expect(AppSettings.fromMap(const {'g_meter_enabled': 1}).gMeterEnabled,
+        isTrue);
+  });
+
+  test('clearing the calibration is expressible, and clears it', () async {
+    // "校準歸零" (design 0045 §3.5). `copyWith(gCalibration: null)` cannot mean
+    // this — null is how copyWith says "leave it alone" — so there is an
+    // explicit flag, exactly as home_layout has.
+    const s = AppSettings(gCalibration: '{"m":[1,0,0,0,1,0,0,0,1],"at":0}');
+    expect(s.copyWith(gCalibration: null).gCalibration, isNotNull);
+    expect(s.copyWith(clearGCalibration: true).gCalibration, isNull);
+    expect(s.copyWith(clearGCalibration: true).toMap()['g_calibration'],
+        isNull);
+  });
+
+  test('the settings controller is the only writer, and it round trips',
+      () async {
+    final db = await openDb();
+    addTearDown(db.close);
+    final c = SettingsController(SettingsRepo(db.db), history: HistoryRepo(db.db));
+    await c.load();
+    await c.setGMeterEnabled(true);
+    await c.setGCalibration('{"m":[1,0,0,0,1,0,0,0,1],"at":0}');
+    await c.setThemeMode(AppThemeMode.dark);
+    final reloaded = await SettingsRepo(db.db).loadSettings();
+    expect(reloaded.gMeterEnabled, isTrue);
+    expect(reloaded.gCalibration, isNotNull);
+
+    await c.setGCalibration(null);
+    expect((await SettingsRepo(db.db).loadSettings()).gCalibration, isNull);
+    expect((await SettingsRepo(db.db).loadSettings()).gMeterEnabled, isTrue,
+        reason: 'zeroing the calibration is not switching the feature off');
+  });
+
+  test('🔴 EVERY settings column appears in AppSettings.toMap()', () async {
+    // The general form, and the reason this file exists rather than three
+    // feature-specific assertions. A column added to the schema without an
+    // entry in the map does not fail to persist — it erases itself later, at a
+    // moment unrelated to whatever wrote it. This catches the NEXT one.
+    final db = await openDb();
+    addTearDown(db.close);
+    final info = await db.db.rawQuery('PRAGMA table_info(settings)');
+    // Two exemptions, both RETIRED columns rather than oversights. Being reset
+    // by a later write is the desired outcome for them, which is the opposite
+    // of the defect this test is about — so they are named individually here
+    // rather than the rule being loosened.
+    const retired = {
+      // Superseded by `theme_mode` (a string). Still READ by
+      // `AppSettings._themeModeFromMap` so a user who last set a theme before
+      // that change keeps it; never written again.
+      'dark_theme',
+      // The auto-log switch, removed when retention replaced it — the people
+      // who turned it off were the people who later had no data to send.
+      'auto_log',
+    };
+    final columns = info.map((r) => r['name'] as String).toSet()
+      // The primary key is the repo's, not the model's: it is a fixed
+      // single-row id, supplied by SettingsRepo.saveSettings.
+      ..remove('id')
+      ..removeAll(retired);
+    final mapped = AppSettings.defaults.toMap().keys.toSet();
+    expect(columns.difference(mapped), isEmpty,
+        reason: 'these columns are in the table but not in toMap(), so '
+            'INSERT OR REPLACE will erase them on the next settings write');
+    expect(mapped.difference(columns), isEmpty,
+        reason: 'toMap() names columns the table does not have');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 0044/0045 查核, 兩條 🟡。Both are the "confident, plausible,
+  // wrong" shape this feature is most exposed to.
+  // ---------------------------------------------------------------------------
+  test('the recorded series is not thinned by the display throttle', () {
+    // Design 0044 ruled this for acceleration and pinned it; 0045 was written
+    // without inheriting it, and the throttle's early-return sat ABOVE the
+    // stream add (measured: 50 samples in, 5 landed). The Phase 4 road test
+    // will tune `readoutThrottle` — a DISPLAY knob that must not quietly
+    // change what goes into the database.
+    final src = File('lib/state/g_force_controller.dart').readAsStringSync();
+    final add = src.indexOf('_estimates.add(');
+    final throttle = src.indexOf('config.readoutThrottle) return;');
+    expect(add, isNonNegative);
+    expect(throttle, isNonNegative);
+    expect(add, lessThan(throttle),
+        reason: 'the recorded series must be published BEFORE the display '
+            'throttle can return early, or history inherits a repaint '
+            'decision');
+  });
+
+  test('a moved mount survives a restart, WITH the reason and the date', () {
+    // 🔴 Three attempts, recorded because the middle one looked right.
+    //
+    //  1. memory-only        — forgot across a restart; the stale matrix came
+    //                          back and the meter drew on wrong axes.
+    //  2. clear the column   — durable, but collapsed 「校準已失效」 into
+    //                          「尚未校準」 and threw away the date. design
+    //                          0045 §3.6 specifies BOTH sentences and the date,
+    //                          and settings_screen.dart renders them. Q8's "the
+    //                          card simply does not appear" governs the CARD,
+    //                          not the settings page.
+    //  3. flag in the same JSON column — durable, keeps both, and stays off the
+    //                          schema (v12 is the last migration; 0044 Q2
+    //                          forbids a v13).
+    const at = 1770000000000;
+    final fresh = GForceCalibration(
+      rotation: const [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      calibratedAt: DateTime.fromMillisecondsSinceEpoch(at, isUtc: true),
+    );
+    expect(fresh.invalidated, isFalse);
+
+    final moved = fresh.markedInvalid;
+    final restored = GForceCalibration.decode(moved.encode())!;
+    expect(restored.invalidated, isTrue,
+        reason: 'the mount moved, and a restart must not forget that');
+    expect(restored.calibratedAt, fresh.calibratedAt,
+        reason: 'the settings page needs the date to say WHEN it was good');
+    expect(restored.rotation, fresh.rotation);
+
+    // A calibration written before the flag existed decodes as valid, which is
+    // what it was.
+    expect(GForceCalibration.decode(fresh.encode())!.invalidated, isFalse);
+    expect(fresh.encode().contains('invalid'), isFalse,
+        reason: 'the key is written only when true — no churn on every save');
+  });
+
+  test('the invalidation is signalled and somebody listens', () {
+    // The header claimed "Once tripped it stays tripped … There is no path
+    // back". It was memory-only: restart, and the stale matrix read back with
+    // `available` true. Move the mount, restart, ride off without ever
+    // standing still for the two seconds the still-window needs, and the whole
+    // session is wrong AND lands in g_long/g_lat.
+    final ctrl = File('lib/state/g_force_controller.dart').readAsStringSync();
+    expect(ctrl, contains('onCalibrationInvalidated'),
+        reason: 'the controller must be able to signal it, without importing '
+            'a repository — that import ban is what keeps the INSERT OR '
+            'REPLACE trap unreachable from here');
+
+    final wiring = File('lib/state/app_services.dart').readAsStringSync();
+    expect(wiring, contains('onCalibrationInvalidated:'),
+        reason: 'a signal nobody listens to is the same defect with extra '
+            'steps — see visibleFor, which shipped with no caller');
+  });
+}

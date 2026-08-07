@@ -353,6 +353,8 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            ChangeNotifierProvider<GForceController>.value(
+                value: services.gforce),
           ],
           child: MaterialApp(
             theme: AppTheme.light(),
