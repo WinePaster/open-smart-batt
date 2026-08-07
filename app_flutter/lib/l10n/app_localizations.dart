@@ -1682,6 +1682,12 @@ abstract class AppLocalizations {
   /// **'Last measured {value} {unit}, {seconds} s ago'**
   String speedCardLastMeasured(String value, String unit, int seconds);
 
+  /// Label of the acceleration sub-readout under the big speed number (design 0044 §3.3). The value beside it always carries a sign and its unit is the speed unit per second (km/h/s or mph/s), so this word only has to say WHICH quantity it is. The row is absent whenever there is no measured slope — it is never rendered with a zero to fill the space.
+  ///
+  /// In en, this message translates to:
+  /// **'Accel'**
+  String get speedCardAccelLabel;
+
   /// No description provided for @speedQualityGood.
   ///
   /// In en, this message translates to:

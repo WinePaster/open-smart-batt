@@ -29,8 +29,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/state/accel_estimator.dart';
+import 'package:open_smart_batt/state/gps_speed_controller.dart';
 import 'package:open_smart_batt/state/session_context.dart';
 import 'package:open_smart_batt/state/settings_controller.dart';
+import 'package:open_smart_batt/state/speed_estimator.dart';
 import 'package:open_smart_batt/state/telemetry_controller.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -252,4 +255,138 @@ void main() {
           reason: 'and the row already written was not revised');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // design 0044 §3.5 / Phase 2 — the acceleration column, wired end to end.
+  //
+  // The two tests above prove `foldSpeedSample` writes what it is given. These
+  // prove the right thing is GIVEN to it, driven from a real
+  // [GpsSpeedController] over a fake receiver — because every defect this
+  // project has shipped in this area lived at the call site while the callee's
+  // own tests stayed green.
+  // -------------------------------------------------------------------------
+  group('acceleration lands raw (design 0044 §3.5)', () {
+    late _FakeGpsSource src;
+    late DateTime clock;
+    late GpsSpeedController gps;
+
+    setUp(() async {
+      src = _FakeGpsSource();
+      clock = DateTime.utc(2026, 8, 7, 10, 10);
+      gps = GpsSpeedController(
+        source: src,
+        now: () => clock,
+        // Short: the tunnel case needs the heartbeat that makes an absence
+        // of samples visible. It is harmless in the others — a tick with the
+        // clock unmoved changes neither state nor quality, so it emits
+        // nothing.
+        tickInterval: const Duration(milliseconds: 20),
+      );
+      tele
+        ..bindSpeedEstimates(gps.estimates)
+        ..bindAccelEstimates(gps.accelEstimates);
+      gps
+        ..setFaceWantsSpeed(true)
+        ..setDashboardVisible(true);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    });
+
+    tearDown(() => gps.dispose());
+
+    /// One fix per second, at [speeds] m/s.
+    Future<void> ride(List<double> speeds) async {
+      for (final v in speeds) {
+        src.emit(SpeedFix(
+          speedMps: v,
+          horizontalAccuracyM: 5,
+          timestamp: clock,
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        clock = clock.add(const Duration(seconds: 1));
+      }
+    }
+
+    test('🔴 the recorded value is the estimator\'s, not the display\'s',
+        () async {
+      // A crawl so gentle the card shows `0.0`: the slope is well inside the
+      // 0.15 m/s² deadband. History must still get the number that was
+      // measured — an analyst reading `0` has to be able to trust it means
+      // zero, and the deadband would make it mean "small".
+      await feed('AA', sampleAt(10, pvlt: 13.2));
+      await ride([9.00, 9.02, 9.04, 9.06]);
+      tele.flushPendingHistory();
+      await tele.pendingWrites.drain();
+
+      final r = (await rows()).single;
+      final accel = r['accel'] as double?;
+      expect(accel, isNotNull, reason: 'the fold never happened');
+      expect(accel, greaterThan(0));
+      expect(accel!.abs(), lessThan(0.15));
+      expect(displayAccel(accel), 0.0,
+          reason: 'the card showed 0.0 for this ride — and the column did not');
+    });
+
+    test('a minute that never left warming records a speed and no accel',
+        () async {
+      // Two samples: enough for a speed, not enough for a two second slope.
+      // The pair of columns says exactly that, and design 0044 §3.5 reads it
+      // back the same way — accel blank WITH a speed means warming/suppressed.
+      await feed('AA', sampleAt(10, pvlt: 13.2));
+      await ride([9.0, 11.0]);
+      tele.flushPendingHistory();
+      await tele.pendingWrites.drain();
+
+      final r = (await rows()).single;
+      expect(r['speed'], isNotNull);
+      expect(r['accel'], isNull);
+    });
+
+    test('a frozen stretch adds nothing to the column', () async {
+      // The tunnel, through the whole chain: the speed estimator holds, the
+      // acceleration estimator suppresses, and the minute's average is left
+      // describing only the part that was measured (0044 G2).
+      await feed('AA', sampleAt(10, pvlt: 13.2));
+      await ride([9.0, 10.0, 11.0, 12.0]);
+      tele.flushPendingHistory();
+      await tele.pendingWrites.drain();
+      final measured = (await rows()).single['accel'] as double?;
+      expect(measured, isNotNull);
+
+      // Now the signal goes. No fixes; only time and a tick.
+      clock = clock.add(const Duration(seconds: 30));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await feed('AA', sampleAt(11, pvlt: 13.2));
+      tele.flushPendingHistory();
+      await tele.pendingWrites.drain();
+
+      final second = (await rows()).last;
+      expect(second['accel'], isNull,
+          reason: 'a held speed differentiates to a flawless 0.0 that nobody '
+              'measured — that zero must never reach the record');
+    });
+  });
+}
+
+/// A GNSS receiver under the test's control.
+class _FakeGpsSource implements SpeedLocationSource {
+  StreamController<SpeedFix>? _c;
+
+  void emit(SpeedFix f) => _c!.add(f);
+
+  @override
+  Stream<SpeedFix> fixes() {
+    final c = StreamController<SpeedFix>();
+    c.onCancel = () => _c = null;
+    _c = c;
+    return c.stream;
+  }
+
+  @override
+  Future<SpeedPermissionState> status() async => SpeedPermissionState.granted;
+
+  @override
+  Future<SpeedPermissionState> request() async => SpeedPermissionState.granted;
+
+  @override
+  Future<void> openSystemSettings() async {}
 }

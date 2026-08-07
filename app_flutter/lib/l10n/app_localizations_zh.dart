@@ -945,6 +945,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get speedCardAccelLabel => '加速度';
+
+  @override
   String get speedQualityGood => '訊號好';
 
   @override
