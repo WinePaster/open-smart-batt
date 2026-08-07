@@ -64,13 +64,32 @@ class AppSettings {
   /// Android foreground service. Defaults ON — without it the OS freezes the
   /// process and telemetry stops, which is the whole problem.
   ///
-  /// No-op on iOS: there is no foreground service there, and the equivalent
-  /// (declaring the `bluetooth-central` background mode, plus whatever the
-  /// 1 Hz keep-alive timer has to become when iOS throttles background timers)
-  /// is not implemented. The settings row is rendered disabled on iOS rather
-  /// than hidden, and the value is still stored, so the choice survives if the
-  /// user later moves to Android or we do implement it.
+  /// ANDROID's switch. iOS has its own field ([backgroundMonitoringIos]) with
+  /// the opposite default, and `SettingsController` picks which one the single
+  /// UI row reads and writes — see that field for why they cannot share a
+  /// column.
   final bool backgroundMonitoring;
+
+  /// iOS: keep recording while the app is backgrounded / the screen is off,
+  /// via the `bluetooth-central` background mode plus notify-driven keep-alive
+  /// (design 0047 Phase 1). DEFAULT OFF (Q4 ruling): background execution
+  /// costs battery, iOS scheduling and Low Power Mode bound what it can
+  /// deliver, and a default must not promise what §2.4's wire evidence could
+  /// not — so the user opts in, shown copy that says "recorded for as long as
+  /// the connection can be maintained", never "always connected". Minutes
+  /// where the app is suspended AND the link is down leave no history rows;
+  /// that gap is honest and deliberate (G2).
+  ///
+  /// A separate column from [backgroundMonitoring], not a shared one, because
+  /// every iOS row already stores `background_monitoring = 1`: the Android
+  /// default was persisted by `toMap` on every settings change while the iOS
+  /// switch was DISABLED (FB-26), so the stored 1 was never a choice an iOS
+  /// user made. Reading it as "on" after this feature ships would upgrade
+  /// every iOS user into background execution nobody asked for — the exact
+  /// self-granting upgrade the [speedDetection] decoder note forbids. A fresh
+  /// column whose NULL reads OFF is the only migration that keeps both
+  /// platforms' histories truthful.
+  final bool backgroundMonitoringIos;
 
   /// Keep the *screen* from turning off while connected. Handy when the phone
   /// is mounted and you want to watch the numbers while riding.
@@ -152,6 +171,7 @@ class AppSettings {
     this.autoReconnect = true,
     this.pollIntervalMs = 1000,
     this.backgroundMonitoring = true,
+    this.backgroundMonitoringIos = false,
     this.keepScreenAwake = false,
     this.themeMode = AppThemeMode.light,
     this.lang = AppLang.zhHant,
@@ -171,6 +191,7 @@ class AppSettings {
     bool? autoReconnect,
     int? pollIntervalMs,
     bool? backgroundMonitoring,
+    bool? backgroundMonitoringIos,
     bool? keepScreenAwake,
     AppThemeMode? themeMode,
     AppLang? lang,
@@ -189,6 +210,8 @@ class AppSettings {
         autoReconnect: autoReconnect ?? this.autoReconnect,
         pollIntervalMs: pollIntervalMs ?? this.pollIntervalMs,
         backgroundMonitoring: backgroundMonitoring ?? this.backgroundMonitoring,
+        backgroundMonitoringIos:
+            backgroundMonitoringIos ?? this.backgroundMonitoringIos,
         keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
         themeMode: themeMode ?? this.themeMode,
         lang: lang ?? this.lang,
@@ -223,6 +246,7 @@ class AppSettings {
         // only the Dart field was misnamed. See [keepScreenAwake].
         'background_keep_alive': keepScreenAwake ? 1 : 0,
         'background_monitoring': backgroundMonitoring ? 1 : 0,
+        'background_monitoring_ios': backgroundMonitoringIos ? 1 : 0,
         'theme_mode': themeMode.name,
         'lang': lang.name,
         'temp_unit': tempUnit.name,
@@ -243,6 +267,12 @@ class AppSettings {
         // foreground service, so they get the new default ON rather than OFF.
         backgroundMonitoring:
             (m['background_monitoring'] as num?)?.toInt() != 0,
+        // `== 1`, NOT `!= 0`, and the difference is the whole Q4 ruling: a
+        // pre-v13 row (NULL) must read OFF, or the upgrade would grant every
+        // iOS user background execution they never opted into. Same shape and
+        // same reasoning as `speed_detection` below.
+        backgroundMonitoringIos:
+            (m['background_monitoring_ios'] as num?)?.toInt() == 1,
         themeMode: _themeModeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],

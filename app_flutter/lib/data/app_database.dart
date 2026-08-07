@@ -118,7 +118,18 @@ class Db {
   ///
   /// 🔴 SQLite cannot ALTER an existing column's constraints, so the NOT NULL /
   /// DEFAULT decisions above are welded in from the moment v12 ships.
-  static const int schemaVersion = 12;
+  /// v13: settings gained `background_monitoring_ios` (design 0047 Phase 1 —
+  /// iOS background BLE via `bluetooth-central`), DEFAULT 0. A SEPARATE column
+  /// from v8's `background_monitoring`, not a reuse of it, because reuse would
+  /// misread history: every iOS row already stores 1 in the Android column —
+  /// `toMap` persisted the Android default on every settings change while the
+  /// iOS switch was disabled (FB-26) — so on iOS that 1 was never a user's
+  /// choice, and reading it as "on" would upgrade every iOS user into
+  /// background execution nobody opted into. DEFAULT 0 / NULL-reads-off is the
+  /// Q4 "default off" ruling in schema form (same shape as v12's
+  /// `speed_detection`). Note this v13 does NOT touch the 0044 Q2 ruling —
+  /// that ruled out a v13 for the SPEED column family, not the version number.
+  static const int schemaVersion = 13;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -440,6 +451,17 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN g_calibration TEXT',
       );
     }
+    if (from < 13) {
+      // iOS background monitoring (design 0047 Phase 1). DEFAULT 0: the Q4
+      // ruling is that iOS defaults OFF, and — unlike v8, where upgrading
+      // Android users were exactly the ones hitting the stall — upgrading iOS
+      // users have never been asked, so the upgrade must not answer for them.
+      // See [Db.schemaVersion] v13 for why this cannot reuse v8's column.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN background_monitoring_ios '
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
@@ -497,6 +519,7 @@ class AppDatabase {
       poll_interval_ms INTEGER NOT NULL DEFAULT 1000,
       background_keep_alive INTEGER NOT NULL DEFAULT 0,
       background_monitoring INTEGER NOT NULL DEFAULT 1,
+      background_monitoring_ios INTEGER NOT NULL DEFAULT 0,
       dark_theme INTEGER NOT NULL DEFAULT 1,
       theme_mode TEXT,
       lang TEXT NOT NULL DEFAULT 'zhHant',

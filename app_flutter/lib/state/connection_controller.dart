@@ -104,6 +104,33 @@ class ConnectionController extends ChangeNotifier {
     } else {
       unawaited(_monitor.stop());
     }
+    // The monitor's engagement is one of the pacing gate's three inputs, so
+    // every transition here re-evaluates it — this is what re-arms pacing when
+    // an auto-reconnect brings the link back DURING a background window, and
+    // what stands it down when the setting is toggled off mid-connection.
+    _updateKeepAlivePacing();
+  }
+
+  /// Keep `BleService`'s keep-alive trigger in step with where execution
+  /// actually comes from (design 0047 Phase 1).
+  ///
+  /// Three inputs, one writer: monitoring engaged ([_monitorRunning] — link
+  /// online AND the setting on), a platform strategy that wants it
+  /// ([MonitorService.pacesKeepAliveInBackground] — true ONLY for
+  /// [IosMonitorService], which is hard condition 1's Android guarantee), and
+  /// the app really being backgrounded ([BackgroundWindowTracker.inBackground]
+  /// — the instrument Phase 0 landed, reused rather than duplicated). The
+  /// setter is idempotent, so calling from every edge that can move an input
+  /// costs nothing.
+  ///
+  /// Foreground iOS deliberately stays timer-driven: `resumed` closes the
+  /// bg-window and this immediately hands the keep-alive back to the timer, so
+  /// the FB-53-era foreground behaviour — including the resume probe's
+  /// `pokeKeepAlive` — is untouched.
+  void _updateKeepAlivePacing() {
+    _ble.setNotifyDrivenKeepAlive(_monitorRunning &&
+        _monitor.pacesKeepAliveInBackground &&
+        _bgWindow.inBackground);
   }
 
   Future<void> _startMonitor() async {
@@ -121,6 +148,7 @@ class ConnectionController extends ChangeNotifier {
   void _onMonitorStop() {
     if (!_monitorRunning) return;
     _monitorRunning = false;
+    _updateKeepAlivePacing();
     if (isOnline) unawaited(disconnect());
   }
 
@@ -261,12 +289,14 @@ class ConnectionController extends ChangeNotifier {
   /// True while the background monitor is engaged.
   ///
   /// ⚠️ This is NOT "a foreground service is running". It tracks the SETTING
-  /// plus the link, with no platform check, while [MonitorService.forPlatform]
-  /// hands every non-Android platform a no-op implementation — so on iOS this
-  /// reads true with nothing behind it. The stale banner used to branch on it
-  /// and consequently told iOS users to go and change an Android battery
-  /// setting; it no longer does, and no UI branches on this today. Do not
-  /// reintroduce one without adding the platform check this flag lacks.
+  /// plus the link, with no platform check: on Android it mirrors the
+  /// foreground service, on iOS (since design 0047 Phase 1) it mirrors
+  /// [IosMonitorService.engaged] — which starts no service and posts no
+  /// notification — and on desktop/tests it reads true with nothing behind it
+  /// at all. The stale banner used to branch on it and consequently told iOS
+  /// users to go and change an Android battery setting; it no longer does, and
+  /// no UI branches on this today. Do not reintroduce one without adding the
+  /// platform check this flag lacks.
   bool get monitorRunning => _monitorRunning;
   late final SettingsController _settings;
   late final DeviceController? _devices;
@@ -767,6 +797,10 @@ class ConnectionController extends ChangeNotifier {
     final line = _bgWindow.onLifecycle(state,
         link: BackgroundWindowTracker.linkToken(_link), now: DateTime.now());
     if (line != null) _event(line);
+    // Phase 1: the bg-window edge is also the keep-alive pacing edge — enter
+    // hands the keep-alive to the notify path (iOS only, see the gate), exit
+    // hands it back to the timer. AFTER the tracker so both read one state.
+    _updateKeepAlivePacing();
   }
 
   /// Foreground/background window pairing for the `bg-window:` lines.

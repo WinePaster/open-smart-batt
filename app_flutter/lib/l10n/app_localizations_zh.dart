@@ -835,7 +835,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsBackgroundMonitorSubIos =>
-      'iOS 目前不支援背景監看：App 切到背景或螢幕關閉時資料會停止更新，時間久了連線也會被系統中斷。請讓 App 保持在前景，並開啟下方的「連線時保持螢幕喚醒」。';
+      'App 在背景或螢幕關閉時，連線可維持的時段會照常記錄。背景執行受 iOS 系統排程與低耗電模式影響，不保證連線一直維持；連線中斷的時段不會有紀錄。開啟會增加耗電。';
 
   @override
   String get settingsKeepAwakeLabel => '連線時保持螢幕喚醒';

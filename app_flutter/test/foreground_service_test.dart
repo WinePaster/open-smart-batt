@@ -54,6 +54,11 @@ class _FakeMonitor implements MonitorService {
   @override
   Stream<void> get onStopRequested => _stop.stream;
 
+  // Android-shaped: these tests exercise the foreground-service strategy, and
+  // the notify-driven keep-alive path must stay unreachable through it.
+  @override
+  bool get pacesKeepAliveInBackground => false;
+
   /// Simulate the user tapping "stop" on the notification.
   void requestStop() => _stop.add(null);
 

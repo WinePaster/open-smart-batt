@@ -103,13 +103,14 @@ class _ConnectionCard extends StatelessWidget {
           // Background execution and keeping the screen on are two different
           // things. They shared one setting while the wakelock was the only
           // mitigation available; now they are separate.
-          // Platform-split, and disabled on iOS. The switch does nothing there
-          // (NoopMonitorService), yet it still flipped `monitorRunning` — which
-          // is how the dashboard ended up giving iOS users Android-only advice
-          // (FB-26). The row is kept rather than hidden: a user who has heard
-          // of the feature needs to see WHY it is unavailable, and the stored
-          // preference must survive for a future iOS implementation or a move
-          // to Android.
+          // Platform-split copy, ONE live switch (design 0047 Phase 1 — the
+          // iOS disable that FB-26 put here is gone, because the thing the
+          // switch controls now exists there: bluetooth-central background
+          // mode + notify-driven keep-alive). The value/setter dispatch to the
+          // platform's own field inside SettingsController; iOS defaults OFF
+          // (0047 Q4) and its copy promises only "recorded while the link can
+          // be maintained" — iOS scheduling and Low Power Mode still own the
+          // schedule, and suspended-and-disconnected minutes leave no rows.
           SettingsRow(
             label: l10n.settingsBackgroundMonitorLabel,
             sub: Platform.isIOS
@@ -117,7 +118,7 @@ class _ConnectionCard extends StatelessWidget {
                 : l10n.settingsBackgroundMonitorSubAndroid,
             trailing: _Toggle(
               value: s.backgroundMonitoring,
-              onChanged: Platform.isIOS ? null : s.setBackgroundMonitoring,
+              onChanged: s.setBackgroundMonitoring,
             ),
           ),
           SettingsRow(

@@ -498,11 +498,13 @@ void main() {
       // (speed/accel for design 0042+0044, g_long/g_lat reserved for 0045) and
       // five on settings (speed_detection/speed_unit for 0042, plus home_layout
       // reserved for design 0046 and g_meter_enabled/g_calibration for 0045).
+      // v13 added settings.background_monitoring_ios (design 0047 Phase 1 —
+      // its own default-off column; see ios_background_setting_test.dart).
       // That number is the one this line exists for: v12 was claimed by two
       // plans at once, and the collision was settled by merging them, so the
       // constant and the migration body have to move together.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 12);
+      expect(Db.schemaVersion, 13);
     });
   });
 }

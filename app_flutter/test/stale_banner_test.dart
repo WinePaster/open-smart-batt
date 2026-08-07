@@ -117,13 +117,24 @@ void main() {
       expect(ios.toLowerCase(), contains('ios'));
     });
 
-    test('the iOS copy points at something that actually works there', () {
-      // wakelock_plus declares an iOS implementation, so "keep the screen
-      // awake" is a real remedy; background monitoring is not.
-      expect(AppLocalizationsEn().settingsBackgroundMonitorSubIos.toLowerCase(),
-          contains('screen'));
-      expect(AppLocalizationsZh().settingsBackgroundMonitorSubIos,
-          contains('螢幕喚醒'));
+    test('the iOS copy promises only what the wire evidence supports', () {
+      // Design 0047 Phase 1 made background monitoring REAL on iOS, so the
+      // copy no longer redirects to the screen wakelock — but §2.4's captures
+      // hold zero proof of guaranteed background survival, so the Q4 ruling
+      // is a CONSERVATIVE promise: recorded while the link can be maintained,
+      // with the system's limits and the honest gaps said out loud. This
+      // replaces the old "points at something that actually works" test; what
+      // works changed, and so did what may be claimed.
+      final en = AppLocalizationsEn().settingsBackgroundMonitorSubIos;
+      final zh = AppLocalizationsZh().settingsBackgroundMonitorSubIos;
+      expect(en, contains('as long as the connection can be maintained'));
+      expect(zh, contains('連線可維持'));
+      // The limits are named, not hidden.
+      expect(en, contains('Low Power Mode'));
+      expect(zh, contains('低耗電模式'));
+      // And the gap is admitted: disconnected stretches leave no rows.
+      expect(en.toLowerCase(), contains('not recorded'));
+      expect(zh, contains('不會有紀錄'));
     });
   });
 

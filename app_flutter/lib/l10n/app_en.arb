@@ -574,7 +574,7 @@
   "settingsAutoReconnectSub": "Automatically attempt to reconnect when the connection drops",
   "settingsBackgroundMonitorLabel": "Keep monitoring in the background",
   "settingsBackgroundMonitorSubAndroid": "Keeps recording while the screen is off or you switch apps; a persistent notification is shown while connected. If readings still stop, exclude this app from battery optimisation in system settings.",
-  "settingsBackgroundMonitorSubIos": "iOS does not support background monitoring: readings stop when the app leaves the foreground or the screen turns off, and the link is eventually dropped by the system. Keep the app in the foreground and turn on \"Keep screen awake while connected\" below.",
+  "settingsBackgroundMonitorSubIos": "While the app is in the background or the screen is off, recording continues for as long as the connection can be maintained. Background execution is subject to iOS scheduling and Low Power Mode, so the link is not guaranteed to stay up; periods where it is down are not recorded. Enabling this increases battery use.",
   "settingsKeepAwakeLabel": "Keep screen awake while connected",
   "settingsKeepAwakeSub": "Screen won't turn off automatically, handy for viewing while riding (active when connected)",
   "monitorNotificationTitle": "OpenSmartBatt · monitoring",

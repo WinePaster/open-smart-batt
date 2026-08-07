@@ -41,10 +41,24 @@
 	     contradicts (speed DOES go to history and to exports; only the
 	     coordinate is forbidden). Keep the promise and the implementation
 	     saying the same thing.
-	     WhenInUse only. No NSLocationAlways* key and no UIBackgroundModes:
-	     this feature is foreground-only (0042 N1). -->
+	     WhenInUse only. No NSLocationAlways* key: the GPS speed feature is
+	     foreground-only (0042 N1). The UIBackgroundModes entry below belongs
+	     to BLE (design 0047), NOT to location. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>顯示騎乘速度時需要取得定位（位置座標不會被儲存或上傳）。</string>
+	<!-- design 0047 Phase 1. bluetooth-central lets GATT events (notify /
+	     disconnect) on an already-connected peripheral wake the app for a short
+	     execution window while it is backgrounded, so the frame-driven history
+	     pipeline keeps writing its per-minute rows for as long as the link can
+	     be maintained. This is NOT a promise of an always-alive background link: iOS
+	     scheduling and Low Power Mode still decide when the app runs, minutes
+	     where the link is down are honestly absent from history, and the
+	     event-driven keep-alive that makes the device keep streaming is gated
+	     behind the (default-off) background-monitoring setting. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

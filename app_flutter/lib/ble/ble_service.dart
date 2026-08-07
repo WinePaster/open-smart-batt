@@ -34,6 +34,7 @@ import '../models/telemetry_sample.dart';
 import '../protocol/protocol.dart';
 import 'ble_models.dart';
 import 'exec_gap_tracker.dart';
+import 'notify_keepalive_pacer.dart';
 
 /// Everything that belongs to ONE BLE link, keyed by the unit it talks to.
 ///
@@ -90,6 +91,13 @@ class _LinkState {
   bool keepAliveInFlight = false;
   bool keepAliveWriteFailed = false;
   int keepAliveFailures = 0;
+
+  /// When this link's keep-alive last WROTE successfully — the debounce zero
+  /// point for the notify-driven pacer (design 0047 Phase 1). Successful
+  /// writes only, deliberately: a failing write path must not push the next
+  /// attempt further away, and the timestamp of a failure says nothing about
+  /// how starved the device is.
+  DateTime? lastKeepAliveOkAt;
 
   /// FB-20 instrument: how long each SUCCESSFUL keep-alive write took.
   ///
@@ -236,6 +244,31 @@ class BleService {
     final line = _execGap.onEvent(endedBy, DateTime.now());
     if (line != null) _diagnostics.add(line);
   }
+
+  /// Notify-driven keep-alive pacing (design 0047 Phase 1). Service-level like
+  /// [_execGap] and for the same reason: it describes the isolate's execution
+  /// regime (backgrounded on iOS), not any one link. Inactive by default and
+  /// on every platform whose monitor strategy does not opt in — Android's
+  /// keep-alive stays timer-driven under the foreground service, unchanged.
+  final NotifyKeepAlivePacer _pacer = NotifyKeepAlivePacer();
+
+  /// Switch the keep-alive between timer-driven (default, foreground) and
+  /// notify-driven (iOS background window). Idempotent; the closing summary
+  /// line goes to [diagnostics] like every other transport instrument.
+  ///
+  /// The ONLY caller is `ConnectionController`, gated on
+  /// `MonitorService.pacesKeepAliveInBackground` — which is how "Android never
+  /// takes this path" is enforced structurally rather than by a platform check
+  /// buried here.
+  void setNotifyDrivenKeepAlive(bool active) {
+    final line = _pacer.setActive(active, DateTime.now());
+    if (line != null) _diagnostics.add(line);
+  }
+
+  /// Whether keep-alives currently ride the notify path. Test-visible so the
+  /// platform dispatch can be asserted directly.
+  @visibleForTesting
+  bool get notifyDrivenKeepAlive => _pacer.active;
 
   // Cached guids (cheap, but build once).
   static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
@@ -1055,6 +1088,19 @@ class BleService {
     // bounds the window from the app side. One line per gap — the first
     // backlogged chunk re-ticks the tracker, so the rest stay quiet.
     _checkExecGap('notify');
+    // Phase 1 (design 0047 §3.2): while backgrounded on iOS this notify IS the
+    // execution window — ride it with a keep-alive write when the last
+    // successful one is a full interval old, so the device keeps streaming
+    // without the frozen timer. The in-flight check is the same re-entrancy
+    // rule the timer path obeys (and keeps the paced-send count honest); the
+    // pacer's own debounce is what turns a thawed backlog into ONE send
+    // (FB-53 / R2). `_sendKeepAlive` still ticks [_execGap] first, so the
+    // Phase 0 "Dart executed" heartbeat semantics are identical on both paths.
+    if (!link.keepAliveInFlight &&
+        _pacer.shouldSend(
+            lastWriteOk: link.lastKeepAliveOkAt, now: DateTime.now())) {
+      unawaited(_sendKeepAlive(link));
+    }
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
     final frames = link.reassembler.addBytes(chunk);
@@ -1178,6 +1224,11 @@ class BleService {
     // The tick source above just stopped; without this, the idle stretch until
     // the next connection's events would read as an execution gap.
     _execGap.reset();
+    // A dead link has no notify path to pace. Closing the window here (rather
+    // than waiting for the controller to observe the disconnect) also puts the
+    // `bg-keepalive:` summary next to the teardown lines that explain it. The
+    // controller re-arms on the next `ready` if the app is still backgrounded.
+    setNotifyDrivenKeepAlive(false);
     await link.notifySub?.cancel();
     link.notifySub = null;
     link.keepAliveWriteFailed = false;
@@ -1243,6 +1294,9 @@ class BleService {
     final sw = Stopwatch()..start();
     try {
       await _writeTo(link, token, timeout: keepAliveWriteTimeout);
+      // Debounce zero point for the notify-driven pacer (design 0047 Phase 1).
+      // Stamped on success only — see [_LinkState.lastKeepAliveOkAt].
+      link.lastKeepAliveOkAt = DateTime.now();
       _recordWriteDuration(link, sw.elapsedMilliseconds);
       // Recovery is as diagnostic as the failure: it bounds how long the app
       // was actually unable to poll, which a lone failure line cannot.

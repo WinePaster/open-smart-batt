@@ -6,6 +6,8 @@
 /// raw-packet-log / auto-reconnect / poll-interval toggles.
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 
 import '../data/data.dart';
@@ -15,14 +17,24 @@ import '../models/models.dart';
 class SettingsController extends ChangeNotifier {
   /// The lint below suggests `{this._history}`, which does not compile: Dart
   /// forbids private named parameters.
-  // ignore: prefer_initializing_formals
-  SettingsController(this._repo, {HistoryRepo? history}) : _history = history;
+  ///
+  /// [isIOS] picks which background-monitoring field the [backgroundMonitoring]
+  /// getter/setter reach (design 0047 Phase 1); injectable so tests can
+  /// exercise both platforms' dispatch on one host. Defaults to the real
+  /// platform.
+  SettingsController(this._repo, {HistoryRepo? history, bool? isIOS})
+      // ignore: prefer_initializing_formals
+      : _history = history,
+        _isIOS = isIOS ?? Platform.isIOS;
 
   /// Optional: pruning needs it, everything else does not. Null in tests that
   /// only exercise settings.
   final HistoryRepo? _history;
 
   final SettingsRepo _repo;
+
+  /// Which platform's background-monitoring field this controller serves.
+  final bool _isIOS;
 
   AppSettings _settings = AppSettings.defaults;
   bool _loaded = false;
@@ -36,7 +48,18 @@ class SettingsController extends ChangeNotifier {
   // Convenience pass-throughs the other controllers / UI read frequently.
   bool get autoReconnect => _settings.autoReconnect;
   int get pollIntervalMs => _settings.pollIntervalMs;
-  bool get backgroundMonitoring => _settings.backgroundMonitoring;
+
+  /// The running platform's background-monitoring switch — Android's field or
+  /// iOS's, never both (design 0047 Phase 1). ONE getter on purpose: the
+  /// settings row and `ConnectionController._updateMonitor` both ask "is
+  /// background monitoring on HERE", and giving them two fields to choose from
+  /// is how a platform reads the other one's default. The fields stay separate
+  /// underneath because their defaults differ (Android ON per FB-26, iOS OFF
+  /// per 0047 Q4) and because iOS's stored Android column was never a choice —
+  /// see [AppSettings.backgroundMonitoringIos].
+  bool get backgroundMonitoring => _isIOS
+      ? _settings.backgroundMonitoringIos
+      : _settings.backgroundMonitoring;
   bool get keepScreenAwake => _settings.keepScreenAwake;
   AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
@@ -68,8 +91,12 @@ class SettingsController extends ChangeNotifier {
       update(_settings.copyWith(autoReconnect: v));
   Future<void> setPollIntervalMs(int v) =>
       update(_settings.copyWith(pollIntervalMs: v));
-  Future<void> setBackgroundMonitoring(bool v) =>
-      update(_settings.copyWith(backgroundMonitoring: v));
+  /// Writes the running platform's field only, mirroring the getter: an iOS
+  /// toggle must not overwrite the Android column (the user may move
+  /// platforms; each column keeps its own history).
+  Future<void> setBackgroundMonitoring(bool v) => update(_isIOS
+      ? _settings.copyWith(backgroundMonitoringIos: v)
+      : _settings.copyWith(backgroundMonitoring: v));
   Future<void> setKeepScreenAwake(bool v) =>
       update(_settings.copyWith(keepScreenAwake: v));
   Future<void> setThemeMode(AppThemeMode v) =>

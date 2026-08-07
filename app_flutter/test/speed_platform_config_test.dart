@@ -81,16 +81,24 @@ void main() {
       );
     });
 
-    test('no always-on location and no background modes', () {
+    test('no always-on location, and no location background mode', () {
       for (final forbidden in [
         'NSLocationAlwaysAndWhenInUseUsageDescription',
         'NSLocationAlwaysUsageDescription',
-        'UIBackgroundModes',
       ]) {
         expect(plist.contains(forbidden), isFalse,
             reason: '$forbidden would turn a foreground speed readout into a '
                 'background-location app (0042 N1 / R1)');
       }
+      // UIBackgroundModes EXISTS since design 0047 Phase 1, but it belongs to
+      // BLE and to BLE only. The 0042 invariant this file defends is narrower
+      // than "no background modes" ever needed to be: no background LOCATION.
+      // bluetooth-central wakes the app for GATT events on a connected
+      // peripheral; a `location` entry here would be the regression.
+      expect(plist.contains('<string>bluetooth-central</string>'), isTrue,
+          reason: 'design 0047 Phase 1: background history needs GATT wakeups');
+      expect(plist.contains('<string>location</string>'), isFalse,
+          reason: 'GPS speed stays foreground-only (0042 N1 / R1)');
     });
   });
 }
