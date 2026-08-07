@@ -165,7 +165,14 @@ class GForceController extends ChangeNotifier {
     // The gate's condition 1 is driven by the card, and the card disappears
     // when availability goes; closing here as well means the stream cannot
     // outlive availability even for the frame it takes the card to unmount.
-    if (!available) _stopRide();
+    //
+    // ⚠️ A stream that is already open must also be REBUILT, not merely left
+    // alone: the block above dropped the estimator the new matrix invalidated,
+    // and an open subscription with no estimator behind it would go quietly
+    // dead — no error, no reading, a card drawing zeros. Restarting through the
+    // gate is the same path the card's own mount takes.
+    _stopRide();
+    if (available) _onGateChanged();
     _notify();
   }
 

@@ -680,6 +680,23 @@ void main() {
       expect(c.calibrationInvalidated, isFalse);
     });
 
+    test('recalibrating while the card is up REBUILDS the open stream', () {
+      // The failure this guards is silent: the new matrix drops the estimator,
+      // and a subscription left open behind a null estimator delivers samples
+      // that go nowhere. No error, no log — a card drawing zeros forever, on a
+      // calibration the user has just been told is good.
+      c
+        ..setFaceWantsGForce(true)
+        ..setDashboardVisible(true);
+      expect(c.streaming, isTrue);
+      c.applySettings(const AppSettings(
+          gMeterEnabled: true,
+          gCalibration: '{"m":[0,1,0,-1,0,0,0,0,1],"at":2}'));
+      expect(c.streaming, isTrue,
+          reason: 'still streaming — and on the NEW matrix, not on a dead '
+              'subscription behind a discarded estimator');
+    });
+
     test('the switch alone, with no calibration, is not availability', () {
       final d = GForceController(source: _SilentSensors())
         ..applySettings(const AppSettings(gMeterEnabled: true));
