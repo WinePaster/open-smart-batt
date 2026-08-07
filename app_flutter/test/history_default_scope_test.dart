@@ -531,31 +531,27 @@ void main() {
       expect(find.byType(DropdownButton<String>), findsNothing);
     });
 
-    testWidgets('🔴 export is reachable even with no device bar', (t) async {
-      // 2026-08-07: the toolbar was reported as「太擠」— range picker, warning
-      // filter and export chip abutting on one line. The two actions moved into
-      // the device-scope card, which is the only other row on this screen that
-      // is about scope.
+    testWidgets('🔴 export is reachable in the EMPTY state too', (t) async {
+      // 2026-08-07: the two actions were reported as「太擠」on the toolbar line
+      // and moved, by owner ruling, to the boundary between the chart and the
+      // list.
       //
-      // That card is CONDITIONAL (`_deviceBar` returns null with nothing to
-      // pick), so moving them there silently made export unreachable on a
-      // phone with no records — which is precisely the phone whose owner is
-      // most likely to be asked for a file. `_toolbar` keeps a fallback branch
-      // for that, and this is the test that the branch exists.
+      // That boundary only exists in one of the FutureBuilder's four branches.
+      // Putting them only there would remove export from the empty state —
+      // and the owner whose entire history predates attribution sees exactly
+      // that state while still having rows worth exporting (see this file's
+      // header). The action row is therefore rendered in every branch, and
+      // this is the test that says so.
       await boot(t);
       await pumpHistory(t);
-      expect(find.byType(DropdownButton<String>), findsNothing,
-          reason: 'sanity: this is the no-device-bar case');
-      expect(find.text('匯出 CSV'), findsOneWidget,
-          reason: 'the export action must not travel with a card that is not '
-              'always there');
+      expect(find.text(_noDevices), findsOneWidget,
+          reason: 'sanity: this is the empty state');
+      expect(find.text('匯出 CSV'), findsOneWidget);
       expect(find.text('警告'), findsOneWidget);
     });
 
-    testWidgets('and it rides in the device card when there is one',
-        (t) async {
-      // The other side of the same branch: exactly ONE export control, in the
-      // card. Two would mean the fallback and the card are both rendering.
+    testWidgets('and exactly once when there is data', (t) async {
+      // Two would mean two branches are drawing it at the same time.
       await boot(t);
       await seed(t, () async {
         await addRow('A', DateTime.now().subtract(const Duration(minutes: 5)),
@@ -564,6 +560,7 @@ void main() {
       await pumpHistory(t);
       expect(find.byType(DropdownButton<String>), findsOneWidget);
       expect(find.text('匯出 CSV'), findsOneWidget);
+      expect(find.text('警告'), findsOneWidget);
     });
 
     testWidgets(

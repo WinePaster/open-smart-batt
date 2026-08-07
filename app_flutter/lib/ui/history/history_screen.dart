@@ -305,6 +305,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         multiDay: _range != HistoryRange.today,
                       ),
                     ),
+                    _actionRow(),
                     if (listRows.isEmpty)
                       _message(_emptyText())
                     else
@@ -353,6 +354,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// no device bar to put them in. Getting that wrong would make export
   /// unreachable on a phone with nothing saved, which is exactly the phone
   /// whose owner is most likely to be sending us a file.
+  /// The two actions, as a right-aligned row of their own.
+  ///
+  /// 🔴 Position ruled 2026-08-07: BETWEEN the chart card and the list.
+  ///
+  /// They began on the toolbar line, abutting the range picker — reported as
+  /// 「太擠」. They are not view options for the whole screen: the warning
+  /// filter acts on the list below, and export acts on what is being shown. So
+  /// they sit at the boundary between the summary and the rows, which is where
+  /// both of their objects begin.
+  ///
+  /// ⚠️ Rendered in EVERY branch, including the empty state. A phone whose
+  /// entire history predates attribution shows "no device records" — and those
+  /// rows are precisely the ones that are still exportable (see the header of
+  /// `history_default_scope_test.dart`). An export button that disappears
+  /// exactly for the owner who needs it would be the worst possible place to
+  /// lose it.
+  Widget _actionRow() => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Align(alignment: Alignment.centerRight, child: _actions()),
+      );
+
   Widget _actions() {
     final l10n = AppLocalizations.of(context);
     final warning = FilterChip2(
@@ -406,34 +428,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// problem it measured.
   Widget _toolbar() {
     final l10n = AppLocalizations.of(context);
-    final options = _optionsFor(_groups, context.watch<DeviceController>());
-    final hasDeviceBar =
-        options.isNotEmpty && _deviceId != null &&
-            options.any((o) => o.id == _deviceId);
-    final segmented = SegmentedControl<HistoryRange>(
-      selected: _range,
-      onChanged: _setRange,
-      options: <({HistoryRange value, String label})>[
-        (value: HistoryRange.today, label: l10n.historyRangeToday),
-        (value: HistoryRange.week, label: l10n.historyRangeWeek),
-        (value: HistoryRange.all, label: l10n.historyRangeAll),
-      ],
-    );
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 8, 15, 8),
-      child: hasDeviceBar
-          ? segmented
-          // No device card to host them, so the actions stay here rather than
-          // vanishing. Two lines, because that is the shape that fits.
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                segmented,
-                const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: _actions()),
-              ],
-            ),
+      child: SegmentedControl<HistoryRange>(
+        selected: _range,
+        onChanged: _setRange,
+        options: <({HistoryRange value, String label})>[
+          (value: HistoryRange.today, label: l10n.historyRangeToday),
+          (value: HistoryRange.week, label: l10n.historyRangeWeek),
+          (value: HistoryRange.all, label: l10n.historyRangeAll),
+        ],
+      ),
     );
   }
 
@@ -458,10 +463,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // number below belongs to, which is the same kind of statement the cards
     // make, so it should look like one.
     //
-    // The two actions ride along on the right. They are scope-and-act
-    // controls, not view options, and this is the only row on the screen that
-    // is already about scope — see [_actions] for what happens when this bar
-    // is absent.
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 0, 15, 0),
       child: IndustrialCard(
@@ -491,8 +492,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            _actions(),
           ],
         ),
       ),
@@ -511,7 +510,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _scrollable(Widget child) => ListView(
         padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
-        children: [child],
+        children: [_actionRow(), child],
       );
 
   Widget _message(String text) => Padding(
