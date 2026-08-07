@@ -71,11 +71,15 @@
 /// So the ladder still requires the SAME BURST to agree with the flag:
 ///
 ///   * `b7 == 0x00` AND `powerFlowOf(current) == idle` ⇒ a genuine rail-off.
-///     A genuinely rail-off unit reads `0x49` at 36–39 mA and `0x4A` at 0,
-///     computing to ≈ −0.039 A — inside the ±0.05 A dead-band, so idle always
-///     holds for a real rail-off. Since design 0041 this needs no branch of its
-///     own: it renders as plain "standby", the same as any other in-band
-///     reading, and no port badge (bit1 is clear, and idle eliminates nothing).
+///     A genuinely rail-off unit reads a charge-side `0x49` residual that
+///     varies BY UNIT — 36–39 mA on one, a constant 58–69 mA on another
+///     (2026-08-07) — so the ±0.05 A dead-band alone does NOT always compute
+///     idle here. What does is [powerFlowOf]'s rail-off veto: it reads the
+///     same b7 and refuses a charging verdict on a small residual, so idle
+///     still holds for every real rail-off. Since design 0041 this needs no
+///     branch of its own: it renders as plain "standby", the same as any other
+///     in-band reading, and no port badge (bit1 is clear, and idle eliminates
+///     nothing).
 ///   * `b7 == 0x00` BUT current is flowing ⇒ the flag contradicts the current.
 ///     **Claim neither.** Show the direction and the readings, and withhold
 ///     every b7-derived claim. Deliberately NOT a fall-through to the normal
@@ -163,7 +167,8 @@ class _PowerPathRowState extends State<PowerPathRow> {
         l10n,
         tele,
         flagsContradicted: tele.isRailOff == true &&
-            powerFlowOf(tele.current) != PowerFlow.idle,
+            powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw) !=
+                PowerFlow.idle,
       );
     }
 
@@ -186,7 +191,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
   Widget _path(
       BuildContext context, AppLocalizations l10n, TelemetryController tele,
       {bool flagsContradicted = false}) {
-    final flow = powerFlowOf(tele.current);
+    final flow = powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
     final active = flow == PowerFlow.charging || flow == PowerFlow.discharging;
     final isTypeC = !flagsContradicted && tele.usbPort == UsbPort.typeC;
 

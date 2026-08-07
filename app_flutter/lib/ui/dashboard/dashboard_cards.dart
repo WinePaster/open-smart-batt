@@ -99,7 +99,7 @@ Widget? dashboardCardFor(
     case DisplayModule.gaugeSoc:
       if (!isPowerBank) return null;
       // SOC ring (percent mode, direct 0x96 b6).
-      final flow = powerFlowOf(tele.current);
+      final flow = powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
       // Sub-line under the SOC value: the DIRECTION, which is what the caption
       // above it has always promised ("電量 · 充電狀態" / "CHARGE · STATE").
       //
@@ -143,7 +143,8 @@ Widget? dashboardCardFor(
 
     case DisplayModule.chart:
       if (isPowerBank) {
-        final flow = powerFlowOf(tele.current);
+        final flow =
+            powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
         return TrendChartCard(
           buffer: tele.trend,
           // A power bank's current has its direction spread over two
@@ -251,7 +252,8 @@ Widget? dashboardCardFor(
 
     case DisplayModule.readouts:
       if (isPowerBank) {
-        final flow = powerFlowOf(tele.current);
+        final flow =
+            powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
         final soc = tele.socPercent;
         return ReadoutsCard(
           items: [

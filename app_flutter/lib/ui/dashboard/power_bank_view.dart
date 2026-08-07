@@ -46,8 +46,10 @@ class PowerBankView extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     // The ONE derivation of direction on this page (FB-47). The type chip below
     // and every card in `dashboard_cards.dart` read the same function, so they
-    // cannot end up telling different stories.
-    final flow = powerFlowOf(tele.current);
+    // cannot end up telling different stories. The same burst's b7 rides along
+    // so the rail-off veto (a standby unit whose 0x49 residual is beyond the
+    // dead-band) applies here exactly as it does everywhere else.
+    final flow = powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
 
     // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
     // against the connected unit (Q3), so both providers are read: the id moves

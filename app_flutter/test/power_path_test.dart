@@ -276,6 +276,23 @@ void main() {
       expect(find.text('Type-A'), findsNothing);
       expect(find.text('STANDBY'), findsNothing);
     });
+
+    testWidgets(
+        'RSPB-01: a 60 mA rail-off residual is STANDBY, not a contradiction',
+        (tester) async {
+      // feedback-analysis 2026.08.07: one unit's 0x49 residual is 58–69 mA
+      // with the rail off — beyond the dead-band, inside `powerFlowOf`'s
+      // rail-off veto. The veto makes the flow idle, so the corroboration
+      // ladder sees flag and current AGREE: plain standby, no charging word,
+      // and no withheld-badge contradiction state. Before the veto this unit
+      // read "charging 0.06 A" through no port at all, forever.
+      await mount(tester, portFlagsRaw: 0x00, current: -0.060, svlt: 3.95);
+      expect(find.text('STANDBY'), findsOneWidget);
+      expect(find.text('CHARGING'), findsNothing);
+      expect(find.text('Type-A'), findsNothing);
+      expect(find.text('Type-C'), findsNothing);
+      expect(find.text('Which port is this?'), findsNothing);
+    });
   });
 
   // =========================================================================
