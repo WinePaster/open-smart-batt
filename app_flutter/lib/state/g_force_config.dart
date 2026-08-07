@@ -22,7 +22,11 @@ class GForceConfig {
   const GForceConfig({
     this.samplingPeriod = const Duration(milliseconds: 20),
     this.tCal = const Duration(seconds: 3),
-    this.stillEpsMs2 = 0.15,
+    // 0.5 m/s² ≈ 5 % g. Raised from 0.15 on 2026-08-07 after the first field
+    // test could not complete a calibration at all. 0.15 is ~1.5 % g, which a
+    // phone clamped to a motorcycle does not reach even parked: releasing it
+    // rings the mount, and traffic going past shakes the ground.
+    this.stillEpsMs2 = 0.5,
     this.tFwd = const Duration(milliseconds: 1500),
     this.aFwdMs2 = 0.8,
     this.ewmaAlpha = 0.2,

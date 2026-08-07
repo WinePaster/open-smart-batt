@@ -1569,4 +1569,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsGForceExplainerLabel => 'How G is measured';
+
+  @override
+  String get homeEditLayout => 'Edit layout';
 }

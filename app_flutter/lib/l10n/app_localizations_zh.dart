@@ -1485,4 +1485,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsGForceExplainerLabel => '關於 G 值的量測';
+
+  @override
+  String get homeEditLayout => '編輯版面';
 }

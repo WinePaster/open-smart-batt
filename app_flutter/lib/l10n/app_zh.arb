@@ -433,5 +433,6 @@
   "explainerGForceLean": "機車過彎會傾斜，而錶讀到的是傾斜後車身軸上的分量。彎越大偏差越大：0.3 g 約低 4%、0.5 g 約低 11%、0.8 g 約低 22%。汽車不會有這個問題（它不傾斜）—— 不要拿這個數字跟汽車的規格比。",
   "explainerGForceNotDone": "不用陀螺儀推算傾角、不推算速度或距離。只顯示量到的東西。",
   "settingsSpeedExplainerLabel": "關於速度的量測",
-  "settingsGForceExplainerLabel": "關於 G 值的量測"
+  "settingsGForceExplainerLabel": "關於 G 值的量測",
+  "homeEditLayout": "編輯版面"
 }

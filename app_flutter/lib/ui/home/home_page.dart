@@ -21,6 +21,8 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../theme/app_theme.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -28,7 +30,8 @@ import 'home_tiles.dart';
 
 /// The home tab's body (sits inside the app shell's [Scaffold]).
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, this.onOpenDevices, this.onOpenDetail});
+  const HomePage(
+      {super.key, this.onOpenDevices, this.onOpenDetail, this.onEdit});
 
   /// Switch to the devices tab. Routed through the shell rather than pushed
   /// here: the shell owns tab state through a single entry point (`main.dart`'s
@@ -38,6 +41,18 @@ class HomePage extends StatelessWidget {
 
   /// Open one unit's page.
   final void Function(String deviceId)? onOpenDetail;
+
+  /// Open the layout editor.
+  ///
+  /// 🔴 A row at the bottom of the grid, not only the app-bar action.
+  ///
+  /// The editor shipped as an 18 px grey `Icons.tune` beside the connection
+  /// pill, and the first field test reported the feature as missing
+  /// (2026-08-07: 「主頁不是會有個主頁編輯的功能嗎…沒有這個功能呢」). It was
+  /// there the whole time. A control nobody finds is a control that does not
+  /// exist, and the honest fix is to put it where the thing it edits ends
+  /// rather than to make the icon louder.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +99,51 @@ class HomePage extends StatelessWidget {
                         ],
                       ),
               ),
+            if (onEdit != null) _EditLayoutRow(onTap: onEdit!),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Edit layout" — the last thing in the grid, after the cards it edits.
+class _EditLayoutRow extends StatelessWidget {
+  const _EditLayoutRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            decoration: BoxDecoration(
+              border: Border.all(color: colors.line),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.tune, size: 15, color: colors.muted),
+                const SizedBox(width: 8),
+                Text(
+                  AppLocalizations.of(context).homeEditLayout,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      letterSpacing: 0.4,
+                      color: colors.muted),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

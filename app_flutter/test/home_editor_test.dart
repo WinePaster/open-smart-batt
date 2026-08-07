@@ -199,7 +199,10 @@ void main() {
     final before = HomeLayout.decode(s.settings.homeLayout) ??
         HomeLayout.defaultFor(s.devices.devices);
     final beforeIds = [for (final t in before.tiles) t.deviceId];
-    expect(beforeIds, hasLength(3));
+    // Three device tiles, plus the phone's own modules (speed + G), which carry
+    // no deviceId. Counting only the device ones keeps this assertion about
+    // what the test is about; the phone tiles are pinned in home_layout_test.
+    expect(beforeIds.whereType<String>(), hasLength(3));
 
     // A manual gesture rather than `tester.drag`: the handle is a
     // `ReorderableDragStartListener`, so the drag has to be held across frames

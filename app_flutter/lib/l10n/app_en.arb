@@ -964,5 +964,6 @@
   "explainerGForceLean": "A motorcycle leans through a corner, and the meter reads the component along the leaned body axis. The harder the corner, the larger the shortfall: about 4% at 0.3 g, 11% at 0.5 g, 22% at 0.8 g. Cars do not have this (they do not lean), so do not compare these numbers with a car's.",
   "explainerGForceNotDone": "No lean angle from the gyroscope, no speed or distance derived. Only what is measured.",
   "settingsSpeedExplainerLabel": "How speed is measured",
-  "settingsGForceExplainerLabel": "How G is measured"
+  "settingsGForceExplainerLabel": "How G is measured",
+  "homeEditLayout": "Edit layout"
 }

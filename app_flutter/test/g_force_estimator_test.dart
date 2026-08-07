@@ -262,25 +262,50 @@ void main() {
   });
 
   group('the still window', () {
-    test('movement during the gravity window fails the calibration', () {
+    test('🔴 movement RESTARTS the still window rather than failing it', () {
+      // Reversed 2026-08-07, from the field. The rule used to be that ONE
+      // sample over `stillEpsMs2` set `failedMotion` permanently — so all ~150
+      // consecutive samples had to clear a 0.15 m/s² bar (~1.5% g) with the
+      // phone in a bike mount. A rider reported it simply could not be
+      // completed. The threshold moved to 0.5 m/s², and, more importantly, the
+      // response to motion became "start the window again" — because a rider
+      // who moves while holding still has not broken anything, they have just
+      // not held still YET, and the honest answer is to keep waiting.
       final s = CalibrationSession()..start();
       var t = DateTime.utc(2026, 8, 7);
-      for (var i = 0; i < 60; i++) {
-        t = t.add(const Duration(milliseconds: 20));
-        s.addLinearSample(Vec3.zero, t);
-        s.addRawSample(const Vec3(0, 0, GForceConfig.g0), t);
+      void still(int n) {
+        for (var i = 0; i < n; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          s.addLinearSample(Vec3.zero, t);
+          s.addRawSample(const Vec3(0, 0, GForceConfig.g0), t);
+        }
       }
-      // The user picks the phone up to look at it.
+
+      still(60);
+      // The user shifts the phone in the mount — most of the way through.
       s.addLinearSample(const Vec3(0, 0, 1.5), t);
-      expect(s.phase, CalibrationPhase.failedMotion);
-      for (var i = 0; i < 200; i++) {
-        t = t.add(const Duration(milliseconds: 20));
-        s.addLinearSample(Vec3.zero, t);
-        s.addRawSample(const Vec3(0, 0, GForceConfig.g0), t);
-      }
-      expect(s.phase, CalibrationPhase.failedMotion,
-          reason: 'a failed window must not repair itself silently');
+      expect(s.phase, isNot(CalibrationPhase.failedMotion),
+          reason: 'moving is not a failure; it is a not-yet');
       expect(s.result, isNull);
+
+      // A partial window afterwards is still not enough: the restart is real,
+      // not a reset of the clock only.
+      still(60);
+      expect(s.phase, isNot(CalibrationPhase.waitingLaunch));
+
+      // …and a full clean window from that point DOES complete it.
+      still(120);
+      expect(s.phase, CalibrationPhase.waitingLaunch,
+          reason: 'the whole point of restarting is that a second attempt '
+              'works without leaving and re-entering the wizard');
+    });
+
+    test('the still threshold is the one the field test asked for', () {
+      // Pinned as a number because it is the number a rider could not meet.
+      // 0.15 m/s² is ~1.5% of g; a phone in a bike mount does not sit that
+      // still. If a later tuning pass moves this, it should be a decision, not
+      // a drift.
+      expect(const GForceConfig().stillEpsMs2, 0.5);
     });
 
     test('free fall yields no "up" at all', () {

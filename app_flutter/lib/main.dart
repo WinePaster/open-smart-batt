@@ -388,6 +388,13 @@ class _RootShellState extends State<RootShell> {
   /// the dashboard tab; now it is the HOME tab, and the device detail page —
   /// a pushed route this shell does not own — reports itself separately through
   /// [GpsSpeedController.setDetailVisible].
+  /// Two entry points, one route: the app-bar action and the row at the foot of
+  /// the grid. The row exists because the action alone was not findable —
+  /// see [HomePage.onEdit].
+  void _openHomeEditor() => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const HomeEditorPage()),
+      );
+
   void _syncDashboardVisible() {
     final home = _tab == _Tab.home;
     context.read<GpsSpeedController>().setDashboardVisible(home);
@@ -414,13 +421,7 @@ class _RootShellState extends State<RootShell> {
         onOpenDevices: () => _setTab(_Tab.devices),
         // Only on 主頁, and only there: an "edit" action on top of History or
         // Settings would be an action with no object.
-        onEditHome: _tab == _Tab.home
-            ? () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const HomeEditorPage(),
-                  ),
-                )
-            : null,
+        onEditHome: _tab == _Tab.home ? _openHomeEditor : null,
       ),
       // The AppBar already insets the top (status bar / notch / Dynamic Island)
       // and the NavigationBar insets the bottom (home indicator); guard the
@@ -434,6 +435,7 @@ class _RootShellState extends State<RootShell> {
           children: [
             HomePage(
               onOpenDevices: () => _setTab(_Tab.devices),
+              onEdit: _openHomeEditor,
               onOpenDetail: (id) => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => DeviceDetailPage(

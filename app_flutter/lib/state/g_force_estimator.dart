@@ -160,8 +160,25 @@ class CalibrationSession {
       case CalibrationPhase.samplingGravity:
         // The still check. Without it a phone being carried to the bike would
         // average "gravity plus walking" and call the result up.
+        //
+        // 🔴 Motion RESTARTS the window; it does not fail the wizard.
+        //
+        // It used to abort outright, and at the game sampling rate that meant
+        // ~150 consecutive samples had to clear the threshold — one twitch as
+        // the rider let go of the phone, one gust, one lorry going past, and
+        // the whole run was thrown away with an error. Field report
+        // 2026-08-07: "G值校正太敏感了這樣根本沒有辦法完成". Nobody gets three
+        // uninterrupted seconds by being told off for the first one.
+        //
+        // Restarting is also more honest about what the check is FOR: it is
+        // there so the average is taken over a still phone, and a window that
+        // begins after the disturbance satisfies that just as well as one that
+        // never saw it.
         if (a.magnitude > config.stillEpsMs2) {
-          _phase = CalibrationPhase.failedMotion;
+          _gravitySum = Vec3.zero;
+          _gravityCount = 0;
+          _gravityStart = null;
+          _lastGravityAt = null;
         }
       case CalibrationPhase.waitingLaunch:
         _accumulateLaunch(a, t);

@@ -214,9 +214,31 @@ class HomeLayout {
   /// default entry point since R3; an empty one is a blank screen on launch,
   /// which is the worst possible outcome of a feature whose whole purpose is
   /// "there is always something to look at".
+  /// The phone's own modules, appended to every generated layout.
+  ///
+  /// 🔴 Added unconditionally, and [renderedFor] is what removes them again
+  /// when their switch is off. That split is deliberate: `defaultFor` stays a
+  /// pure function of the device list, and there is exactly ONE place that
+  /// decides whether a phone module may be drawn.
+  ///
+  /// They are here at all because of a field report (2026-08-07): a user who
+  /// had turned on speed detection and calibrated the G meter found neither on
+  /// the home page, because the generated layout only ever contained device
+  /// cards. The only way to add them was the editor, which the same report
+  /// could not find. Somebody who enables a phone module has said what they
+  /// want to see; making them go and say it a second time is the app not
+  /// listening.
+  ///
+  /// Half width: two phone readouts fit one row, and they belong together
+  /// visually — neither is about the battery above them.
+  static const List<HomeTile> _phoneTiles = [
+    HomeTile.module(DisplayModule.speed, span: HomeSpan.half),
+    HomeTile.module(DisplayModule.gForce, span: HomeSpan.half),
+  ];
+
   static HomeLayout defaultFor(List<SavedDevice> devices) {
     if (devices.isEmpty) {
-      return const HomeLayout([HomeTile.addDevice()]);
+      return const HomeLayout([HomeTile.addDevice(), ..._phoneTiles]);
     }
     if (devices.length == 1) {
       final d = devices.single;
@@ -231,10 +253,12 @@ class HomeLayout {
       return HomeLayout([
         HomeTile.module(gauge, deviceId: d.id),
         HomeTile.module(DisplayModule.readouts, deviceId: d.id),
+        ..._phoneTiles,
       ]);
     }
     return HomeLayout([
       for (final d in devices) HomeTile.device(d.id),
+      ..._phoneTiles,
     ]);
   }
 
@@ -299,7 +323,19 @@ class HomeLayout {
     // An empty page is forbidden outright (T-new-2), and "every card you had
     // names a deleted device" is a real path to one. Falling back to the
     // generated default is the same answer `decode` gives for unusable content.
-    if (kept.isEmpty) return HomeLayout.defaultFor(devices);
+    if (kept.isEmpty) {
+      // Filter the fallback too — `defaultFor` now offers phone modules, and
+      // handing back an unavailable one here would walk straight past the gate
+      // this method exists to be.
+      final fallback = HomeLayout.defaultFor(devices).tiles.where((t) {
+        final m = t.module;
+        return m == null ||
+            !m.isPhoneModule ||
+            phoneModuleAvailable(m, settings, gForceAvailable: gForceAvailable);
+      }).toList(growable: false);
+      return HomeLayout(
+          fallback.isEmpty ? const [HomeTile.addDevice()] : fallback);
+    }
     return HomeLayout(kept);
   }
 

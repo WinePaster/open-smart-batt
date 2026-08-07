@@ -24,6 +24,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 SavedDevice _dev(String id, {ProductClass cls = ProductClass.smartBattery}) =>
     SavedDevice(id: id, alias: id, productClass: cls);
 
+/// The part of a default layout that is about the DEVICES.
+///
+/// `defaultFor` also seeds the phone's own modules (speed, G) — see the
+/// "the phone's own modules are in the default layout" test for why. The
+/// assertions about device tiles below are about device tiles, so they say so
+/// rather than counting everything and hoping the total never changes.
+List<HomeTile> _deviceTiles(HomeLayout l) => [
+      for (final t in l.tiles)
+        if (t.module == null || !t.module!.isPhoneModule) t,
+    ];
+
 void main() {
   setUpAll(sqfliteFfiInit);
 
@@ -73,15 +84,17 @@ void main() {
     test('zero devices still gets a tile', () {
       final l = HomeLayout.defaultFor(const []);
       expect(l.tiles, isNotEmpty);
-      expect(l.tiles.single.kind, HomeTileKind.addDevice);
+      expect(l.tiles.first.kind, HomeTileKind.addDevice);
+      expect(_deviceTiles(l), hasLength(1));
     });
 
     test('one device gets its instrument and its numbers', () {
       final l = HomeLayout.defaultFor([_dev('A')]);
-      expect(l.tiles, hasLength(2));
-      expect(l.tiles[0].module, DisplayModule.gaugeVoltage);
-      expect(l.tiles[1].module, DisplayModule.readouts);
-      expect(l.tiles.every((t) => t.deviceId == 'A'), isTrue);
+      final own = _deviceTiles(l);
+      expect(own, hasLength(2));
+      expect(own[0].module, DisplayModule.gaugeVoltage);
+      expect(own[1].module, DisplayModule.readouts);
+      expect(own.every((t) => t.deviceId == 'A'), isTrue);
     });
 
     test('a single power bank gets the SOC ring, not the rail', () {
@@ -96,10 +109,37 @@ void main() {
       for (final n in [2, 3, 5]) {
         final l = HomeLayout.defaultFor(
             [for (var i = 0; i < n; i++) _dev('D$i')]);
-        expect(l.tiles, hasLength(n));
-        expect(l.tiles.every((t) => t.kind == HomeTileKind.deviceCard), isTrue);
-        expect([for (final t in l.tiles) t.deviceId],
+        final own = _deviceTiles(l);
+        expect(own, hasLength(n));
+        expect(own.every((t) => t.kind == HomeTileKind.deviceCard), isTrue);
+        expect([for (final t in own) t.deviceId],
             [for (var i = 0; i < n; i++) 'D$i']);
+      }
+    });
+
+    test('🔴 the phone\'s own modules are in the default layout', () {
+      // The field-test defect (2026-08-07): a rider turned speed and the G
+      // meter on, went to 主頁, and found neither card. `defaultFor` had only
+      // ever produced device tiles — the phone's own measurements existed on
+      // the riding watchface and nowhere else, so the switch appeared to do
+      // nothing at the surface the app opens on.
+      //
+      // They go into EVERY branch unconditionally, including the no-devices
+      // one. `renderedFor` is what removes the ones whose feature is off, so
+      // seeding them here is not a claim that they are available — it is the
+      // claim that they are the user's to arrange, which is what the editor
+      // then lets them do.
+      for (final devices in [
+        <SavedDevice>[],
+        [_dev('A')],
+        [_dev('A'), _dev('B')],
+      ]) {
+        final modules = {
+          for (final t in HomeLayout.defaultFor(devices).tiles)
+            if (t.module?.isPhoneModule ?? false) t.module,
+        };
+        expect(modules, {DisplayModule.speed, DisplayModule.gForce},
+            reason: 'with ${devices.length} device(s)');
       }
     });
 

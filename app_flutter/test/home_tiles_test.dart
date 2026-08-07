@@ -97,7 +97,8 @@ void main() {
     await s.dispose();
   }
 
-  Future<void> pumpHome(WidgetTester tester, AppServices s) async {
+  Future<void> pumpHome(WidgetTester tester, AppServices s,
+      {VoidCallback? onEdit}) async {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -118,7 +119,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: const Scaffold(body: HomePage()),
+          home: Scaffold(body: HomePage(onEdit: onEdit)),
         ),
       ),
     );
@@ -369,6 +370,79 @@ void main() {
     expect(actual, callers.toSet(),
         reason: 'a new caller of dashboardCardFor appeared; add it above and '
             'make sure it gates phone modules');
+  });
+
+  // ===========================================================================
+  // 🔴 The "edit layout" row — 2026-08-07, from the field.
+  //
+  // The editor was NOT missing. It was reachable the whole time, from an 18px
+  // grey `Icons.tune` beside the connection pill in the app bar. The owner
+  // tested the build and reported the feature as absent, which is the only
+  // measurement of findability that counts. So the entry point moved to where
+  // the thing it edits is: the last row of the grid, after the cards.
+  //
+  // Both routes still exist and both go to the same place. What these tests pin
+  // is that the ROW exists, that it does something, and — the part this project
+  // keeps getting wrong — that its caller actually passes a callback.
+  // ===========================================================================
+  group('the edit-layout row', () {
+    testWidgets('it is at the foot of the grid, and it fires', (tester) async {
+      final s = await boot(tester, devices: [
+        SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+            lastSeen: DateTime.now()),
+      ]);
+      addTearDown(() => teardown(tester, s));
+
+      var taps = 0;
+      await pumpHome(tester, s, onEdit: () => taps++);
+
+      final row = find.text('Edit layout');
+      expect(row, findsOneWidget);
+      await tester.tap(row);
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('and it is absent when there is nothing wired to it',
+        (tester) async {
+      // Not a decorative distinction: a row that looks tappable and is not is
+      // worse than no row. `onEdit` is nullable so the widget can be pumped
+      // without a navigator, and this pins that the null case draws nothing
+      // rather than a dead control.
+      final s = await boot(tester, devices: []);
+      addTearDown(() => teardown(tester, s));
+      await pumpHome(tester, s);
+      expect(find.text('Edit layout'), findsNothing);
+    });
+
+    test('🔴 the app actually passes it — the caller, not the callee', () {
+      // The failure mode this project repeats (see estimate_wiring_test.dart,
+      // and `visibleFor`-with-no-caller before it): the widget is right, the
+      // tests of the widget are right, and nothing constructs it with the
+      // argument. Derived from source so it cannot rot into a comment.
+      final src = File('lib/main.dart').readAsStringSync();
+      final at = src.indexOf('HomePage(');
+      expect(at, isNonNegative, reason: 'main.dart must build the home page');
+      // The whole argument list, found by matching parentheses — a naive
+      // indexOf(')') stops at the first nested call and would pass while
+      // reading two arguments.
+      var depth = 0, end = at;
+      for (var i = src.indexOf('(', at); i < src.length; i++) {
+        if (src[i] == '(') depth++;
+        if (src[i] == ')') {
+          depth--;
+          if (depth == 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      expect(end, greaterThan(at));
+      final ctor = src.substring(at, end);
+      expect(ctor, contains('onEdit:'),
+          reason: 'HomePage takes onEdit and main.dart must supply it, or the '
+              'row silently disappears again');
+    });
   });
 }
 

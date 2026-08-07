@@ -2701,6 +2701,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'How G is measured'**
   String get settingsGForceExplainerLabel;
+
+  /// No description provided for @homeEditLayout.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit layout'**
+  String get homeEditLayout;
 }
 
 class _AppLocalizationsDelegate
