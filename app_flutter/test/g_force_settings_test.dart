@@ -14,6 +14,8 @@
 // The last test is the general form and is the one worth keeping: EVERY column
 // the settings table has must appear in the map. It would have caught this
 // class of defect without anybody having to remember which feature is next.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -166,5 +168,44 @@ void main() {
             'INSERT OR REPLACE will erase them on the next settings write');
     expect(mapped.difference(columns), isEmpty,
         reason: 'toMap() names columns the table does not have');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-08-07 0044/0045 查核, 兩條 🟡。Both are the "confident, plausible,
+  // wrong" shape this feature is most exposed to.
+  // ---------------------------------------------------------------------------
+  test('the recorded series is not thinned by the display throttle', () {
+    // Design 0044 ruled this for acceleration and pinned it; 0045 was written
+    // without inheriting it, and the throttle's early-return sat ABOVE the
+    // stream add (measured: 50 samples in, 5 landed). The Phase 4 road test
+    // will tune `readoutThrottle` — a DISPLAY knob that must not quietly
+    // change what goes into the database.
+    final src = File('lib/state/g_force_controller.dart').readAsStringSync();
+    final add = src.indexOf('_estimates.add(');
+    final throttle = src.indexOf('config.readoutThrottle) return;');
+    expect(add, isNonNegative);
+    expect(throttle, isNonNegative);
+    expect(add, lessThan(throttle),
+        reason: 'the recorded series must be published BEFORE the display '
+            'throttle can return early, or history inherits a repaint '
+            'decision');
+  });
+
+  test('a moved mount does not survive a restart', () {
+    // The header claimed "Once tripped it stays tripped … There is no path
+    // back". It was memory-only: restart, and the stale matrix read back with
+    // `available` true. Move the mount, restart, ride off without ever
+    // standing still for the two seconds the still-window needs, and the whole
+    // session is wrong AND lands in g_long/g_lat.
+    final ctrl = File('lib/state/g_force_controller.dart').readAsStringSync();
+    expect(ctrl, contains('onCalibrationInvalidated'),
+        reason: 'the controller must be able to signal it, without importing '
+            'a repository — that import ban is what keeps the INSERT OR '
+            'REPLACE trap unreachable from here');
+
+    final wiring = File('lib/state/app_services.dart').readAsStringSync();
+    expect(wiring, contains('onCalibrationInvalidated:'),
+        reason: 'a signal nobody listens to is the same defect with extra '
+            'steps — see visibleFor, which shipped with no caller');
   });
 }

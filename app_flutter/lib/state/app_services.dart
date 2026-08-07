@@ -139,7 +139,21 @@ class AppServices {
     // Holds no resources until its gate opens; see [GpsSpeedController].
     final speed = GpsSpeedController();
     // Same contract; see [GForceController].
-    final gforce = GForceController();
+    // The mount moved ⇒ drop the stored matrix.
+    //
+    // Clearing rather than flagging: `g_calibration` NULL already means "not
+    // calibrated", the card's two states (0045 Q8) do not distinguish "never"
+    // from "no longer", and the remedy is identical — run the wizard again.
+    // Adding a third state to storage to express a difference nothing renders
+    // would be inventing a ruling.
+    //
+    // The controller supplies the signal and not the write: it imports no
+    // repository, which is what keeps the `INSERT OR REPLACE` column-wipe trap
+    // structurally unreachable from it. See `onCalibrationInvalidated`.
+    late final GForceController gforce;
+    gforce = GForceController(
+      onCalibrationInvalidated: () => settings.setGCalibration(null),
+    );
     // One judgement about link freshness, two presentations: the dashboard's
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).

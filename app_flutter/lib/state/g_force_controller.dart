@@ -110,7 +110,28 @@ class GForceController extends ChangeNotifier {
     this.source = const SensorsPlusGForceSource(),
     this.config = const GForceConfig(),
     DateTime Function()? now,
+    this.onCalibrationInvalidated,
   }) : _now = now ?? DateTime.now;
+
+  /// Called once when the mount is detected to have moved, so the caller can
+  /// make that durable.
+  ///
+  /// 🔴 A CALLBACK rather than a settings write, and the indirection is the
+  /// point. This class deliberately imports no repository and no database —
+  /// that is what makes the `INSERT OR REPLACE` column-wipe trap (see
+  /// `settings_repo.dart`) unreachable here rather than merely avoided. Giving
+  /// it a write path to close one hole would open a worse one.
+  ///
+  /// Why it has to be durable at all: the invalidation used to live only in
+  /// memory, while this file's own header said "Once tripped it stays tripped
+  /// … There is no path back". Across a restart it was not tripped at all — the
+  /// old matrix read back, `available` returned true, and the card drew G
+  /// values on axes the phone no longer had. Move the mount, restart, ride off
+  /// without ever standing still for the two seconds the still-window check
+  /// needs, and the whole session is wrong AND lands in `g_long`/`g_lat`. That
+  /// is the "confident, plausible, wrong" failure this feature is most exposed
+  /// to, so it does not get to be memory-only.
+  final Future<void> Function()? onCalibrationInvalidated;
 
   final GForceSensorSource source;
   final GForceConfig config;
@@ -311,14 +332,29 @@ class GForceController extends ChangeNotifier {
     final t = _now();
     _monitor?.addLinearSample(v, t);
     final r = e.process(v);
-    final last = _readingPublishedAt;
-    if (last != null && t.difference(last) < config.readoutThrottle) return;
-    _readingPublishedAt = t;
-    _reading = r;
+
+    // 🔴 The RECORDED series is published FIRST and UNCONDITIONALLY.
+    //
+    // This used to sit below the throttle, so the history series was thinned by
+    // a decision about repaint rates — measured at 50 samples in, 5 landed.
+    // Design 0044 ruled the same question the other way for acceleration and
+    // pinned it ("the recorded series must not be thinned by a decision about
+    // repaint rates"); 0045 was written without inheriting that. The visible
+    // cost of getting it wrong is subtle and permanent: the Phase 4 road test
+    // will tune `readoutThrottle`, and tuning a DISPLAY knob would silently
+    // change what lands in the database.
+    //
+    // Same split as design 0044: `estimates` is the raw, unthrottled,
+    // unrounded series; `reading` is what a rider glances at.
     if (!_estimates.isClosed) {
       _estimates.add(GForceEstimate(
           longMs2: e.rawLongMs2, latMs2: e.rawLatMs2, at: t));
     }
+
+    final last = _readingPublishedAt;
+    if (last != null && t.difference(last) < config.readoutThrottle) return;
+    _readingPublishedAt = t;
+    _reading = r;
     _notify();
   }
 
@@ -332,6 +368,11 @@ class GForceController extends ChangeNotifier {
     // reading because it looks like one.
     _invalidated = true;
     _stopRide();
+    // Fire-and-forget: the screen must stop drawing NOW, and a slow write must
+    // not hold that up. Failing to persist leaves the pre-fix behaviour (a
+    // stale matrix returning after a restart), which is bad but no worse than
+    // before; failing to stop drawing is the thing G1/G2 forbid outright.
+    unawaited(onCalibrationInvalidated?.call() ?? Future<void>.value());
     _notify();
   }
 
