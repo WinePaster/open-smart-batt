@@ -1107,7 +1107,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gWizardStillBody =>
-      'Measuring which way is up. Do not touch the phone or the bike.';
+      'Stand the bike upright — centre stand or level ground, not the side stand — then keep still. Measuring which way is up.';
 
   @override
   String get gWizardMovedTitle => 'It moved';

@@ -296,7 +296,7 @@
   "gWizardMountBody": "請照平常騎乘的方式把手機固定在車架上。校準記住的就是這個位置 —— 之後移動手機就要重做一次。",
   "gWizardStart": "開始",
   "gWizardStillTitle": "保持靜止",
-  "gWizardStillBody": "正在量測哪一邊是上。請不要碰手機或車子。",
+  "gWizardStillBody": "把車扶正、停在中柱或平地上（不要用側柱），然後保持靜止。正在量測哪一邊是上。",
   "gWizardMovedTitle": "偵測到晃動",
   "gWizardMovedBody": "量測過程中有東西動了，這樣量到的就不只是重力。請重來一次。",
   "gWizardRetry": "重來一次",

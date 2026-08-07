@@ -1044,7 +1044,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gWizardStillTitle => '保持靜止';
 
   @override
-  String get gWizardStillBody => '正在量測哪一邊是上。請不要碰手機或車子。';
+  String get gWizardStillBody => '把車扶正、停在中柱或平地上（不要用側柱），然後保持靜止。正在量測哪一邊是上。';
 
   @override
   String get gWizardMovedTitle => '偵測到晃動';

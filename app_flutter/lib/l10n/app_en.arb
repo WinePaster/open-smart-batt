@@ -750,7 +750,7 @@
   "@gWizardStillTitle": {
     "description": "Step 1 heading."
   },
-  "gWizardStillBody": "Measuring which way is up. Do not touch the phone or the bike.",
+  "gWizardStillBody": "Stand the bike upright \u2014 centre stand or level ground, not the side stand \u2014 then keep still. Measuring which way is up.",
   "@gWizardStillBody": {
     "description": "Step 1 body."
   },

@@ -1877,7 +1877,7 @@ abstract class AppLocalizations {
   /// Step 1 body.
   ///
   /// In en, this message translates to:
-  /// **'Measuring which way is up. Do not touch the phone or the bike.'**
+  /// **'Stand the bike upright — centre stand or level ground, not the side stand — then keep still. Measuring which way is up.'**
   String get gWizardStillBody;
 
   /// Shown when the still window was broken.
