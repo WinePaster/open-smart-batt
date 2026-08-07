@@ -417,5 +417,21 @@
   "powerBankTrackInput": "輸入電壓",
   "powerBankTrackSoc": "電量 SOC",
   "capacitorTrackSvlt": "次電壓 SVLT",
-  "capacitorChartNoCurrentNote": "不顯示電流：本類別回報恆定 0 A，並非真實量測。"
+  "capacitorChartNoCurrentNote": "不顯示電流：本類別回報恆定 0 A，並非真實量測。",
+  "explainerSpeedTitle": "關於速度的量測",
+  "explainerGForceTitle": "關於 G 值的量測",
+  "explainerWhatIsMeasured": "量的是什麼",
+  "explainerWhatIsNotDone": "不做的事",
+  "explainerSpeedWhat": "手機 GPS 晶片回報的速度（Doppler），不是從位置推算的。座標永遠不會被儲存，也不會出現在匯出檔裡。",
+  "explainerSpeedHoldingLead": "訊號中斷時顯示的是「保持中」的舊值，不是量到的。",
+  "explainerSpeedHolding": "隧道、地下道、高架下都會發生；畫面會明確標示，超過一段時間就改顯示「無訊號」。標著「保持中」的數字不是當下的速度。",
+  "explainerSpeedStillLead": "3 km/h 以下顯示 0。",
+  "explainerSpeedStill": "GPS 靜止時的位置抖動會產生 1–3 km/h 的假速度，停紅燈顯示 2 km/h 是一眼就會看出的錯。代價是牽車或慢速滑行也會顯示 0。",
+  "explainerSpeedNotDone": "不用加速度計推算速度（積分會漂移）、不在背景記錄、不做軌跡。",
+  "explainerGForceWhat": "手機的加速度計，重力由系統扣除。校準是為了知道手機在車上的方向；沒校準就沒有「前後」和「左右」可言。",
+  "explainerGForceLeanLead": "過彎的橫向 G 會偏低，這是兩輪車的物理限制。",
+  "explainerGForceLean": "機車過彎會傾斜，而錶讀到的是傾斜後車身軸上的分量。彎越大偏差越大：0.3 g 約低 4%、0.5 g 約低 11%、0.8 g 約低 22%。汽車不會有這個問題（它不傾斜）—— 不要拿這個數字跟汽車的規格比。",
+  "explainerGForceNotDone": "不用陀螺儀推算傾角、不推算速度或距離。只顯示量到的東西。",
+  "settingsSpeedExplainerLabel": "關於速度的量測",
+  "settingsGForceExplainerLabel": "關於 G 值的量測"
 }

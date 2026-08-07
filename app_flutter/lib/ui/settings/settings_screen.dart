@@ -29,6 +29,7 @@ import '../util/export_share.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
 import 'g_calibration_wizard.dart';
+import 'measurement_explainer.dart';
 import 'g_meter_consent_dialog.dart';
 import 'speed_consent_dialog.dart';
 
@@ -206,8 +207,23 @@ class _DisplayCard extends StatelessWidget {
                 ],
               ),
             ),
+          // design 0042 §3.9b. Always shown, switch or no switch: the question
+          // it answers ("why does it say 0 / why is it stuck?") is asked by
+          // people already using the feature, and the consent dialog they saw
+          // when they turned it on is not reachable again.
+          SettingsLinkRow(
+            icon: Icons.help_outline,
+            label: l10n.settingsSpeedExplainerLabel,
+            onTap: () => showSpeedMeasurementExplainer(context),
+          ),
           const _GMeterRow(),
           if (s.gMeterEnabled) const _GCalibrationRow(),
+          // design 0045 §3.6b — same shape, same reason.
+          SettingsLinkRow(
+            icon: Icons.help_outline,
+            label: l10n.settingsGForceExplainerLabel,
+            onTap: () => showGForceMeasurementExplainer(context),
+          ),
           _WatchfaceGuidanceRow(onOpenDevices: onOpenDevices),
         ],
       ),
