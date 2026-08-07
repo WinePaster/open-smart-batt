@@ -73,6 +73,7 @@ dependencies:
   # flow rather than the plugin's, so there is one location grant, not two.
   # Foreground only — no background modes are declared (0042 N1).
   geolocator: ^14.0.2
+  sensors_plus: ^7.1.0
 
 dev_dependencies:
   flutter_test:

@@ -43,6 +43,8 @@ class SettingsController extends ChangeNotifier {
   TempUnit get tempUnit => _settings.tempUnit;
   bool get speedDetection => _settings.speedDetection;
   SpeedUnit get speedUnit => _settings.speedUnit;
+  bool get gMeterEnabled => _settings.gMeterEnabled;
+  String? get gCalibration => _settings.gCalibration;
   String? get homeLayout => _settings.homeLayout;
   RetentionPolicy get retention => _settings.retention;
   bool get rawPacketLog => _settings.rawPacketLog;
@@ -92,6 +94,28 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setSpeedUnit(SpeedUnit v) =>
       update(_settings.copyWith(speedUnit: v));
+
+  /// The G meter master switch (design 0045 §3.5 / Q2).
+  ///
+  /// Same division of labour as [setSpeedDetection]: the confirmation dialog
+  /// belongs to the screen, this only records the answer.
+  ///
+  /// ⚠️ Turning it OFF leaves [setGCalibration] alone on purpose. The mount has
+  /// not moved because the user switched a feature off, and making them redo
+  /// the wizard to get the feature back would be a punishment for trying it.
+  /// "Zero the calibration" is its own row.
+  Future<void> setGMeterEnabled(bool v) =>
+      update(_settings.copyWith(gMeterEnabled: v));
+
+  /// Store a completed calibration (`GForceCalibration.encode()`), or NULL to
+  /// zero it (design 0045 §3.5 — the settings page's "校準歸零" row).
+  ///
+  /// 🔴 This is the ONLY writer of `settings.g_calibration`, and it goes
+  /// through `AppSettings` rather than touching the column. A second path that
+  /// wrote the column directly would be erased by the next `saveSettings` —
+  /// see the `toMap` warning in `app_settings.dart`.
+  Future<void> setGCalibration(String? v) => update(
+      _settings.copyWith(gCalibration: v, clearGCalibration: v == null));
 
   /// Persist the home page's grid, or NULL to go back to the generated one.
   ///

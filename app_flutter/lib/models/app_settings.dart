@@ -120,6 +120,42 @@ class AppSettings {
   /// before anything wrote it.
   final String? homeLayout;
 
+  /// Master switch for the G meter (design 0045 §3.5 / Q2). DEFAULT OFF.
+  ///
+  /// INDEPENDENT of [speedDetection], and that was ruled rather than assumed
+  /// (Q2): the G meter reads the accelerometer, needs no location permission
+  /// and no GNSS, so hanging it under the speed switch would force anyone who
+  /// wants it to accept a GPS consent they have no use for.
+  ///
+  /// "Independent" is not "free", though. Turning it on still passes a
+  /// confirmation, because Q4 ruled that G values are RECORDED: longitudinal
+  /// and lateral G reach the history table and every export. Two consequences,
+  /// two sentences in the dialog.
+  ///
+  /// On alone shows nothing. The card needs a valid calibration as well —
+  /// see [gCalibration] and `GForceController.available`.
+  final bool gMeterEnabled;
+
+  /// The phone→vehicle rotation, as `GForceCalibration.encode()`'s JSON — or
+  /// NULL when the mount has never been calibrated (design 0045 §3.2).
+  ///
+  /// 🔴 NULL is the honest state, not a missing value, which is why the column
+  /// is nullable with no default: "not calibrated yet" is not some particular
+  /// matrix. An identity matrix as a default would be worse than useless — it
+  /// would mean "the phone's own axes are the bike's", which is false for every
+  /// mount anyone actually uses, and it would produce confident numbers under
+  /// labels naming directions the app cannot know.
+  ///
+  /// APP-WIDE, like [speedUnit] and unlike the watchface (design 0045 Q6): a
+  /// calibration describes the phone and the frame it is strapped to. Which
+  /// battery happens to be connected has nothing to do with it — a power bank
+  /// may not even be on the bike.
+  ///
+  /// Stored as TEXT in a column design 0042's v12 migration created on this
+  /// feature's behalf — hence a column that existed for a release before
+  /// anything wrote it.
+  final String? gCalibration;
+
   // --- data ---
   /// How long history is kept. Telemetry is ALWAYS recorded while connected —
   /// there is no longer a switch that stops it — and this only decides when old
@@ -158,6 +194,8 @@ class AppSettings {
     this.tempUnit = TempUnit.celsius,
     this.speedDetection = false,
     this.speedUnit = SpeedUnit.kmh,
+    this.gMeterEnabled = false,
+    this.gCalibration,
     this.homeLayout,
     this.retention = RetentionPolicy.forever,
     this.rawPacketLog = false,
@@ -177,6 +215,13 @@ class AppSettings {
     TempUnit? tempUnit,
     bool? speedDetection,
     SpeedUnit? speedUnit,
+    bool? gMeterEnabled,
+    // 🔴 Nullable AND meaningful for the same reason [homeLayout] is: null says
+    // "this mount has never been calibrated", so `copyWith` cannot express
+    // going back to it — [clearGCalibration] is how "zero the calibration"
+    // does it.
+    String? gCalibration,
+    bool clearGCalibration = false,
     // 🔴 Nullable AND meaningful, so `copyWith` cannot express "set it back to
     // null" the usual way — [clearHomeLayout] is how "restore defaults" does it.
     String? homeLayout,
@@ -195,6 +240,9 @@ class AppSettings {
         tempUnit: tempUnit ?? this.tempUnit,
         speedDetection: speedDetection ?? this.speedDetection,
         speedUnit: speedUnit ?? this.speedUnit,
+        gMeterEnabled: gMeterEnabled ?? this.gMeterEnabled,
+        gCalibration:
+            clearGCalibration ? null : (gCalibration ?? this.gCalibration),
         homeLayout: clearHomeLayout ? null : (homeLayout ?? this.homeLayout),
         retention: retention ?? this.retention,
         rawPacketLog: rawPacketLog ?? this.rawPacketLog,
@@ -211,11 +259,12 @@ class AppSettings {
   /// not to this map therefore does not merely fail to persist; it erases
   /// itself later, at a moment unrelated to whatever wrote it.
   ///
-  /// v12 added three columns with no writer. `home_layout` GAINED one in design
-  /// 0046 and is now in this map, exactly as that note required. The two
-  /// remaining omissions — `g_meter_enabled` and `g_calibration` (design 0045)
-  /// — are still deliberate and must join the map in the same change that
-  /// starts writing them. See the v12 note in `app_database.dart`.
+  /// v12 added three columns with no writer. All three now have one:
+  /// `home_layout` gained its writer in design 0046, and `g_meter_enabled` /
+  /// `g_calibration` gained theirs in design 0045 — in the same change that
+  /// started writing them, exactly as this note required. There are no
+  /// writer-less columns left; the next one added must arrive with its entry
+  /// here. See the v12 note in `app_database.dart`.
   Map<String, Object?> toMap() => {
         'auto_reconnect': autoReconnect ? 1 : 0,
         'poll_interval_ms': pollIntervalMs,
@@ -228,6 +277,9 @@ class AppSettings {
         'temp_unit': tempUnit.name,
         'speed_detection': speedDetection ? 1 : 0,
         'speed_unit': speedUnit.name,
+        'g_meter_enabled': gMeterEnabled ? 1 : 0,
+        // NULL when never calibrated — the column's own meaning, see the field.
+        'g_calibration': gCalibration,
         // NULL when never customised — the column's own meaning, see the field.
         'home_layout': homeLayout,
         'retention': retention.name,
@@ -262,6 +314,18 @@ class AppSettings {
           (e) => e.name == m['speed_unit'],
           orElse: () => SpeedUnit.kmh,
         ),
+        // Pre-v12 rows have no such column (NULL), and NULL must read as OFF
+        // for [speedDetection]'s reason: `!= 0` would let an upgrade grant
+        // itself a feature whose consent dialog the user has never seen.
+        gMeterEnabled: (m['g_meter_enabled'] as num?)?.toInt() == 1,
+        // Empty string normalised to null, as for [homeLayout]. The MATRIX is
+        // validated later by `GForceCalibration.decode`, which returns null for
+        // anything it cannot vouch for — so an unreadable calibration lands on
+        // "not calibrated" rather than on approximate axes.
+        gCalibration: switch (m['g_calibration']) {
+          final String v when v.isNotEmpty => v,
+          _ => null,
+        },
         // Pre-v12 rows have no such column; an empty string is normalised to
         // null so "written and then cleared" cannot become a third state the
         // decoder has to think about.
