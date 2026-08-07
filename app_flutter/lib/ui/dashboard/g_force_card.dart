@@ -201,6 +201,8 @@ class _GReadout extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 10,
             letterSpacing: 0.6,
@@ -209,14 +211,32 @@ class _GReadout extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          text,
-          style: AppTextStyles.mono(context).copyWith(
-            fontSize: 22,
-            height: 1.1,
-            fontWeight: FontWeight.w700,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            color: emphasised ? AppColors.amber : colors.text,
+        // 🔴 Never wraps. Three of these share the card's width, so in a 1x1
+        // home tile each gets roughly a third of ~220 px — not enough for
+        // `+0.00` at 22 px, and the default behaviour is to break the number
+        // ACROSS TWO LINES: `+0.` above `00`. Reported from the field on
+        // v0.7.8 (2026-08-07) as「這排版實在是」, and it is worse than ugly —
+        // a G reading split over two lines is briefly readable as a different
+        // number.
+        //
+        // scaleDown rather than a smaller font: at full width (the riding
+        // watchface, where this card was designed) nothing changes at all,
+        // and the shrinking is proportional to how little room there actually
+        // is. `home_editor_page.dart` lets the user set any tile to 1x1, so
+        // "just make the default full width" would not have been enough.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            style: AppTextStyles.mono(context).copyWith(
+              fontSize: 22,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: emphasised ? AppColors.amber : colors.text,
+            ),
           ),
         ),
         Text(

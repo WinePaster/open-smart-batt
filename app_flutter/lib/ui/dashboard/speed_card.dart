@@ -242,32 +242,61 @@ class _Reading extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 🔴 The number and its unit scale as ONE group; the quality pill keeps
+        // its size and its place on the right.
+        //
+        // Same field report as `_GReadout`'s number (see there). A 1x1 home
+        // tile is ~265 px on a normal phone and ~145 px on a 320 dp one, and
+        // 52 px digits + `km/h` + the pill do not fit at three digits — which
+        // is not a corner case on a motorbike. Unfixed it is a RenderFlex
+        // overflow: the striped bar, drawn across the reading the rider is
+        // actually looking at.
+        //
+        // `Expanded` rather than `Flexible` + `Spacer`: those two would have
+        // split the free space evenly between the number and the gap, capping
+        // the number at half the row for no reason. Here the pill is the only
+        // fixed cost and the group gets everything else — so at full width
+        // nothing is scaled at all and the layout is byte-for-byte the old one.
         Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(
-              formatSpeed(estimate.vSmoothMps, unit),
-              style: TextStyle(
-                fontSize: 52,
-                height: 1,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -1,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: held ? colors.muted : AppColors.amber,
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      formatSpeed(estimate.vSmoothMps, unit),
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 52,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -1,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: held ? colors.muted : AppColors.amber,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      speedUnitLabel(unit),
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 14,
+                        letterSpacing: 1,
+                        fontWeight: FontWeight.w600,
+                        color: colors.muted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              speedUnitLabel(unit),
-              style: TextStyle(
-                fontSize: 14,
-                letterSpacing: 1,
-                fontWeight: FontWeight.w600,
-                color: colors.muted,
-              ),
-            ),
-            const Spacer(),
             _QualityPill(quality: estimate.quality),
           ],
         ),
@@ -325,30 +354,44 @@ class _AccelRow extends StatelessWidget {
         : shown < 0
             ? Icons.trending_down
             : Icons.trending_flat;
-    return Row(
-      children: [
-        Icon(icon, size: 15, color: AppColors.cyan),
-        const SizedBox(width: 6),
-        Text(
-          l10n.speedCardAccelLabel,
-          style: TextStyle(fontSize: 11, color: colors.muted),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          formatAccel(aMps2, unit),
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            color: colors.text,
+    // Icon, word, number and unit are one indivisible phrase — "ACCEL +5.0
+    // km/h/s" means nothing with a piece missing — so the whole row scales
+    // together rather than any part of it being dropped or ellipsised. At the
+    // widths this card was designed for nothing scales at all.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: AppColors.cyan),
+          const SizedBox(width: 6),
+          Text(
+            l10n.speedCardAccelLabel,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: 11, color: colors.muted),
           ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          accelUnitLabel(unit),
-          style: TextStyle(fontSize: 10.5, color: colors.muted),
-        ),
-      ],
+          const SizedBox(width: 6),
+          Text(
+            formatAccel(aMps2, unit),
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: colors.text,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            accelUnitLabel(unit),
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: 10.5, color: colors.muted),
+          ),
+        ],
+      ),
     );
   }
 }
