@@ -191,7 +191,43 @@ void main() {
             'decision');
   });
 
-  test('a moved mount does not survive a restart', () {
+  test('a moved mount survives a restart, WITH the reason and the date', () {
+    // 🔴 Three attempts, recorded because the middle one looked right.
+    //
+    //  1. memory-only        — forgot across a restart; the stale matrix came
+    //                          back and the meter drew on wrong axes.
+    //  2. clear the column   — durable, but collapsed 「校準已失效」 into
+    //                          「尚未校準」 and threw away the date. design
+    //                          0045 §3.6 specifies BOTH sentences and the date,
+    //                          and settings_screen.dart renders them. Q8's "the
+    //                          card simply does not appear" governs the CARD,
+    //                          not the settings page.
+    //  3. flag in the same JSON column — durable, keeps both, and stays off the
+    //                          schema (v12 is the last migration; 0044 Q2
+    //                          forbids a v13).
+    const at = 1770000000000;
+    final fresh = GForceCalibration(
+      rotation: const [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      calibratedAt: DateTime.fromMillisecondsSinceEpoch(at, isUtc: true),
+    );
+    expect(fresh.invalidated, isFalse);
+
+    final moved = fresh.markedInvalid;
+    final restored = GForceCalibration.decode(moved.encode())!;
+    expect(restored.invalidated, isTrue,
+        reason: 'the mount moved, and a restart must not forget that');
+    expect(restored.calibratedAt, fresh.calibratedAt,
+        reason: 'the settings page needs the date to say WHEN it was good');
+    expect(restored.rotation, fresh.rotation);
+
+    // A calibration written before the flag existed decodes as valid, which is
+    // what it was.
+    expect(GForceCalibration.decode(fresh.encode())!.invalidated, isFalse);
+    expect(fresh.encode().contains('invalid'), isFalse,
+        reason: 'the key is written only when true — no churn on every save');
+  });
+
+  test('the invalidation is signalled and somebody listens', () {
     // The header claimed "Once tripped it stays tripped … There is no path
     // back". It was memory-only: restart, and the stale matrix read back with
     // `available` true. Move the mount, restart, ride off without ever

@@ -131,7 +131,7 @@ class GForceController extends ChangeNotifier {
   /// needs, and the whole session is wrong AND lands in `g_long`/`g_lat`. That
   /// is the "confident, plausible, wrong" failure this feature is most exposed
   /// to, so it does not get to be memory-only.
-  final Future<void> Function()? onCalibrationInvalidated;
+  final Future<void> Function(String encoded)? onCalibrationInvalidated;
 
   final GForceSensorSource source;
   final GForceConfig config;
@@ -174,9 +174,11 @@ class GForceController extends ChangeNotifier {
     if (_storedCalibration != s.gCalibration) {
       _storedCalibration = s.gCalibration;
       _calibration = GForceCalibration.decode(s.gCalibration);
-      // A NEW matrix is trusted again. Recalibrating is the documented way out
-      // of the invalidated state, and this is where that happens.
-      _invalidated = false;
+      // A NEW matrix is trusted again — recalibrating is the documented way out
+      // of the invalidated state. But a matrix that comes back CARRYING the
+      // flag stays invalidated: that is what makes "the mount moved" survive a
+      // restart instead of being forgotten the moment the process dies.
+      _invalidated = _calibration?.invalidated ?? false;
       _estimator = null;
       _monitor = null;
       _reading = null;
@@ -372,7 +374,15 @@ class GForceController extends ChangeNotifier {
     // not hold that up. Failing to persist leaves the pre-fix behaviour (a
     // stale matrix returning after a restart), which is bad but no worse than
     // before; failing to stop drawing is the thing G1/G2 forbid outright.
-    unawaited(onCalibrationInvalidated?.call() ?? Future<void>.value());
+    //
+    // The matrix goes WITH the flag, not away: the settings page has two
+    // different sentences for "never calibrated" and "the mount moved", and
+    // the second one needs the date the first calibration was taken.
+    final marked = _calibration?.markedInvalid;
+    if (marked != null) {
+      unawaited(onCalibrationInvalidated?.call(marked.encode()) ??
+          Future<void>.value());
+    }
     _notify();
   }
 

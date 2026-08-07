@@ -87,7 +87,10 @@ class Vec3 {
 /// vehicle axes expressed in phone coordinates — so `toBody` is three dot
 /// products and needs no matrix library.
 class GForceCalibration {
-  const GForceCalibration({required this.rotation, required this.calibratedAt});
+  const GForceCalibration(
+      {required this.rotation,
+      required this.calibratedAt,
+      this.invalidated = false});
 
   /// Row-major 3×3, exactly nine finite values. Row 0 = forward, row 1 = left,
   /// row 2 = up, each a unit vector in PHONE coordinates.
@@ -98,12 +101,44 @@ class GForceCalibration {
   /// guessing.
   final DateTime calibratedAt;
 
+  /// The mount has been detected to have moved since this matrix was taken.
+  ///
+  /// 🔴 Persisted rather than held in memory, and kept ALONGSIDE the matrix
+  /// rather than replacing it.
+  ///
+  /// Memory-only was the first attempt and it forgot across a restart: the old
+  /// matrix read back, the meter went on drawing, and a rider who moved the
+  /// mount and rode off without ever standing still for the two seconds the
+  /// check needs had a whole session on wrong axes — landing in
+  /// `g_long`/`g_lat`.
+  ///
+  /// Clearing the column instead was the second attempt and it was worse than
+  /// it looked. Design 0045 §3.6 specifies two DIFFERENT sentences on the
+  /// settings page — 「尚未校準」 and 「校準已失效 —— 手機位置似乎被移動過」 —
+  /// plus the date of the last calibration. Clearing collapses them into the
+  /// first one, so the app stops being able to tell the user WHY the meter
+  /// disappeared, and the date goes with it. The card's ruling (Q8: it simply
+  /// does not appear) is about the CARD; the settings page was designed to
+  /// carry the distinction, and it does.
+  ///
+  /// Riding in the same column is what keeps this off the schema: `g_calibration`
+  /// is already JSON TEXT, so a key costs nothing and v12 stays the last
+  /// migration (design 0044 Q2 forbids a v13).
+  final bool invalidated;
+
+  /// A fresh matrix supersedes any invalidation — recalibrating IS the remedy.
+  GForceCalibration get markedInvalid => GForceCalibration(
+      rotation: rotation, calibratedAt: calibratedAt, invalidated: true);
+
   /// JSON key for the matrix. Short because this is a settings column, not a
   /// document — and stable because it is a wire value.
   static const String matrixKey = 'm';
 
   /// JSON key for the timestamp (epoch milliseconds, UTC).
   static const String atKey = 'at';
+
+  /// JSON key for [invalidated].
+  static const String invalidKey = 'invalid';
 
   /// Build from three ORTHONORMAL vehicle axes given in phone coordinates.
   ///
@@ -170,6 +205,10 @@ class GForceCalibration {
   String encode() => jsonEncode({
         matrixKey: rotation,
         atKey: calibratedAt.toUtc().millisecondsSinceEpoch,
+        // Written only when true: an absent key reads as false, so every
+        // calibration taken before this existed decodes as valid, which is what
+        // it was.
+        if (invalidated) invalidKey: true,
       });
 
   /// Read a stored column value. NEVER throws — see the library comment.
@@ -195,6 +234,10 @@ class GForceCalibration {
       rotation: m,
       calibratedAt:
           DateTime.fromMillisecondsSinceEpoch(at.toInt(), isUtc: true),
+      // Anything other than a literal `true` reads as "not invalidated" — the
+      // decoder never throws, and a corrupt flag must not be the thing that
+      // silently disables the meter.
+      invalidated: parsed[invalidKey] == true,
     );
     return c.isUsable ? c : null;
   }
