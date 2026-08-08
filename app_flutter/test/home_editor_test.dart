@@ -286,4 +286,81 @@ void main() {
       expect(stored!.tiles.first.span, HomeSpan.half);
     });
   });
+
+  // ===========================================================================
+  // 🔴 Every AVAILABLE phone module can be added back — 2026-08-08, from the
+  // field:「我現在 G 值表校準完成；我的主頁沒有 G 值表」.
+  //
+  // Two things had to line up, and both were true:
+  //   * `_initial()` prunes tiles `renderedFor` drops, and `_persist()` writes
+  //     the pruned list — so any edit made while the G meter was uncalibrated
+  //     deleted its tile from storage permanently;
+  //   * the add menu's phone-module entries were HAND-WRITTEN and listed
+  //     `speed` only, so there was no way back.
+  //
+  // The menu now derives them from `DisplayModule.values`. The pruning is
+  // unchanged and still one-way — the menu is the way back.
+  // ===========================================================================
+  group('the add menu offers the phone modules', () {
+    testWidgets('🔴 a calibrated G meter can be added back', (tester) async {
+      final s = await boot(tester, devices: 1);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() async {
+        await s.settings.setGMeterEnabled(true);
+        await s.settings
+            .setGCalibration('{"m":[1,0,0,0,1,0,0,0,1],"at":1754524800000}');
+      });
+      // A stored layout with no phone modules at all — exactly what an edit
+      // made before calibrating leaves behind.
+      await tester.runAsync(() => s.settings.setHomeLayout(
+            const HomeLayout([HomeTile.device('DEV-0')]).encode(),
+          ));
+      await pumpEditor(tester, s);
+      expect(s.gforce.available, isTrue, reason: 'sanity: the feature is on');
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('G meter'), findsOneWidget);
+    });
+
+    testWidgets('and an uncalibrated one is not offered', (tester) async {
+      // The gate is `available` (switch AND calibration), not the switch —
+      // offering a card that would render as nothing is the same defect from
+      // the other side.
+      final s = await boot(tester, devices: 1);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setGMeterEnabled(true));
+      await pumpEditor(tester, s);
+      expect(s.gforce.available, isFalse);
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('G meter'), findsNothing);
+    });
+
+    testWidgets('and one already on the page is not offered twice',
+        (tester) async {
+      final s = await boot(tester, devices: 1);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() async {
+        await s.settings.setGMeterEnabled(true);
+        await s.settings
+            .setGCalibration('{"m":[1,0,0,0,1,0,0,0,1],"at":1754524800000}');
+        await s.settings.setHomeLayout(const HomeLayout([
+          HomeTile.device('DEV-0'),
+          HomeTile.module(DisplayModule.gForce),
+        ]).encode());
+      });
+      await pumpEditor(tester, s);
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('G meter'), findsNothing,
+          reason: 'a second copy of a phone module reads the same sensor and '
+              'draws the same number');
+    });
+  });
 }

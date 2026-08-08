@@ -67,6 +67,14 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           // Same view the home page draws — editing a list that still holds
           // tiles the user cannot see would let them reorder invisible cards,
           // and would write those tiles straight back on save.
+          //
+          // ⚠️ The cost, stated because it is real: a tile filtered out here is
+          // gone from storage after the next edit. Turn the G meter off, move a
+          // card, turn it back on — the G tile does not return. That is why
+          // [_showAddSheet] derives its phone-module entries from the enum and
+          // offers back anything AVAILABLE but absent: the pruning is one-way,
+          // so the menu has to be the way back. Losing the tile's POSITION is
+          // acceptable; losing the tile is not.
           .renderedFor(devices.devices, settings.settings,
               gForceAvailable: context.read<GForceController>().available)
           .tiles,
@@ -230,6 +238,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     final l10n = AppLocalizations.of(context);
     final devices = context.read<DeviceController>().devices;
     final settings = context.read<SettingsController>().settings;
+    final gForceAvailable = context.read<GForceController>().available;
 
     final entries = <(String, HomeTile)>[
       for (final d in devices)
@@ -242,14 +251,22 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
               '${homeModuleLabel(l10n, m)} · ${d.alias.isEmpty ? d.id : d.alias}',
               HomeTile.module(m, deviceId: d.id),
             ),
-      if (phoneModuleAvailable(DisplayModule.speed, settings,
-          // Not consulted for `speed`; passed because the parameter is
-          // required, which is what stops a caller silently defaulting it.
-          gForceAvailable: false))
-        (
-          homeModuleLabel(l10n, DisplayModule.speed),
-          const HomeTile.module(DisplayModule.speed),
-        ),
+      // 🔴 EVERY phone module, derived from the enum — not a hand-written list.
+      //
+      // It was hand-written, and it listed `speed` only. So a rider who
+      // finished the G-meter calibration had no way to put the card back:
+      // absent from this menu, and already pruned out of the stored layout by
+      // [_initial] on any visit made while it was still unavailable. Reported
+      // 2026-08-08:「我現在 G 值表校準完成；我的主頁沒有 G 值表」.
+      //
+      // Deriving it means the NEXT phone module is offered the day it exists,
+      // rather than the day somebody remembers this list.
+      for (final m in DisplayModule.values)
+        if (m.isPhoneModule &&
+            phoneModuleAvailable(m, settings,
+                gForceAvailable: gForceAvailable) &&
+            !_tiles!.any((t) => t.module == m))
+          (homeModuleLabel(l10n, m), HomeTile.module(m)),
     ];
 
     showModalBottomSheet<void>(
