@@ -79,6 +79,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
+import 'display_modules.dart';
 
 /// The ordered cards a [Watchface] draws for a product class, top to bottom.
 ///
@@ -91,8 +92,21 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
   // row on a power bank. Reading it off the registry rather than writing it
   // out per class is what keeps §4.3 true by construction.
   final isPowerBank = cls == ProductClass.powerBank;
-  final extra =
-      isPowerBank ? DisplayModule.energyPath : DisplayModule.cells;
+  // 🔴 Read OFF THE REGISTRY, not written out per class.
+  //
+  // The comment above has said "reading it off the registry is what keeps §4.3
+  // true by construction" since design 0034 — but the line under it hardcoded
+  // `cells` for everything that is not a power bank, so it only LOOKED derived.
+  // Design 0050 D5 took `cells` away from the capacitor and that gap became a
+  // real defect: a capacitor's `standard` face named a module its class does
+  // not have, which `display_layout_test` T3 refuses below the UI.
+  //
+  // Null means "this class has no extra card of its own", which is now a real
+  // answer rather than an impossible one.
+  final entry = DisplayModules.forClass(cls) ?? DisplayModules.packFallback;
+  final DisplayModule? extra = isPowerBank
+      ? DisplayModule.energyPath
+      : (entry.has(DisplayModule.cells) ? DisplayModule.cells : null);
   switch (face) {
     // Card for card, in order, exactly what the dashboard drew before design
     // 0034 existed — and still exactly that after Phase 1. This IS the
@@ -105,7 +119,7 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // unreachable without a trip to Settings. See the library comment — the
     // cost is recorded there, not softened.
     case Watchface.standard:
-      return [gauge, DisplayModule.readouts, extra];
+      return [gauge, DisplayModule.readouts, ?extra];
     // One screenful, no scrolling: the fewest cards that still answer the
     // question this class is usually asked.
     //
@@ -128,7 +142,7 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // DVOL it renders as the gauge alone (plus the always-appended control
     // card). Anyone who wants temperature has two other faces.
     case Watchface.compact:
-      return [gauge, extra];
+      return [gauge, ?extra];
     // The CHART FIRST, then detail, instrument last (design 0041 Q4).
     //
     // Design 0034 put the numbers grid at the top here, on the reasoning that
@@ -147,7 +161,7 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // waiting card. Accepted: it resolves in seconds, and it is an honest
     // waiting state rather than a permanent placeholder.
     case Watchface.diagnostic:
-      return [DisplayModule.chart, DisplayModule.readouts, extra, gauge];
+      return [DisplayModule.chart, DisplayModule.readouts, ?extra, gauge];
     // design 0042 §3.3: `compact`'s shell with a speed card on top. Speed
     // first because on a moving vehicle it is the only reading that has to be
     // legible at a glance; the device's state is what you look at when you
@@ -170,7 +184,7 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // directly under it because the two are read together — "what was I doing
     // when the current spiked" is one question.
     case Watchface.riding:
-      return [DisplayModule.speed, DisplayModule.gForce, gauge, extra];
+      return [DisplayModule.speed, DisplayModule.gForce, gauge, ?extra];
   }
 }
 

@@ -610,12 +610,26 @@ void main() {
       // produce it. The exclusion is now the exhaustive predicate, so the NEXT
       // phone module cannot slip through either.
       for (final cls in ProductClass.values) {
+        final entry = DisplayModules.forClass(cls);
         final offered = [
           for (final m in DisplayModule.values)
-            if (!m.isPhoneModule && DisplayModules.forClass(cls).has(m)) m,
+            if (!m.isPhoneModule && (entry?.has(m) ?? false)) m,
         ];
         expect(offered, isNot(contains(DisplayModule.speed)), reason: '$cls');
         expect(offered, isNot(contains(DisplayModule.gForce)), reason: '$cls');
+        // 🔴 The vacuity guard, and its ONE exemption.
+        //
+        // `unknown` legitimately offers nothing at all since design 0050 D3 —
+        // no class means no class-specific cards, so an empty list there is the
+        // rule working rather than the guard being defeated. Every class that
+        // IS a product must still offer something, or this test would pass by
+        // excluding everything.
+        if (cls == ProductClass.unknown) {
+          expect(entry, isNull,
+              reason: 'the empty list must come from D3, not from the '
+                  'predicate quietly excluding a real class');
+          continue;
+        }
         expect(offered, isNotEmpty,
             reason: '$cls — a guard that excluded everything would be vacuous');
       }

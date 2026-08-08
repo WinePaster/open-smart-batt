@@ -31,6 +31,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
+import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -60,7 +61,11 @@ void main() {
       );
       s = await AppServices.create(appDatabase: db, ble: _FakeBle());
       for (var i = 0; i < devices; i++) {
-        await s.devices.saveNew('DEV-$i', 'unit $i');
+        // 🔴 A class is required since design 0050 D4 — the home surface (and
+        // therefore this editor, which edits the same resolved list) drops
+        // every tile belonging to an unidentified device.
+        await s.devices.saveNew('DEV-$i', 'unit $i',
+            productClass: ProductClass.smartBattery);
       }
       if (stored != null) await s.settings.setHomeLayout(stored);
     });
@@ -338,6 +343,52 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('G meter'), findsNothing);
+    });
+
+
+    testWidgets('🔴 a data-gated card is never offered', (tester) async {
+      // design 0050, 缺陷 B. `cells` only draws when DVOL actually arrives, so
+      // offering it unconditionally lets someone add a card that can never
+      // render on their unit — and `watchfaces.dart` already records why that
+      // is worse than not offering it: "a permanent empty card is the wrong
+      // fix". The menu now asks `isDataGated` as well as `has`.
+      //
+      // A BATTERY is used deliberately: it is the class that still HAS `cells`,
+      // so this asserts the data gate rather than re-testing D5.
+      final s = await boot(tester, devices: 1);
+      addTearDown(() => teardown(tester, s));
+      await pumpEditor(tester, s);
+
+      expect(DisplayModules.forClass(ProductClass.smartBattery)!
+          .has(DisplayModule.cells), isTrue,
+          reason: 'sanity: the class does have this card');
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining('Per-Cell Voltage'), findsNothing);
+      // …and the menu is not empty, so this is not vacuous.
+      expect(find.textContaining('unit 0'), findsWidgets);
+    });
+
+    testWidgets('🔴 and a device with no class offers no class-specific card',
+        (tester) async {
+      // design 0050 D3 + 缺陷 A — the exact path that put 分串電壓 in front of
+      // a capacitor owner on 2026-08-08: the menu read the STORED class, which
+      // is `unknown` for a unit saved but never connected, and `unclassified`
+      // was field-for-field the battery.
+      final s = await boot(tester, devices: 0);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.devices.saveNew('MYSTERY', 'unknown unit'));
+      await pumpEditor(tester, s);
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      for (final label in ['Per-Cell Voltage', 'PVLT', 'Live Readings']) {
+        expect(find.textContaining('$label · unknown unit'), findsNothing,
+            reason: 'no class means no class-specific cards');
+      }
     });
 
     testWidgets('and one already on the page is not offered twice',

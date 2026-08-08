@@ -66,7 +66,20 @@ Widget? dashboardCardFor(
 }) {
   final l10n = AppLocalizations.of(context);
   final tele = context.watch<TelemetryController>();
-  final modules = DisplayModules.forClass(shellClass);
+  // 🔴 `?? packFallback` and NOT a D3 early-return.
+  //
+  // This function is reached only after routing has decided the link is a pack
+  // (`RoutingDecision.pack`), and the `shellClass` it is handed has already been
+  // through `packShellClass`, which maps a stray `powerBank` LABEL to `unknown`
+  // on purpose. So null here means "a pack with a label we cannot use", not "we
+  // do not know what this is" — and the answer to it is the generic pack entry,
+  // exactly as before design 0050 renamed it.
+  //
+  // Design 0050 D3 ("no class ⇒ no class-specific cards") is enforced on the
+  // HOME surface instead, where a device really can have no class: see
+  // `HomeLayout.renderedFor` and `_ModuleTile`.
+  final modules =
+      DisplayModules.forClass(shellClass) ?? DisplayModules.packFallback;
   final isPowerBank = shellClass == ProductClass.powerBank;
 
   switch (m) {

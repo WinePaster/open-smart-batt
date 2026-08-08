@@ -173,7 +173,7 @@ void main() {
           cls: ProductClass.supercapacitor,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=compact modules=gaugeVoltage,cells',
+        'face=compact modules=gaugeVoltage',
       );
     });
 
@@ -252,12 +252,23 @@ void main() {
             'modules=chart,readouts,cells,gaugeVoltage',
         Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage,cells',
       },
+      // 🔴 A WIRE-VISIBLE CHANGE, 2026-08-08 (design 0050 D5).
+      //
+      // The capacitor's `modules=` no longer carries `cells`, because the class
+      // no longer has that card. Captures taken before this build list it and
+      // captures after do not, and the two are describing the same layout —
+      // the analysis side must not read the difference as a user having
+      // rearranged anything.
+      //
+      // Same class of boundary as design 0035's `usb` → `energyPath` rename
+      // (see `display_module.dart`), and recorded here for the same reason:
+      // `modules=` is read by people comparing captures across builds.
       ProductClass.supercapacitor: {
-        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
-        Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
+        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts',
+        Watchface.compact: 'face=compact modules=gaugeVoltage',
         Watchface.diagnostic: 'face=diagnostic '
-            'modules=chart,readouts,cells,gaugeVoltage',
-        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage,cells',
+            'modules=chart,readouts,gaugeVoltage',
+        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage',
       },
       ProductClass.powerBank: {
         Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
@@ -471,7 +482,7 @@ void main() {
       final lines = out.text.split(RegExp(r'\r?\n'));
       final layoutLine = lines.firstWhere((l) => l.contains('layout: '));
       expect(layoutLine,
-          '# layout: face=diagnostic modules=chart,readouts,cells,gaugeVoltage');
+          '# layout: face=diagnostic modules=chart,readouts,gaugeVoltage');
       // Still inside the commented preamble, above the column header.
       expect(lines.indexOf(layoutLine),
           lessThan(lines.indexWhere((l) => !l.startsWith('#'))));

@@ -87,8 +87,11 @@ void main() {
       expect(m.chartFootnote, isNull);
     });
 
-    test('unclassified: the lenient pack set, no footnote', () {
-      const m = DisplayModules.unclassified;
+    test('packFallback: the lenient pack set, no footnote', () {
+      // Renamed from `unclassified` by design 0050 D2. It is no longer what
+      // `forClass` hands back for an unidentified device — that returns null
+      // now — and exists ONLY for `forPackShell`'s stray-label quirk.
+      const m = DisplayModules.packFallback;
 
       expect(m.sohGaugeLine, isNotNull);
       expect(m.showsSohReadout, isTrue);
@@ -123,7 +126,7 @@ void main() {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
         ProductClass.powerBank: false,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
       // gauge.soc — needs 0x4B b6, which decodes for a power bank only.
       DisplayModule.gaugeSoc: {
@@ -137,21 +140,21 @@ void main() {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
         ProductClass.powerBank: true,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
       // chart — every class has a non-empty track list.
       DisplayModule.chart: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
         ProductClass.powerBank: true,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
       // cells (DVOL) — pack classes only; a power bank does not send it.
       DisplayModule.cells: {
         ProductClass.smartBattery: true,
-        ProductClass.supercapacitor: true,
+        ProductClass.supercapacitor: false,
         ProductClass.powerBank: false,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
       // energyPath (formerly usb) — power bank only.
       DisplayModule.energyPath: {
@@ -171,7 +174,7 @@ void main() {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
         ProductClass.powerBank: true,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
       // gForce (design 0045) — TRUE on all four, for `speed`'s reason exactly:
       // it reads the phone's accelerometer, so no property of the hardware
@@ -181,19 +184,56 @@ void main() {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
         ProductClass.powerBank: true,
-        ProductClass.unknown: true,
+        ProductClass.unknown: false,
       },
     };
 
-    test('availability matches §4 for all six modules × four classes', () {
+    test('availability matches the table for every module × every class', () {
+      // 🔴 The `unknown` column is ALL FALSE now (design 0050 D3): no class
+      // means no cards, not "the battery's cards". `forClass` returns null
+      // there, and `?? false` is how that reads as "offers nothing".
       for (final row in table.entries) {
         for (final cell in row.value.entries) {
           expect(
-            DisplayModules.forClass(cell.key).has(row.key),
+            DisplayModules.forClass(cell.key)?.has(row.key) ?? false,
             cell.value,
             reason: '${row.key} on ${cell.key} should be ${cell.value}',
           );
         }
+      }
+    });
+
+    test('🔴 the common set is exactly the modules every real class has', () {
+      // design 0050 D1. Derived rather than restated: `common` must equal the
+      // intersection of the three product classes, or the split has drifted
+      // from what it claims to be.
+      final entries = [
+        DisplayModules.battery,
+        DisplayModules.capacitor,
+        DisplayModules.powerBank,
+      ];
+      var shared = entries.first.modules;
+      for (final e in entries.skip(1)) {
+        shared = shared.intersection(e.modules);
+      }
+      expect(DisplayModules.common, shared,
+          reason: 'common must BE the intersection, not merely a subset of it');
+      // …and no class repeats a common module in its own additions.
+      for (final e in entries) {
+        expect(e.extra.intersection(DisplayModules.common), isEmpty,
+            reason: 'a module declared in both places is one that can drift');
+      }
+    });
+
+    test('🔴 the phone modules are common, and they read no device', () {
+      // They are common for a different reason from `readouts`/`chart`: they do
+      // not consult the device at all, so they are available to every class
+      // precisely because they are irrelevant to all of them.
+      expect(DisplayModules.common,
+          containsAll([DisplayModule.speed, DisplayModule.gForce]));
+      for (final m in DisplayModule.values.where((m) => m.isPhoneModule)) {
+        expect(DisplayModules.common, contains(m),
+            reason: '$m reads the phone, so no class may exclude it');
       }
     });
 
@@ -209,6 +249,7 @@ void main() {
     test('chart is offered exactly when the class has tracks', () {
       for (final c in ProductClass.values) {
         final m = DisplayModules.forClass(c);
+        if (m == null) continue; // no class, no cards — checked above
         expect(m.has(DisplayModule.chart), m.chartTracks.isNotEmpty,
             reason: 'chart availability must follow tracks on $c');
       }
@@ -218,13 +259,11 @@ void main() {
       // §12.3 #2: the two are different questions. DVOL is the only module
       // whose PRESENCE flips on live data — the card disappears entirely when
       // neither `dvol` nor `dvolPending` is set.
-      for (final c in [
-        ProductClass.smartBattery,
-        ProductClass.supercapacitor,
-        ProductClass.unknown,
-      ]) {
-        expect(DisplayModules.forClass(c).dataGated, {DisplayModule.cells});
-      }
+      // 🔴 The capacitor left this list on 2026-08-08 (design 0050 D5): it has
+      // no per-series voltages to gate.
+      expect(DisplayModules.battery.dataGated, {DisplayModule.cells});
+      expect(DisplayModules.packFallback.dataGated, {DisplayModule.cells});
+      expect(DisplayModules.capacitor.dataGated, isEmpty);
       // The SOC ring renders `--` rather than vanishing, and the energy-path
       // row is unconditional, so nothing on a power bank is presence-gated.
       expect(DisplayModules.powerBank.dataGated, isEmpty);
@@ -237,7 +276,9 @@ void main() {
       // samples come and go, which is the flicker `dataGated` exists to avoid
       // for cards that genuinely have nothing to say.
       for (final c in ProductClass.values) {
-        expect(DisplayModules.forClass(c).isDataGated(DisplayModule.chart),
+        expect(
+            DisplayModules.forClass(c)?.isDataGated(DisplayModule.chart) ??
+                false,
             isFalse,
             reason: 'chart must stay out of dataGated on $c');
       }
@@ -245,14 +286,19 @@ void main() {
       // Whatever is data-gated must first be available at all.
       for (final c in ProductClass.values) {
         final m = DisplayModules.forClass(c);
+        if (m == null) continue;
         expect(m.dataGated.difference(m.modules), isEmpty);
       }
+      expect(
+          DisplayModules.packFallback.dataGated
+              .difference(DisplayModules.packFallback.modules),
+          isEmpty);
     });
   });
 
   group('quirks pinned as-is (design 0034 §12.3 #1)', () {
-    test('(a) unclassified == battery is a byproduct, not a decision', () {
-      const u = DisplayModules.unclassified;
+    test('(a) packFallback == battery is a byproduct, not a decision', () {
+      const u = DisplayModules.packFallback;
       const b = DisplayModules.battery;
 
       // Today they agree on every gate, because all six gates in the pack
@@ -269,15 +315,17 @@ void main() {
       // a language fact about equal values — NOT evidence that the two
       // declarations were merged. They are separate `static const` entries
       // with separate rationale in display_modules.dart, and the meaning
-      // differs: "unclassified" is "everything except what the capacitor
-      // excludes", never "assume a battery". The day one gate is written
+      // differs: `packFallback` is "a pack whose label we cannot use", never
+      // "assume a battery" — and since design 0050 D2 it is no longer what an
+      // UNIDENTIFIED device gets, which is the confusion the rename removed. The day one gate is written
       // `== smartBattery` instead, they stop being canonicalised together and
       // every expectation in this test starts failing — which is the point.
       expect(identical(u, b), isTrue);
-      expect(DisplayModules.forClass(ProductClass.unknown), same(u));
+      // 🔴 And no class no longer maps here at all (design 0050 D3).
+      expect(DisplayModules.forClass(ProductClass.unknown), isNull);
     });
 
-    test('(b) a powerBank label in the pack shell draws the unclassified set',
+    test('(b) a powerBank label in the pack shell draws the fallback set',
         () {
       // pack_view.dart:52-62 routes a stray `powerBank` LABEL to the
       // PackControls fallback — routing comes off the device-type byte, the
@@ -285,7 +333,7 @@ void main() {
       // readouts have always followed the fallback too.
       expect(
         DisplayModules.forPackShell(ProductClass.powerBank),
-        same(DisplayModules.unclassified),
+        same(DisplayModules.packFallback),
       );
       // NOT the power-bank entry: that one has no voltage gauge and no DVOL,
       // so serving it inside the pack shell would visibly change the screen.
@@ -302,11 +350,14 @@ void main() {
       for (final c in [
         ProductClass.smartBattery,
         ProductClass.supercapacitor,
-        ProductClass.unknown,
       ]) {
         expect(DisplayModules.forPackShell(c), same(DisplayModules.forClass(c)),
             reason: 'only the powerBank label is remapped');
       }
+      // `unknown` reaching the pack shell means "a pack we cannot label", not
+      // "a device we cannot identify" — routing already decided it is a pack.
+      expect(DisplayModules.forPackShell(ProductClass.unknown),
+          same(DisplayModules.packFallback));
     });
   });
 }

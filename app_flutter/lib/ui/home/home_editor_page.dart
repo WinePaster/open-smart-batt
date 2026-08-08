@@ -246,7 +246,20 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       for (final d in devices)
         for (final m in DisplayModule.values)
           if (!m.isPhoneModule &&
-              DisplayModules.forClass(d.productClass).has(m))
+              // 🔴 design 0050 D3 + the data gate.
+              //
+              // `forClass` is null when the unit has no class, and that is the
+              // whole point: this menu used to hand back the battery's entire
+              // card set for a device nobody had identified — which is how a
+              // capacitor came to be offered 分串電壓 (reported 2026-08-08).
+              //
+              // `!isDataGated` is the second half: `cells` only draws when DVOL
+              // actually arrives, so offering it unconditionally lets someone
+              // add a card that can never render. A permanent empty card is
+              // worse than no card (`watchfaces.dart`).
+              (DisplayModules.forClass(d.productClass)?.has(m) ?? false) &&
+              !(DisplayModules.forClass(d.productClass)?.isDataGated(m) ??
+                  true))
             (
               '${homeModuleLabel(l10n, m)} · ${d.alias.isEmpty ? d.id : d.alias}',
               HomeTile.module(m, deviceId: d.id),

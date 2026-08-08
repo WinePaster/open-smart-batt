@@ -148,7 +148,16 @@ void main() {
       // not exist for that class. Enforced structurally rather than by a UI
       // filter, so there is no code path — API or widget — that could offer it.
       for (final cls in ProductClass.values) {
-        final available = DisplayModules.forClass(cls).modules;
+        // 🔴 `?? packFallback`, not `?? {}`. A watchface is only ever laid out
+        // inside a shell that routing already decided is a pack, and the class
+        // it is handed has been through `packShellClass` — which maps an
+        // unusable label to `unknown` on purpose. So `unknown` HERE means "a
+        // pack we cannot label", and its card set is the fallback. Design 0050
+        // D3 ("no class ⇒ no cards") is enforced on the home surface, which is
+        // the only place a device can genuinely have no class.
+        final available =
+            (DisplayModules.forClass(cls) ?? DisplayModules.packFallback)
+                .modules;
         for (final face in Watchface.values) {
           for (final m in watchfaceModules(cls, face)) {
             expect(available, contains(m),
@@ -192,14 +201,28 @@ void main() {
       // one module a pack declares dataGated. The difference now sits on the
       // readouts grid, which never vanishes. See T2b, which is the general form
       // of this and the thing that stops it recurring on a fourth class.
+      // 🔴 The class's own card is now DERIVED, not assumed to be `cells`.
+      //
+      // Design 0050 D5 took `cells` away from the capacitor, so that class has
+      // no own card at all — a state this loop could not previously express.
+      // Asking the registry keeps the assertion true for the next class that
+      // gains or loses one, which is the whole point of T2b existing.
       for (final pack in [
         ProductClass.smartBattery,
         ProductClass.supercapacitor,
         ProductClass.unknown,
       ]) {
-        expect(watchfaceModules(pack, Watchface.compact),
-            contains(DisplayModule.cells),
-            reason: "$pack compact keeps the class's own card");
+        final entry =
+            DisplayModules.forClass(pack) ?? DisplayModules.packFallback;
+        if (entry.has(DisplayModule.cells)) {
+          expect(watchfaceModules(pack, Watchface.compact),
+              contains(DisplayModule.cells),
+              reason: "$pack compact keeps the class's own card");
+        } else {
+          expect(watchfaceModules(pack, Watchface.compact),
+              isNot(contains(DisplayModule.cells)),
+              reason: '$pack has no own card, so no face may name one');
+        }
         expect(watchfaceModules(pack, Watchface.compact),
             isNot(contains(DisplayModule.readouts)),
             reason: '$pack compact is what drops the numbers grid');
@@ -227,7 +250,7 @@ void main() {
     // difference can actually be SEEN.
     test('T2b: every pair of faces differs by a card that cannot vanish', () {
       for (final cls in ProductClass.values) {
-        final dataGated = DisplayModules.forClass(cls).dataGated;
+        final dataGated = (DisplayModules.forClass(cls)?.dataGated ?? const <DisplayModule>{});
         final faces = Watchface.values;
         for (var i = 0; i < faces.length; i++) {
           for (var j = i + 1; j < faces.length; j++) {

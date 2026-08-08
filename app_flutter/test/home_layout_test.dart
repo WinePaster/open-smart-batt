@@ -291,7 +291,14 @@ void main() {
   // tests are a pair — either half alone is a different, worse design.
   // ---------------------------------------------------------------------------
   group('W-1: a deleted device leaves no ghost, and no scorched earth', () {
-    SavedDevice dev(String id) => SavedDevice(id: id, alias: id, name: id);
+    // 🔴 A CLASS is required, since design 0050 D4: the home surface drops
+    // every tile belonging to a device whose product class is unknown, so a
+    // classless fixture would make this test pass for the wrong reason.
+    SavedDevice dev(String id) => SavedDevice(
+        id: id,
+        alias: id,
+        name: id,
+        productClass: ProductClass.smartBattery);
     const on = AppSettings.defaults;
 
     test('a tile whose device is gone is not drawn', () {
@@ -402,5 +409,76 @@ void main() {
               'way to remove it, and a speed tile would open the GNSS stream '
               'with detection off');
     }
+  });
+
+  group('🔴 D4: a device with no product class is not on the home page', () {
+    // design 0050 D4. The class is what says which instrument a number belongs
+    // on, and FB-43 is what a page looks like when it asserts one nobody
+    // established: a power bank's single-cell 3.79 V drawn under「PVLT 主電壓」
+    // on a gauge that pins it to the bottom of the sweep. Every number was
+    // real; the screen was false.
+    //
+    // So an unidentified unit waits. The class is written back to
+    // `saved_devices` on the first connect that reads `0x10`, and the tiles
+    // appear then.
+    test('its tiles are dropped — including the device card', () {
+      final devices = [
+        _dev('KNOWN'),
+        SavedDevice(id: 'MYSTERY', alias: 'MYSTERY'),
+      ];
+      expect(devices[1].productClass, ProductClass.unknown,
+          reason: 'sanity: SavedDevice defaults to no class');
+
+      final rendered = const HomeLayout([
+        HomeTile.device('KNOWN'),
+        HomeTile.device('MYSTERY'),
+        HomeTile.module(DisplayModule.gaugeVoltage, deviceId: 'MYSTERY'),
+      ]).renderedFor(devices, AppSettings.defaults, gForceAvailable: false);
+
+      expect([for (final t in rendered.tiles) t.deviceId], ['KNOWN'],
+          reason: 'not the module tile either — a card bound to a unit whose '
+              'class is unknown is the FB-43 shape');
+    });
+
+    test('🔴 and the empty fallback does not put it back', () {
+      // The hazard design 0050 R3 named before the code was written: when the
+      // filter removes everything, `renderedFor` falls back to `defaultFor` —
+      // and handing that the FULL device list would regenerate tiles for
+      // exactly the units just removed, walking straight past the gate.
+      final rendered = const HomeLayout([
+        HomeTile.device('MYSTERY'),
+      ]).renderedFor(
+        [SavedDevice(id: 'MYSTERY', alias: 'MYSTERY')],
+        AppSettings.defaults,
+        gForceAvailable: false,
+      );
+
+      expect(rendered.tiles.any((t) => t.deviceId == 'MYSTERY'), isFalse,
+          reason: 'the fallback must be given the CLASSIFIED devices only');
+      expect(rendered.tiles, isNotEmpty,
+          reason: 'an empty grid is a blank home screen (T-new-2)');
+    });
+
+    test('and it comes back the moment the class is known', () {
+      // Nothing is deleted — the tile is filtered, not removed from storage.
+      const stored = HomeLayout([HomeTile.device('X')]);
+      const before = [SavedDevice(id: 'X', alias: 'X')];
+      final after = [_dev('X')];
+
+      expect(
+        stored
+            .renderedFor(before, AppSettings.defaults, gForceAvailable: false)
+            .tiles
+            .any((t) => t.deviceId == 'X'),
+        isFalse,
+      );
+      expect(
+        stored
+            .renderedFor(after, AppSettings.defaults, gForceAvailable: false)
+            .tiles
+            .any((t) => t.deviceId == 'X'),
+        isTrue,
+      );
+    });
   });
 }

@@ -369,6 +369,13 @@ void main() {
     test('the standard list is, verbatim, the pre-Phase-1 list', () {
       // Transcribed from `watchfaces.dart` as it stood at v0.7.2 — the whole
       // return value then, and the whole return value still.
+      //
+      // 🔴 ONE cell has moved since, deliberately: the capacitor's `cells`
+      // (design 0050 D5, 2026-08-08 —「電容沒有分串電壓」). G4 of that design
+      // says a card a class does not have must not appear on any of its faces,
+      // and this list is the pre-0034 baseline it is measured against — so the
+      // baseline is amended HERE, once, with the reason, rather than the
+      // assertion being loosened.
       const pre = <ProductClass, List<DisplayModule>>{
         ProductClass.smartBattery: [
           DisplayModule.gaugeVoltage,
@@ -378,7 +385,6 @@ void main() {
         ProductClass.supercapacitor: [
           DisplayModule.gaugeVoltage,
           DisplayModule.readouts,
-          DisplayModule.cells,
         ],
         ProductClass.unknown: [
           DisplayModule.gaugeVoltage,
@@ -430,9 +436,13 @@ void main() {
 
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
+      // 🔴 No DVOL bars on a capacitor since design 0050 D5 —「電容沒有分串
+      // 電壓」. `feedDvol` above still runs, and that is the point: the frames
+      // are fed and the card still does not appear, so this asserts the CLASS
+      // gate rather than an absence of data.
+      expect(find.byType(DvolBars), findsNothing,
+          reason: 'a capacitor has no per-series voltages to draw');
       expect(dy(tester, find.byType(ReadoutsCard)),
-          lessThan(dy(tester, find.byType(DvolBars))));
-      expect(dy(tester, find.byType(DvolBars)),
           lessThan(dy(tester, find.byType(CapacitorControls))));
       expect(find.byType(TrendChartCard), findsNothing,
           reason: 'Q1 reversed: no face but diagnostic carries the chart');

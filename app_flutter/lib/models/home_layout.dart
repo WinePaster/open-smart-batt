@@ -335,7 +335,23 @@ class HomeLayout {
     AppSettings settings, {
     required bool gForceAvailable,
   }) {
-    final known = {for (final d in devices) d.id};
+    // 🔴 A device with no product class is not shown AT ALL — not its module
+    // tiles and not even its device card (design 0050 D4).
+    //
+    // The class is what says which instrument a number belongs on, and FB-43
+    // is what happens when a page asserts one nobody established: a power
+    // bank's single-cell 3.79 V drawn under「PVLT 主電壓」on a gauge that pins
+    // it to the bottom of the sweep. Every number was real; the screen was
+    // false. So the home surface waits rather than guessing — the class is
+    // written back to `saved_devices` on the first connect that reads `0x10`
+    // (`connection_controller.dart`), and the tiles appear then.
+    //
+    // ⚠️ `known` is the CLASSIFIED ids, not all of them. Both filters below
+    // read it, including the empty-fallback path — see the note there.
+    final known = {
+      for (final d in devices)
+        if (d.productClass != ProductClass.unknown) d.id,
+    };
     final kept = tiles.where((t) {
       if (t.deviceId != null && !known.contains(t.deviceId)) return false;
       final m = t.module;
@@ -352,7 +368,16 @@ class HomeLayout {
       // Filter the fallback too — `defaultFor` now offers phone modules, and
       // handing back an unavailable one here would walk straight past the gate
       // this method exists to be.
-      final fallback = HomeLayout.defaultFor(devices).tiles.where((t) {
+      // ⚠️ `defaultFor` is given the CLASSIFIED devices only. Handing it the
+      // full list here would regenerate tiles for exactly the units the filter
+      // above just removed — the fallback walking straight past the gate it
+      // exists behind. (Design 0050 R3 named this hazard before it was written;
+      // this is the line it was about.)
+      final classified = [
+        for (final d in devices)
+          if (d.productClass != ProductClass.unknown) d,
+      ];
+      final fallback = HomeLayout.defaultFor(classified).tiles.where((t) {
         final m = t.module;
         return m == null ||
             !m.isPhoneModule ||

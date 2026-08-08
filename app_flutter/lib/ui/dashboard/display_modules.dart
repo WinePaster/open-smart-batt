@@ -66,7 +66,7 @@ typedef DisplayText = String Function(AppLocalizations l10n);
 @immutable
 class DisplayModules {
   const DisplayModules({
-    required this.modules,
+    required this.extra,
     required this.dataGated,
     required this.chartTracks,
     required this.sohGaugeLine,
@@ -75,9 +75,30 @@ class DisplayModules {
     required this.chartFootnote,
   });
 
-  /// Modules this class offers at all. A module missing here is not "greyed
-  /// out", it does not exist for this class (design 0034 §4.3).
-  final Set<DisplayModule> modules;
+  /// 🔴 The modules EVERY class offers (design 0050 D1, 「通用」).
+  ///
+  /// Declared once rather than repeated in each class entry, because repeated
+  /// is how one of them gets forgotten. `speed` and `gForce` are here for a
+  /// different reason from the other two: they do not read the device at all
+  /// (`HomeTile.module(m)` with `deviceId == null`), so they are available to
+  /// every class precisely because they are irrelevant to all of them.
+  ///
+  /// The MODULE is common; its CONTENT is not. A capacitor's readouts grid has
+  /// no current cell and a power bank's chart plots SOC — see the per-class
+  /// fields below.
+  static const Set<DisplayModule> common = {
+    DisplayModule.readouts,
+    DisplayModule.chart,
+    DisplayModule.speed,
+    DisplayModule.gForce,
+  };
+
+  /// What this class adds on top of [common]. A module in neither is not
+  /// "greyed out", it does not exist for this class (design 0034 §4.3).
+  final Set<DisplayModule> extra;
+
+  /// Everything this class offers.
+  Set<DisplayModule> get modules => {...common, ...extra};
 
   /// Subset of [modules] whose PRESENCE also depends on live data, so the view
   /// keeps a runtime check. Declaring the condition here and evaluating it
@@ -104,7 +125,7 @@ class DisplayModules {
   /// not find. Belongs to the chart module and travels with it (§5.2).
   final DisplayText? chartFootnote;
 
-  bool has(DisplayModule m) => modules.contains(m);
+  bool has(DisplayModule m) => common.contains(m) || extra.contains(m);
 
   bool isDataGated(DisplayModule m) => dataGated.contains(m);
 
@@ -116,14 +137,7 @@ class DisplayModules {
 
   /// Smart battery: everything a pack has.
   static const DisplayModules battery = DisplayModules(
-    modules: {
-      DisplayModule.gaugeVoltage,
-      DisplayModule.readouts,
-      DisplayModule.chart,
-      DisplayModule.cells,
-      DisplayModule.speed,
-      DisplayModule.gForce,
-    },
+    extra: {DisplayModule.gaugeVoltage, DisplayModule.cells},
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
     sohGaugeLine: _sohGaugeLine,
@@ -132,22 +146,30 @@ class DisplayModules {
     chartFootnote: null,
   );
 
-  /// Super-capacitor: no current anywhere, no SOH anywhere, and one track MORE
-  /// than a battery — the secondary voltage.
+  /// Super-capacitor: no current anywhere, no SOH anywhere, **no per-series
+  /// voltages**, and one chart track MORE than a battery — the secondary
+  /// voltage.
   ///
   /// The extra track is the entry most easily lost in a refactor: a capacitor
   /// is the class with FEWER readouts but MORE chart tracks, so "capacitor =
   /// battery minus things" is wrong.
+  ///
+  /// 🔴 `cells` REMOVED 2026-08-08 (design 0050 D5), on the owner's statement:
+  /// 「電容沒有分串電壓」/「超級電容有的叫做 SVLT」. What a capacitor reports is
+  /// the stack voltage SVLT (`0x37`), which this class already carries as a
+  /// chart track (below) and as a readout (`dashboard_cards.dart`).
+  ///
+  /// ⚠️ The evidence trail does NOT close, and design 0050 §5 says so rather
+  /// than implying otherwise: the protocol notes class `0x24` (DVOL) as `pack`
+  /// with no PER-CLASS breakdown, and that same table was wrong in exactly this
+  /// way once (`0x25`, corrected 2026-08-05 after somebody counted). A frame
+  /// count over pro's `research/` app logs finds **zero** `0x24` on every
+  /// class including the battery, so that corpus cannot settle it either way.
+  /// This entry rests on the owner's knowledge of the hardware. If a capacitor
+  /// capture ever shows DVOL, reopen it — and count per class first.
   static const DisplayModules capacitor = DisplayModules(
-    modules: {
-      DisplayModule.gaugeVoltage,
-      DisplayModule.readouts,
-      DisplayModule.chart,
-      DisplayModule.cells,
-      DisplayModule.speed,
-      DisplayModule.gForce,
-    },
-    dataGated: {DisplayModule.cells},
+    extra: {DisplayModule.gaugeVoltage},
+    dataGated: <DisplayModule>{},
     chartTracks: {
       TrendField.pvlt,
       TrendField.svlt,
@@ -164,14 +186,7 @@ class DisplayModules {
   /// Power bank: a different shell entirely ([PowerBankView]) — SOC ring,
   /// energy-path row, no DVOL, no protection controls.
   static const DisplayModules powerBank = DisplayModules(
-    modules: {
-      DisplayModule.gaugeSoc,
-      DisplayModule.readouts,
-      DisplayModule.chart,
-      DisplayModule.energyPath,
-      DisplayModule.speed,
-      DisplayModule.gForce,
-    },
+    extra: {DisplayModule.gaugeSoc, DisplayModule.energyPath},
     // The SOC ring renders whether or not a value has arrived (a missing SOC
     // shows as `--`). The energy-path row is likewise unconditional: before its
     // first `0x4B` it shows "waiting for device" rather than disappearing
@@ -187,24 +202,30 @@ class DisplayModules {
     chartFootnote: null,
   );
 
-  /// A pack whose device-type byte has not been read (or is not recognised).
+  /// The generic PACK entry, used by [forPackShell] and by nothing else.
+  ///
+  /// 🔴 RENAMED from `unclassified` 2026-08-08 (design 0050 D2). Under the old
+  /// name it did two unrelated jobs, and one of them was a guess: it was what
+  /// [forClass] handed back for [ProductClass.unknown], so a device whose class
+  /// nobody had established was offered the battery's entire card set. That is
+  /// the shape of FB-43 — see `class_pending_view.dart` — and design 0050 D3
+  /// removes it: **no class now means no class-specific cards at all**, which
+  /// [forClass] expresses by returning null.
+  ///
+  /// What remains is the OTHER job, which is not a guess and is preserved
+  /// verbatim: a stray `powerBank` LABEL can reach the pack shell (routing goes
+  /// by the device-type byte, the shell picks its body from the cosmetic
+  /// label), and it has always drawn these readouts there. See [forPackShell].
   ///
   /// ⚠️ Identical to [battery] field for field, and that is a BYPRODUCT, not a
   /// decision. Every gate in the pack shell is written `!= supercapacitor`, so
-  /// an unclassified pack falls on the same side of all six of them. It does
-  /// NOT mean "an unclassified pack is a battery" — the day one gate is written
+  /// a labelless pack falls on the same side of all six of them. It does NOT
+  /// mean "a labelless pack is a battery" — the day one gate is written
   /// `== smartBattery` instead, this entry stops matching, which is exactly why
   /// it is declared separately rather than aliased to [battery].
   /// (design 0034 §12.3 #1, pinned in `display_modules_test.dart`.)
-  static const DisplayModules unclassified = DisplayModules(
-    modules: {
-      DisplayModule.gaugeVoltage,
-      DisplayModule.readouts,
-      DisplayModule.chart,
-      DisplayModule.cells,
-      DisplayModule.speed,
-      DisplayModule.gForce,
-    },
+  static const DisplayModules packFallback = DisplayModules(
+    extra: {DisplayModule.gaugeVoltage, DisplayModule.cells},
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
     sohGaugeLine: _sohGaugeLine,
@@ -213,12 +234,18 @@ class DisplayModules {
     chartFootnote: null,
   );
 
-  /// The registry lookup: one entry per [ProductClass].
-  static DisplayModules forClass(ProductClass c) => switch (c) {
+  /// The registry entry for a class, or **null when there is no class**.
+  ///
+  /// 🔴 Nullable on purpose (design 0050 D3). Returning a set of cards for
+  /// [ProductClass.unknown] is a guess about hardware nobody has identified,
+  /// and this app has shipped that mistake once already (FB-43: a power bank's
+  /// single-cell 3.79 V drawn as a pack's terminal voltage). Null makes every
+  /// call site answer the question instead of inheriting an answer.
+  static DisplayModules? forClass(ProductClass c) => switch (c) {
         ProductClass.smartBattery => battery,
         ProductClass.supercapacitor => capacitor,
         ProductClass.powerBank => powerBank,
-        ProductClass.unknown => unclassified,
+        ProductClass.unknown => null,
       };
 
   /// The class the pack shell BEHAVES as, for a given cosmetic label.
@@ -239,8 +266,11 @@ class DisplayModules {
   /// different widget the pack route never builds. Mapping it to [powerBank]
   /// here would put an SOC-only entry inside a voltage-gauge shell and silently
   /// change the screen, so the quirk is preserved verbatim and pinned by test.
+  /// 🔴 Non-null, unlike [forClass]: the pack shell only ever runs for a pack,
+  /// so "no class" cannot reach here — and a stray `powerBank` label falls to
+  /// [packFallback] rather than to nothing.
   static DisplayModules forPackShell(ProductClass label) =>
-      forClass(packShellClass(label));
+      forClass(packShellClass(label)) ?? packFallback;
 }
 
 /// Gauge SOH sub-line for the classes that have one.

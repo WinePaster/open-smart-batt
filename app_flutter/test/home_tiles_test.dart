@@ -132,12 +132,14 @@ void main() {
       final s = await boot(tester, devices: [
         SavedDevice(
           id: 'A',
+          productClass: ProductClass.smartBattery,
           alias: 'Cap #1',
           lastValue: 12.64,
           lastSeen: DateTime.now().subtract(const Duration(minutes: 3)),
         ),
         SavedDevice(
           id: 'B',
+          productClass: ProductClass.smartBattery,
           alias: 'Cap #2',
           lastValue: 11.10,
           lastSeen: DateTime.now().subtract(const Duration(days: 2)),
@@ -163,8 +165,8 @@ void main() {
       // The stricter of the two honest options: an undated number is the exact
       // shape of the mistake this test exists for, so it is not rendered at all.
       final s = await boot(tester, devices: [
-        const SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.64),
-        const SavedDevice(id: 'B', alias: 'Cap #2', lastValue: 11.10),
+        const SavedDevice(id: 'A', productClass: ProductClass.smartBattery, alias: 'Cap #1', lastValue: 12.64),
+        const SavedDevice(id: 'B', productClass: ProductClass.smartBattery, alias: 'Cap #2', lastValue: 11.10),
       ]);
       addTearDown(() => teardown(tester, s));
       await pumpHome(tester, s);
@@ -191,6 +193,7 @@ void main() {
       final s = await boot(tester, devices: [
         SavedDevice(
           id: 'A',
+          productClass: ProductClass.smartBattery,
           alias: 'Cap #1',
           lastValue: 12.64,
           lastSeen: DateTime.now().subtract(const Duration(minutes: 3)),
@@ -214,12 +217,14 @@ void main() {
       final s = await boot(tester, devices: [
         SavedDevice(
           id: 'A',
+          productClass: ProductClass.smartBattery,
           alias: 'Cap #1',
           lastValue: 12.64,
           lastSeen: DateTime.now(),
         ),
         SavedDevice(
           id: 'B',
+          productClass: ProductClass.smartBattery,
           alias: 'Cap #2',
           lastValue: 11.10,
           lastSeen: DateTime.now().subtract(const Duration(hours: 2)),
@@ -286,11 +291,12 @@ void main() {
       // The other half: even with the right class, the default layout is only
       // useful if these two resolve. `defaultFor` gives a lone power bank
       // exactly [gaugeSoc, readouts].
-      final mods = DisplayModules.forClass(ProductClass.powerBank).modules;
+      final mods = DisplayModules.forClass(ProductClass.powerBank)!.modules;
       expect(mods, contains(DisplayModule.gaugeSoc));
       expect(mods, contains(DisplayModule.energyPath));
-      expect(DisplayModules.forClass(ProductClass.unknown).modules,
-          isNot(contains(DisplayModule.gaugeSoc)),
+      // 🔴 Since design 0050 D3 the double application lands somewhere even
+      // more definite than the wrong card set: NO card set at all.
+      expect(DisplayModules.forClass(ProductClass.unknown), isNull,
           reason: 'this is why the double application showed `--`');
     });
   });
@@ -395,7 +401,7 @@ void main() {
   group('the edit-layout row', () {
     testWidgets('it is at the foot of the grid, and it fires', (tester) async {
       final s = await boot(tester, devices: [
-        SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+        SavedDevice(id: 'A', productClass: ProductClass.smartBattery, alias: 'Cap #1', lastValue: 12.6,
             lastSeen: DateTime.now()),
       ]);
       addTearDown(() => teardown(tester, s));
@@ -470,9 +476,9 @@ void main() {
     // its preview'. Those two are the whole of the shape control's feedback,
     // in the editor and on the page it edits.
     final s = await boot(tester, devices: [
-      SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+      SavedDevice(id: 'A', productClass: ProductClass.smartBattery, alias: 'Cap #1', lastValue: 12.6,
           lastSeen: DateTime.now()),
-      SavedDevice(id: 'B', alias: 'Cap #2', lastValue: 12.4,
+      SavedDevice(id: 'B', productClass: ProductClass.smartBattery, alias: 'Cap #2', lastValue: 12.4,
           lastSeen: DateTime.now()),
     ]);
     addTearDown(() => teardown(tester, s));
@@ -500,7 +506,7 @@ void main() {
     // on most phones and the orphan is back — with the rule above, drawn as a
     // ragged empty column. So: no half tiles in a generated layout at all.
     final s = await boot(tester, devices: [
-      SavedDevice(id: 'A', alias: 'Cap #1', lastValue: 12.6,
+      SavedDevice(id: 'A', productClass: ProductClass.smartBattery, alias: 'Cap #1', lastValue: 12.6,
           lastSeen: DateTime.now()),
     ]);
     addTearDown(() => teardown(tester, s));
