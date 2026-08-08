@@ -86,36 +86,31 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
             HomeLayout(_tiles!).encode(),
           );
 
-  /// `onReorderItem` rather than `onReorder`: the latter hands back an index
-  /// computed BEFORE the dragged row is removed, so every caller has to write
-  /// the same `if (newIndex > oldIndex) newIndex -= 1` fixup — which is exactly
-  /// the off-by-one this replacement exists to delete.
-  void _reorder(int oldIndex, int newIndex) {
-    setState(() {
-      final tiles = _tiles!;
-      tiles.insert(newIndex, tiles.removeAt(oldIndex));
-    });
+  void _apply(List<HomeTile> next) {
+    setState(() => _tiles = next);
     _persist();
   }
 
-  void _remove(int index) {
-    setState(() => _tiles!.removeAt(index));
-    _persist();
-  }
+  void _remove(int index) => _apply(HomeGridOps.remove(_tiles!, index));
 
-  void _toggleSpan(int index) {
-    setState(() {
-      final t = _tiles![index];
-      _tiles![index] = t.copyWith(
-          span: t.span == HomeSpan.full ? HomeSpan.half : HomeSpan.full);
-    });
-    _persist();
-  }
+  void _toggleSpan(int index) =>
+      _apply(HomeGridOps.toggleSpan(_tiles!, index));
 
-  void _add(HomeTile tile) {
-    setState(() => _tiles!.add(tile));
-    _persist();
-  }
+  void _add(HomeTile tile) => _apply(HomeGridOps.add(_tiles!, tile));
+
+  /// A tile was dropped ON another tile: they change places, each keeping its
+  /// own span (design 0049 Q1).
+  void _onDropOnTile(int from, int to) =>
+      _apply(HomeGridOps.swap(_tiles!, from, to));
+
+  /// A tile was dropped on the line between rows: it becomes a row of its own.
+  void _onDropOnLine(int from, int rowIndex) =>
+      _apply(HomeGridOps.moveToOwnRow(_tiles!, from, rowIndex));
+
+  /// A tile was dropped in an empty half-slot: it pairs with that slot's
+  /// partner and becomes a half.
+  void _onDropInSlot(int from, int slot) =>
+      _apply(HomeGridOps.moveIntoSlot(_tiles!, from, slot));
 
   /// The escape hatch (§4.9). NULL, not a snapshot — so a device saved next
   /// week still appears by itself.
@@ -129,8 +124,10 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tiles = _tiles!;
-    // The floor. One tile left ⇒ nothing may remove it.
-    final canDelete = tiles.length > 1;
+    // The floor. One REAL tile left ⇒ nothing may remove it. Empty slots do
+    // not count: they are structure, not content, and a grid holding one card
+    // plus its gap is still a grid with one card.
+    final canDelete = tiles.where((t) => !t.isEmpty).length > 1;
 
     return Scaffold(
       appBar: AppBar(
@@ -149,25 +146,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           constraints: const BoxConstraints(maxWidth: 560),
           child: Column(
             children: [
-              Expanded(
-                child: ReorderableListView.builder(
-                  // Chosen over a hand-rolled drag layer for its built-in
-                  // keyboard and TalkBack move semantics (§4.9): the escape
-                  // hatch below is the accessible way OUT, this is the
-                  // accessible way to rearrange.
-                  padding: const EdgeInsets.fromLTRB(15, 10, 15, 10),
-                  itemCount: tiles.length,
-                  onReorderItem: _reorder,
-                  itemBuilder: (context, i) => _EditorTile(
-                    key: ValueKey('$i:${tiles[i]}'),
-                    index: i,
-                    tile: tiles[i],
-                    canDelete: canDelete,
-                    onDelete: () => _remove(i),
-                    onToggleSpan: () => _toggleSpan(i),
-                  ),
-                ),
-              ),
+              Expanded(child: _grid(tiles, canDelete: canDelete)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(15, 4, 15, 14),
                 child: Row(
@@ -197,6 +176,50 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The grid: rows of one full tile or two half slots, with a drop line
+  /// between every pair of rows (design 0049 §3.2).
+  Widget _grid(List<HomeTile> tiles, {required bool canDelete}) {
+    final rows = HomeLayout.rowsOf(tiles);
+    // Flat index of each row's first tile, computed once — every drop callback
+    // needs it, and recomputing it per widget is how the two drift.
+    final starts = <int>[];
+    var flat = 0;
+    for (final r in rows) {
+      starts.add(flat);
+      flat += r.length;
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(15, 4, 15, 10),
+      children: [
+        for (var r = 0; r <= rows.length; r++) ...[
+          _DropLine(rowIndex: r, onDrop: _onDropOnLine),
+          if (r < rows.length)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var c = 0; c < rows[r].length; c++)
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: c == 0 ? 0 : 6),
+                      child: _EditorCell(
+                        index: starts[r] + c,
+                        tile: rows[r][c],
+                        canDelete: canDelete,
+                        onDelete: () => _remove(starts[r] + c),
+                        onToggleSpan: () => _toggleSpan(starts[r] + c),
+                        onDropOnTile: _onDropOnTile,
+                        onDropInSlot: _onDropInSlot,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ],
     );
   }
 
@@ -323,15 +346,66 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   }
 }
 
-/// One row of the editor: the tile as it will look, with a handle and a delete.
-class _EditorTile extends StatelessWidget {
-  const _EditorTile({
-    super.key,
+/// The line between two rows: drop here to make a row of your own.
+///
+/// The visual is a hairline; the HIT AREA is 44 pt (design 0049 R3, Apple HIG).
+/// A target you can see but cannot reliably hit is worse than no target.
+class _DropLine extends StatefulWidget {
+  const _DropLine({required this.rowIndex, required this.onDrop});
+
+  final int rowIndex;
+  final void Function(int from, int rowIndex) onDrop;
+
+  @override
+  State<_DropLine> createState() => _DropLineState();
+}
+
+class _DropLineState extends State<_DropLine> {
+  bool _over = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (_) {
+        setState(() => _over = true);
+        return true;
+      },
+      onLeave: (_) => setState(() => _over = false),
+      onAcceptWithDetails: (d) {
+        setState(() => _over = false);
+        widget.onDrop(d.data, widget.rowIndex);
+      },
+      builder: (context, candidate, _) => SizedBox(
+        height: candidate.isEmpty ? 6 : 44,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            height: _over ? 3 : 1,
+            decoration: BoxDecoration(
+              color: _over ? AppColors.amber : Colors.transparent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One cell of the editor grid: a tile with its controls, or an empty slot.
+///
+/// The cell is BOTH a drag source (from the handle) and a drop target (the
+/// whole cell). Which operation a drop performs is decided by what is under it:
+/// an empty slot pairs, a real tile swaps.
+class _EditorCell extends StatefulWidget {
+  const _EditorCell({
     required this.index,
     required this.tile,
     required this.canDelete,
     required this.onDelete,
     required this.onToggleSpan,
+    required this.onDropOnTile,
+    required this.onDropInSlot,
   });
 
   final int index;
@@ -339,66 +413,177 @@ class _EditorTile extends StatelessWidget {
   final bool canDelete;
   final VoidCallback onDelete;
   final VoidCallback onToggleSpan;
+  final void Function(int from, int to) onDropOnTile;
+  final void Function(int from, int slot) onDropInSlot;
+
+  @override
+  State<_EditorCell> createState() => _EditorCellState();
+}
+
+class _EditorCellState extends State<_EditorCell> {
+  bool _over = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (d) {
+        if (d.data == widget.index) return false;
+        setState(() => _over = true);
+        return true;
+      },
+      onLeave: (_) => setState(() => _over = false),
+      onAcceptWithDetails: (d) {
+        setState(() => _over = false);
+        if (widget.tile.isEmpty) {
+          widget.onDropInSlot(d.data, widget.index);
+        } else {
+          widget.onDropOnTile(d.data, widget.index);
+        }
+      },
+      builder: (context, _, _) => widget.tile.isEmpty
+          ? _EmptySlot(highlighted: _over)
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                border: Border.all(
+                  color: _over ? AppColors.amber : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        // 🔴 The handle is the ONLY drag source. Making the
+                        // whole cell draggable would fight the ListView for
+                        // every vertical swipe, and design 0049 Q4 ruled out
+                        // the other way round it (a long-press edit mode).
+                        Draggable<int>(
+                          data: widget.index,
+                          dragAnchorStrategy: pointerDragAnchorStrategy,
+                          feedback: _DragGhost(tile: widget.tile),
+                          childWhenDragging: Opacity(
+                            opacity: 0.3,
+                            child: Icon(Icons.drag_indicator,
+                                size: 18, color: colors.muted),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(Icons.drag_indicator,
+                                size: 18, color: colors.muted),
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: widget.onToggleSpan,
+                          iconSize: 16,
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            widget.tile.span == HomeSpan.full
+                                ? Icons.crop_16_9
+                                : Icons.crop_square,
+                            color: colors.muted,
+                          ),
+                        ),
+                        IconButton(
+                          // 🔴 The floor (§4.9). Inert, not "tap and be told".
+                          onPressed: widget.canDelete ? widget.onDelete : null,
+                          iconSize: 16,
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close),
+                          color: AppColors.danger,
+                          disabledColor: colors.muted.withValues(alpha: 0.35),
+                        ),
+                      ],
+                    ),
+                    // The real tile, so what is being arranged is what will be
+                    // seen — at the width it will be seen at, which the grid
+                    // now provides. Inert while editing: a tap here is a drag
+                    // that has not started yet.
+                    AbsorbPointer(child: HomeTileView(tile: widget.tile)),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// The unoccupied half of a row. Always visible (design 0049 Q2).
+///
+/// It is the only thing on this page that says "something can go here", and
+/// §3.7 forbids saying it in words — so it has to be legible as a shape. Quiet
+/// enough not to read as a broken card: a dotted hairline, no fill, no label.
+class _EmptySlot extends StatelessWidget {
+  const _EmptySlot({required this.highlighted});
+
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              ReorderableDragStartListener(
-                index: index,
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Icon(Icons.drag_handle,
-                      size: 18, color: context.colors.muted),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: onToggleSpan,
-                iconSize: 16,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  tile.span == HomeSpan.full
-                      ? Icons.crop_16_9
-                      : Icons.crop_square,
-                  color: context.colors.muted,
-                ),
-              ),
-              IconButton(
-                // 🔴 The floor (§4.9). Inert, not "tap and be told" — see the
-                // library comment and T-new-2b.
-                onPressed: canDelete ? onDelete : null,
-                iconSize: 16,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.close),
-                color: AppColors.danger,
-                disabledColor: context.colors.muted.withValues(alpha: 0.35),
-              ),
-            ],
-          ),
-          // The real tile, so what is being arranged is what will be seen —
-          // INCLUDING its width. Before 2026-08-07 this was always full width
-          // and the shape button changed nothing but its own 16 px icon, which
-          // is why it was reported as「按了沒反應」. The preview is the only
-          // feedback this control has; if it does not move, the control does
-          // not work as far as anyone can tell.
-          //
-          // Inert while editing: a tap here is a drag that has not started yet,
-          // not a request to open a device page.
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: tile.span == HomeSpan.half ? 0.5 : 1.0,
-              alignment: Alignment.centerLeft,
-              child: AbsorbPointer(child: HomeTileView(tile: tile)),
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.only(top: 30, bottom: 18),
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: highlighted ? AppColors.amber : context.colors.line,
+          radius: AppTheme.radiusMd,
+        ),
+        child: const SizedBox(height: 86, width: double.infinity),
+      ),
+    );
+  }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final rrect = RRect.fromRectAndRadius(
+        Offset.zero & size, Radius.circular(radius));
+    final path = Path()..addRRect(rrect);
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(
+            metric.extractPath(d, (d + 5).clamp(0, metric.length)), paint);
+        d += 10;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) => old.color != color;
+}
+
+/// What follows the finger. Deliberately small and translucent — the thing
+/// being judged during a drag is the TARGET, not the payload.
+class _DragGhost extends StatelessWidget {
+  const _DragGhost({required this.tile});
+
+  final HomeTile tile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.85,
+      child: Material(
+        color: Colors.transparent,
+        child: SizedBox(
+          width: 150,
+          child: AbsorbPointer(child: HomeTileView(tile: tile)),
+        ),
       ),
     );
   }

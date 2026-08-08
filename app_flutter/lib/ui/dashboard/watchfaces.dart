@@ -460,6 +460,13 @@ String exportHomeValue(HomeLayout? layout) {
     for (final t in layout.tiles)
       switch (t.kind) {
         HomeTileKind.addDevice => 'addDevice${span(t)}',
+        // 🔴 In the export line, because a capture must describe the layout the
+        // user was actually looking at — and a row of one card plus a gap is a
+        // different arrangement from a row of one full-width card. Added with
+        // the stored empty slot (design 0049 §3.8); captures from before it
+        // have no `empty` entries, which reads correctly as the old derived
+        // pairing.
+        HomeTileKind.empty => 'empty',
         HomeTileKind.deviceCard => 'deviceCard@${token(t.deviceId!)}${span(t)}',
         HomeTileKind.module => t.deviceId == null
             ? '${t.module!.name}${span(t)}'

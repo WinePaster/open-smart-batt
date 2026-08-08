@@ -85,7 +85,26 @@ enum HomeTileKind {
   deviceCard,
 
   /// One [DisplayModule], optionally bound to a device.
-  module;
+  module,
+
+  /// 🔴 The other half of a row that holds a single 1x1 — and it is STORED,
+  /// not drawn (design 0049 §3.8).
+  ///
+  /// Pairing used to be derived: `rows` took two adjacent halves and put them
+  /// side by side. That reads well until something moves. Dragging one member
+  /// of a pair away orphans the other, and the greedy rule then had it reach
+  /// FORWARD and swallow the next half — so the tile being dragged landed
+  /// somewhere the gesture had not asked for. There is no local fix, because
+  /// the defect is that a derived model cannot express "the row ends here".
+  ///
+  /// An empty slot expresses it. A half is now always in a two-column row whose
+  /// other column is either another tile or one of these, and the invariant
+  /// `halves + empties per row == 2` makes the grouping exact rather than
+  /// greedy.
+  ///
+  /// ⚠️ Always [HomeSpan.half] — a full-width empty is a blank row, which is
+  /// not a layout anyone asked for. [HomeGridOps.normalise] enforces it.
+  empty;
 
   String get slug => name;
 
@@ -122,6 +141,14 @@ class HomeTile {
 
   /// The zero-device empty state.
   const HomeTile.addDevice() : this(kind: HomeTileKind.addDevice);
+
+  /// The unoccupied half of a row — see [HomeTileKind.empty].
+  const HomeTile.empty()
+      : this(kind: HomeTileKind.empty, span: HomeSpan.half);
+
+  /// True for the stored placeholder, which draws a dotted outline and holds a
+  /// place rather than showing anything.
+  bool get isEmpty => kind == HomeTileKind.empty;
 
   final HomeTileKind kind;
 
@@ -162,6 +189,10 @@ class HomeTile {
     switch (kind) {
       case HomeTileKind.addDevice:
         return const HomeTile.addDevice();
+      // Always half, whatever the stored span says: a full-width empty is a
+      // blank row. See [HomeTileKind.empty].
+      case HomeTileKind.empty:
+        return const HomeTile.empty();
       case HomeTileKind.deviceCard:
         // A device card with no device is not a tile, it is a corrupt row.
         if (device == null) return null;
@@ -415,11 +446,25 @@ class HomeLayout {
     return HomeLayout(tiles);
   }
 
-  /// Greedy row packing: two consecutive halves share a row, a full owns one,
-  /// and an orphan half keeps the left of its own row. This is the whole of
-  /// what design 0046 §3.3's `rows[]` would have stored — derived instead of
-  /// persisted, so the editor can keep a flat list to drag.
-  List<List<HomeTile>> get rows {
+  /// Row packing. A `full` owns a row; a `half` takes the next element with it.
+  ///
+  /// 🔴 EXACT, not greedy, since design 0049 §3.8 made the empty slot a stored
+  /// tile. The invariant `HomeGridOps.normalise` maintains — every `half` is
+  /// followed by another `half` or by an [HomeTileKind.empty] — is what lets
+  /// this simply take pairs instead of reaching forward for a partner.
+  ///
+  /// The old greedy form is why a drag could land somewhere the gesture had not
+  /// asked for: removing one member of a pair orphaned the other, which then
+  /// swallowed the next half. See [HomeTileKind.empty].
+  ///
+  /// ⚠️ Still tolerant of a stored layout written before empties existed: a
+  /// trailing lone `half` becomes a row of one, which is what those layouts
+  /// meant. `normalise` fixes it on the first edit.
+  List<List<HomeTile>> get rows => rowsOf(tiles);
+
+  /// [rows] for an arbitrary list — the editor groups tiles it has not stored
+  /// yet, and building a throwaway [HomeLayout] for that would be ceremony.
+  static List<List<HomeTile>> rowsOf(List<HomeTile> tiles) {
     final out = <List<HomeTile>>[];
     var i = 0;
     while (i < tiles.length) {

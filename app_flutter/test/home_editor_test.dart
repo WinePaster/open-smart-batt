@@ -197,39 +197,43 @@ void main() {
     expect(find.text('unit 0'), findsWidgets);
   });
 
-  testWidgets('reordering persists, and there is no instruction telling you to',
+  testWidgets('dragging a card onto another swaps them, and it persists',
       (tester) async {
+    // 🔴 Rewritten 2026-08-08 for design 0049's grid editor. The old version
+    // drove `ReorderableDragStartListener`; the editor now uses `Draggable` /
+    // `DragTarget` because a one-dimensional reorderable cannot express a row
+    // of two.
+    //
+    // The gesture is still built by hand and held across frames — an immediate
+    // `tester.drag` completes inside one frame, which is not long enough for a
+    // drag to be recognised and a target to be entered.
     final s = await boot(tester, devices: 3);
     addTearDown(() => teardown(tester, s));
     await pumpEditor(tester, s);
 
-    // The saved-device order is whatever `getSavedDevices` returns; what this
-    // test is about is that dragging CHANGES it and that the change is written.
     final before = HomeLayout.decode(s.settings.homeLayout) ??
         HomeLayout.defaultFor(s.devices.devices);
     final beforeIds = [for (final t in before.tiles) t.deviceId];
-    // Three device tiles, plus the phone's own modules (speed + G), which carry
-    // no deviceId. Counting only the device ones keeps this assertion about
-    // what the test is about; the phone tiles are pinned in home_layout_test.
-    expect(beforeIds.whereType<String>(), hasLength(3));
 
-    // A manual gesture rather than `tester.drag`: the handle is a
-    // `ReorderableDragStartListener`, so the drag has to be held across frames
-    // for the list to pick it up.
-    final handle = find.byIcon(Icons.drag_handle).first;
-    final gesture = await tester.startGesture(tester.getCenter(handle));
-    await tester.pump(const Duration(milliseconds: 200));
-    for (var i = 0; i < 6; i++) {
-      await gesture.moveBy(const Offset(0, 60));
+    final handles = find.byIcon(Icons.drag_indicator);
+    expect(handles, findsWidgets, reason: 'sanity: the grid has drag handles');
+    final from = tester.getCenter(handles.first);
+    final onto = tester.getCenter(find.byType(HomeTileView).at(1));
+
+    final gesture = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 150));
+    // Several steps: one big jump can pass over the target without the
+    // DragTarget ever being entered.
+    for (var i = 1; i <= 6; i++) {
+      await gesture.moveTo(Offset.lerp(from, onto, i / 6)!);
       await tester.pump(const Duration(milliseconds: 30));
     }
     await gesture.up();
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
     await settle(tester);
 
     final after = HomeLayout.decode(s.settings.homeLayout);
-    expect(after, isNotNull);
+    expect(after, isNotNull, reason: 'the drop must be written');
     expect([for (final t in after!.tiles) t.deviceId], isNot(beforeIds),
         reason: 'the drag has to actually move something, or this test is '
             'asserting nothing');
@@ -238,6 +242,59 @@ void main() {
     for (final word in ['Drag', 'drag', 'reorder', 'at least']) {
       expect(find.textContaining(word), findsNothing);
     }
+  });
+
+  testWidgets('🔴 the empty slot is on screen without dragging (Q2)',
+      (tester) async {
+    // It is the only thing on this page that says "something can go here", and
+    // §3.7 forbids saying it in words. If it appeared only mid-drag, nobody
+    // would learn it exists.
+    final s = await boot(tester, devices: 1);
+    addTearDown(() => teardown(tester, s));
+    await tester.runAsync(() => s.settings.setHomeLayout(
+          HomeLayout(HomeGridOps.normalise(
+                  const [HomeTile.device('DEV-0', span: HomeSpan.half)]))
+              .encode(),
+        ));
+    await pumpEditor(tester, s);
+
+    final stored = HomeLayout.decode(s.settings.homeLayout)!;
+    expect(stored.tiles.where((t) => t.isEmpty), hasLength(1),
+        reason: 'the slot is STORED, not drawn — design 0049 §3.8');
+    expect(HomeLayout.rowsOf(stored.tiles).first, hasLength(2));
+  });
+
+  testWidgets('🔴 the editor and the home page group tiles identically (G1)',
+      (tester) async {
+    // The assertion that makes "所見即所得" executable rather than a hope.
+    // Both surfaces call `HomeLayout.rowsOf`; if either ever grows its own
+    // grouping, this fails — and that drift is the root of all three reports
+    // that led to design 0049.
+    final s = await boot(tester, devices: 3);
+    addTearDown(() => teardown(tester, s));
+    await pumpEditor(tester, s);
+
+    // The SAME resolution `_initial()` does — the editor edits the rendered
+    // list, not the stored one, so comparing against the stored one would be
+    // comparing against a list neither surface draws.
+    final tiles = (HomeLayout.decode(s.settings.homeLayout) ??
+            HomeLayout.defaultFor(s.devices.devices))
+        .renderedFor(s.devices.devices, s.settings.settings,
+            gForceAvailable: s.gforce.available)
+        .tiles;
+    final rows = HomeLayout.rowsOf(tiles);
+    // Every row is a full tile alone, or exactly two half slots. That is the
+    // invariant both surfaces lay out against.
+    for (final row in rows) {
+      if (row.length == 1) {
+        expect(row.single.span, HomeSpan.full);
+      } else {
+        expect(row, hasLength(2));
+        expect(row.every((t) => t.span == HomeSpan.half), isTrue);
+      }
+    }
+    // …and the editor drew one cell per tile.
+    expect(find.byType(HomeTileView), findsNWidgets(tiles.length));
   });
 
   // ===========================================================================
