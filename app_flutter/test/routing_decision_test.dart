@@ -15,6 +15,8 @@
 // regression guard. But the screenshot's device had NO stored class — its chip
 // read 未分類 too — so a better guess could not have reached it. The missing
 // capability was the option not to guess, which is what these tests pin.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/product_class.dart';
 import 'package:open_smart_batt/models/routing_decision.dart';
@@ -199,6 +201,68 @@ void main() {
       // is the top of the band this is asserting: past it the empty area stops
       // reading as "still settling" and starts reading as a broken screen.
       expect(kClassPendingGrace.inMilliseconds, lessThanOrEqualTo(500));
+    });
+  });
+
+  group('🔴 D7/D8: an unidentified unit is a dead end, not a pack', () {
+    // design 0050 D7/D8, 2026-08-08. Two things went at once:
+    //
+    //   * `RoutingDecision.unclassified` used to fall through to `PackView` —
+    //     an unidentified unit drawn with a voltage gauge, a numbers grid and
+    //     per-cell bars. That asserts a pack as plainly as naming one would,
+    //     and FB-43 is what it looks like when the unit is a power bank.
+    //   * the pack shell's chip carried a class PICKER, so the owner was asked
+    //     to answer a question they cannot answer.
+    //
+    // Both are structural, so both are asserted from source rather than from a
+    // rendered frame: a widget test would only prove the state is unreachable
+    // by one route, and the point is that the route does not exist.
+    test('the routing switch sends it to UnidentifiedView, never PackView', () {
+      final src = File('lib/ui/dashboard/dashboard_page.dart').readAsStringSync();
+      final at = src.indexOf('case RoutingDecision.unclassified:');
+      expect(at, isNonNegative, reason: 'the case must still be handled');
+      // The next `return` after that case is the whole assertion.
+      final ret = src.indexOf('return', at);
+      final line = src.substring(ret, src.indexOf(';', ret));
+      expect(line, contains('UnidentifiedView'));
+      expect(line, isNot(contains('PackView')));
+    });
+
+    test('the pack shell offers no way to name a class', () {
+      // The picker was a `PopupMenuButton<ProductClass?>` wired to
+      // `setPackLabelOverride`. Naming both is deliberate: either one coming
+      // back is the defect.
+      final src = File('lib/ui/dashboard/pack_view.dart').readAsStringSync();
+      expect(src, isNot(contains('PopupMenuButton<ProductClass?>')));
+      expect(src, isNot(contains('setPackLabelOverride')));
+    });
+
+    test('and nothing can promote a PENDING link to unclassified', () {
+      // `showUnclassifiedAnyway()` set a flag that turned "no byte yet" into
+      // "unclassified", which then drew the pack shell. Its own comment argued
+      // it asserted no class because it named none — true about the code,
+      // false about the screen.
+      final src =
+          File('lib/state/connection_controller.dart').readAsStringSync();
+      expect(src, isNot(contains('showUnclassifiedAnyway')));
+      expect(src, isNot(contains('_revealUnclassified')));
+    });
+
+    test('🔴 …but the decision itself still exists and is still reachable', () {
+      // The guard against "fixing" all of the above by deleting the state: an
+      // unrecognised byte MUST still produce `unclassified`, or an unknown
+      // device would silently fall back to waiting forever.
+      expect(
+        RoutingDecision.from(
+            resolved: ProductClass.unknown, sawDeviceType: true),
+        RoutingDecision.unclassified,
+      );
+      expect(
+        RoutingDecision.from(
+            resolved: ProductClass.unknown, sawDeviceType: false),
+        RoutingDecision.pending,
+        reason: 'no byte at all is a WAIT, not a verdict',
+      );
     });
   });
 }

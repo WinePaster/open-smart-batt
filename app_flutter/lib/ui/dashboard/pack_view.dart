@@ -221,9 +221,7 @@ class _PackLabelChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final conn = context.read<ConnectionController>();
     final text = _labelText(l10n, label);
-    final pickable = label == ProductClass.unknown;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -237,25 +235,16 @@ class _PackLabelChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        if (pickable) ...[
-          const SizedBox(width: 4),
-          PopupMenuButton<ProductClass?>(
-            tooltip: l10n.packLabelChoose,
-            padding: EdgeInsets.zero,
-            icon: Icon(Icons.expand_more, size: 16, color: context.colors.muted),
-            onSelected: conn.setPackLabelOverride,
-            itemBuilder: (_) => [
-              PopupMenuItem<ProductClass?>(
-                value: ProductClass.supercapacitor,
-                child: Text(l10n.dashboardDeviceTypeSupercapacitor),
-              ),
-              PopupMenuItem<ProductClass?>(
-                value: ProductClass.smartBattery,
-                child: Text(l10n.dashboardDeviceTypeSmartBattery),
-              ),
-            ],
-          ),
-        ],
+        // 🔴 The class picker was REMOVED here on 2026-08-08 (design 0050
+        // D7). Classifying a unit is not the owner's job — they cannot know,
+        // and a wrong answer looks exactly like a right one until something
+        // reads oddly. It is ours: they send a log, the device-type byte gets
+        // a mapping, the next build knows. `0x18` went through precisely that
+        // route on 2026-08-01.
+        //
+        // An unidentified unit no longer reaches this shell at all
+        // (`unidentified_view.dart`), so what remains here is the label chip
+        // stating what the wire said — and nothing that invites a guess.
       ],
     );
   }

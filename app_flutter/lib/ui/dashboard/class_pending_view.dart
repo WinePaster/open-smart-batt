@@ -166,26 +166,15 @@ class _ClassPendingViewState extends State<ClassPendingView> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        // Deliberately NOT a class picker. Naming a class here
-                        // would be a guess selecting a layout, which design
-                        // 0001 §3.1 forbids and which this whole view exists to
-                        // uphold. This declines the withholding without
-                        // asserting anything: it lands on the unclassified pack
-                        // shell, whose own chip still says the type is unknown.
-                        SizedBox(
-                          width: double.infinity,
-                          child: TextButton(
-                            onPressed: conn.showUnclassifiedAnyway,
-                            child: Text(
-                              l10n.classPendingRevealButton,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: context.colors.muted,
-                              ),
-                            ),
-                          ),
-                        ),
+                        // 🔴 「仍要顯示讀數（未分類）」 was REMOVED here on
+                        // 2026-08-08 (design 0050 D3). It landed on the
+                        // unclassified pack shell — which was field for field
+                        // the battery's card set, so "show them anyway" meant
+                        // "assert a class nobody established". That is the
+                        // FB-43 shape, and the whole reason this view exists.
+                        //
+                        // Retrying is what remains, because it is the only
+                        // action that can actually change the answer.
                       ],
                     ),
                   ),

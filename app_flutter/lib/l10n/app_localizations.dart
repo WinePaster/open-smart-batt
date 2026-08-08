@@ -2411,14 +2411,8 @@ abstract class AppLocalizations {
   /// No description provided for @classPendingTimeoutBody.
   ///
   /// In en, this message translates to:
-  /// **'The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.'**
+  /// **'The device is sending readings but has not said what it is. Reconnecting usually fixes this.'**
   String get classPendingTimeoutBody;
-
-  /// No description provided for @classPendingRevealButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Show readings anyway'**
-  String get classPendingRevealButton;
 
   /// No description provided for @classPendingRetryButton.
   ///
@@ -2707,6 +2701,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Edit layout'**
   String get homeEditLayout;
+
+  /// No description provided for @unidentifiedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device not recognised'**
+  String get unidentifiedTitle;
+
+  /// No description provided for @unidentifiedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version.'**
+  String get unidentifiedBody;
 }
 
 class _AppLocalizationsDelegate

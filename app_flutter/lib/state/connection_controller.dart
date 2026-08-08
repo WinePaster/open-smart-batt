@@ -659,31 +659,19 @@ class ConnectionController extends ChangeNotifier {
       resolved: resolvedClass,
       sawDeviceType: _packResolver.sawDeviceType,
     );
-    // The user has looked at the placeholder and asked for the readings anyway.
-    // This is NOT a class assertion — it does not name a class, and the picker
-    // it hands over to still refuses to route, because a guess never picks a
-    // layout. It only
-    // declines the withholding, landing on the same "unclassified" pack shell
-    // whose own chip says the type is unknown. The wire byte still wins the
-    // instant it arrives.
-    if (d.isPending && _revealUnclassified) return RoutingDecision.unclassified;
+    // 🔴 The「仍要顯示讀數（未分類）」override was REMOVED 2026-08-08
+    // (design 0050 D3), along with the button that set it.
+    //
+    // It turned a PENDING link — no device-type byte at all — into
+    // `RoutingDecision.unclassified`, which then drew the pack shell. Its own
+    // comment argued it was "not a class assertion" because it named no class.
+    // That was true about the code and false about the screen: the shell it
+    // landed on carried a voltage gauge, a numbers grid and per-cell bars,
+    // which asserts a pack as plainly as naming one would. FB-43 is what that
+    // looks like when the unit is a power bank.
+    //
+    // What remains is the wire byte, and waiting for it.
     return d;
-  }
-
-  bool _revealUnclassified = false;
-
-  /// Whether the user has opted to see readings while the class is unresolved.
-  bool get revealUnclassified => _revealUnclassified;
-
-  /// Opt in to the unclassified pack shell (see [routing]). Reset on every new
-  /// connection: the next unit may be a different class, and a choice made
-  /// about one device must not silently carry to another — that is FB-25's
-  /// failure mode, and this flag would reintroduce it across a rebound id.
-  void showUnclassifiedAnyway() {
-    if (_revealUnclassified) return;
-    _revealUnclassified = true;
-    _event('class-resolve: user chose to view unclassified readings');
-    notifyListeners();
   }
 
   /// How long the class has been [RoutingDecision.pending], or null when it is
@@ -1417,7 +1405,6 @@ class ConnectionController extends ChangeNotifier {
       // which is a different problem (FB-25) with a different fix.
       _readyAt = DateTime.now();
       _classResolveLogged = false;
-      _revealUnclassified = false; // never carries across connections
       // Stamp last-seen on the saved entry (if any). This is only the OPENING
       // stamp; [_onTelemetrySample] keeps it moving while the link lives and
       // the disconnect branch below closes it out — see [_touchLastSeen].

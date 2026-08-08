@@ -1410,10 +1410,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get classPendingTimeoutBody =>
-      'The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.';
-
-  @override
-  String get classPendingRevealButton => 'Show readings anyway';
+      'The device is sending readings but has not said what it is. Reconnecting usually fixes this.';
 
   @override
   String get classPendingRetryButton => 'Reconnect';
@@ -1572,4 +1569,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get homeEditLayout => 'Edit layout';
+
+  @override
+  String get unidentifiedTitle => 'Device not recognised';
+
+  @override
+  String get unidentifiedBody =>
+      'This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version.';
 }

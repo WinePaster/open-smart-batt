@@ -1330,11 +1330,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get classPendingTimeoutTitle => '無法判定裝置類型';
 
   @override
-  String get classPendingTimeoutBody =>
-      '裝置有在送讀數，但沒有說自己是什麼。重新連線通常可以解決；你也可以手動指定類型。';
-
-  @override
-  String get classPendingRevealButton => '仍要顯示讀數（未分類）';
+  String get classPendingTimeoutBody => '裝置有在送讀數，但沒有說自己是什麼。重新連線通常可以解決。';
 
   @override
   String get classPendingRetryButton => '重新連線';
@@ -1488,4 +1484,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get homeEditLayout => '編輯版面';
+
+  @override
+  String get unidentifiedTitle => '無法辨識這個裝置';
+
+  @override
+  String get unidentifiedBody =>
+      '這台回報的裝置類型是本版本不認得的，因此不會顯示任何讀數 —— 用猜的選出一套版面，比什麼都不顯示更糟。\n\n請匯出診斷紀錄寄給我們，之後的版本就能支援它。';
 }

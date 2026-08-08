@@ -30,6 +30,7 @@ import '../../theme/app_theme.dart';
 import 'capture_mark_bar.dart';
 import 'class_pending_view.dart';
 import 'pack_view.dart';
+import 'unidentified_view.dart';
 import 'power_bank_view.dart';
 
 /// Dashboard body (intended to sit inside the app shell's [Scaffold] body).
@@ -183,8 +184,13 @@ class DashboardRouter extends StatelessWidget {
       case RoutingDecision.powerBank:
         return const PowerBankView();
       case RoutingDecision.pack:
-      case RoutingDecision.unclassified:
         return const PackView();
+      // 🔴 design 0050 D8. This used to fall through to `PackView` — an
+      // unidentified unit drawn with the battery's cards. See
+      // `unidentified_view.dart` for why that is the FB-43 shape and why
+      // naming the class is our job rather than the owner's.
+      case RoutingDecision.unclassified:
+        return const UnidentifiedView();
       case RoutingDecision.pending:
         return const ClassPendingView();
     }

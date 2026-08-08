@@ -619,16 +619,26 @@
   "speedCardAccuracy": "±{value} {unit}",
   "@speedCardAccuracy": {
     "placeholders": {
-      "value": {"type": "String"},
-      "unit": {"type": "String"}
+      "value": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
     }
   },
   "speedCardLastMeasured": "Last measured {value} {unit}, {seconds} s ago",
   "@speedCardLastMeasured": {
     "placeholders": {
-      "value": {"type": "String"},
-      "unit": {"type": "String"},
-      "seconds": {"type": "int"}
+      "value": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "int"
+      }
     }
   },
   "speedCardAccelLabel": "Accel",
@@ -641,7 +651,7 @@
   "speedQualityNone": "No signal",
   "gForceCardHeading": "G meter",
   "@gForceCardHeading": {
-    "description": "Heading of the G meter card and its name in the module vocabulary (design 0045 \u00a73.6). \"G\" is the racing convention for multiples of gravity and is left untranslated in both locales for that reason."
+    "description": "Heading of the G meter card and its name in the module vocabulary (design 0045 §3.6). \"G\" is the racing convention for multiples of gravity and is left untranslated in both locales for that reason."
   },
   "gForceLongLabel": "Long",
   "@gForceLongLabel": {
@@ -699,7 +709,9 @@
   "@settingsGCalibrationDone": {
     "description": "Sub-line when a valid calibration exists.",
     "placeholders": {
-      "when": {"type": "String"}
+      "when": {
+        "type": "String"
+      }
     }
   },
   "settingsGCalibrationClear": "Clear calibration",
@@ -750,7 +762,7 @@
   "@gWizardStillTitle": {
     "description": "Step 1 heading."
   },
-  "gWizardStillBody": "Stand the bike upright \u2014 centre stand or level ground, not the side stand \u2014 then keep still. Measuring which way is up.",
+  "gWizardStillBody": "Stand the bike upright — centre stand or level ground, not the side stand — then keep still. Measuring which way is up.",
   "@gWizardStillBody": {
     "description": "Step 1 body."
   },
@@ -902,8 +914,7 @@
     }
   },
   "classPendingTimeoutTitle": "Device type unavailable",
-  "classPendingTimeoutBody": "The device is sending readings but has not said what it is. Reconnecting usually fixes this; you can also set the type by hand.",
-  "classPendingRevealButton": "Show readings anyway",
+  "classPendingTimeoutBody": "The device is sending readings but has not said what it is. Reconnecting usually fixes this.",
   "classPendingRetryButton": "Reconnect",
   "packLabelChoose": "Set device type",
   "powerBankSocCaption": "SOC · State of Charge",
@@ -955,15 +966,17 @@
   "explainerWhatIsNotDone": "What this does not do",
   "explainerSpeedWhat": "The speed the phone's GNSS chip reports (Doppler), not a figure derived from positions. Coordinates are never stored and never appear in an export.",
   "explainerSpeedHoldingLead": "When the signal drops, the number shown is a HELD one, not a measured one.",
-  "explainerSpeedHolding": "Tunnels, underpasses and overpasses all do it. The screen says so, and after a while it changes to \u201cno signal\u201d. A number marked as held is not your speed right now.",
+  "explainerSpeedHolding": "Tunnels, underpasses and overpasses all do it. The screen says so, and after a while it changes to “no signal”. A number marked as held is not your speed right now.",
   "explainerSpeedStillLead": "Anything under 3 km/h reads 0.",
-  "explainerSpeedStill": "A stationary GNSS receiver invents 1\u20133 km/h from position jitter, and 2 km/h at a red light is an error everyone spots. The cost is that wheeling the bike, or crawling, also reads 0.",
+  "explainerSpeedStill": "A stationary GNSS receiver invents 1–3 km/h from position jitter, and 2 km/h at a red light is an error everyone spots. The cost is that wheeling the bike, or crawling, also reads 0.",
   "explainerSpeedNotDone": "No dead reckoning from the accelerometer (integration drifts), no background recording, no track.",
-  "explainerGForceWhat": "The phone's accelerometer, with gravity removed by the OS. Calibration is how the app learns which way the phone is facing on the bike; without it there is no \u201cforward\u201d and no \u201cleft\u201d to report.",
+  "explainerGForceWhat": "The phone's accelerometer, with gravity removed by the OS. Calibration is how the app learns which way the phone is facing on the bike; without it there is no “forward” and no “left” to report.",
   "explainerGForceLeanLead": "Lateral G in a corner reads low. This is a physical limit of two-wheelers.",
   "explainerGForceLean": "A motorcycle leans through a corner, and the meter reads the component along the leaned body axis. The harder the corner, the larger the shortfall: about 4% at 0.3 g, 11% at 0.5 g, 22% at 0.8 g. Cars do not have this (they do not lean), so do not compare these numbers with a car's.",
   "explainerGForceNotDone": "No lean angle from the gyroscope, no speed or distance derived. Only what is measured.",
   "settingsSpeedExplainerLabel": "How speed is measured",
   "settingsGForceExplainerLabel": "How G is measured",
-  "homeEditLayout": "Edit layout"
+  "homeEditLayout": "Edit layout",
+  "unidentifiedTitle": "Device not recognised",
+  "unidentifiedBody": "This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version."
 }

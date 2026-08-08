@@ -384,8 +384,7 @@
   "classPendingStalledTitle": "連線不穩定",
   "classPendingStalledBody": "{count, plural, other{已有 {count} 次輪詢沒有得到回應，裝置尚未回報類型。}}",
   "classPendingTimeoutTitle": "無法判定裝置類型",
-  "classPendingTimeoutBody": "裝置有在送讀數，但沒有說自己是什麼。重新連線通常可以解決；你也可以手動指定類型。",
-  "classPendingRevealButton": "仍要顯示讀數（未分類）",
+  "classPendingTimeoutBody": "裝置有在送讀數，但沒有說自己是什麼。重新連線通常可以解決。",
   "classPendingRetryButton": "重新連線",
   "packLabelChoose": "設定裝置類型",
   "powerBankSocCaption": "電量 · 充電狀態",
@@ -434,5 +433,7 @@
   "explainerGForceNotDone": "不用陀螺儀推算傾角、不推算速度或距離。只顯示量到的東西。",
   "settingsSpeedExplainerLabel": "關於速度的量測",
   "settingsGForceExplainerLabel": "關於 G 值的量測",
-  "homeEditLayout": "編輯版面"
+  "homeEditLayout": "編輯版面",
+  "unidentifiedTitle": "無法辨識這個裝置",
+  "unidentifiedBody": "這台回報的裝置類型是本版本不認得的，因此不會顯示任何讀數 —— 用猜的選出一套版面，比什麼都不顯示更糟。\n\n請匯出診斷紀錄寄給我們，之後的版本就能支援它。"
 }
