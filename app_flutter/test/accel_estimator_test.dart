@@ -441,6 +441,37 @@ void main() {
       expect(accel.windowLength, 1);
     });
 
+    test(
+        '🔴 FB-57: jittered 1 Hz timestamps still fill the window — exact '
+        'equality was the bug', () async {
+      // As shipped, _prune() capped the span at tWindow while _windowIsFull()
+      // demanded >= tWindow, so only a timestamp landing on the boundary to
+      // the microsecond could go live. Every real fix carries jitter; the
+      // accel column had never held a value in production. The offsets below
+      // are a fixed pattern of the tens-of-milliseconds jitter a GNSS clock
+      // actually produces — under the old predicate this test emits nothing.
+      const jitterMs = [0, 23, -17, 31, -29, 13, -7, 19];
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      final out = <AccelEstimate>[];
+      accel.estimates.listen(out.add);
+      for (var i = 0; i < jitterMs.length; i++) {
+        final t = t0.add(Duration(milliseconds: 1000 * i + jitterMs[i]));
+        // Speed is a straight 2.0 m/s² ramp in REAL elapsed time, so the
+        // fitted slope has an exact answer despite the jitter.
+        final v = 2.0 * (t.difference(t0).inMicroseconds / 1e6);
+        accel.onSpeedEstimate(est(t, v));
+      }
+      await _pump();
+      expect(accel.state, AccelState.live);
+      expect(out.length, greaterThanOrEqualTo(5),
+          reason: 'after warm-up every accepted sample must emit — a jittered '
+              'clock is the normal case, not an edge case');
+      for (final e in out) {
+        expect(e.aMps2, closeTo(2.0, 1e-9));
+      }
+    });
+
     test('the window slides: only the last tWindow seconds are fitted',
         () async {
       final accel = AccelEstimator();

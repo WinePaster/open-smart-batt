@@ -42,7 +42,8 @@ import 'speed_estimator.dart';
 enum AccelState {
   /// The window is not full enough to draw a line through (fewer than
   /// [AccelEstimatorConfig.nMin] samples, or spanning less than
-  /// [AccelEstimatorConfig.tWindow]). Nothing is emitted.
+  /// [AccelEstimatorConfig.tWindow] minus [AccelEstimatorConfig.tSlack]).
+  /// Nothing is emitted.
   warming,
 
   /// The window is full; the slope is a measurement. This is the only state
@@ -69,6 +70,7 @@ enum AccelState {
 class AccelEstimatorConfig {
   const AccelEstimatorConfig({
     this.tWindow = const Duration(seconds: 2),
+    this.tSlack = const Duration(milliseconds: 500),
     this.nMin = 3,
     this.aDeadMps2 = 0.15,
     this.displayQuantumMps2 = 0.1,
@@ -81,6 +83,19 @@ class AccelEstimatorConfig {
   /// over a second EWMA stage (0044 §4.2): it has a sentence anyone can read
   /// back — "the average acceleration over the last two seconds".
   final Duration tWindow;
+
+  /// `T_slack` — tolerance around the [tWindow] boundary (FB-57).
+  ///
+  /// As shipped, pruning guaranteed the window spanned AT MOST `T_w` while
+  /// fullness required AT LEAST `T_w`, so the two could only agree when a
+  /// sample landed on the boundary to the microsecond. Real GNSS fixes carry
+  /// tens of milliseconds of jitter, so `live` was unreachable and the accel
+  /// column had never held a value in production. The slack is applied on both
+  /// sides: pruning keeps history back to `T_w + T_slack`, and a window
+  /// spanning `T_w − T_slack` counts as full. The fitted span therefore lands
+  /// in `[T_w − T_slack, T_w + T_slack]` — "about the last two seconds",
+  /// which is the only version of that sentence a jittered clock can honour.
+  final Duration tSlack;
 
   /// `N_min` — fewest samples that may be called a line. Two points always fit
   /// a line perfectly, which is another way of saying two points cannot
@@ -284,21 +299,29 @@ class AccelEstimator {
     _state = AccelState.warming;
   }
 
-  /// Drop samples older than [AccelEstimatorConfig.tWindow] behind the newest.
-  /// The boundary sample is kept, so a 2 s window at 1 Hz holds three points.
+  /// Drop samples older than [AccelEstimatorConfig.tWindow] plus
+  /// [AccelEstimatorConfig.tSlack] behind the newest.
+  ///
+  /// The slack is what keeps a sample alive on the far side of the `T_w`
+  /// boundary. Pruning exactly at `T_w` capped the span at `T_w` while
+  /// [_windowIsFull] demanded `T_w` — satisfiable only by a
+  /// microsecond-perfect timestamp, which jittered fixes never produce
+  /// (FB-57).
   void _prune() {
     final newest = _window.last.t;
-    final cutoff = newest.subtract(config.tWindow);
+    final cutoff = newest.subtract(config.tWindow + config.tSlack);
     _window.removeWhere((s) => s.t.isBefore(cutoff));
   }
 
   /// Both halves of "full" are required (0044 §3.2): enough points, and enough
   /// elapsed time. Three points 200 ms apart fit a line beautifully and say
-  /// nothing about a two second average.
+  /// nothing about a two second average. "Enough" is `T_w − T_slack`, not
+  /// `T_w` — see [AccelEstimatorConfig.tSlack] for why exact equality was a
+  /// bug and not a specification.
   bool _windowIsFull() {
     if (_window.length < config.nMin) return false;
     final span = _window.last.t.difference(_window.first.t);
-    return span >= config.tWindow;
+    return span >= config.tWindow - config.tSlack;
   }
 
   /// Ordinary least squares slope of v against t, in m/s².
