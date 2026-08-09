@@ -136,6 +136,43 @@ List<String> exportHeaderLines({
     // saw the export dialog.
     if (rawPacketLog == true)
       'note: raw frames include the device\'s own BLE address (selector 0x38)',
+    // Ruled 2026-08-09, alongside FB-56 — same answer as FB-37, DIFFERENT
+    // reason, and the difference is why this is its own line rather than a
+    // clause on the one above.
+    //
+    // FB-37 discloses an address belonging to OUR OWN unit: the person who
+    // exported the file owns the thing being named, so telling them is the
+    // whole of the duty. This line discloses THIRD PARTIES — the scan roster
+    // (`connection_controller.dart`, `scan hit …`) records every nearby
+    // advertiser's advertised name verbatim, including phones, earbuds and
+    // laptops belonging to people who never installed this app. "You were told,
+    // and it is your own hardware" does not carry across to them. Nobody should
+    // be able to cite FB-37 as a precedent for leaving a stranger's device name
+    // undisclosed.
+    //
+    // Disclosure and not redaction, all the same, because the roster's value
+    // IS the names: `RCE-SCAP_III` / `RCE-CarBatt` / `RCE-BikeBatt` are the
+    // cross-check that tied selector 0x18 to a product class across three
+    // units, and a name that looks like a bystander is very often the
+    // reporter's own second device (`聖杰的AirPods` beside a readme signed
+    // 陳聖杰 is how one batch was attributed to a new reporter at all). The
+    // code cannot tell those three cases apart at the moment it writes the
+    // line — only a reader can — so the honest move is to say what is in the
+    // file rather than to guess which half to destroy. The id beside each name
+    // is already hashed; it is the name that is in the clear, and this line
+    // says so.
+    //
+    // 🔴 Emitted for EVERY diagnostic log, never gated on whether the scan
+    // actually saw anything. That is FB-32's rule: a note that appears only
+    // when there were hits makes its absence mean both "nothing nearby" and
+    // "an older build wrote this", and a reader deciding whether to attach the
+    // capture to a public issue would have to know our version history to read
+    // it. It is gated on `rawPacketLog != null` because that — not the file's
+    // contents — is what distinguishes the diagnostic log from the history CSV
+    // (only the log path supplies it, and only the log has a scan roster).
+    if (rawPacketLog != null)
+      'note: this log lists nearby Bluetooth devices seen while scanning, '
+          'including their advertised names',
     // design 0027 §3.1. Emitted as a `devices: N` count line followed by one
     // indented line per unit — all `#` comments, so the ingest scripts skip
     // them (G3). Placed in the optional middle, before the required layout tail.

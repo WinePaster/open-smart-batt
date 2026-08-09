@@ -76,7 +76,18 @@ class SpeedEstimatorConfig {
   const SpeedEstimatorConfig({
     this.aRejectM = 50.0,
     this.sRejectMps = 5.0,
-    this.alpha = 0.3,
+    // Raised from 0.3 by the 2026-08-09 road test (design 0042 Phase F, the
+    // first of these knobs to meet a real motorcycle; FB-56). The owner rode
+    // to a full stop and the card took 3–5 s to reach 0 — τ at α=0.3 and a
+    // 1 Hz sampling period is ≈2.8 s, so the reading was still ~5% of the
+    // entry speed three seconds after the wheels stopped. α=0.5 halves that
+    // (τ ≈1.4 s) at the cost of a twitchier number in traffic, which is the
+    // side the rider can see is honest.
+    //
+    // ⚠️ This value is coupled to `GeolocatorSpeedSource.speedSamplingPeriod`:
+    // τ is measured in SAMPLES, so changing the period changes the lag without
+    // touching this line.
+    this.alpha = 0.5,
     // 3.0 km/h. Ruled 2026-08-07, raised from the 1.0 km/h the design doc
     // first named. The doc's own justification says stationary GNSS jitter
     // reads 1–3 km/h and calls a red light showing 2 km/h "an error the user
@@ -170,7 +181,13 @@ class SpeedFix {
   /// thing G2 forbids.
   ///
   /// There is no value that can mean both, so the absence is carried in the
-  /// type instead. The adapter decides; the estimator just rejects null.
+  /// type instead. The adapter decides; the estimator never smooths a null.
+  ///
+  /// 🔴 Narrowed 2026-08-09 (FB-56): the estimator no longer treats null as
+  /// "nothing happened" in every case. A null-speed fix on a good position fix,
+  /// arriving while the display is already a clamped zero, keeps the reading
+  /// alive — see [SpeedEstimator.addFix]. It still never enters the smoother
+  /// and it still never CREATES a zero.
   final double? speedMps;
 
   /// Reported uncertainty of [speedMps] in m/s, or null where the platform does
@@ -307,7 +324,39 @@ class SpeedEstimator {
   /// keeps delivering samples with a useless accuracy figure, and a rejected
   /// sample that still counted as "recent" would hold the state machine in
   /// [SpeedState.live] for the length of the tunnel.
+  ///
+  /// 🔴 ONE narrow exception, added 2026-08-09 for FB-56:
+  /// [_sustainsClampedStill] refreshes the age WITHOUT entering the smoother,
+  /// for a fix that carries no speed but proves the receiver is alive while a
+  /// clamped zero is already on screen. Read that predicate before widening it
+  /// — every one of its four conditions is holding something up.
   void addFix(SpeedFix fix) {
+    // 🔴 FB-56, ruled 2026-08-09 (design 0042 revision). A fix with no speed
+    // field, arriving on a good position fix while the card is ALREADY showing
+    // a clamped zero, is evidence that the receiver is alive and the vehicle is
+    // standing still — not evidence that the signal went away. Sustain `live`
+    // and refresh the age; the smoother is not touched.
+    //
+    // Without this, a parked scooter read "no signal" while iOS was delivering
+    // a perfectly good fix every second (iOS auto-pause is off — we pass a bare
+    // `LocationSettings`, so `pausesLocationUpdatesAutomatically` stays NO),
+    // and the chip simply stops reporting a Doppler speed once it is stationary.
+    // Saying "no signal" while holding a good fix in hand is the same class of
+    // lie as G2's, pointed the other way.
+    if (_sustainsClampedStill(fix)) {
+      // Only the liveness half of the sample is consumed: when it was taken,
+      // and how good the position was. `_ewma` and `_lastSpeedAccuracyMps`
+      // belong to the last real speed MEASUREMENT and stay exactly as they are
+      // — no decay toward zero, which 0042 §3.2 forbids for the same reason it
+      // forbids a decay animation.
+      _lastFixAt = fix.timestamp;
+      _lastAccuracyM = fix.horizontalAccuracyM;
+      _holdingSince = null;
+      final estimate = _estimateAt(now());
+      _current = estimate;
+      _estimates.add(estimate);
+      return;
+    }
     if (!_accepts(fix)) return;
 
     // Recovering from a gap restarts the average rather than continuing it.
@@ -437,6 +486,45 @@ class SpeedEstimator {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /// Whether [fix] may keep an already-displayed zero alive without entering
+  /// the smoother (FB-56; design 0042 revision 2026-08-09).
+  ///
+  /// Four conditions, and G2 survives because of the third one:
+  ///
+  ///  1. **No speed field.** A fix that carries one goes down the normal path,
+  ///     so this branch never competes with a measurement.
+  ///  2. **Already `live`.** The branch SUSTAINS a zero that a real measurement
+  ///     put on screen; it never resurrects a series that was lost, and it
+  ///     never starts one. A phone that has never reported a speed still shows
+  ///     "waiting for a fix" rather than `0 km/h` — the pre-API-26 Android case
+  ///     the adapter's own comment errs toward silence for.
+  ///  3. 🔴 **What is on screen is already a clamped zero.** `_ewma <
+  ///     vStillMps` is EXACTLY the test [_estimateAt] applies to decide the
+  ///     display reads `0.0`, so this branch is structurally incapable of
+  ///     freezing a non-zero number and presenting it as live. A vehicle in
+  ///     motion whose speed field disappears has an `_ewma` above the clamp,
+  ///     fails here, and takes the honest holding → lost path G2 requires.
+  ///  4. **The position fix is one we would otherwise keep** (same floor
+  ///     [_accepts] uses). A fix we would throw out as junk cannot be evidence
+  ///     that anything is alive — so a real signal loss, where the accuracy
+  ///     blows up or is not reported at all and the adapter maps it to
+  ///     `double.infinity`, still walks live → holding → lost.
+  ///
+  /// ⚠️ The reason to key on "no speed field" rather than on `speed == 0` is
+  /// upstream, in `GpsSpeedController.toFix`: "stopped" and "the chip has no
+  /// speed solution" arrive as the SAME bytes, and that mapper deliberately
+  /// resolves the ambiguity toward silence. This branch does not reopen it —
+  /// it uses a SECOND, independent piece of evidence (a zero that was already
+  /// measured) to decide the fix means "still stationary".
+  bool _sustainsClampedStill(SpeedFix fix) {
+    if (fix.speedMps != null) return false;
+    if (_state != SpeedState.live) return false;
+    final smoothed = _ewma;
+    if (smoothed == null || smoothed >= config.vStillMps) return false;
+    final acc = fix.horizontalAccuracyM;
+    return !acc.isNaN && acc <= config.aRejectM;
+  }
 
   /// Sample-level filters (0042 §3.2). All three reject the whole sample.
   bool _accepts(SpeedFix fix) {
