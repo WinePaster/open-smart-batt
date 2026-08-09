@@ -234,7 +234,7 @@ falsifiable rather than taken on trust:
   > | Group | Units | s/tick |
   > |---|---|---|
   > | **61.0 s** | three motorcycle batteries — three independent units, three reporters, three phones (4,268 / 6,284 / 3,961 min of wall clock) | 60.98 / 60.99 / 61.00 — spread **±0.01 s** inside the group |
-  > | **67.1 s** | every other unit measured so far: car batteries, capacitors, power banks (five units) | 67.13 – 67.27 |
+  > | **67.1 s** | every other unit measured so far: car batteries, capacitors, power banks (five units) | ~~67.13 – 67.27~~ **66.92 – 67.27** (lower edge widened 2026-08-09: two further long windows on one super-capacitor, both passing the same window criteria, read 66.92 / 66.96 s) |
   >
   > The two groups are 6.2 s (10%) apart — 600× the spread inside either
   > group — so this is not measurement noise. It is also not an artefact of
