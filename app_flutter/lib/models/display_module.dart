@@ -115,7 +115,34 @@ enum DisplayModule {
   /// screen, and "you have not calibrated yet" is not something a dashboard
   /// card is allowed to say (design 0045 Q8 — the card simply is not there).
   /// `renderedModules` drops it instead.
-  gForce;
+  gForce,
+
+  /// The clock ([ClockCard], design 0052): hours and minutes, nothing else.
+  ///
+  /// The third module that is not device data — `modules=clock` in an export
+  /// preamble says nothing whatever about the unit — but it differs from the
+  /// other two in the way that matters most to anyone reading this registry:
+  ///
+  /// 🔴 **It can ALWAYS draw.** `speed` waits for a fix, `gForce` waits for a
+  /// calibration, and every device module waits for a frame; this one has no
+  /// upstream at all. It is not `dataGated`, it has no availability condition,
+  /// and it has no waiting state — so the standing inference "with nothing
+  /// connected every module tile shows `--`" stops being true the moment this
+  /// member exists. That is its purpose (design 0052 §2), and it is written
+  /// here because this file is where the module vocabulary is read.
+  ///
+  /// Consequently [phoneModuleAvailable] answers a literal, WRITTEN-OUT `true`
+  /// for it rather than falling through a wildcard: "the clock has no gate" is
+  /// a decision, and a decision that only exists as the absence of a case is
+  /// the caller failure this project has shipped four times.
+  ///
+  /// ⚠️ Not on any watchface, by design 0051 A (phone modules live on the home
+  /// grid only), and NOT in [HomeLayout.defaultFor] either — unlike `speed` and
+  /// `gForce`, which were added to the default because switching one on is
+  /// itself a statement that the user wants to see it. The clock has no switch
+  /// to make that statement with, so it is opt-in through the home editor
+  /// (design 0052 §6).
+  clock;
 
   /// Whether this module reads the PHONE rather than the connected unit.
   ///
@@ -142,7 +169,13 @@ enum DisplayModule {
         DisplayModule.cells ||
         DisplayModule.energyPath =>
           false,
-        DisplayModule.speed || DisplayModule.gForce => true,
+        DisplayModule.speed ||
+        DisplayModule.gForce ||
+        // The clock reads the phone's own time-of-day. Same three consequences
+        // as `speed`: every class offers it, `modules=clock` in a capture is
+        // not evidence about the device, and it is not `dataGated`.
+        DisplayModule.clock =>
+          true,
       };
 }
 
@@ -163,12 +196,25 @@ enum DisplayModule {
 ///  * `gForce` needs its switch AND a valid calibration (design 0045 Q8): until
 ///    the mount is calibrated there are no axes, and a card that cannot name a
 ///    direction is not shown at all.
+///  * `clock` needs NOTHING, and that is written out below as its own case
+///    rather than left to a wildcard. See the note on the switch.
 ///
 /// A device module is never asked — callers consult this only for modules the
 /// enum says belong to the phone.
 ///
 /// Lives in the model layer, not beside the watchfaces, so the PURE home-layout
 /// resolver can reach it without importing Flutter.
+///
+/// 🔴 EXHAUSTIVE, no `_ =>` arm — changed by design 0052 §3.5.
+///
+/// It used to end in `_ => true`, which meant every module that was not
+/// `speed` or `gForce` inherited "available" by omission. That is fine until a
+/// module arrives whose availability is genuinely a decision, and then the
+/// decision is invisible: the wildcard answers for it, no case is written, and
+/// nothing in the source records that anybody thought about it. This is the
+/// caller-shaped failure `DisplayModule.isPhoneModule` was made exhaustive to
+/// prevent, and it had survived one file away. A module added to the enum now
+/// fails to compile here.
 bool phoneModuleAvailable(
   DisplayModule m,
   AppSettings s, {
@@ -177,5 +223,18 @@ bool phoneModuleAvailable(
     switch (m) {
       DisplayModule.speed => s.speedDetection,
       DisplayModule.gForce => gForceAvailable,
-      _ => true,
+      // 🔑 Declared, not inherited. The clock has no upstream that can be
+      // absent — no link, no fix, no calibration, no switch — so its
+      // availability is the constant `true`, and design 0052 §3.5 requires
+      // that constant to be visible in the source.
+      DisplayModule.clock => true,
+      // Device modules are never asked (see above). They are listed so this
+      // switch stays exhaustive; `true` is what the old wildcard gave them.
+      DisplayModule.gaugeVoltage ||
+      DisplayModule.gaugeSoc ||
+      DisplayModule.readouts ||
+      DisplayModule.chart ||
+      DisplayModule.cells ||
+      DisplayModule.energyPath =>
+        true,
     };

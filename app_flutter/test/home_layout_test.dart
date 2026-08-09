@@ -53,6 +53,10 @@ void main() {
         'energyPath',
         'speed',
         'gForce',
+        // design 0052. APPENDED, never inserted: the order is what an export
+        // preamble's `tiles=` prints, and a reader comparing two captures
+        // across this build must see one new token rather than a reshuffle.
+        'clock',
       ]);
       for (final n in names) {
         expect(n.toLowerCase(), isNot(contains('control')));
@@ -161,6 +165,14 @@ void main() {
           for (final t in HomeLayout.defaultFor(devices).tiles)
             if (t.module?.isPhoneModule ?? false) t.module,
         };
+        // 🔴 `clock` is a phone module and is DELIBERATELY ABSENT from this
+        // set (design 0052 §6). The two above earned their place by having a
+        // SWITCH: somebody who turns speed detection on has said they want to
+        // see it, and making them say it again in the editor is the app not
+        // listening. The clock has no switch, so putting it here would be
+        // rearranging the home page of every existing user on their next
+        // update — a change nobody asked for, on the screen the app opens on.
+        // It is opt-in through 編輯主頁 → 新增卡片 instead.
         expect(modules, {DisplayModule.speed, DisplayModule.gForce},
             reason: 'with ${devices.length} device(s)');
       }

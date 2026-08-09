@@ -39,6 +39,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
 import '../widgets/pending_note.dart';
+import 'clock_card.dart';
 import 'display_modules.dart';
 import 'dvol_bars.dart';
 import 'g_force_card.dart';
@@ -407,6 +408,20 @@ Widget? dashboardCardFor(
     // editor rule applies.
     case DisplayModule.gForce:
       return const GForceCard();
+
+    // design 0052. 🔴 The one branch of this function that can NEVER return
+    // null, and never draws a waiting state either — it has no upstream to
+    // wait for. Every `?? HomeWaitingTile(...)` at a call site is dead code
+    // for this module, and `clock_card.dart`'s library comment says so where
+    // somebody reasoning about "what does an offline home page look like" will
+    // read it.
+    //
+    // Mounting it arms a one-minute timer, so the editor rule that applies to
+    // the two modules above applies here too — for a much smaller reason
+    // (wasted rebuilds, not a sensor) but through the same seam:
+    // `previewCardFor` mounts `ClockCardBody` with a fixed time.
+    case DisplayModule.clock:
+      return const ClockCard();
   }
 }
 

@@ -163,6 +163,7 @@
   "homeEditTitle": "編輯主頁",
   "homeEditAddCard": "新增卡片",
   "homeEditRestoreDefaults": "回復預設版面",
+  "homeModuleClock": "時鐘",
   "devicesNoSaved": "尚無已儲存裝置",
   "devicesUnnamed": "未命名裝置",
   "devicesScanning": "掃描中…",
