@@ -125,7 +125,15 @@ void main() {
       expect(est.current!.state, SpeedState.holding);
     });
 
-    test('a fix with no reported speed is rejected, not read as a stop', () {
+    // ⚠️ NARROWED 2026-08-09 (FB-56). The property this pins is unchanged and
+    // is still the important one: a null speed arriving beside a MOVING
+    // reading must not be read as a stop, and must not refresh the age. What
+    // changed is that this is no longer the only null-speed case — see the
+    // `a stationary iOS phone` group below for the one that now behaves
+    // differently, and why the two are told apart by the value on screen
+    // rather than by the fix.
+    test('a fix with no reported speed, beside a MOVING reading, is rejected',
+        () {
       final (:clock, :est) = build();
       est.addFix(_fix(clock.t, 10.0));
       expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
@@ -143,7 +151,8 @@ void main() {
       expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
       est.tick();
       expect(est.current!.state, SpeedState.holding,
-          reason: 'a null speed must not count as a recent sample');
+          reason: 'a null speed beside a non-zero reading must not count as a '
+              'recent sample — freezing 10 m/s as `live` is exactly G2');
     });
 
     test('a fix worse than the accuracy floor is rejected whole', () {
@@ -162,6 +171,214 @@ void main() {
       expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
       expect(est.current!.speedAccuracyMps, closeTo(0.5, 1e-9),
           reason: 'the rejected sample must not overwrite the reported ±');
+    });
+  });
+
+  // ==========================================================================
+  // FB-56 — a stationary iOS phone is not a phone with no signal.
+  // ==========================================================================
+  //
+  // THE FIELD REPORT. The owner rode to a stop and the card said "no signal"
+  // seconds later, while the phone was sitting on a parked scooter under open
+  // sky. His words: "會跳出無訊號 但是沒看到 hold, 減速到 0 的那幾秒基本上是
+  // 數字" and "大多是停下來之後會跳無訊號, 我目前都是在 ios 測試".
+  //
+  // WHAT WAS ACTUALLY HAPPENING. iOS auto-pause is off (`GpsSpeedController`
+  // passes a bare `LocationSettings`), so fixes kept arriving at ~1 Hz the
+  // whole time — good accuracy, open sky, nothing wrong with the signal. What
+  // stopped was the DOPPLER SPEED: a stationary chip has no speed solution, the
+  // platform omits the key, and `toFix` maps that to `speedMps: null` (which is
+  // the right call — see its comment). The estimator then rejected every one of
+  // those fixes, the age grew, and four seconds later the card announced a loss
+  // of signal it was holding the disproof of in its hand.
+  //
+  // WHY THE FIX IS SAFE. It is gated on the value ALREADY DISPLAYED being a
+  // clamped zero, which makes it structurally unable to freeze a moving number
+  // and call it live — the thing 0042 G2 exists to forbid. Each test below
+  // holds up one of those gates; the last group is the one that would fail if
+  // somebody widened the branch to "null speed ⇒ assume stopped".
+  group('FB-56: a null speed beside a displayed zero keeps the reading alive',
+      () {
+    /// A stationary iOS fix: good position, no speed field at all.
+    SpeedFix stillFix(DateTime at, {double acc = 5.0}) => SpeedFix(
+          speedMps: null,
+          horizontalAccuracyM: acc,
+          timestamp: at,
+        );
+
+    /// Ride to a standstill and return the clock/estimator at the moment the
+    /// card first reads exactly 0.0 while still `live`.
+    ({_Clock clock, SpeedEstimator est}) rolledToAStop() {
+      final built = build();
+      for (final v in [8.0, 4.0, 2.0, 0.5, 0.2, 0.1]) {
+        built.est.addFix(_fix(built.clock.t, v));
+        built.clock.advance(const Duration(seconds: 1));
+      }
+      expect(built.est.current!.vSmoothMps, 0.0,
+          reason: 'precondition: the deceleration ramp reached the clamp');
+      expect(built.est.current!.state, SpeedState.live);
+      return built;
+    }
+
+    test('a parked phone stays live at 0.0 — it never says "no signal"', () {
+      final (:clock, :est) = rolledToAStop();
+
+      // Ten seconds of the real steady state: a fix a second, a tick a second.
+      // Both bounds that end a reading (T_lost = 4 s, holdCap = 5 s) are well
+      // inside this window, so a regression cannot hide behind a short run.
+      for (var i = 0; i < 10; i++) {
+        est.addFix(stillFix(clock.t));
+        est.tick();
+        expect(est.current!.state, SpeedState.live,
+            reason: 'second $i: the receiver is delivering a good fix, so '
+                '"no signal" would be a false statement');
+        expect(est.current!.vSmoothMps, 0.0);
+        clock.advance(const Duration(seconds: 1));
+      }
+      expect(est.current!.quality, SpeedSignalQuality.good,
+          reason: 'the position accuracy is being refreshed by these fixes, '
+              'so the grade must not decay either');
+    });
+
+    test('the frozen average is not touched, so pulling away is not blended',
+        () {
+      // The branch refreshes the AGE and nothing else. If it had decayed or
+      // re-seeded `_ewma`, the first sample after pulling away would be
+      // smoothed against a number nobody measured (0042 §3.2 forbids inventing
+      // a deceleration; inventing one is exactly what a decay would be).
+      final (:clock, :est) = rolledToAStop();
+      final parked = est.current!.vSmoothMps;
+      for (var i = 0; i < 5; i++) {
+        est.addFix(stillFix(clock.t));
+        clock.advance(const Duration(seconds: 1));
+      }
+      expect(est.current!.vSmoothMps, parked);
+
+      // Pulling away. `live` was never left, so this is an ordinary EWMA step
+      // from the real stored average (~0.66 m/s), not a post-gap re-seed.
+      est.addFix(_fix(clock.t, 6.0));
+      expect(est.current!.state, SpeedState.live);
+      expect(est.current!.vSmoothMps, lessThan(6.0),
+          reason: 'the smoother must still be smoothing, not re-seeding');
+      expect(est.current!.vSmoothMps, greaterThan(0.0));
+    });
+
+    test('Android, which reports a real 0 with an uncertainty, is unaffected',
+        () {
+      // The other way a genuine stop arrives: API 26+ reports `speed = 0`
+      // AND a speed accuracy, so `toFix` keeps it and this is an ORDINARY
+      // accepted sample that never reaches the new branch. Pinned so that a
+      // future edit to the branch cannot change the platform that was already
+      // correct.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 4.0, speedAcc: 0.5));
+      clock.advance(const Duration(seconds: 1));
+      for (var i = 0; i < 6; i++) {
+        est.addFix(_fix(clock.t, 0.0, speedAcc: 0.5));
+        est.tick();
+        expect(est.current!.state, SpeedState.live);
+        clock.advance(const Duration(seconds: 1));
+      }
+      expect(est.current!.vSmoothMps, 0.0);
+      expect(est.current!.speedAccuracyMps, closeTo(0.5, 1e-9),
+          reason: 'these samples go through the normal path, ± included');
+    });
+
+    test('a moving reading is unaffected — fixes with a speed always smooth',
+        () {
+      // The third row of the ruling's table: nothing about a ride changes.
+      // Same vectors as the smoothing group, asserted here as a regression
+      // guard on the new early-return specifically.
+      final (:clock, :est) = build();
+      final raw = [5.0, 7.0, 9.0, 11.0, 13.0];
+      double? previous;
+      for (final v in raw) {
+        est.addFix(_fix(clock.t, v));
+        final now = est.current!;
+        expect(now.state, SpeedState.live);
+        if (previous != null) expect(now.vSmoothMps, greaterThan(previous));
+        previous = now.vSmoothMps;
+        clock.advance(const Duration(seconds: 1));
+      }
+      expect(previous, lessThan(13.0));
+    });
+
+    group('the gates that keep G2 intact', () {
+      test('a displayed NON-zero still goes holding → lost', () {
+        // The gate that matters most. At 10 m/s the speed field vanishing means
+        // we have stopped measuring a MOVING vehicle, and freezing 10 m/s as
+        // `live` is precisely the lie 0042 G2 forbids.
+        final (:clock, :est) = build();
+        est.addFix(_fix(clock.t, 10.0));
+        for (var i = 0; i < 6; i++) {
+          clock.advance(const Duration(seconds: 1));
+          est.addFix(stillFix(clock.t));
+          est.tick();
+        }
+        expect(est.current!.state, SpeedState.lost);
+        expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9));
+      });
+
+      test('a bad position fix is still junk, however low the reading is', () {
+        // A real signal loss where the chip keeps talking: no speed AND a
+        // useless accuracy. The zero on screen must not launder it into
+        // evidence that anything is alive.
+        final (:clock, :est) = rolledToAStop();
+        for (var i = 0; i < 6; i++) {
+          est.addFix(stillFix(clock.t, acc: 120.0));
+          est.tick();
+          clock.advance(const Duration(seconds: 1));
+        }
+        expect(est.current!.state, SpeedState.lost);
+      });
+
+      test('an unreported accuracy (infinity) is junk too', () {
+        // `toFix` maps "no accuracy reported" to `double.infinity` rather than
+        // to 0 m (B3), so the floor is what throws it out. That mapping is the
+        // only thing standing between this branch and a phone that reports
+        // nothing at all.
+        final (:clock, :est) = rolledToAStop();
+        for (var i = 0; i < 6; i++) {
+          est.addFix(stillFix(clock.t, acc: double.infinity));
+          est.tick();
+          clock.advance(const Duration(seconds: 1));
+        }
+        expect(est.current!.state, SpeedState.lost);
+      });
+
+      test('it never CREATES a zero: a phone that never reported speed waits',
+          () {
+        // The pre-API-26 Android case the adapter errs toward silence for. With
+        // no measurement behind it there is no zero to sustain, so the card
+        // stays on "waiting for a fix" — `current` null — rather than printing
+        // a 0 km/h nobody measured.
+        final (:clock, :est) = build();
+        for (var i = 0; i < 10; i++) {
+          est.addFix(stillFix(clock.t));
+          est.tick();
+          clock.advance(const Duration(seconds: 1));
+        }
+        expect(est.current, isNull);
+      });
+
+      test('it never RESURRECTS: a lost series is not revived by a null speed',
+          () {
+        // Sustaining is not the same as recovering. Only a fix carrying an
+        // actual speed may end a loss, because only that is a measurement — the
+        // vehicle may well have moved during the gap.
+        final (:clock, :est) = rolledToAStop();
+        clock.advance(const Duration(seconds: 10));
+        est.tick();
+        expect(est.current!.state, SpeedState.lost);
+
+        est.addFix(stillFix(clock.t));
+        expect(est.current!.state, SpeedState.lost,
+            reason: 'a fix with no speed cannot end a signal loss');
+
+        est.addFix(_fix(clock.t, 0.1));
+        expect(est.current!.state, SpeedState.live,
+            reason: 'a fix that measures something can, and does');
+      });
     });
   });
 

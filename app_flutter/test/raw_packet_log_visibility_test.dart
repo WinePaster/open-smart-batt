@@ -77,6 +77,78 @@ void main() {
     });
   });
 
+  // ==========================================================================
+  // Scan-roster disclosure — ruled 2026-08-09. Same answer as FB-37, different
+  // reason, and the reason is what these tests are for.
+  // ==========================================================================
+  //
+  // FB-37 is about OUR OWN unit's BLE address: the exporter owns the hardware
+  // being named, so telling them is the whole duty. The scan roster
+  // (`connection_controller.dart`, `scan hit id=… name='…'`) records every
+  // nearby advertiser's advertised name VERBATIM — earbuds, laptops and phones
+  // belonging to people who never installed this app. Redaction was ruled out
+  // for the same reason as FB-37 (the names are the diagnostic value:
+  // `RCE-SCAP_III` / `RCE-CarBatt` / `RCE-BikeBatt` are what tied selector 0x18
+  // to a product class across three units, and an apparent bystander is very
+  // often the reporter's own second device) — but "you were told and it is your
+  // own hardware" does NOT carry across to a stranger, so the two rulings are
+  // pinned apart. Nobody should be able to cite FB-37 for leaving this one out.
+  group('scan-roster disclosure — third parties, not our own hardware', () {
+    test('the log warns the RECIPIENT that it names nearby devices', () {
+      final h = header(rawPacketLog: false);
+      expect(h.any((l) => l.contains('nearby Bluetooth devices')), isTrue);
+      expect(h.any((l) => l.contains('advertised names')), isTrue);
+    });
+
+    test('it is emitted whether or not raw packet logging is on', () {
+      // The roster is written by the ordinary event log, which the raw-packet
+      // switch does not gate. Tying the disclosure to that switch would make a
+      // file with the switch off silently undisclosed.
+      for (final raw in [true, false]) {
+        expect(header(rawPacketLog: raw).where((l) => l.contains('nearby')),
+            hasLength(1),
+            reason: 'rawPacketLog: $raw');
+      }
+    });
+
+    test('it is never gated on the scan having actually seen anything', () {
+      // FB-32's rule, stated as a test because the tempting implementation is
+      // the wrong one. A note that appears only when there were hits makes its
+      // ABSENCE mean both "nothing was nearby" and "an older build wrote this",
+      // and the reader deciding whether to attach the capture to a public issue
+      // would need our version history to tell those apart.
+      //
+      // `exportHeaderLines` is not handed the roster, or a count, or anything
+      // else that could vary with it — which is what makes the wrong version
+      // unimplementable here rather than merely discouraged. The assertion is
+      // that the two calls produce the IDENTICAL line, byte for byte.
+      final withRaw =
+          header(rawPacketLog: true).firstWhere((l) => l.contains('nearby'));
+      expect(header(rawPacketLog: false), contains(withRaw));
+    });
+
+    test('the history CSV does not carry it — there is no roster in a CSV', () {
+      // The one thing that legitimately varies. `rawPacketLog` is supplied only
+      // by the diagnostic-log export path, so its nullability is the file-KIND
+      // discriminator, not a fact about the contents. A CSV claiming to list
+      // nearby devices would be a different false statement.
+      expect(header().where((l) => l.contains('nearby')), isEmpty);
+    });
+
+    test('it says names are in the clear, since the ids beside them are not',
+        () {
+      // `scan hit` already hashes the id (FB-33). Disclosing "we list devices"
+      // without saying the NAMES are verbatim would leave a reader assuming the
+      // same treatment applied to both halves of the line.
+      final note =
+          header(rawPacketLog: true).firstWhere((l) => l.contains('nearby'));
+      expect(note, startsWith('note: '));
+      expect(': '.allMatches(note), hasLength(1),
+          reason: 'the ingest recipes read a value with a greedy `sed "s/.*: "`');
+      expect(note, isNot(contains('\n')));
+    });
+  });
+
   // The contract this group states was, until design 0034, "the preamble may
   // only grow at the end". It now has a pinned TRAILER as well — the layout
   // line, which §8 requires to be last — so the contract is restated as a
@@ -117,12 +189,15 @@ void main() {
     test('adding it changes nothing else about the preamble', () {
       final without = header();
       final with_ = header(rawPacketLog: true);
-      // Head unchanged, trailer unchanged, and exactly two lines inserted
-      // between them: `raw packet log: on` plus the FB-37 disclosure. The
-      // `+2` count is the same assertion it always was.
+      // Head unchanged, trailer unchanged, and a known number of lines
+      // inserted between them. The count went 2 → 3 on 2026-08-09 when the
+      // scan-roster disclosure joined the middle; the assertion is unchanged in
+      // kind — a new line still has to be written down here rather than slip in
+      // under a looser matcher. The three are: `raw packet log: on`, the FB-37
+      // BLE-address note, and the scan-roster note.
       expect(with_.take(4), without.take(4));
       expect(with_.last, without.last);
-      expect(with_.length, without.length + 2);
+      expect(with_.length, without.length + 3);
       // Nothing was inserted BEFORE the head, either — the old
       // `sublist(0, without.length)` check covered that implicitly and it must
       // not be lost with it.

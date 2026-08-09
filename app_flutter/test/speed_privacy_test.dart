@@ -203,9 +203,21 @@ void main() {
     });
 
     test('a row written with no speed keeps the column NULL, not 0.0', () {
-      // Link 2, at the storage end. Null is the only value that can mean "no
-      // measurement"; 0.0 would claim the phone was measured standing still,
-      // which is the same lie in the database that G2 forbids on screen.
+      // Link 2, at the storage end. This sample carries NO speed measurement at
+      // all — the switch was never on, so nothing was ever folded into the
+      // minute. Null is the only value that can say so. Writing 0.0 would put a
+      // measurement in the database that was never taken, which is the same lie
+      // there that G2 forbids on screen.
+      //
+      // 🔴 NARROWED 2026-08-09 (FB-56). This comment used to say that `0.0`
+      // "would claim the phone was measured standing still" — as though a
+      // recorded zero were inherently a lie. It is not, and since FB-56 it is
+      // routinely TRUE: a stationary phone on a good fix now sustains a live,
+      // clamped 0.0, and that value lands here legitimately. The two facts have
+      // separated rather than merged — `null` went back to meaning "nothing was
+      // measured" and `0.0` started meaning "measured, standing still". What
+      // this test pins is the FIRST of those, and it is untouched: with no
+      // speed sample in the minute at all, the column stays null.
       sqfliteFfiInit();
       return () async {
         final db = await AppDatabase.open(
