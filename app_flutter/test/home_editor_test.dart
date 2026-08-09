@@ -17,7 +17,16 @@
 // today's generated layout. A snapshot would freeze the device list at the
 // moment of the reset, so a unit saved next week would never appear.
 //
+// 🔴 2026-08-09, design 0053: this page now opens a tutorial dialog on the
+// FIRST visit. Every test below pre-acknowledges its marker in `setUp`, so what
+// is being driven is still the editor and not a modal barrier. The dialog's own
+// behaviour — including the assertion that an unacknowledged marker really does
+// open it — lives in `home_editor_tutorial_test.dart`, so pre-acknowledging
+// here hides nothing.
+//
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
@@ -32,6 +41,7 @@ import 'package:open_smart_batt/ui/home/home_preview.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
+import 'package:open_smart_batt/ui/home/home_editor_tutorial.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -51,6 +61,18 @@ class _FakeBle extends BleService {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
+
+  // See the header: design 0053's tutorial is opt-out, and these tests opt out.
+  late Directory markerDir;
+  setUp(() async {
+    markerDir = await Directory.systemTemp.createTemp('osb_ack');
+    AckMarker.debugDirectoryOverride = markerDir;
+    await kHomeEditorTutorialAck.markAcknowledged();
+  });
+  tearDown(() {
+    AckMarker.debugDirectoryOverride = null;
+    if (markerDir.existsSync()) markerDir.deleteSync(recursive: true);
+  });
 
   Future<AppServices> boot(WidgetTester tester,
       {int devices = 1, String? stored}) async {
@@ -144,12 +166,30 @@ void main() {
         reason: '§4.9: the floor is a disabled control, not a message');
 
     // …and pressing it says nothing, because there is nothing to press.
+    //
+    // 🔴 NARROWED, not deleted, on 2026-08-09 (design 0053 §6). The page now
+    // has a tutorial dialog, so "this page shows no dialog at all" is no longer
+    // the truth — but the thing this line was really holding is not that. It is
+    // the SECOND half of the floor guard: the floor must be expressed by a dead
+    // control, never by a message produced in response to the tap. Deleting the
+    // line to make the file green again would have thrown that away and left
+    // nothing asserting it, so it is re-aimed at the tap instead of the page.
+    //
+    // `Dialog` as well as `AlertDialog`: the tutorial is a bare `Dialog`, and a
+    // matcher that only knew about `AlertDialog` would now pass no matter what
+    // the ✕ opened.
     await tester.tap(deletes.first, warnIfMissed: false);
     await settle(tester);
     expect(find.byType(SnackBar), findsNothing,
         reason: '§4.7: a sentence explaining our own UI is the thing this '
             'discipline forbids');
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing,
+        reason: '§4.9: the floor is a disabled control. A dialog opened BY THE '
+            'TAP is the "tap and be told" shape the ruling forbids — design '
+            '0053 overturned "no instructions anywhere", not this');
+    expect(find.byType(Dialog), findsNothing,
+        reason: 'the tutorial is opened by the ? action or by a first visit, '
+            'never by pressing a dead control');
     expect(HomeLayout.decode(s.settings.homeLayout)!.tiles, hasLength(1));
   });
 

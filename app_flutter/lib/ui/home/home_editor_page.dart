@@ -22,11 +22,30 @@
 ///    accessible route out of a grid somebody has made unusable, which is why it
 ///    is a plain button and not a long-press or a swipe.
 ///
-/// ## No instructions anywhere
+/// ## Instructions: in a dialog you asked for, nowhere else (design 0053)
 ///
-/// There is no "drag to reorder" line and no "at least one card is required".
-/// The grab handle and the greyed delete say both, and §4.7's whole point is
-/// that a sentence explaining our own UI is a sign the UI did not do its job.
+/// This section used to be titled "No instructions anywhere", and it was the
+/// code-side statement of design 0049 G5 / §3.7 and design 0046 §4.7 R11. The
+/// owner ruling of 2026-08-09 overturns that for this screen
+/// (「議題四 請推翻，以我現在的決定為準」): the editor now opens a tutorial
+/// dialog on the first visit, and an amber `?` in the app bar brings it back
+/// for ever after. `home_editor_tutorial.dart` is the content; design 0053 is
+/// the ruling, and 0049 / 0046 carry dated notes pointing at it.
+///
+/// 🔴 The half that did NOT change, because it is a different claim:
+///
+///  * **No sentence appears on this page's surface.** No "drag to reorder"
+///    label, no "at least one card is required" caption. The grab handle and
+///    the greyed ✕ still say both.
+///  * **No control explains itself after being pressed.** The floor is still a
+///    disabled button, and T-new-2b still asserts that pressing it produces
+///    neither a `SnackBar` nor a dialog. That assertion was NARROWED, not
+///    deleted, when the tutorial arrived — 0053 §6 says why deleting it would
+///    have thrown away the guard it was really holding.
+///
+/// The distinction the ruling draws: a reference you open, dismiss and can
+/// re-summon is a different object from an interruption fired by a tap on a
+/// control that will not work.
 ///
 /// ## 🔴 Every tile on this page is FAKE (design 0051 §5, ruling 2026-08-09)
 ///
@@ -60,7 +79,9 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/display_modules.dart';
+import '../widgets/dashed_border.dart';
 import '../widgets/industrial_card.dart';
+import 'home_editor_tutorial.dart';
 import 'home_preview.dart';
 import 'home_tiles.dart';
 
@@ -142,6 +163,27 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     _autoScrollTicker?.cancel();
     _autoScrollTicker = null;
     _autoScrollV = 0;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Post-frame, exactly like `_maybeShowDisclaimer`: reading the marker is a
+    // file lookup behind a `Future`, and `showDialog` needs a Navigator that
+    // has finished its first build.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  /// First visit only (design 0053, ruling M3).
+  ///
+  /// The checkbox inside starts checked, so the DEFAULT is "shown once" — but
+  /// unchecking it clears the marker and the dialog comes back, which is the
+  /// only reading under which the box is not decoration. Whatever happens, the
+  /// `?` action re-opens it on demand.
+  Future<void> _maybeShowTutorial() async {
+    if (await kHomeEditorTutorialAck.acknowledged()) return;
+    if (!mounted) return;
+    await showHomeEditorTutorial(context);
   }
 
   @override
@@ -283,6 +325,31 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
             color: context.colors.text,
           ),
         ),
+        // 🔴 AMBER, not `colors.muted` (design 0053).
+        //
+        // The entry point to this very page is an 18 px muted `Icons.tune` on
+        // the home grid, and the field result of that choice is on record from
+        // 2026-08-07:「主頁不是會有個主頁編輯的功能嗎…沒有這個功能呢」 — the
+        // user concluded the feature did not exist. A help affordance nobody
+        // finds is the same defect, one screen further in.
+        //
+        // The bar had a title and zero actions before this, so nothing had to
+        // move to make room.
+        actions: [
+          IconButton(
+            tooltip: l10n.homeEditTutorialTitle,
+            onPressed: () => showHomeEditorTutorial(context),
+            // On the ICON, not on the IconButton. `IconButton.color` reaches
+            // the glyph through an `IconTheme`, so the `Icon` widget itself
+            // still reports `color: null` — which means a test asserting the
+            // colour would have to assert the button's property and would then
+            // pass even if the icon overrode it. The thing that paints is the
+            // thing that carries the value.
+            icon: const Icon(Icons.help_outline,
+                size: 19, color: AppColors.amber),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -719,7 +786,10 @@ class _EmptySlot extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 30, bottom: 18),
       child: CustomPaint(
-        painter: _DashedBorderPainter(
+        // Shared with the tutorial's diagram (design 0053) — see
+        // `widgets/dashed_border.dart` for why the picture may not have its
+        // own dash pattern.
+        painter: DashedBorderPainter(
           color: highlighted ? AppColors.amber : context.colors.line,
           radius: AppTheme.radiusMd,
         ),
@@ -727,35 +797,6 @@ class _EmptySlot extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  const _DashedBorderPainter({required this.color, required this.radius});
-
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final rrect = RRect.fromRectAndRadius(
-        Offset.zero & size, Radius.circular(radius));
-    final path = Path()..addRRect(rrect);
-    for (final metric in path.computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(
-            metric.extractPath(d, (d + 5).clamp(0, metric.length)), paint);
-        d += 10;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter old) => old.color != color;
 }
 
 /// What follows the finger: a NAME, not a card.

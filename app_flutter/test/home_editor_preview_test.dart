@@ -25,6 +25,8 @@
 //    point of the ruling is that the editor must show heights that differ.
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
@@ -41,6 +43,7 @@ import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/g_force_card.dart';
 import 'package:open_smart_batt/ui/dashboard/speed_card.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
+import 'package:open_smart_batt/ui/home/home_editor_tutorial.dart';
 import 'package:open_smart_batt/ui/home/home_preview.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -65,6 +68,21 @@ const String kCalibration = '{"m":[1,0,0,0,1,0,0,0,1],"at":1754524800000}';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
+
+  // design 0053: the editor opens a tutorial dialog on the first visit. These
+  // tests are about what the editor DRAWS, so the marker is pre-set — a modal
+  // barrier over the grid would make every assertion below about a covered
+  // screen. The dialog has its own test file.
+  late Directory markerDir;
+  setUp(() async {
+    markerDir = await Directory.systemTemp.createTemp('osb_ack');
+    AckMarker.debugDirectoryOverride = markerDir;
+    await kHomeEditorTutorialAck.markAcknowledged();
+  });
+  tearDown(() {
+    AckMarker.debugDirectoryOverride = null;
+    if (markerDir.existsSync()) markerDir.deleteSync(recursive: true);
+  });
 
   Future<AppServices> boot(
     WidgetTester tester, {

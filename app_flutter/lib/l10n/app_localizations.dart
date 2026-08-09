@@ -1076,6 +1076,72 @@ abstract class AppLocalizations {
   /// **'Restore default layout'**
   String get homeEditRestoreDefaults;
 
+  /// Title of the home-editor tutorial dialog (design 0053), and the tooltip of the help action that re-opens it.
+  ///
+  /// In en, this message translates to:
+  /// **'How editing works'**
+  String get homeEditTutorialTitle;
+
+  /// Design 0053 step 1 lead. The six-dot Icons.drag_indicator is the ONLY Draggable in the editor; the card body sits inside an AbsorbPointer.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the handle at the top-left drags'**
+  String get homeEditTutorialDragLead;
+
+  /// Design 0053 step 1 body. The edge auto-scroll is _onDragMoved / _autoScrollTick in home_editor_page.dart.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold the six-dot handle at a card\'s top-left to move it. Pressing the card itself does nothing — that is left for scrolling the page. Hold the card near the top or bottom edge and the list scrolls along with you.'**
+  String get homeEditTutorialDragBody;
+
+  /// Design 0053 step 2 lead: the editor has three distinct drop targets.
+  ///
+  /// In en, this message translates to:
+  /// **'Where you let go decides what happens'**
+  String get homeEditTutorialDropLead;
+
+  /// Design 0053 step 2 body. Sources: HomeGridOps.swap (each keeps its span), moveToOwnRow, moveIntoSlot (sets span half — no shape button needed first, design 0049 §3.3).
+  ///
+  /// In en, this message translates to:
+  /// **'Drop on another card and the two swap places, each keeping its own width. Drop on the thin line between two rows and the card takes a row of its own. Drop into a dashed gap and it pairs with that gap\'s neighbour, becoming half width by itself.'**
+  String get homeEditTutorialDropBody;
+
+  /// Design 0053 step 3 lead. The control is the Icons.crop_16_9 / Icons.crop_square IconButton at a card's top-right.
+  ///
+  /// In en, this message translates to:
+  /// **'The shape button switches full and half width'**
+  String get homeEditTutorialShapeLead;
+
+  /// Design 0053 step 3 body. HomeGridOps.toggleSpan; normalise() is what gives a new half its empty partner.
+  ///
+  /// In en, this message translates to:
+  /// **'The frame button at a card\'s top-right switches it between full width and half width. A card that becomes half width gets a dashed gap beside it, waiting for a second card.'**
+  String get homeEditTutorialShapeBody;
+
+  /// Design 0053 step 4 lead.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove, add, and it saves itself'**
+  String get homeEditTutorialManageLead;
+
+  /// Design 0053 step 4 body. The floor is a disabled IconButton (design 0046 §4.9); _showAddSheet filters by product class; _apply calls _persist on every change.
+  ///
+  /// In en, this message translates to:
+  /// **'The cross removes a card. When one card is left it turns grey, because the home page cannot be empty. \"Add card\" below lists the cards your device actually has, and \"Restore default layout\" goes back to the arrangement the app works out by itself. There is no save button — every change is already saved.'**
+  String get homeEditTutorialManageBody;
+
+  /// Design 0053 checkbox, above the dialog's button. Starts CHECKED; unchecking clears the marker so the dialog returns on the next visit.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t show this again'**
+  String get homeEditTutorialDontShowAgain;
+
+  /// The tutorial dialog's only button.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get homeEditTutorialGotIt;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:
