@@ -216,33 +216,105 @@ falsifiable rather than taken on trust:
   power-ons 17 / cut-offs 0`. Seven and seventeen power-ons are plausible on
   their face; **no other alignment of these 11 bytes produces two plausible
   counters at once.**
-* **The connected-minutes field advances once per ~67 s, not once per
-  minute of wall clock.** Four units measured independently agree: 67.0 s/tick
-  over a 10.5 h single-connection capture (counter 11 → 573), 67.1 s/tick
-  median over 109 increments on a capacitor, 67.1 s/tick on a battery checked
-  against the unit's own RTC across 5.9 days (which also rules out a slow
-  oscillator — the tick unit itself is ~67 s; 2⁲⁶ µs = 67.109 s is a
+* **The connected-minutes field advances once per tick of a fixed interval,
+  not once per minute of wall clock — and the tick length is not the same on
+  every product family.** ~~Four units measured independently agree: 67.0
+  s/tick over a 10.5 h single-connection capture (counter 11 → 573), 67.1
+  s/tick median over 109 increments on a capacitor, 67.1 s/tick on a battery
+  checked against the unit's own RTC across 5.9 days (which also rules out a
+  slow oscillator — the tick unit itself is ~67 s; 2⁲⁶ µs = 67.109 s is a
   candidate, untested), and standby + connected × 67 s ≈ uptime on a power
-  bank (9/9 bursts). It advances at the *same* rate under near-zero current
-  and under 2 A, so it is time, not energy.
+  bank (9/9 bursts).~~
+
+  > 🔴 **Corrected 2026-08-09 — the corpus is two populations, not one
+  > value.** Re-measured over long windows (both minute fields non-decreasing,
+  > same power-on count at both ends, wall clock > 60 min per window), the
+  > tick falls into two tight groups:
+  >
+  > | Group | Units | s/tick |
+  > |---|---|---|
+  > | **61.0 s** | three motorcycle batteries — three independent units, three reporters, three phones (4,268 / 6,284 / 3,961 min of wall clock) | 60.98 / 60.99 / 61.00 — spread **±0.01 s** inside the group |
+  > | **67.1 s** | every other unit measured so far: car batteries, capacitors, power banks (five units) | 67.13 – 67.27 |
+  >
+  > The two groups are 6.2 s (10%) apart — 600× the spread inside either
+  > group — so this is not measurement noise. It is also not an artefact of
+  > summing the two fields: measuring a **single** field directly gives the
+  > same answer. On one 61.0 s unit the standby field alone advanced 1,161
+  > counts over 1,180.6 min (**61.01 s/tick**, 0.09% quantisation error); on a
+  > 67.1 s unit the connected field alone advanced 491 counts over 549.4 min
+  > (**67.13 s/tick**). Both minute fields tick at the same rate on any one
+  > unit.
+  >
+  > ⇒ **Establish which group a unit belongs to before converting either
+  > minute field into a duration.** `2⁲⁶ µs = 67.109 s` survives as an
+  > untested candidate **for the 67 s group only** — it cannot account for the
+  > 61 s group.
+  >
+  > Why this was missed for so long: the earlier samples were small enough
+  > (tens of increments) that 61 and 67 read as the same number, and the
+  > headline figure was taken from units that happen to all sit in the 67 s
+  > group.
+
+  Unaffected by the correction: on any one unit the field advances at the
+  *same* rate under near-zero current and under 2 A, so it is time, not
+  energy.
 * **The power-on counter increments by exactly 1 at a device reboot**, observed
   alongside two other independent reboot fingerprints (`0x3B` rewinding to a
   checkpoint, and the first telemetry frame after reconnect reading all zeros).
   Corpus-wide it steps by 1 and never decreases.
+
+  > 🔴 **Scope narrowed 2026-08-09 — no change of meaning, only of reach.**
+  > The counter itself still only steps up; that part is unaffected. What was
+  > implicitly protocol-wide is the *co-occurrence* of the three fingerprints,
+  > and that has only ever been established on **motorcycle batteries** (three
+  > independent units, no exception). Two counter-observations on other
+  > product families:
+  >
+  > * A `0x18` super-capacitor went from 4 to 68 power-ons — **≥64 reboots** —
+  >   while its `0x3B` **advanced monotonically and never rewound once**. Its
+  >   shortfall against wall clock tracked total *downtime*, not the number of
+  >   reboots (one reboot accounted for 532 min of shortfall, sixty-four
+  >   reboots for 425 min). ⇒ On the two families the clock reacts to a reboot
+  >   in **two different shapes**, so the battery observation and this one are
+  >   not the same mechanism sampled twice.
+  > * A car battery showed `0x3B` stepping discontinuously — backwards by
+  >   ~7 days inside a 16-minute window, and by ~24 h across a 57-minute
+  >   window seen from two different phones — with the power-on counter
+  >   **frozen** across all six bursts held for it.
+  >
+  > ⇒ Outside the motorcycle-battery family, **do not read "the power-on
+  > counter did not move" as "no reboot happened"**, and do not expect a
+  > rewind to accompany one.
 * Sleeps and cut-offs are **0 in every frame the corpus holds** (54,139 frames)
   — consistent with counters for states this project's captures never entered.
 
 #### Not settled
 
-* 🔲 **The standby-minutes field has partial corroboration but one open
+* ~~🔲 **The standby-minutes field has partial corroboration but one open
   outlier.** On two units, Δstandby + Δconnected accounts for 97–98% of the
   wall clock between bursts over multi-hour windows, which fits the since-wake
-  reading (a third unit reads 89% — unexplained). The unit reporting 2,705,779
-  was originally read as ~~about 5.1 years … possible for a cumulative
-  lifetime counter on an old pack~~ — 🔴 under the since-wake reading
-  (2026-08-07) that value cannot be a duration since last reboot and is now
-  the anomaly. Do not present either minute field to a user as a duration
-  until that outlier is explained.
+  reading (a third unit reads 89% — unexplained).~~ 🔴 **Settled 2026-08-09 —
+  there never was an outlier.** That spread is the two tick groups above, read
+  through a single tick constant: 97–98% is exactly what a **61.0 s** unit
+  produces (60 / 61.0 = 98.4%) and 89% is exactly what a **67.1 s** unit
+  produces (60 / 67.1 = 89.4%). The label was on the wrong unit — the one
+  called unexplained was the one agreeing with the 67 s headline figure, and
+  the two taken as confirming it were on the other tick.
+
+  **Methodology, and it matters below 89%:** measure coverage against the
+  unit's own `0x3B` RTC, **not against the phone's wall clock.** Wall clock
+  silently charges any stall or rewind of the device's own time base to the
+  standby field. One car battery covers only **84.6%** of a 7-day wall-clock
+  window but **100.0%** of the same window measured on its own RTC — the
+  93,607 s difference is device downtime, not counter error. Any check of
+  either minute field that spans a possible reboot must use the RTC as the
+  denominator and record the wall-clock-minus-RTC gap separately.
+
+* 🔲 **The 2,705,779 reading is still an anomaly.** It was originally read as
+  ~~about 5.1 years … possible for a cumulative lifetime counter on an old
+  pack~~ — 🔴 under the since-wake reading (2026-08-07) that value cannot be a
+  duration since last reboot. Do not present either minute field to a user as
+  a duration until it is explained.
 * 🔲 **Why some batteries send 10 and others 11** is unknown; firmware is the
   obvious guess and is untested.
 * 🚫 **Nothing here is decoded by this app.** These are system counters, not

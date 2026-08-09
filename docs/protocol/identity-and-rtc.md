@@ -88,16 +88,46 @@ timestamp; it is useful for ordering and for detecting a device reset.
 >
 > **And the observation that produced the hypothesis has a better explanation.**
 > "Restarts from the same base on every connection" is wrong on the quantifier:
-> it restarts on every **device reboot**, not every connection. Three mutually
+> it restarts on every **device reboot**, not every connection. ~~Three mutually
 > independent fingerprints mark a reboot — the register rewinds to a saved
 > checkpoint, `0x34`'s last byte increments, and the first telemetry frame after
-> reconnecting reads all zeros. Earlier captures could not tell the two apart
+> reconnecting reads all zeros.~~ Earlier captures could not tell the two apart
 > because they held a single connection each.
+>
+> 🔴 **Quantifier corrected 2026-08-09.** The verdict above stands — `0x3B` is
+> a calendar clock, and it does not restart per connection. What is wrong is
+> the count: **the three fingerprints are not always synchronous.** On
+> motorcycle batteries all three do coincide (three independent units, no
+> exception). On power banks the register rewinds to its checkpoint and the
+> first frame after reconnect reads all zeros **while the power-on counter
+> stays put**: one unit rewound to the same checkpoint at least ten times over
+> ten days, across five different calendar dates, with its `0x34` counters
+> frozen at 0 sleeps / 3 power-ons in every one of the 126 frames held for it.
+> ⇒ Treat the rewind and the all-zero first frame as reliably paired, and the
+> power-on counter as **confirming a reboot when it moves, never ruling one
+> out when it does not.**
+>
+> ⚠️ **Field-naming trap in the struck sentence.** "`0x34`'s last byte" is not
+> one field: in the LEN-11 layout the last byte is the **cut-off** counter
+> `[10]`, and in the LEN-10 layout it is the low half of the **power-on**
+> counter `[8:10]`. The fingerprint meant here — and the one measured above —
+> is the **power-on counter `[8:10]`**, in both layouts.
 >
 > ⇒ **A power bank whose `0x3B` shows a fixed base has an unset RTC**, exactly
 > like the year-2000 unit described at the top of this section. Rendering it to
 > a user is still wrong — but because the value is *unset*, not because the
 > register is not a clock.
+>
+> 🔴 **Counter-example 2026-08-09 — a fixed base does not imply an unset
+> clock.** One power bank returns to a fixed checkpoint whose value decodes to
+> a date in **2022**, with non-zero `MM` and `DD` — not the year-2000 factory
+> value, and not its stated manufacturing year (2021) either. So "fixed base"
+> and "never set" are two separate claims: a fixed base only says the unit
+> restores a saved checkpoint, it says nothing about what that checkpoint
+> holds. **The rendering rule is unchanged** — still do not show `0x3B` to a
+> user on a power bank — but the reason has to be the broader one: the value
+> is a restored checkpoint of unknown provenance, which covers the unset units
+> and this one alike.
 >
 > ⚠️ Whoever renders this: an unset unit is the common case, not the exception.
 
