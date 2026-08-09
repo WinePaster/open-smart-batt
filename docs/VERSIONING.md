@@ -264,6 +264,7 @@ tag），`bump` 那個 input 完全不會被用到。
 | `v0.6.15`–`v0.7.2` | 本機 `git push origin <tag>` | ✅ 正常觸發 |
 | `v0.7.5` / `v0.7.6` / `v0.7.7` | 同上 | ❌ 靜默 |
 | `v0.7.8` | 同上 | ✅ 又正常了 |
+| `v0.7.11` | 同上（2026-08-10） | ✅ 正常觸發 |
 
 三次都確認 tag 已經到 `origin`（`git ls-remote --tags`），workflow 是 `active`，
 `on.push.tags` 沒有改過，且 `.github/workflows/release.yml` 在該 tag 的 commit
