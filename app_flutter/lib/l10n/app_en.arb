@@ -435,8 +435,12 @@
   "homeEditTitle": "Edit home",
   "homeEditAddCard": "Add card",
   "homeEditRestoreDefaults": "Restore default layout",
+  "homeModuleClock": "Clock",
   "@homeModuleSpeed": {
     "description": "Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own."
+  },
+  "@homeModuleClock": {
+    "description": "Heading for the clock card (design 0052), used both on the card itself and in the home editor's add menu — the card reads this same key, so there is exactly one name for the module. No AM/PM or 12/24-hour wording belongs here: the day-period abbreviation comes from Flutter's own MaterialLocalizations, and the hour format follows the operating system."
   },
   "devicesNoSaved": "No saved devices yet",
   "devicesUnnamed": "Unnamed device",

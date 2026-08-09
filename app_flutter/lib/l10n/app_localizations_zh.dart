@@ -593,6 +593,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeEditRestoreDefaults => '回復預設版面';
 
   @override
+  String get homeModuleClock => '時鐘';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override

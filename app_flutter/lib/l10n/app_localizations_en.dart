@@ -624,6 +624,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeEditRestoreDefaults => 'Restore default layout';
 
   @override
+  String get homeModuleClock => 'Clock';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override

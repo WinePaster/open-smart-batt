@@ -186,6 +186,18 @@ void main() {
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
+      // clock (design 0052) — TRUE on all four for `speed`'s reason, and one
+      // more of its own: it does not read a sensor either, so unlike the two
+      // rows above there is not even a runtime state that could make it
+      // absent. `unknown` is false for the same reason every other row is —
+      // `forClass` returns null there (design 0050 D3), which is a statement
+      // about the CLASS lookup, not about the clock.
+      DisplayModule.clock: {
+        ProductClass.smartBattery: true,
+        ProductClass.supercapacitor: true,
+        ProductClass.powerBank: true,
+        ProductClass.unknown: false,
+      },
     };
 
     test('availability matches the table for every module × every class', () {

@@ -45,8 +45,10 @@ import 'home_preview.dart';
 ///
 /// Most reuse the heading their own card already carries (design 0046 §4.2
 /// mitigation ①: the home editor and the watchface picker must not invent a
-/// second name for one module). `speed` and `gForce` are the exceptions because
-/// their cards have no heading of their own.
+/// second name for one module). `speed` is the exception because its card has
+/// no heading of its own; `clock` is the reverse of that exception — its card
+/// reads its heading FROM here (`clock_card.dart`), so there is still exactly
+/// one string.
 ///
 /// `gForce` is present for completeness — the enum is exhaustive here — but the
 /// home editor does not offer it, so this entry is only reachable if a future
@@ -60,6 +62,7 @@ String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
       DisplayModule.energyPath => l10n.powerPathHeading,
       DisplayModule.speed => l10n.homeModuleSpeed,
       DisplayModule.gForce => l10n.gForceCardHeading,
+      DisplayModule.clock => l10n.homeModuleClock,
     };
 
 /// The glyph a module is drawn with, matching its own card's heading icon.
@@ -72,6 +75,7 @@ IconData homeModuleIcon(DisplayModule m) => switch (m) {
       DisplayModule.energyPath => Icons.bolt,
       DisplayModule.speed => Icons.navigation_outlined,
       DisplayModule.gForce => Icons.adjust,
+      DisplayModule.clock => Icons.schedule,
     };
 
 /// One tile of the home grid.

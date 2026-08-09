@@ -192,7 +192,13 @@ void main() {
       // will not compile — which is the point of the switch being exhaustive.
       expect(
         [for (final m in DisplayModule.values) if (m.isPhoneModule) m],
-        [DisplayModule.speed, DisplayModule.gForce],
+        // 🔴 THREE since design 0052. The group name says "the two that read no
+        // device" and is now one short — kept as written because the PROPERTY
+        // it guards is unchanged (a module is a phone module iff it reads no
+        // device), and rewriting the sentence to "the three" would only make
+        // the next reader do this arithmetic again. `clock` reads the phone's
+        // own time-of-day, so it belongs here for `speed`'s exact reason.
+        [DisplayModule.speed, DisplayModule.gForce, DisplayModule.clock],
       );
     });
 

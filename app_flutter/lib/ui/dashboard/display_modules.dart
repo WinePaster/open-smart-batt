@@ -78,19 +78,21 @@ class DisplayModules {
   /// 🔴 The modules EVERY class offers (design 0050 D1, 「通用」).
   ///
   /// Declared once rather than repeated in each class entry, because repeated
-  /// is how one of them gets forgotten. `speed` and `gForce` are here for a
-  /// different reason from the other two: they do not read the device at all
-  /// (`HomeTile.module(m)` with `deviceId == null`), so they are available to
-  /// every class precisely because they are irrelevant to all of them.
+  /// is how one of them gets forgotten. `speed`, `gForce` and `clock` are here
+  /// for a different reason from the other two: they do not read the device at
+  /// all (`HomeTile.module(m)` with `deviceId == null`), so they are available
+  /// to every class precisely because they are irrelevant to all of them.
   ///
   /// The MODULE is common; its CONTENT is not. A capacitor's readouts grid has
   /// no current cell and a power bank's chart plots SOC — see the per-class
-  /// fields below.
+  /// fields below. `clock` is the one member whose content is the same on all
+  /// four, because it is not about the device at all (design 0052).
   static const Set<DisplayModule> common = {
     DisplayModule.readouts,
     DisplayModule.chart,
     DisplayModule.speed,
     DisplayModule.gForce,
+    DisplayModule.clock,
   };
 
   /// What this class adds on top of [common]. A module in neither is not

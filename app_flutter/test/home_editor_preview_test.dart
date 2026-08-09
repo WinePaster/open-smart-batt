@@ -18,6 +18,12 @@
 //    is the ONLY thing left deciding. Without that the assertion would pass
 //    vacuously in any widget test, which is exactly how the hole survived.
 //
+//    Design 0052 adds `clock` to the same group for a much smaller reason: it
+//    arms a one-minute timer rather than a sensor. The RULE is identical — the
+//    editor mounts extracted bodies, never live cards — and keeping the third
+//    case beside the two is what stops "phone modules are previewed" from
+//    being remembered as "SENSOR modules are previewed".
+//
 //  T-editor-2 — every `DisplayModule` renders a real card body here, never the
 //    waiting tile. The failure it guards is a CALLER defect of the kind
 //    `display_module.dart` names: a module added to the enum and forgotten in
@@ -37,6 +43,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/clock_card.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/g_force_card.dart';
 import 'package:open_smart_batt/ui/dashboard/speed_card.dart';
@@ -200,6 +207,42 @@ void main() {
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 50));
       expect(s.speed.streaming, isFalse);
+    });
+
+    testWidgets('🔴 the clock previews a FIXED time and arms no timer',
+        (tester) async {
+      // design 0052 §7. The clock is the one card whose real value is always
+      // available, which makes it the one card somebody would be tempted to
+      // let run here — and a single live tile among eight sampled ones makes
+      // the other eight look broken rather than sampled. Owner ruling
+      // 2026-08-09:「請堅持編輯主頁就是假資料」.
+      //
+      // There is no「示範」label on it either:「不用放提示文字：示範」.
+      final s = await boot(tester, tiles: const [
+        HomeTile.module(DisplayModule.clock),
+        HomeTile.device('DEV-A'),
+      ]);
+      addTearDown(() => teardown(tester, s));
+      await pumpEditor(tester, s);
+
+      // The BODY, never the live card — the same seam that keeps `SpeedCard`
+      // out, for a smaller reason (a wasted rebuild, not a receiver).
+      expect(find.byType(ClockCardBody), findsOneWidget);
+      expect(find.byType(ClockCard), findsNothing,
+          reason: 'mounting a ClockCard arms a one-minute timer');
+      // The mockup's own 19:50, rendered as `7:50 PM` because the test host
+      // reports 12-hour (`alwaysUse24HourFormat` is false on the default test
+      // view). That the FORMAT follows the platform rather than the app is
+      // pinned in `clock_card_test.dart`; what matters here is the INSTANT.
+      expect(find.text('7:50'), findsOneWidget);
+      expect(find.text('PM'), findsOneWidget);
+
+      // …and ten minutes later it still reads the same time, because nothing
+      // is ticking. If a timer HAD been armed, `flutter_test` would also fail
+      // this test at teardown with "A Timer is still pending".
+      await tester.pump(const Duration(minutes: 10));
+      expect(find.text('7:50'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

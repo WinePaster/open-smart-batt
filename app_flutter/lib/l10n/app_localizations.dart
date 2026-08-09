@@ -1076,6 +1076,12 @@ abstract class AppLocalizations {
   /// **'Restore default layout'**
   String get homeEditRestoreDefaults;
 
+  /// Heading for the clock card (design 0052), used both on the card itself and in the home editor's add menu — the card reads this same key, so there is exactly one name for the module. No AM/PM or 12/24-hour wording belongs here: the day-period abbreviation comes from Flutter's own MaterialLocalizations, and the hour format follows the operating system.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock'**
+  String get homeModuleClock;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

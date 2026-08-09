@@ -55,6 +55,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../dashboard/clock_card.dart';
 import '../dashboard/g_force_card.dart';
 import '../dashboard/speed_card.dart';
 import '../widgets/industrial_card.dart';
@@ -224,13 +225,34 @@ LiveTrendBuffer buildPreviewTrend(ProductClass cls, DateTime now) {
   return buf;
 }
 
+/// The clock the editor shows.
+///
+/// 🔴 FIXED, and it does not run. Owner ruling 2026-08-09:「請堅持編輯主頁就是
+/// 假資料」— the clock is not exempt from that just because it happens to be the
+/// one card whose real value is always available. A live clock in the editor
+/// would be the single tile in that screen telling the truth, which makes the
+/// other eight look broken rather than sampled.
+///
+/// No「示範」label on it either, for the same reason nothing else in the editor
+/// carries one (design 0046 §4.7, re-ruled 2026-08-09:「不用放提示文字：示範」).
+///
+/// The value is the mockup's own 19:50 (`design/mockups/0052-clock-card.html`),
+/// so the shipped editor and the approved picture read the same. It is also a
+/// deliberately WIDE rendering in both formats — two digits before the colon in
+/// 24-hour, and 12-hour turns it into `7:50 PM` / `7:50 下午`, which is the
+/// widest thing this card can be asked to draw. Same principle as every other
+/// number in this file.
+/// (`final`, not `const` — [DateTime] has no const constructor.)
+final DateTime kPreviewClockTime = DateTime(2026, 8, 9, 19, 50);
+
 /// A phone module's card, WITHOUT its sensor.
 ///
 /// 🔑 The one place the editor cannot simply hand fake data to the real card.
 /// `SpeedCard` and `GForceCard` open the GNSS gate and the accelerometer in
-/// `didChangeDependencies` — the side effect happens on MOUNT, so no value you
-/// pass can prevent it. The editor mounts the extracted bodies instead, which
-/// are the same pixels with no controller behind them.
+/// `didChangeDependencies`, and `ClockCard` arms a one-minute timer in
+/// `initState` — the side effect happens on MOUNT, so no value you pass can
+/// prevent it. The editor mounts the extracted bodies instead, which are the
+/// same pixels with no controller behind them.
 ///
 /// An exhaustive switch with no `default`, deliberately: this is the exact
 /// shape `display_module.dart` argues for, and a new module added to the enum
@@ -251,6 +273,11 @@ Widget previewCardFor(DisplayModule m, HomePreview p) {
         reading: kPreviewGForce,
         trail: kPreviewGTrail,
       );
+    case DisplayModule.clock:
+      // No `now:` seam used here at all — the BODY takes an instant, so there
+      // is nothing to inject and nothing to forget to inject. The timer lives
+      // in `ClockCard`, which this branch does not build.
+      return ClockCardBody(time: kPreviewClockTime);
     // Device modules draw through `dashboardCardFor` with `p.tele`; this
     // function is only asked about phone modules.
     case DisplayModule.gaugeVoltage:

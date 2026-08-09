@@ -27,6 +27,7 @@ import 'package:open_smart_batt/data/data.dart';
 import 'dart:io';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/ui/dashboard/clock_card.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -255,6 +256,42 @@ void main() {
       await pumpHome(tester, s);
 
       expect(find.text('Add your first device'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('🔴 and a clock tile draws a TIME, on an empty install, offline',
+        (tester) async {
+      // design 0052 §2, end to end and on the hardest input this file has:
+      // nothing saved, nothing connected, no permission granted, no
+      // calibration. Every other module in the registry renders
+      // `HomeWaitingTile` here; this one renders the same thing it renders at
+      // any other moment, because it has no upstream that can be missing.
+      //
+      // It is the whole reason the card exists, and it is the sentence in
+      // `clock_card.dart`'s library comment that every OTHER card's "what does
+      // offline look like" reasoning has to be exempted from.
+      final s = await boot(tester, devices: const []);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setHomeLayout(
+          const HomeLayout([HomeTile.module(DisplayModule.clock)]).encode()));
+      await pumpHome(tester, s);
+
+      expect(find.byType(ClockCard), findsOneWidget,
+          reason: 'the home page mounts the LIVE card — unlike the editor');
+      expect(find.byType(HomeWaitingTile), findsNothing,
+          reason: 'the clock has no waiting state, offline or otherwise');
+      expect(find.text('--'), findsNothing);
+      expect(find.text('CLOCK'), findsOneWidget);
+      // The time itself is whatever it is right now; what is pinned is that
+      // SOMETHING numeric was drawn, in the `H:MM` shape, rather than a
+      // placeholder. Pinning the value would be racing the wall clock, which
+      // is the thing `ClockCard.now` exists to avoid — and it is pinned
+      // exactly in `clock_card_test.dart`, with the clock injected.
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Text && w.data != null && RegExp(r'^\d{1,2}:\d{2}$').hasMatch(w.data!)),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   });
