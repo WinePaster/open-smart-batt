@@ -163,42 +163,80 @@ void main() {
     // This is a MORE precise question, not a weaker one: "which face is drawn"
     // was only ever a proxy for "what is on it", and the proxy has stopped
     // being exact.
-    test('with it off, NO face on ANY class lays out the speed module', () {
+    // 🔴 RE-POINTED AGAIN 2026-08-09, by ruling (design 0051 ruling A). The
+    // QUESTION is still unchanged word for word. What changed this time is
+    // WHERE the speed module can be laid out at all: the owner ruled that the
+    // speed and G cards appear on the HOME grid only, so `riding` no longer
+    // carries them and no watchface does.
+    //
+    // That makes the old pair of tests useless in opposite directions: the
+    // "off" one became vacuously true (no face lays out speed in EITHER state
+    // now), and the "on" one asserted `[Watchface.riding]` and simply fails.
+    // Deleting them would have left the chain's first link unasserted, which is
+    // exactly how FB-33 happened, so they are re-pointed rather than dropped —
+    // `HomeLayout.renderedFor` is now the ONLY place the module can be laid
+    // out, so it is now the only place worth asking.
+    //
+    // The third test below is the one that keeps the old question alive: it
+    // pins the ruling itself, so a future change that quietly puts speed back
+    // on a watchface reopens the gate and fails here first.
+    const battery = SavedDevice(
+        id: 'DEV-A', alias: 'A', name: 'A',
+        productClass: ProductClass.smartBattery);
+
+    test('with it off, no HOME layout lays out the speed module', () {
       // Link 1, and the load-bearing one. The GNSS gate's first condition is
       // "a speed card is mounted", and only a laid-out module produces one.
       // No module ⇒ no card ⇒ no stream ⇒ no sample ⇒ no row. Everything
       // downstream is unreachable rather than merely unwritten.
       //
       // Both G states are swept, because "G available" is exactly the input
-      // that makes `riding` reachable with speed off — testing only the
-      // convenient one would leave the new hole untested.
+      // that used to make `riding` reachable with speed off — the hole moved
+      // layers, so the sweep moves with it.
+      //
+      // A device tile rides along so the layout cannot come out empty: an empty
+      // render falls back to defaults, and a test that passed by looking at the
+      // defaults instead of at the layout under test would be vacuous.
       for (final gAvailable in [false, true]) {
-        for (final cls in ProductClass.values) {
-          for (final stored in Watchface.values) {
-            final drawn = renderedModules(cls, stored, off,
-                gForceAvailable: gAvailable);
-            expect(drawn, isNot(contains(DisplayModule.speed)),
-                reason: '$cls / ${stored.slug} (G available: $gAvailable) '
-                    'would draw the speed card with detection off, which '
-                    'would open the GNSS stream');
-          }
-        }
+        final drawn = const HomeLayout([
+          HomeTile.module(DisplayModule.speed),
+          HomeTile.module(DisplayModule.gForce),
+          HomeTile.device('DEV-A'),
+        ]).renderedFor(const [battery], off, gForceAvailable: gAvailable);
+        expect(drawn.tiles.map((t) => t.module),
+            isNot(contains(DisplayModule.speed)),
+            reason: 'G available: $gAvailable — the home grid would mount the '
+                'speed card with detection off, which would open the GNSS '
+                'stream');
       }
     });
 
-    test('and with it on, exactly one face does', () {
+    test('and with it on, the home grid does', () {
       // The mirror image: a guard that held because the module was unreachable
       // in BOTH states would be vacuous.
+      final drawn = const HomeLayout([HomeTile.module(DisplayModule.speed)])
+          .renderedFor(const [battery], on, gForceAvailable: false);
+      expect(drawn.tiles.map((t) => t.module),
+          contains(DisplayModule.speed));
+    });
+
+    test('and NO watchface lays it out, in either state (design 0051 A)', () {
+      // The ruling itself, pinned. Not a duplicate of the first test: that one
+      // asks whether the SETTING is honoured, this one asks whether the device
+      // detail page is still out of the picture at all. Sweeping both settings
+      // states is the point — if speed came back to a face, `on` would catch it
+      // even though `off` still looked fine.
       for (final cls in ProductClass.values) {
-        final withSpeed = [
-          for (final f in Watchface.values)
-            if (renderedModules(cls, f, on, gForceAvailable: false)
-                .contains(DisplayModule.speed))
-              f,
-        ];
-        // `unknown` is forced to `standard` by design 0034 Q4, so it gets none.
-        expect(withSpeed, cls == ProductClass.unknown ? isEmpty : [Watchface.riding],
-            reason: '$cls');
+        for (final f in Watchface.values) {
+          for (final s in [off, on]) {
+            for (final g in [false, true]) {
+              expect(renderedModules(cls, f, s, gForceAvailable: g),
+                  isNot(contains(DisplayModule.speed)),
+                  reason: '$cls / ${f.slug} / detection ${s.speedDetection} / '
+                      'G available: $g');
+            }
+          }
+        }
       }
     });
 
