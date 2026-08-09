@@ -116,6 +116,18 @@ lets VADJ be *estimated* for a unit that never sent `0x30` (invert the formula).
 **An estimate is not a measurement**: label it as such, and never persist it as if
 the device had reported it.
 
+> ⚠️ **The identity holds in steady state only (caveat added 2026-08-09).**
+> `0x24` and `0x37` are not sampled at the same instant, so during a fast
+> transient — an engine crank collapsing the rail within a second — the two
+> sides describe different moments. Across six independently-serialled units
+> (car and motorcycle batteries) the corpus shows transient mismatches above
+> 1.0 V, worst 2.17 V, while the steady-state median error on the same units is
+> 0.020 V; no constant frame-offset realigns them. Two practical consequences:
+> **do not treat a transient mismatch as a decoder fault**, and **never invert
+> the formula on transient samples to estimate VADJ** — a crank-window sample
+> reproduces VADJ ~15 % low. Use samples where PVLT/SVLT is stable for a few
+> seconds on either side.
+
 **Until `0x30` arrives, DVOL has no meaningful value.** Scaling raw DVOL by a
 default of 1.0 yields plausible-looking but meaningless numbers (a real capture
 produced `0.162 V` per cell where the true value was ≈3.28 V). A client must
