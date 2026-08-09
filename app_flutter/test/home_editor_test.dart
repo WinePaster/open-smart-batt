@@ -244,6 +244,63 @@ void main() {
     }
   });
 
+
+  testWidgets('🔴 holding a drag at the bottom edge scrolls the grid',
+      (tester) async {
+    // design 0049 §C5 was written as "not now: the grid is short". That was
+    // wrong about the symptom — reported from TestFlight on 0.7.10: with more
+    // than a screenful of cards you cannot REORDER AT ALL, because every target
+    // you might drop on is off screen.
+    //
+    // A short viewport is used deliberately: the defect only exists when the
+    // content is taller than the view, and a full-height test surface would
+    // pass whatever the code did.
+    final s = await boot(tester, devices: 6);
+    addTearDown(() => teardown(tester, s));
+    await pumpEditor(tester, s);
+    // AFTER pumpEditor, which sets a tall surface of its own.
+    tester.view.physicalSize = const Size(390, 560) * 3;
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pump();
+
+    final list = find.byType(Scrollable).first;
+    final before = tester.widget<Scrollable>(list).controller!.offset;
+    expect(tester.getSize(find.byType(ListView).first).height,
+        lessThan(1000), reason: 'sanity: the viewport is short');
+
+    // Pick up the first card and hold the finger near the bottom of the grid.
+    final handle = find.byIcon(Icons.drag_indicator).first;
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(const Duration(milliseconds: 150));
+    final box = tester.getRect(find.byType(ListView).first);
+    final target = Offset(box.center.dx, box.bottom - 12);
+    // Stepped, with pumps: a single jump can be delivered before the drag
+    // recogniser has claimed the pointer, so `onDragUpdate` never fires.
+    final start = tester.getCenter(handle);
+    for (var i = 1; i <= 5; i++) {
+      await gesture.moveTo(Offset.lerp(start, target, i / 5)!);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    // The ticker runs on a real timer, so the frames have to be pumped.
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final during = tester.widget<Scrollable>(list).controller!.offset;
+    expect(during, greaterThan(before),
+        reason: 'the grid must move under a finger held at its edge');
+
+    // …and it must STOP when the finger lifts, or the list scrolls on its own.
+    await gesture.up();
+    await tester.pump();
+    final atRelease = tester.widget<Scrollable>(list).controller!.offset;
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(tester.widget<Scrollable>(list).controller!.offset, atRelease,
+        reason: 'a ticker left running is a list that scrolls by itself');
+  });
+
   testWidgets('🔴 the empty slot is on screen without dragging (Q2)',
       (tester) async {
     // It is the only thing on this page that says "something can go here", and

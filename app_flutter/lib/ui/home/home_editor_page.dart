@@ -29,6 +29,8 @@
 /// that a sentence explaining our own UI is a sign the UI did not do its job.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -51,6 +53,81 @@ class HomeEditorPage extends StatefulWidget {
 class _HomeEditorPageState extends State<HomeEditorPage> {
   /// Null until the first frame has read the stored layout (or generated one).
   List<HomeTile>? _tiles;
+
+  // ---------------------------------------------------------------------------
+  // 🔴 Auto-scroll while dragging.
+  //
+  // Design 0049 §C5 left this out and said so: "`ReorderableListView` gives it
+  // free, custom drag does not; the grid is short, so not now." That reasoning
+  // was wrong about the symptom. It is not "you cannot reach a far row" — with
+  // more than a screenful of cards you cannot REORDER AT ALL, because every
+  // target you might drop on is off screen. Reported from TestFlight the day
+  // 0.7.10 shipped:「當我有多個元件的時候，我需要拖動順序，那我整個編輯卡片的
+  // 畫面需要捲動」.
+  //
+  // The mechanism: `Draggable.onDragUpdate` hands us the pointer in global
+  // coordinates, we compare it against the grid's own viewport rect, and a
+  // ticker walks the scroll offset while the pointer sits in an edge band. The
+  // velocity is a FIELD rather than a closure capture — a timer that captured
+  // it would keep the speed from the moment it started and ignore the finger
+  // moving deeper into the band.
+  // ---------------------------------------------------------------------------
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _gridKey = GlobalKey();
+  Timer? _autoScrollTicker;
+  double _autoScrollV = 0;
+
+  /// Height of the band at each end of the viewport that pulls the list.
+  static const double _kEdgeBand = 76;
+
+  /// Pixels per tick at the very edge, and at the inner lip of the band.
+  static const double _kMaxStep = 18;
+  static const double _kMinStep = 4;
+
+  void _onDragMoved(Offset globalPosition) {
+    final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return _stopAutoScroll();
+    final top = box.localToGlobal(Offset.zero).dy;
+    final bottom = top + box.size.height;
+    final y = globalPosition.dy;
+
+    double v = 0;
+    if (y < top + _kEdgeBand) {
+      // Proportional, so the list creeps near the lip and moves briskly at the
+      // very edge — a fixed speed is either too slow to be useful or too fast
+      // to aim with.
+      final depth = ((top + _kEdgeBand) - y).clamp(0.0, _kEdgeBand);
+      v = -(_kMinStep + (_kMaxStep - _kMinStep) * (depth / _kEdgeBand));
+    } else if (y > bottom - _kEdgeBand) {
+      final depth = (y - (bottom - _kEdgeBand)).clamp(0.0, _kEdgeBand);
+      v = _kMinStep + (_kMaxStep - _kMinStep) * (depth / _kEdgeBand);
+    }
+    _autoScrollV = v;
+    if (v == 0) return _stopAutoScroll();
+    _autoScrollTicker ??= Timer.periodic(
+        const Duration(milliseconds: 16), (_) => _autoScrollTick());
+  }
+
+  void _autoScrollTick() {
+    if (!_scroll.hasClients || _autoScrollV == 0) return;
+    final max = _scroll.position.maxScrollExtent;
+    final next = (_scroll.offset + _autoScrollV).clamp(0.0, max);
+    if (next == _scroll.offset) return; // already at an end
+    _scroll.jumpTo(next);
+  }
+
+  void _stopAutoScroll() {
+    _autoScrollTicker?.cancel();
+    _autoScrollTicker = null;
+    _autoScrollV = 0;
+  }
+
+  @override
+  void dispose() {
+    _stopAutoScroll();
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -193,6 +270,8 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     }
 
     return ListView(
+      key: _gridKey,
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(15, 4, 15, 10),
       children: [
         for (var r = 0; r <= rows.length; r++) ...[
@@ -213,6 +292,8 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                         onToggleSpan: () => _toggleSpan(starts[r] + c),
                         onDropOnTile: _onDropOnTile,
                         onDropInSlot: _onDropInSlot,
+                        onDragMoved: _onDragMoved,
+                        onDragStopped: _stopAutoScroll,
                       ),
                     ),
                   ),
@@ -406,6 +487,8 @@ class _EditorCell extends StatefulWidget {
     required this.onToggleSpan,
     required this.onDropOnTile,
     required this.onDropInSlot,
+    required this.onDragMoved,
+    required this.onDragStopped,
   });
 
   final int index;
@@ -415,6 +498,11 @@ class _EditorCell extends StatefulWidget {
   final VoidCallback onToggleSpan;
   final void Function(int from, int to) onDropOnTile;
   final void Function(int from, int slot) onDropInSlot;
+
+  /// Pointer moved during a drag, in global coordinates — drives the page's
+  /// auto-scroll. See `_HomeEditorPageState._onDragMoved`.
+  final void Function(Offset globalPosition) onDragMoved;
+  final VoidCallback onDragStopped;
 
   @override
   State<_EditorCell> createState() => _EditorCellState();
@@ -465,6 +553,14 @@ class _EditorCellState extends State<_EditorCell> {
                         Draggable<int>(
                           data: widget.index,
                           dragAnchorStrategy: pointerDragAnchorStrategy,
+                          onDragUpdate: (d) =>
+                              widget.onDragMoved(d.globalPosition),
+                          // Both, because they are different endings: one is a
+                          // drop on a target, the other a release over nothing.
+                          // Missing either leaves the list scrolling by itself.
+                          onDragEnd: (_) => widget.onDragStopped(),
+                          onDraggableCanceled: (_, _) =>
+                              widget.onDragStopped(),
                           feedback: _DragGhost(tile: widget.tile),
                           childWhenDragging: Opacity(
                             opacity: 0.3,
