@@ -663,6 +663,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cardViewClockDigital => 'Digital';
 
   @override
+  String get homeEditTutorialTitle => 'How editing works';
+
+  @override
+  String get homeEditTutorialDragLead =>
+      'Only the handle at the top-left drags';
+
+  @override
+  String get homeEditTutorialDragBody =>
+      'Hold the six-dot handle at a card\'s top-left to move it. Pressing the card itself does nothing — that is left for scrolling the page. Hold the card near the top or bottom edge and the list scrolls along with you.';
+
+  @override
+  String get homeEditTutorialDropLead =>
+      'Where you let go decides what happens';
+
+  @override
+  String get homeEditTutorialDropBody =>
+      'Drop on another card and the two swap places, each keeping its own width. Drop on the thin line between two rows and the card takes a row of its own. Drop into a dashed gap and it pairs with that gap\'s neighbour, becoming half width by itself.';
+
+  @override
+  String get homeEditTutorialShapeLead =>
+      'The shape button switches full and half width';
+
+  @override
+  String get homeEditTutorialShapeBody =>
+      'The frame button at a card\'s top-right switches it between full width and half width. A card that becomes half width gets a dashed gap beside it, waiting for a second card.';
+
+  @override
+  String get homeEditTutorialManageLead => 'Remove, add, and it saves itself';
+
+  @override
+  String get homeEditTutorialManageBody =>
+      'The cross removes a card. When one card is left it turns grey, because the home page cannot be empty. \"Add card\" below lists the cards your device actually has, and \"Restore default layout\" goes back to the arrangement the app works out by itself. There is no save button — every change is already saved.';
+
+  @override
+  String get homeEditTutorialDontShowAgain => 'Don\'t show this again';
+
+  @override
+  String get homeEditTutorialGotIt => 'Got it';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override

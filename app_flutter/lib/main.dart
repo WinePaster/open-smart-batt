@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -407,10 +406,10 @@ class _RootShellState extends State<RootShell> {
   }
 
   Future<void> _maybeShowDisclaimer() async {
-    if (await Disclaimer.acknowledged()) return;
+    if (await kDisclaimerAck.acknowledged()) return;
     if (!mounted) return;
     await showCommunityDisclaimer(context);
-    await Disclaimer.markAcknowledged();
+    await kDisclaimerAck.markAcknowledged();
   }
 
   @override
@@ -642,36 +641,15 @@ class _ConnectionPill extends StatelessWidget {
 // Community disclaimer (mockup startup `.modal` / `.sheet`).
 // ---------------------------------------------------------------------------
 
-/// Persists whether the user has acknowledged the startup disclaimer. Stored as
-/// a marker file in the app-support dir (this is OUR own state, not the
-/// vendor's). Versioned so a future material change to the text can re-prompt.
-class Disclaimer {
-  Disclaimer._();
-
-  static const String _markerName = 'disclaimer_ack_v1';
-
-  static Future<File> _marker() async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/$_markerName');
-  }
-
-  static Future<bool> acknowledged() async {
-    try {
-      return (await _marker()).exists();
-    } catch (_) {
-      // If we can't read the marker, fall back to showing the notice.
-      return false;
-    }
-  }
-
-  static Future<void> markAcknowledged() async {
-    try {
-      await (await _marker()).writeAsString(DateTime.now().toIso8601String());
-    } catch (_) {
-      // Best-effort; worst case the notice shows again next launch.
-    }
-  }
-}
+/// Whether the user has acknowledged the startup disclaimer.
+///
+/// The body of this used to live here as a private `Disclaimer` class. Design
+/// 0053 needed a second flag of exactly the same shape (the home-editor
+/// tutorial), so the mechanism moved to [AckMarker] — a marker file in the
+/// app-support dir, versioned so a material change to the text can re-prompt.
+/// `data/ack_marker.dart` carries the reasoning for the file, including the
+/// settings-table trap it avoids.
+const AckMarker kDisclaimerAck = AckMarker('disclaimer_ack_v1');
 
 /// Shows the one-time community disclaimer: non-official / non-commercial
 /// notice, GitHub link, and the do-not-re-lock safety warning. Reusable from
