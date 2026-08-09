@@ -32,7 +32,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
@@ -59,13 +58,22 @@ import 'speed_card.dart';
 /// on a session with no DVOL yields no DVOL card — exactly as before this
 /// existed — while the export preamble still reports `cells`, which is how a
 /// reader tells "no data" apart from "not on the page".
+///
+/// 🔴 [tele] is a PARAMETER, not a `context.watch` (design 0051 §5). This
+/// function used to read `TelemetryController` out of the provider tree itself,
+/// which is right on the two surfaces that show real readings and wrong on the
+/// third: the home editor has to draw these cards with FAKE data so a layout
+/// can be judged with nothing connected. Handing the data in is what makes that
+/// possible WITHOUT a `previewMode` flag — see [CardTelemetry] for why a flag
+/// was refused. Every caller watches its own source and passes it; the real
+/// paths physically cannot pass a fake one.
 Widget? dashboardCardFor(
   BuildContext context,
   DisplayModule m, {
   required ProductClass shellClass,
+  required CardTelemetry tele,
 }) {
   final l10n = AppLocalizations.of(context);
-  final tele = context.watch<TelemetryController>();
   // 🔴 `?? packFallback` and NOT a D3 early-return.
   //
   // This function is reached only after routing has decided the link is a pack
@@ -365,24 +373,38 @@ Widget? dashboardCardFor(
       // port-side voltage AND the current, which is why the 0037 "output
       // voltage" and "current" tiles were removed from the grid above (Q5+Q12:
       // the same number must not appear twice).
-      return const PowerPathRow();
+      //
+      // The one module card that reads a provider of its own, so it is the one
+      // that needs both facts handed down (design 0051 §5). [shellClass] in
+      // particular: the row's own "am I a power bank" gate used to read
+      // `ConnectionController.packLabel`, which answers `unknown` in the home
+      // editor and would have drawn the preview as an empty box.
+      return PowerPathRow(tele: tele, shellClass: shellClass);
 
-    // design 0042. UNCONDITIONAL, and that is the design: the master switch is
-    // applied by [renderedWatchface] one level up, so reaching this line means
-    // the switch is on. A second `settings.speedDetection ? … : null` here would
-    // be a duplicate decision point — the exact shape that let a `riding` face
-    // render as a copy of `compact` (design 0042 §3.9). The card has its own
-    // waiting / no-permission states and never vanishes.
+    // design 0042. UNCONDITIONAL, and that is the design: availability is
+    // applied one level up — by `HomeLayout.renderedFor` on the home surface,
+    // which since design 0051 is the ONLY surface that places this module. A
+    // second `settings.speedDetection ? … : null` here would be a duplicate
+    // decision point, the exact shape that let a `riding` face render as a copy
+    // of `compact` (design 0042 §3.9). The card has its own waiting /
+    // no-permission states and never vanishes.
+    //
+    // 🔴 MOUNTING THIS OPENS THE GNSS GATE. `SpeedCard.didChangeDependencies`
+    // calls `setFaceWantsSpeed(true)`, so this line is condition 1 of design
+    // 0042 §3.4 — which is why the home EDITOR must never reach it. It does not:
+    // `_ModuleTile` sends phone modules to `previewPhoneCard` instead, through
+    // an exhaustive switch that a new phone module cannot slip past.
     case DisplayModule.speed:
       return const SpeedCard();
 
     // design 0045. UNCONDITIONAL for the same reason as `speed` above, and it
     // is worth spelling out because this module has TWO conditions rather than
-    // one: the switch, and a valid calibration. Both are applied by
-    // `renderedModules`, so reaching this line means the card has axes to name.
-    // A `controller.available ? … : null` here would be the duplicate decision
+    // one: the switch, and a valid calibration. Both are applied by the home
+    // resolver, so reaching this line means the card has axes to name. A
+    // `controller.available ? … : null` here would be the duplicate decision
     // point the 2026-08-07 ruling removed — and a second place for the two
-    // answers to drift apart.
+    // answers to drift apart. Mounting it starts the accelerometer, so the same
+    // editor rule applies.
     case DisplayModule.gForce:
       return const GForceCard();
   }

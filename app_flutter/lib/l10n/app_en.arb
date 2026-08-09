@@ -430,7 +430,6 @@
   "deviceBadgeOffline": "Not connected",
   "deviceBadgeFailed": "Connection failed",
   "deviceBadgeNotAnswering": "Not answering",
-  "deviceDetailWatchface": "Watchface",
   "homeAddFirstDevice": "Add your first device",
   "homeModuleSpeed": "Speed",
   "homeEditTitle": "Edit home",
@@ -590,9 +589,9 @@
   "settingsThemeDark": "Dark",
   "settingsThemeAuto": "Auto",
   "settingsSpeedDetectionLabel": "Speed detection",
-  "settingsSpeedDetectionSub": "Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.",
+  "settingsSpeedDetectionSub": "Add a GPS speed card to the home page. Off by default.",
   "@settingsSpeedDetectionSub": {
-    "description": "design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export."
+    "description": "design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export. 🔴 REWRITTEN 2026-08-09 (design 0051): it used to say 'on the dashboard (adds the Riding watchface)' and both halves became false in the same commit — the watchface picker was removed and the speed module was taken off every face. A sub-line naming a surface the card is no longer on is worse than no sub-line: it sends the user who turned the switch on to look in the wrong place."
   },
   "settingsSpeedUnitLabel": "Speed unit",
   "speedConsentTitle": "Turn on speed detection?",
@@ -689,9 +688,9 @@
   "@settingsGMeterLabel": {
     "description": "Label of the G meter master switch (design 0045 Q2). Independent of speed detection: it uses the accelerometer, not GPS."
   },
-  "settingsGMeterSub": "Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.",
+  "settingsGMeterSub": "Add a longitudinal / lateral G card to the home page. Needs a one-off calibration. Off by default.",
   "@settingsGMeterSub": {
-    "description": "Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that."
+    "description": "Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that. 🔴 REWRITTEN 2026-08-09 (design 0051): it used to name the 'Riding' watchface, which no longer carries this card — or exists as a choice. Same reasoning as settingsSpeedDetectionSub."
   },
   "settingsGCalibrationLabel": "Calibrate mount",
   "@settingsGCalibrationLabel": {
@@ -802,25 +801,6 @@
   "@gWizardRecalibrate": {
     "description": "Discards this attempt and restarts."
   },
-  "watchfaceRiding": "Riding",
-  "settingsWatchfaceLabel": "Watchface",
-  "settingsWatchfaceGuidance": "Change it on the device's page",
-  "@settingsWatchfaceGuidance": {
-    "description": "Sub-line of the Settings signpost row (design 0046 R20). The picker itself moved to the device detail page; this row states where it went and nothing else. `settingsWatchfaceSub` and `settingsWatchfaceSubNoDevice` are KEPT even though this screen no longer uses the second one — see the l10n note in the 0046 plan §6."
-  },
-  "settingsWatchfaceSub": "Which cards the dashboard shows for the connected device, and in what order.",
-  "@settingsWatchfaceSub": {
-    "description": "design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'."
-  },
-  "settingsWatchfaceSubNoDevice": "This setting belongs to a device. Connect one and save it, then it can be changed here.",
-  "@settingsWatchfaceSubNoDevice": {
-    "description": "Shown while the row is disabled. The row is kept visible rather than hidden, following the background-monitoring row on iOS: a user who has heard of the feature needs to see WHY it is unavailable."
-  },
-  "watchfaceStandard": "Standard",
-  "watchfaceCompact": "Compact",
-  "watchfaceDiagnostic": "Diagnostic",
-  "settingsRestoreDisplayLabel": "Restore default display",
-  "settingsRestoreDisplayDone": "Restored the standard watchface.",
   "settingsTempUnitLabel": "Temperature unit",
   "settingsLanguageLabel": "Language",
   "settingsLanguageSub": "Interface language (System: follow device)",

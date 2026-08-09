@@ -1046,12 +1046,6 @@ abstract class AppLocalizations {
   /// **'Not answering'**
   String get deviceBadgeNotAnswering;
 
-  /// No description provided for @deviceDetailWatchface.
-  ///
-  /// In en, this message translates to:
-  /// **'Watchface'**
-  String get deviceDetailWatchface;
-
   /// No description provided for @homeAddFirstDevice.
   ///
   /// In en, this message translates to:
@@ -1568,10 +1562,10 @@ abstract class AppLocalizations {
   /// **'Speed detection'**
   String get settingsSpeedDetectionLabel;
 
-  /// design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export.
+  /// design 0042 §3.9. The master switch is off by default because turning it on costs a location permission, continuous GNSS and a speed series inside every export. 🔴 REWRITTEN 2026-08-09 (design 0051): it used to say 'on the dashboard (adds the Riding watchface)' and both halves became false in the same commit — the watchface picker was removed and the speed module was taken off every face. A sub-line naming a surface the card is no longer on is worse than no sub-line: it sends the user who turned the switch on to look in the wrong place.
   ///
   /// In en, this message translates to:
-  /// **'Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.'**
+  /// **'Add a GPS speed card to the home page. Off by default.'**
   String get settingsSpeedDetectionSub;
 
   /// No description provided for @settingsSpeedUnitLabel.
@@ -1772,10 +1766,10 @@ abstract class AppLocalizations {
   /// **'G meter'**
   String get settingsGMeterLabel;
 
-  /// Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that.
+  /// Sub-line of the G meter switch. It names the calibration because a user who turns this on and sees nothing has hit exactly that. 🔴 REWRITTEN 2026-08-09 (design 0051): it used to name the 'Riding' watchface, which no longer carries this card — or exists as a choice. Same reasoning as settingsSpeedDetectionSub.
   ///
   /// In en, this message translates to:
-  /// **'Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.'**
+  /// **'Add a longitudinal / lateral G card to the home page. Needs a one-off calibration. Off by default.'**
   String get settingsGMeterSub;
 
   /// Label of the calibration row, under the switch. It both starts a first calibration and redoes an existing one (design 0045 section 3.5 - the wizard lives in Settings, never on the dashboard).
@@ -1933,66 +1927,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calibrate again'**
   String get gWizardRecalibrate;
-
-  /// No description provided for @watchfaceRiding.
-  ///
-  /// In en, this message translates to:
-  /// **'Riding'**
-  String get watchfaceRiding;
-
-  /// No description provided for @settingsWatchfaceLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Watchface'**
-  String get settingsWatchfaceLabel;
-
-  /// Sub-line of the Settings signpost row (design 0046 R20). The picker itself moved to the device detail page; this row states where it went and nothing else. `settingsWatchfaceSub` and `settingsWatchfaceSubNoDevice` are KEPT even though this screen no longer uses the second one — see the l10n note in the 0046 plan §6.
-  ///
-  /// In en, this message translates to:
-  /// **'Change it on the device\'s page'**
-  String get settingsWatchfaceGuidance;
-
-  /// design 0034 Q3: the setting is stored per device, so the sub-caption says 'the connected device' rather than 'the dashboard'.
-  ///
-  /// In en, this message translates to:
-  /// **'Which cards the dashboard shows for the connected device, and in what order.'**
-  String get settingsWatchfaceSub;
-
-  /// Shown while the row is disabled. The row is kept visible rather than hidden, following the background-monitoring row on iOS: a user who has heard of the feature needs to see WHY it is unavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'This setting belongs to a device. Connect one and save it, then it can be changed here.'**
-  String get settingsWatchfaceSubNoDevice;
-
-  /// No description provided for @watchfaceStandard.
-  ///
-  /// In en, this message translates to:
-  /// **'Standard'**
-  String get watchfaceStandard;
-
-  /// No description provided for @watchfaceCompact.
-  ///
-  /// In en, this message translates to:
-  /// **'Compact'**
-  String get watchfaceCompact;
-
-  /// No description provided for @watchfaceDiagnostic.
-  ///
-  /// In en, this message translates to:
-  /// **'Diagnostic'**
-  String get watchfaceDiagnostic;
-
-  /// No description provided for @settingsRestoreDisplayLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore default display'**
-  String get settingsRestoreDisplayLabel;
-
-  /// No description provided for @settingsRestoreDisplayDone.
-  ///
-  /// In en, this message translates to:
-  /// **'Restored the standard watchface.'**
-  String get settingsRestoreDisplayDone;
 
   /// No description provided for @settingsTempUnitLabel.
   ///

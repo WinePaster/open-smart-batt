@@ -46,7 +46,38 @@
 /// `dataGated`. T2 pins the lists; T2b pins that a difference can actually be
 /// SEEN. Do not delete it as a duplicate of T2 — it is not.
 ///
+/// ## 🔴 2026-08-09: there is no picker, and there is one face
+///
+/// Design 0051, owner ruling: **「同意拿掉入口」**. The device page's 錶盤
+/// button and the Settings signpost are gone, and [effectiveWatchface] resolves
+/// every stored slug to [Watchface.fixed]. Everything below still exists and is
+/// still exercised — the enum, the lists, `DisplayLayout`'s round-trip, the
+/// `display_layout` column — because the feature shipped on 2026-08-04 and was
+/// still being changed on 2026-08-08; removing the entry point and removing the
+/// skeleton cost about the same to do and very different amounts to undo. What
+/// the corpus said, and what made the ruling cheap: **11 of 11 usable captures
+/// are `face=standard`. Nobody has ever selected a non-default face.**
+///
+/// Two consequences run through this file and are written where they bite:
+///
+///  * `speed` and `gForce` are on NO face (ruling A: 「表盤不會有速度卡跟Ｇ值卡
+///    這兩個應該只會在主頁出現」). The home grid is now their only surface.
+///    [renderedModules]'s phone-module filter and [ridingSelectable] therefore
+///    have nothing left to filter; they are kept as skeleton and are documented
+///    as such rather than deleted.
+///  * `riding` degenerates to `compact`'s list. That WOULD be the design 0041
+///    collapse — except the property design 0041 protects is "a face a user can
+///    PICK must be visibly different from the other one they can pick", and
+///    there is no picking. T2b is replaced rather than deleted; see
+///    `watchface_ui_test.dart`.
+///
 /// ## 🔴 The chart is on `diagnostic` ONLY, and that costs something real
+///
+/// ⚠️ HISTORICAL from here to the end of this section: design 0051's `fixed`
+/// face carries the chart, so the cost recorded below — "a user who never opens
+/// Settings loses the live chart" — is PAID OFF. It is kept because it explains
+/// why `standard` looks the way it does, and `standard` is what every capture
+/// in the corpus was taken under.
 ///
 /// Design 0040 Q1 first proposed `standard` = the old three cards PLUS the
 /// chart appended last, so that removing the toggle would not take the live
@@ -108,6 +139,23 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
       ? DisplayModule.energyPath
       : (entry.has(DisplayModule.cells) ? DisplayModule.cells : null);
   switch (face) {
+    // 🔑 THE face (design 0051). 圓錶 → 趨勢圖 → 數字格 → 類別卡.
+    //
+    // Why not `diagnostic`'s order, which already had all four cards: that
+    // order puts the chart first, and its justification (design 0041 Q4) is
+    // that the people who reach `diagnostic` reached it ON PURPOSE, for the
+    // curve. Once this is the only page, "on purpose" describes nobody. The
+    // cost `diagnostic` accepted in exchange is written below — the chart has
+    // no points for the first seconds of a link, so the top of the page is a
+    // waiting card — and a waiting card at the top of the ONLY dashboard is
+    // the same complaint the home grid's compact waiting tile was written for
+    // (「這樣的版面設計真的很醜」, 2026-08-07).
+    //
+    // So: the instrument first, because it is the one card readable at a
+    // glance AND the one with something to draw from the first frame. Then the
+    // chart, then the numbers, then the class's own card.
+    case Watchface.fixed:
+      return [gauge, DisplayModule.chart, DisplayModule.readouts, ?extra];
     // Card for card, in order, exactly what the dashboard drew before design
     // 0034 existed — and still exactly that after Phase 1. This IS the
     // implementation of G4 ("a user who never opens the setting sees no
@@ -183,8 +231,21 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // is the reading that has to be legible at a glance, and the ball sits
     // directly under it because the two are read together — "what was I doing
     // when the current spiked" is one question.
+    //
+    // 🔴 BOTH PHONE MODULES REMOVED, 2026-08-09 (design 0051 ruling A). What is
+    // left is `compact`'s list, and that is not an oversight: this face is
+    // unreachable — nothing selects a face any more — so the paragraphs above
+    // describe a page that no longer renders. They stay because the enum value
+    // stays, and a slug with no explanation is worse than one with a stale one.
+    //
+    // Why the modules had to leave the FACE layer rather than just its
+    // callers: the export preamble prints [watchfaceModules] verbatim (see
+    // [exportLayoutValue]), so a `speed` left here would keep claiming a GPS
+    // card on every capture; and the card factory turns `speed` into a
+    // `SpeedCard`, which opens the GNSS gate — a module named by a face is one
+    // resolver bug away from being built.
     case Watchface.riding:
-      return [DisplayModule.speed, DisplayModule.gForce, gauge, ?extra];
+      return [gauge, ?extra];
   }
 }
 
@@ -234,6 +295,13 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
 /// back only when EVERY card that distinguishes it is gone. "G on but not yet
 /// calibrated" does not count — otherwise picking `riding` would land on the
 /// collapsed layout this function exists to make unreachable.
+///
+/// 🔴 **VESTIGIAL since design 0051.** There is no picker, `riding` is never
+/// resolved to, and it carries no phone module even if it were. Kept, with the
+/// history above, because it is the shape the answer has to take if the picker
+/// ever returns — and deleting it would delete the record of why the predicate
+/// is "speed OR G" rather than "speed", which took two field reports to get
+/// right. Its one surviving caller is [renderedWatchface]'s dead branch.
 bool ridingSelectable(AppSettings s, {required bool gForceAvailable}) =>
     s.speedDetection || gForceAvailable;
 
@@ -305,6 +373,18 @@ Watchface renderedWatchface(
 /// Each of the first three differs from `compact` (`[gauge, extra]`) by
 /// something visible, which is the T2b property; the fourth never happens.
 ///
+/// ## 🔴 The table above is HISTORY as of design 0051
+///
+/// No face names a phone module any more, so this filter has nothing to drop
+/// and `renderedModules` == `watchfaceModules` for every input. It is kept as a
+/// choke point rather than inlined: `speed` and `gForce` are still in the
+/// [DisplayModule] enum, still available to the home grid, and a future face
+/// that named one would go through here rather than around it. The privacy
+/// chain's first link is unchanged in FORM — no module ⇒ no card ⇒ no GNSS —
+/// it has simply moved wholesale to `HomeLayout.renderedFor`, which is now its
+/// only live instance.
+///
+
 /// ⚠️ The export preamble deliberately does NOT come through here — see
 /// [exportLayoutValue].
 List<DisplayModule> renderedModules(
@@ -323,19 +403,38 @@ List<DisplayModule> renderedModules(
   ];
 }
 
-/// The watchface actually drawn for [cls], given what is stored.
+/// The watchface actually drawn. 🔑 **Always [Watchface.fixed]** (design 0051).
 ///
-/// Design 0034 Q4: an UNCLASSIFIED unit does not get a custom layout. Its
-/// screen already asks the user what the device is; rearranging it under a
-/// preference carried over from another unit would change the page a user is
-/// being asked to interpret. (A `pending` unit never reaches here at all — the
-/// router hands it [ClassPendingView], which reads no layout.)
+/// Both arguments are ignored, and both are kept, because this is the ONE choke
+/// point every render path and the export preamble already pass through. Making
+/// the ruling land here rather than at each caller is what makes "there is one
+/// face" true by construction instead of true by review — and it is what
+/// silently turns a device that stored `compact` on v0.7.10 into the fixed
+/// layout, with no migration and no crash ([DisplayLayout.decode] never throws,
+/// so the old row is read, ignored, and left where it is).
 ///
-/// This is the second half of the T3 discipline: an unusable SLUG is rejected
-/// when it is decoded ([DisplayLayout.decode]), and an inapplicable CONTEXT is
-/// rejected here. Neither is left to the UI to remember.
+/// ## What happened to design 0034 Q4
+///
+/// Q4 said an UNCLASSIFIED unit keeps `standard`, because its screen is already
+/// asking the user what the device is and rearranging it under **a preference
+/// carried over from another unit** would change the page they are being asked
+/// to interpret. That second half was the whole argument, and design 0051
+/// removed preferences. Nothing is carried over, so there is nothing to protect
+/// the unclassified page from: it draws the same four cards as everything else,
+/// through `packFallback`, gaining the chart and nothing else.
+///
+/// That is also why this does NOT adopt design 0050 D3 ("no class ⇒ no
+/// class-specific cards"). D3 is a rule about the HOME surface, where a device
+/// really can have no class and a tile would be permanently blank. Here the
+/// caller has already been routed as a pack (`RoutingDecision.pack`), and
+/// `dashboardCardFor` deliberately falls back to the generic pack entry rather
+/// than early-returning — see its `?? packFallback` comment.
+///
+/// [stored] survives in the signature rather than being deleted so that
+/// restoring a picker is a one-line change here rather than a re-plumbing of
+/// four call sites.
 Watchface effectiveWatchface(ProductClass cls, Watchface stored) =>
-    cls == ProductClass.unknown ? Watchface.standard : stored;
+    Watchface.fixed;
 
 /// Machine-readable summary of the layout in force, for the export preamble
 /// (design 0034 §8 / Q7).

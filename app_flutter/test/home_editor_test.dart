@@ -28,6 +28,7 @@ import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/ui/home/home_preview.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
@@ -171,9 +172,16 @@ void main() {
             'moment; NULL keeps the generator, so a unit saved next week '
             'appears by itself');
     // And the page now shows what the generator produces for two devices.
+    //
+    // 🔴 Counted by TILE, not by alias, since design 0051. Every card in this
+    // screen draws sample data now — including the device name — so 'unit 0'
+    // is not on screen and its absence is the ruling working, not a
+    // regression. The two delete buttons and the two preview cards are the
+    // honest count of "the generator produced two device tiles".
     expect(find.byIcon(Icons.close), findsNWidgets(2));
-    expect(find.text('unit 0'), findsOneWidget);
-    expect(find.text('unit 1'), findsOneWidget);
+    expect(find.text(kPreviewAlias), findsNWidgets(2));
+    expect(find.text('unit 0'), findsNothing,
+        reason: 'the editor shows sample data, never the real device list');
   });
 
   testWidgets('the editor offers no protection card, and excludes none either',

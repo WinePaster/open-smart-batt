@@ -39,6 +39,7 @@ import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_cards.dart';
 import '../widgets/industrial_card.dart';
 import '../util/relative_time.dart';
+import 'home_preview.dart';
 
 /// The heading a module is named by, on the home grid and in its editor.
 ///
@@ -80,9 +81,23 @@ class HomeTileView extends StatelessWidget {
     required this.tile,
     this.onOpenDevices,
     this.onOpenDetail,
+    this.preview,
   });
 
   final HomeTile tile;
+
+  /// Non-null ONLY in the layout editor (design 0051 §5). When it is set every
+  /// tile below draws from it and nothing reads a controller — which is how the
+  /// editor stops mounting live speed / G cards, and how it stops showing eight
+  /// identical `--` boxes when nothing is connected.
+  ///
+  /// 🔴 It is a parameter rather than a `previewMode` flag on purpose. The
+  /// failure mode of a flag is "forget to clear it and the real dashboard draws
+  /// plausible fake voltages"; there is no equivalent here, because the real
+  /// call sites (`home_page.dart`) simply do not pass one. See
+  /// [CardTelemetry]'s library comment for the four times this codebase has
+  /// been bitten by the other shape.
+  final HomePreview? preview;
 
   /// Switch to the devices tab (the empty-state card's action).
   final VoidCallback? onOpenDevices;
@@ -99,9 +114,14 @@ class HomeTileView extends StatelessWidget {
         return _DeviceTile(
           deviceId: tile.deviceId!,
           onTap: onOpenDetail,
+          preview: preview,
         );
       case HomeTileKind.module:
-        return _ModuleTile(module: tile.module!, deviceId: tile.deviceId);
+        return _ModuleTile(
+          module: tile.module!,
+          deviceId: tile.deviceId,
+          preview: preview,
+        );
       // 🔴 Nothing at all on the HOME page — the gap beside a lone 1x1 is the
       // point of it, and drawing a dotted box there would put a control-looking
       // thing on a page with no controls. The editor draws it visibly, because
@@ -152,24 +172,36 @@ class _AddDeviceTile extends StatelessWidget {
 
 /// One unit's summary: live values, or the last one WITH its age.
 class _DeviceTile extends StatelessWidget {
-  const _DeviceTile({required this.deviceId, this.onTap});
+  const _DeviceTile({required this.deviceId, this.onTap, this.preview});
 
   final String deviceId;
   final void Function(String deviceId)? onTap;
+  final HomePreview? preview;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final devices = context.watch<DeviceController>();
-    final conn = context.watch<ConnectionController>();
-    final saved = devices.deviceFor(deviceId);
-    // 🔴 `isOnline && it is THIS unit`. Reading `isOnline` alone would draw the
-    // connected device's telemetry under another unit's name — FB-41's
-    // attribution mistake, in the UI.
-    //
-    // 📌 交付二 seam: this one expression becomes `conn.isOnlineFor(deviceId)`
-    // when several links may be up at once (design 0046 §8 seam 1).
-    final live = conn.isOnline && conn.connectedDeviceId == deviceId;
+    final p = preview;
+    // 🔴 Every provider read below is inside the `p == null` branch. In the
+    // editor this tile touches no controller at all — not for the alias, not
+    // for the link state, not for the reading (design 0051 §5).
+    final SavedDevice? saved;
+    final bool live;
+    if (p != null) {
+      saved = p.device;
+      live = p.live;
+    } else {
+      final devices = context.watch<DeviceController>();
+      final conn = context.watch<ConnectionController>();
+      saved = devices.deviceFor(deviceId);
+      // 🔴 `isOnline && it is THIS unit`. Reading `isOnline` alone would draw
+      // the connected device's telemetry under another unit's name — FB-41's
+      // attribution mistake, in the UI.
+      //
+      // 📌 交付二 seam: this one expression becomes `conn.isOnlineFor(deviceId)`
+      // when several links may be up at once (design 0046 §8 seam 1).
+      live = conn.isOnline && conn.connectedDeviceId == deviceId;
+    }
     final alias = (saved?.alias.isNotEmpty ?? false)
         ? saved!.alias
         : l10n.devicesUnnamed;
@@ -216,7 +248,7 @@ class _DeviceTile extends StatelessWidget {
             ),
             const SizedBox(height: 11),
             if (live)
-              _LiveReading(deviceId: deviceId)
+              _LiveReading(deviceId: deviceId, preview: preview)
             else
               _CachedReading(device: saved),
           ],
@@ -257,15 +289,24 @@ class _LiveDot extends StatelessWidget {
 /// `watchfaces.dart` picks one: a power bank reads state of charge, everything
 /// else reads the rail.
 class _LiveReading extends StatelessWidget {
-  const _LiveReading({required this.deviceId});
+  const _LiveReading({required this.deviceId, this.preview});
 
   final String deviceId;
+  final HomePreview? preview;
 
   @override
   Widget build(BuildContext context) {
-    final tele = context.watch<TelemetryController>();
-    final conn = context.watch<ConnectionController>();
-    final isBank = conn.displayClass == ProductClass.powerBank;
+    final p = preview;
+    final CardTelemetry tele;
+    final bool isBank;
+    if (p != null) {
+      tele = p.tele;
+      isBank = p.shellClass == ProductClass.powerBank;
+    } else {
+      tele = context.watch<TelemetryController>();
+      isBank = context.watch<ConnectionController>().displayClass ==
+          ProductClass.powerBank;
+    }
     final value = isBank
         ? (tele.socPercent == null ? '--' : tele.socPercent.toString())
         : (tele.pvlt == null ? '--' : tele.pvlt!.toStringAsFixed(2));
@@ -320,26 +361,54 @@ class _BigValue extends StatelessWidget {
   final String unit;
   final bool muted;
 
+  /// 🔴 The number and its unit scale together, and never wrap.
+  ///
+  /// Found by design 0051's editor preview, which draws a real 13.87 V instead
+  /// of `--`: at 32 px, four significant figures plus ` V` need ~180 px, and a
+  /// half-width device tile on a 320 dp phone offers 107. Unfixed it is a
+  /// RenderFlex overflow — the striped bar drawn across the one number the card
+  /// exists to show. It was in the shipped build; nothing had ever rendered a
+  /// live half-width device tile at that width.
+  ///
+  /// `scaleDown` rather than a smaller font, and `Expanded` around it rather
+  /// than a bare `FittedBox`: at full width nothing scales at all, so the
+  /// common case is byte-for-byte what it was. Same remedy, same reasoning and
+  /// the same field-report lineage as `_GReadout` and `SpeedCard._Reading`.
   @override
   Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(
-            value,
-            style: AppTextStyles.mono(context).copyWith(
-              fontSize: 32,
-              fontWeight: FontWeight.w700,
-              height: 1,
-              color: muted ? context.colors.muted : context.colors.text,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            unit,
-            style: TextStyle(
-              fontSize: 13,
-              color: muted ? context.colors.muted : AppColors.amber,
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: AppTextStyles.mono(context).copyWith(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
+                      color:
+                          muted ? context.colors.muted : context.colors.text,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    unit,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: muted ? context.colors.muted : AppColors.amber,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -353,7 +422,7 @@ class _BigValue extends StatelessWidget {
 /// module two ways. Otherwise it is the waiting state, and that is a hard rule
 /// rather than a fallback: see the library comment.
 class _ModuleTile extends StatelessWidget {
-  const _ModuleTile({required this.module, this.deviceId});
+  const _ModuleTile({required this.module, this.deviceId, this.preview});
 
   final DisplayModule module;
 
@@ -361,8 +430,32 @@ class _ModuleTile extends StatelessWidget {
   /// the phone's own GNSS), in which case it is ALWAYS live.
   final String? deviceId;
 
+  final HomePreview? preview;
+
   @override
   Widget build(BuildContext context) {
+    final p = preview;
+    if (p != null) {
+      // 🔴 PHONE MODULES NEVER REACH `dashboardCardFor` HERE.
+      //
+      // Not an optimisation — a leak fix. `dashboardCardFor(speed)` returns a
+      // real `SpeedCard`, which calls `setFaceWantsSpeed(true)` from
+      // `didChangeDependencies`; the editor is a pushed route while the shell's
+      // tab is still `home`, so all three of design 0042's gate conditions were
+      // open and the GNSS receiver ran for as long as somebody was arranging
+      // their home page. `previewCardFor` draws the extracted bodies instead.
+      //
+      // Routed on `isPhoneModule`, an exhaustive switch, NOT on an
+      // `== speed || == gForce` chain — see `display_module.dart` for why that
+      // shape has failed here four times.
+      if (module.isPhoneModule) return previewCardFor(module, p);
+      // A device module with fake data. It can still return null — a class that
+      // has no such card must not grow one in the editor either — and the
+      // waiting tile is the honest rendering of that.
+      return dashboardCardFor(context, module,
+              shellClass: p.shellClass, tele: p.tele) ??
+          HomeWaitingTile(module: module);
+    }
     final conn = context.watch<ConnectionController>();
     final id = deviceId;
     // No phone-module gate here, deliberately: `HomeLayout.renderedFor` — the
@@ -371,14 +464,21 @@ class _ModuleTile extends StatelessWidget {
     // design 0042 W4 removed, just on a different surface.
     final live =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
-    if (!live) return _WaitingTile(module: module);
+    if (!live) return HomeWaitingTile(module: module);
     final shellClass = homeTileShellClass(id, conn);
-    return dashboardCardFor(context, module, shellClass: shellClass) ??
-        _WaitingTile(module: module);
+    return dashboardCardFor(context, module,
+            shellClass: shellClass,
+            tele: context.watch<TelemetryController>()) ??
+        HomeWaitingTile(module: module);
   }
 }
 
 /// A module with nothing to draw: its name, and `--`.
+///
+/// PUBLIC only so a test can name it (design 0051 §6, test T-editor-2): the
+/// editor's guarantee is "no tile in this screen is a waiting tile", and that
+/// sentence needs a type to point at. It is not part of any other file's
+/// vocabulary — nothing outside this file constructs one.
 ///
 /// No sentence explaining why (design 0046 §4.7) — the device card says when
 /// that unit was last seen, and tapping through is how you get a live one.
@@ -392,8 +492,8 @@ class _ModuleTile extends StatelessWidget {
 /// A card with nothing to say should take the room of something with nothing
 /// to say. The heading still identifies it, so the layout is still legible as
 /// the arrangement the user chose; it just stops shouting.
-class _WaitingTile extends StatelessWidget {
-  const _WaitingTile({required this.module});
+class HomeWaitingTile extends StatelessWidget {
+  const HomeWaitingTile({super.key, required this.module});
 
   final DisplayModule module;
 

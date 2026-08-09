@@ -27,6 +27,27 @@
 /// There is no "drag to reorder" line and no "at least one card is required".
 /// The grab handle and the greyed delete say both, and §4.7's whole point is
 /// that a sentence explaining our own UI is a sign the UI did not do its job.
+///
+/// ## 🔴 Every tile on this page is FAKE (design 0051 §5, ruling 2026-08-09)
+///
+/// 「請堅持編輯主頁就是假資料 … 只有回到主頁才是真實資料」, and 「不用放提示
+/// 文字：示範」— no watermark, no badge, nothing saying "demo".
+///
+/// It reads as a cosmetic ruling and is not. Two real defects were shipping:
+///
+///  1. **You could not tell the cards apart.** With nothing connected — the
+///     commonest state — all eight module tiles collapsed to the same
+///     compressed `--` box, so the screen for arranging cards by height showed
+///     no heights.
+///  2. **The speed and G cards were LIVE here.** They read the phone, not a
+///     device, so the live check passed and the real cards mounted — starting
+///     the GNSS receiver and the accelerometer from a layout editor, with the
+///     drag ghost mounting a SECOND copy. `home_preview.dart` has the full
+///     account.
+///
+/// The mechanism is a [HomePreview] handed to every [HomeTileView] on this
+/// page, and nowhere else. See `home_preview.dart` for why it is a parameter
+/// rather than a `previewMode` flag.
 library;
 
 import 'dart:async';
@@ -40,6 +61,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/display_modules.dart';
 import '../widgets/industrial_card.dart';
+import 'home_preview.dart';
 import 'home_tiles.dart';
 
 /// Edit the home grid. Writes on every change; "done" is just a way back.
@@ -189,6 +211,50 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   void _onDropInSlot(int from, int slot) =>
       _apply(HomeGridOps.moveIntoSlot(_tiles!, from, slot));
 
+  // ---------------------------------------------------------------------------
+  // The preview (design 0051 §5)
+  // ---------------------------------------------------------------------------
+
+  /// Frozen at the first build, and that is the point.
+  ///
+  /// The trend buffer is 180 synthetic points; rebuilding it on every setState
+  /// would be wasteful, but the real reason it is a field is that a preview
+  /// whose curve changed while you dragged a card would be read as live data.
+  /// [_previewNow] freezes the clock for the same reason — "3 天前" must not
+  /// tick over to "4 天前" mid-edit.
+  late final DateTime _previewNow = DateTime.now();
+  final Map<ProductClass, LiveTrendBuffer> _previewTrends = {};
+
+  /// The fake data for one tile.
+  ///
+  /// The CLASS follows the tile's own device (design 0051 §5.4): a power bank's
+  /// readouts grid and trend chart carry different content from a pack's, so a
+  /// preview that faked everything as a battery would show the wrong card to
+  /// the users most likely to be confused by it. A tile bound to no device — a
+  /// phone module — has no class and does not need one.
+  ///
+  /// [live] is true for the FIRST device-summary tile only: one link can be up
+  /// at a time today, so exactly one live card and the rest cached is what the
+  /// real page looks like. It also gets both shapes on screen, and they differ
+  /// in height (the cached one carries an age line).
+  HomePreview _previewFor(HomeTile tile, {required bool live}) {
+    final devices = context.read<DeviceController>();
+    final settings = context.read<SettingsController>().settings;
+    final id = tile.deviceId;
+    final cls = id == null
+        ? ProductClass.unknown
+        : (devices.deviceFor(id)?.productClass ?? ProductClass.unknown);
+    return buildHomePreview(
+      shellClass: cls,
+      live: live,
+      tempUnit: settings.tempUnit,
+      speedUnit: settings.speedUnit,
+      now: _previewNow,
+      trend: _previewTrends.putIfAbsent(
+          cls, () => buildPreviewTrend(cls, _previewNow)),
+    );
+  }
+
   /// The escape hatch (§4.9). NULL, not a snapshot — so a device saved next
   /// week still appears by itself.
   Future<void> _restoreDefaults() async {
@@ -268,6 +334,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       starts.add(flat);
       flat += r.length;
     }
+    // Which device tile gets the LIVE shape: the first one, because at most one
+    // link is up at a time. Computed over the flat list rather than per row, so
+    // it does not move when a card is dragged into a different row.
+    final firstDeviceCard =
+        tiles.indexWhere((t) => t.kind == HomeTileKind.deviceCard);
 
     return ListView(
       key: _gridKey,
@@ -287,6 +358,8 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                       child: _EditorCell(
                         index: starts[r] + c,
                         tile: rows[r][c],
+                        preview: _previewFor(rows[r][c],
+                            live: starts[r] + c == firstDeviceCard),
                         canDelete: canDelete,
                         onDelete: () => _remove(starts[r] + c),
                         onToggleSpan: () => _toggleSpan(starts[r] + c),
@@ -335,9 +408,22 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   ///     mounts a `SpeedCard`, which opens the GNSS gate — so the coincidence
   ///     would have become a location leak on a second route.
   ///
-  /// The G meter is deliberately NOT offered here. Design 0045 places it on the
-  /// `riding` watchface and says nothing about the home grid; adding it would
-  /// be inventing a ruling.
+  /// 🔴 **The G meter IS offered here**, and this paragraph used to say the
+  /// opposite — "deliberately NOT offered … adding it would be inventing a
+  /// ruling" — while the code fifty lines below has offered it since
+  /// 2026-08-08. Two comments in one file contradicting each other is the exact
+  /// shape CLAUDE.md's split-the-file rule names, and it survived because the
+  /// stale one was the SUMMARY and the true one was buried in the loop.
+  ///
+  /// What actually happened: the phone-module entries were a hand-written list
+  /// containing `speed` alone, so a rider who finished the G calibration had no
+  /// way to put the card back — absent from this menu, and already pruned out
+  /// of the stored layout by [_initial]. Reported 2026-08-08:「我現在 G 值表
+  /// 校準完成；我的主頁沒有 G 值表」. The list is derived from the enum now.
+  ///
+  /// Design 0051 removes the other half of the old sentence as well: the
+  /// `riding` watchface no longer carries either phone module, so this grid is
+  /// the ONLY place they can be placed at all.
   void _showAddSheet(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final devices = context.read<DeviceController>().devices;
@@ -482,6 +568,7 @@ class _EditorCell extends StatefulWidget {
   const _EditorCell({
     required this.index,
     required this.tile,
+    required this.preview,
     required this.canDelete,
     required this.onDelete,
     required this.onToggleSpan,
@@ -493,6 +580,12 @@ class _EditorCell extends StatefulWidget {
 
   final int index;
   final HomeTile tile;
+
+  /// The fake data this cell draws with — REQUIRED, not optional. Making it
+  /// nullable here would leave a route back to live cards on this page, and the
+  /// live card is the thing that starts the GNSS receiver (design 0051 §5).
+  final HomePreview preview;
+
   final bool canDelete;
   final VoidCallback onDelete;
   final VoidCallback onToggleSpan;
@@ -600,7 +693,9 @@ class _EditorCellState extends State<_EditorCell> {
                     // seen — at the width it will be seen at, which the grid
                     // now provides. Inert while editing: a tap here is a drag
                     // that has not started yet.
-                    AbsorbPointer(child: HomeTileView(tile: widget.tile)),
+                    AbsorbPointer(
+                        child: HomeTileView(
+                            tile: widget.tile, preview: widget.preview)),
                   ],
                 ),
               ),
@@ -663,8 +758,22 @@ class _DashedBorderPainter extends CustomPainter {
   bool shouldRepaint(_DashedBorderPainter old) => old.color != color;
 }
 
-/// What follows the finger. Deliberately small and translucent — the thing
-/// being judged during a drag is the TARGET, not the payload.
+/// What follows the finger: a NAME, not a card.
+///
+/// Deliberately small and translucent — the thing being judged during a drag is
+/// the TARGET, not the payload — and since design 0051 that is enforced by what
+/// it draws rather than by a `SizedBox(width: 150)` around a full card.
+///
+/// 🔴 Two reasons it stopped being a [HomeTileView]:
+///
+///  1. **It was a second LIVE card.** Dragging a speed tile mounted a second
+///     `SpeedCard`, and both pushed the same uncounted boolean GNSS gate — so
+///     the release could leave the stream open. A chip has no card in it at
+///     all, which is a stronger guarantee than "the chip is given fake data".
+///  2. **A real card does not fit.** 150 px is a third of a phone; once the
+///     editor started drawing real card bodies (design 0051), the readouts grid
+///     overflowed it by 61 px — a striped RenderFlex bar following the finger.
+///     Widening the ghost would defeat its own purpose.
 class _DragGhost extends StatelessWidget {
   const _DragGhost({required this.tile});
 
@@ -672,13 +781,45 @@ class _DragGhost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final m = tile.module;
+    final label = m != null
+        ? homeModuleLabel(l10n, m)
+        : (tile.kind == HomeTileKind.addDevice
+            ? l10n.homeAddFirstDevice
+            : l10n.devicesUnnamed);
     return Opacity(
-      opacity: 0.85,
+      opacity: 0.9,
       child: Material(
         color: Colors.transparent,
-        child: SizedBox(
-          width: 150,
-          child: AbsorbPointer(child: HomeTileView(tile: tile)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: context.colors.panel,
+            border: Border.all(color: AppColors.amber),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(m == null ? Icons.battery_full : homeModuleIcon(m),
+                  size: 15, color: AppColors.amber),
+              const SizedBox(width: 7),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 150),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.text,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

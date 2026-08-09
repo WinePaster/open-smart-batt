@@ -311,12 +311,27 @@ void main() {
       expect(svltTrackLabel(tester), 'Output voltage');
     });
 
-    testWidgets('and on the default face there is no chart card to label',
+    testWidgets('and the DEFAULT page carries the same labelled chart',
         (tester) async {
-      // Not a throwaway: it is the assertion that the three tests above pass
-      // because the face was asked for, not because the card is everywhere.
+      // 🔴 INVERTED by design 0051 (2026-08-09), and the inversion is the
+      // point rather than a concession. This used to assert that the default
+      // face had NO chart — which was true, and was the accepted cost of
+      // design 0040 Q1's reversal: a user who never opened Settings could not
+      // reach the live curve at all. The owner has now removed the setting
+      // entirely and put the chart on the one page there is, so the cost is
+      // paid off and the direction-aware legend has to hold on the page
+      // EVERYONE sees, not only on the one nobody selected.
+      //
+      // What the original was really guarding — "the three tests above pass
+      // because the face was asked for, not because the card is everywhere" —
+      // no longer has a subject: the card IS everywhere now, by ruling.
       await pumpBank(tester, current: -0.43);
-      expect(find.byType(TrendChartCard), findsNothing);
+      expect(find.byType(TrendChartCard), findsOneWidget);
+      final svlt = chartCard(tester)
+          .tracks
+          .firstWhere((t) => t.field == TrendField.svlt);
+      expect(svlt.label, 'Input voltage',
+          reason: 'charging, on the default page');
     });
   });
 

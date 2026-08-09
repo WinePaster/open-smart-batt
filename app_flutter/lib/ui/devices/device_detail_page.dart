@@ -25,7 +25,6 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
 import 'connection_failure.dart';
-import 'watchface_sheet.dart';
 
 /// The per-device page, pushed from the devices tab.
 ///
@@ -126,23 +125,13 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             color: context.colors.text,
           ),
         ),
-        actions: [
-          // design 0046 R20: the watchface belongs to the DEVICE (0034 Q3), so
-          // its entry point belongs on the device's own page. Settings keeps a
-          // signpost, not a second editor — see `watchface_sheet.dart`.
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton.icon(
-              onPressed: () =>
-                  unawaited(showWatchfaceSheet(context, deviceId: deviceId)),
-              icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
-              label: Text(
-                l10n.deviceDetailWatchface,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-        ],
+        // 🔴 NO ACTIONS. The 錶盤 button that design 0046 R20 put here was
+        // removed on 2026-08-09 (design 0051, 「同意拿掉入口」) together with
+        // `watchface_sheet.dart` and the Settings signpost. There is one
+        // dashboard layout now, so there is nothing on this page to configure —
+        // and an app bar action that opened a picker with one option would have
+        // been worse than none. The evidence for "one option" is the corpus:
+        // 11/11 usable captures carried `face=standard`.
       ),
       body: live
           ? DashboardPage(onOpenSettings: widget.onOpenSettings)

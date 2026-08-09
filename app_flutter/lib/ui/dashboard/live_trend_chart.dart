@@ -166,15 +166,45 @@ class _TrackHeader extends StatelessWidget {
         break;
       }
     }
+    // 🔴 Both sides `Flexible`, the LABEL ellipsising first.
+    //
+    // A legend and its latest value at opposite ends of a row need ~200 px on
+    // a pack ("MAIN CURRENT" + "-29.00 A"); a 1x1 home tile on a 320 dp phone
+    // gives ~120, and the difference was a striped RenderFlex bar across the
+    // top of the chart. Surfaced by design 0051's editor preview — the first
+    // screen that draws a real chart at 1x1 — but reachable on the live home
+    // page since design 0046 put the chart on the grid.
+    //
+    // The value is `flex: 0` so it is never the one that loses characters: a
+    // truncated NUMBER is a wrong reading, while a truncated legend is still
+    // recognisable from the track's colour and position.
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(track.label, style: AppTextStyles.label(context)),
-        Text(
-          latest == null
-              ? '--'
-              : '${latest.toStringAsFixed(track.decimals)} ${track.unit}',
-          style: AppTextStyles.mono(context).copyWith(color: track.color),
+        Flexible(
+          child: Text(
+            track.label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.label(context),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          flex: 0,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              latest == null
+                  ? '--'
+                  : '${latest.toStringAsFixed(track.decimals)} ${track.unit}',
+              maxLines: 1,
+              softWrap: false,
+              style: AppTextStyles.mono(context).copyWith(color: track.color),
+            ),
+          ),
         ),
       ],
     );

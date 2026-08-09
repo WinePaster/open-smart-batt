@@ -154,32 +154,73 @@ class _SpeedCardState extends State<SpeedCard> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final gps = context.watch<GpsSpeedController>();
     final unit = context.select<SettingsController, SpeedUnit>(
         (s) => s.settings.speedUnit);
     return IndustrialCard(
-      child: _body(context, l10n, gps, unit),
+      child: SpeedCardBody(
+        permission: gps.permission,
+        estimate: gps.current,
+        accel: gps.currentAccel,
+        unit: unit,
+        onOpenSystemSettings: gps.openSystemSettings,
+      ),
     );
   }
+}
 
-  Widget _body(
-    BuildContext context,
-    AppLocalizations l10n,
-    GpsSpeedController gps,
-    SpeedUnit unit,
-  ) {
+/// The card's BODY, given a reading — no controller, no sensor, no provider.
+///
+/// Split out of [SpeedCard] by design 0051 §5.2. The home editor has to show
+/// what this card LOOKS like while nothing is measured, and it is the one card
+/// where handing in fake data is not enough: [SpeedCard] opens the GNSS gate in
+/// `didChangeDependencies`, so merely mounting it starts the receiver whatever
+/// data it is given. The editor therefore mounts THIS instead
+/// (`home_preview.dart`), which is the same pixels with no side effect.
+///
+/// 🔴 Not a copy. A second speed layout for the editor would drift from the
+/// real one within a release, and the whole point of previewing a layout is
+/// that it is the layout.
+class SpeedCardBody extends StatelessWidget {
+  const SpeedCardBody({
+    super.key,
+    required this.permission,
+    required this.estimate,
+    required this.accel,
+    required this.unit,
+    this.onOpenSystemSettings,
+  });
+
+  final SpeedPermissionState permission;
+
+  /// The reading, or null for "no fix yet".
+  final SpeedEstimate? estimate;
+
+  /// The RAW acceleration estimate. [accelReadoutFor] decides whether it is
+  /// drawn — deliberately here rather than at the caller, so the editor's
+  /// preview obeys the same rule as the live card.
+  final AccelEstimate? accel;
+
+  final SpeedUnit unit;
+
+  /// Null in the preview: there is no system settings page to send anyone to
+  /// from a layout editor, and a chip that did nothing would be worse.
+  final VoidCallback? onOpenSystemSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     // Permission first: without it every other state is a consequence rather
     // than a cause, and telling the user "waiting for a fix" while the OS is
     // refusing us is the dishonest reading of the same screen.
-    switch (gps.permission) {
+    switch (permission) {
       case SpeedPermissionState.denied:
         return _MessageState(
           icon: Icons.location_disabled,
           title: l10n.speedCardPermissionDeniedTitle,
           body: l10n.speedCardPermissionDeniedBody,
           actionLabel: l10n.speedCardOpenSystemSettings,
-          onAction: gps.openSystemSettings,
+          onAction: onOpenSystemSettings,
         );
       case SpeedPermissionState.permanentlyDenied:
         return _MessageState(
@@ -187,14 +228,14 @@ class _SpeedCardState extends State<SpeedCard> {
           title: l10n.speedCardPermissionDeniedTitle,
           body: l10n.speedCardPermissionPermanentBody,
           actionLabel: l10n.speedCardOpenSystemSettings,
-          onAction: gps.openSystemSettings,
+          onAction: onOpenSystemSettings,
         );
       case SpeedPermissionState.notRequested:
       case SpeedPermissionState.granted:
         break;
     }
 
-    final e = gps.current;
+    final e = estimate;
     if (e == null) {
       return _MessageState(
         icon: Icons.satellite_alt,
@@ -202,12 +243,12 @@ class _SpeedCardState extends State<SpeedCard> {
         body: l10n.speedCardWaitingBody,
       );
     }
-    final accel = accelReadoutFor(e.state, gps.currentAccel);
+    final shownAccel = accelReadoutFor(e.state, accel);
     return switch (e.state) {
       SpeedState.live =>
-        _Reading(estimate: e, unit: unit, held: false, accel: accel),
+        _Reading(estimate: e, unit: unit, held: false, accel: shownAccel),
       SpeedState.holding =>
-        _Reading(estimate: e, unit: unit, held: true, accel: accel),
+        _Reading(estimate: e, unit: unit, held: true, accel: shownAccel),
       SpeedState.lost => _LostState(estimate: e, unit: unit),
     };
   }

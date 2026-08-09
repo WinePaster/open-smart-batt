@@ -61,22 +61,52 @@ class _CellRow extends StatelessWidget {
   final double? value;
   final double fraction;
 
+  /// Width of the label column, the gutters and the value column — narrowed
+  /// together below a threshold.
+  ///
+  /// 🔴 The three fixed costs used to add up to 126 px whatever the width, so
+  /// a 1x1 home tile on a 320 dp phone (~113 px of inner room) overflowed by
+  /// 13 px before the bar itself had a single pixel. Surfaced by design 0051's
+  /// editor preview — the first screen that draws a real DVOL card at 1x1 —
+  /// and reachable on the live home page since design 0046 put this card on
+  /// the grid.
+  ///
+  /// A threshold rather than making the columns flexible: `Expanded` on the
+  /// bar plus `Flexible` on the labels would split the row three ways and
+  /// shrink the BAR at full width, which is the one part of this card that
+  /// carries information by size. At 170 px and above nothing changes at all.
+  static const double _tightBelow = 170;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      final tight = c.maxWidth < _tightBelow;
+      return _row(context, tight: tight);
+    });
+  }
+
+  Widget _row(BuildContext context, {required bool tight}) {
+    final gap = tight ? 6.0 : 11.0;
     return Row(
       children: [
         SizedBox(
-          width: 50,
-          child: Text(
-            'CELL ${index + 1}',
-            style: AppTextStyles.mono(context).copyWith(
-              fontSize: 10,
-              letterSpacing: 1,
-              color: context.colors.muted,
+          width: tight ? 36 : 50,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'CELL ${index + 1}',
+              maxLines: 1,
+              softWrap: false,
+              style: AppTextStyles.mono(context).copyWith(
+                fontSize: 10,
+                letterSpacing: 1,
+                color: context.colors.muted,
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 11),
+        SizedBox(width: gap),
         Expanded(
           child: Container(
             height: 7,
@@ -103,13 +133,19 @@ class _CellRow extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 11),
+        SizedBox(width: gap),
         SizedBox(
-          width: 54,
-          child: Text(
-            value == null ? '-- V' : '${value!.toStringAsFixed(2)} V',
-            textAlign: TextAlign.right,
-            style: AppTextStyles.mono(context).copyWith(fontSize: 12),
+          width: tight ? 44 : 54,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value == null ? '-- V' : '${value!.toStringAsFixed(2)} V',
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono(context).copyWith(fontSize: 12),
+            ),
           ),
         ),
       ],

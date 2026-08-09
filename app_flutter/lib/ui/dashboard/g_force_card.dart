@@ -81,7 +81,6 @@ class _GForceCardState extends State<GForceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final g = context.watch<GForceController>();
     final r = g.reading ?? GForceReading.zero;
 
@@ -90,6 +89,46 @@ class _GForceCardState extends State<GForceCard> {
       _trail.add(dot);
       if (_trail.length > _trailLength) _trail.removeAt(0);
     }
+
+    return GForceCardBody(
+      reading: r,
+      trail: List<Offset>.of(_trail),
+      onResetPeak: () {
+        _trail.clear();
+        g.resetPeak();
+      },
+    );
+  }
+}
+
+/// The card's BODY, given a reading — no controller and no accelerometer.
+///
+/// Split out of [GForceCard] by design 0051 §5.2, for [SpeedCardBody]'s exact
+/// reason: mounting the real card calls `setFaceWantsGForce(true)` in
+/// `didChangeDependencies`, so the home editor cannot show what this card looks
+/// like without starting the sensor. It mounts this instead.
+class GForceCardBody extends StatelessWidget {
+  const GForceCardBody({
+    super.key,
+    required this.reading,
+    required this.trail,
+    this.onResetPeak,
+  });
+
+  final GForceReading reading;
+
+  /// Recent dots, oldest first, already in screen sense.
+  final List<Offset> trail;
+
+  /// Null in the preview — there is no peak to reset in a layout editor, and
+  /// a tap target that did nothing would read as a broken control.
+  final VoidCallback? onResetPeak;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final r = reading;
+    final dot = Offset(-r.latG, -r.longG);
 
     return IndustrialCard(
       heading: l10n.gForceCardHeading,
@@ -125,10 +164,7 @@ class _GForceCardState extends State<GForceCard> {
               Expanded(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    _trail.clear();
-                    g.resetPeak();
-                  },
+                  onTap: onResetPeak,
                   child: _GReadout(
                     label: l10n.gForcePeakLabel,
                     value: r.peakG,
@@ -158,7 +194,7 @@ class _GForceCardState extends State<GForceCard> {
                   child: CustomPaint(
                     painter: GForceBallPainter(
                       dot: dot,
-                      trail: List<Offset>.of(_trail),
+                      trail: trail,
                       ring: context.colors.line2,
                       grid: context.colors.line,
                       dotColor: AppColors.amber,

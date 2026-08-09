@@ -609,9 +609,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceBadgeNotAnswering => 'Not answering';
 
   @override
-  String get deviceDetailWatchface => 'Watchface';
-
-  @override
   String get homeAddFirstDevice => 'Add your first device';
 
   @override
@@ -934,7 +931,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSpeedDetectionSub =>
-      'Show GPS speed on the dashboard (adds the \"Riding\" watchface). Off by default.';
+      'Add a GPS speed card to the home page. Off by default.';
 
   @override
   String get settingsSpeedUnitLabel => 'Speed unit';
@@ -1048,7 +1045,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsGMeterSub =>
-      'Show longitudinal and lateral G on the \"Riding\" watchface. Needs a one-off calibration. Off by default.';
+      'Add a longitudinal / lateral G card to the home page. Needs a one-off calibration. Off by default.';
 
   @override
   String get settingsGCalibrationLabel => 'Calibrate mount';
@@ -1138,38 +1135,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gWizardRecalibrate => 'Calibrate again';
-
-  @override
-  String get watchfaceRiding => 'Riding';
-
-  @override
-  String get settingsWatchfaceLabel => 'Watchface';
-
-  @override
-  String get settingsWatchfaceGuidance => 'Change it on the device\'s page';
-
-  @override
-  String get settingsWatchfaceSub =>
-      'Which cards the dashboard shows for the connected device, and in what order.';
-
-  @override
-  String get settingsWatchfaceSubNoDevice =>
-      'This setting belongs to a device. Connect one and save it, then it can be changed here.';
-
-  @override
-  String get watchfaceStandard => 'Standard';
-
-  @override
-  String get watchfaceCompact => 'Compact';
-
-  @override
-  String get watchfaceDiagnostic => 'Diagnostic';
-
-  @override
-  String get settingsRestoreDisplayLabel => 'Restore default display';
-
-  @override
-  String get settingsRestoreDisplayDone => 'Restored the standard watchface.';
 
   @override
   String get settingsTempUnitLabel => 'Temperature unit';

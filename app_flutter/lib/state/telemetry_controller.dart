@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../ble/ble.dart';
 import '../data/data.dart';
 import '../models/models.dart';
+import 'card_telemetry.dart';
 import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
@@ -100,7 +101,8 @@ class _StallWatch {
 }
 
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
-class TelemetryController extends ChangeNotifier implements TelemetryHealth {
+class TelemetryController extends ChangeNotifier
+    implements TelemetryHealth, CardTelemetry {
   TelemetryController(
     this._ble, {
     required SettingsController settings,
@@ -161,6 +163,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   // ---- raw sample + capability gating -----------------------------------
 
   /// Latest accumulated telemetry snapshot.
+  @override
   TelemetrySample get sample => _sample;
 
   /// Last few minutes of samples, for the dashboard's chart mode.
@@ -168,6 +171,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// Fed here rather than from its own stream subscription so it sees exactly
   /// what the readouts see — one source, one ordering. It is memory-only and is
   /// cleared whenever the link drops (see [_onLinkState]).
+  @override
   LiveTrendBuffer get trend => _trend;
   final LiveTrendBuffer _trend = LiveTrendBuffer();
 
@@ -189,6 +193,7 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   // ---- derived gauge / readout values -----------------------------------
 
   /// Primary voltage PVLT (V).
+  @override
   double? get pvlt => _sample.pvlt;
 
   /// Gauge fill fraction 0..1 over the 8–16 V display range.
@@ -198,22 +203,28 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   int? get gaugeIndex => _sample.pvltGaugeIndex;
 
   /// Secondary voltage SVLT (V).
+  @override
   double? get svlt => _sample.svlt;
 
   /// Main current (A).
+  @override
   double? get current => _sample.current;
 
   /// Per-cell DVOL voltages (V), or null until decoded.
+  @override
   List<double>? get dvol => _sample.dvol;
 
   /// True when DVOL frames are arriving but VADJ (scaling) is not yet known, so
   /// per-cell voltages are shown as pending rather than a bogus value.
+  @override
   bool get dvolPending => _sample.dvolPending;
 
   /// Capacity / SOH bucket (icon level; semantics heuristic).
+  @override
   int? get sohBucket => _sample.sohBucket;
 
   /// Device-reported state-of-charge percent (0..100), selector 0x96 b6.
+  @override
   int? get socPercent => _sample.socPercent;
 
   // ---- power-bank USB port / protocol (0x4B b7, design 0035) --------------
@@ -222,22 +233,27 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   // [portFlagsRaw] alongside a user's port tag. bit0/bit4 never surface here.
 
   /// USB port from 0x4B b7 bit1 (Type-C cable/CC); never Type-A. Null until seen.
+  @override
   UsbPort? get usbPort => _sample.usbPort;
 
   /// Boost rail off (b7 == 0x00). Null until b7 is seen.
+  @override
   bool? get isRailOff => _sample.isRailOff;
 
   /// Boost rail actively outputting (b7 bit2). Null until b7 is seen.
   bool? get isOutputActive => _sample.isOutputActive;
 
   /// PD input negotiated (b7 bit3, one-way). Null until b7 is seen.
+  @override
   bool? get isPdIn => _sample.isPdIn;
 
   /// PD output (b7 bit5). Null until b7 is seen.
+  @override
   bool? get isPdOut => _sample.isPdOut;
 
   /// Raw 0x4B b7 flag byte — for the design 0035 §4.8 feedback hook only; never
   /// shown to a user. Null until b7 is seen.
+  @override
   int? get portFlagsRaw => _sample.portFlagsRaw;
 
   /// Reported mode/status code (selector 0x23).
@@ -268,15 +284,18 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   int? get temperatureC => _sample.temperatureC;
 
   /// Temperature converted to the user's chosen display unit.
-  double? get temperatureDisplay {
-    final c = _sample.temperatureC;
-    if (c == null) return null;
-    return _settings.tempUnit == TempUnit.fahrenheit ? c * 9 / 5 + 32 : c.toDouble();
-  }
+  ///
+  /// The arithmetic is [displayTemperature]'s rather than inline, so the home
+  /// editor's [StaticCardTelemetry] cannot render a different Fahrenheit
+  /// number from the one a real card would (design 0051 §5).
+  @override
+  double? get temperatureDisplay =>
+      displayTemperature(_sample.temperatureC, _settings.tempUnit);
 
   /// Display suffix for temperature (°C / °F).
+  @override
   String get temperatureUnitLabel =>
-      _settings.tempUnit == TempUnit.fahrenheit ? '°F' : '°C';
+      temperatureUnitLabelOf(_settings.tempUnit);
 
   // ---- history / log I/O (History + Settings screens) -------------------
 

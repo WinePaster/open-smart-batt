@@ -62,6 +62,21 @@ class _FakeBleService extends BleService {
   }
 }
 
+/// The row takes its data as PARAMETERS since design 0051 §5, so that the home
+/// editor can preview it with fake values without a link. This host does
+/// exactly what `dashboardCardFor` does in the app — reads the two providers
+/// and hands them over — so every assertion below still exercises the row's own
+/// logic through the app's own wiring.
+class _HostedPowerPathRow extends StatelessWidget {
+  const _HostedPowerPathRow();
+
+  @override
+  Widget build(BuildContext context) => PowerPathRow(
+        tele: context.watch<TelemetryController>(),
+        shellClass: context.watch<ConnectionController>().packLabel,
+      );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
@@ -128,7 +143,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: const Scaffold(body: PowerPathRow()),
+          home: const Scaffold(body: _HostedPowerPathRow()),
         ),
       ),
     );

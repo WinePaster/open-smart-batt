@@ -75,7 +75,7 @@ void main() {
           cls: ProductClass.smartBattery, layout: DisplayLayout.defaults);
       final lines = header(layout: v);
       expect(lines.where((l) => l.startsWith('layout: ')), hasLength(1));
-      expect(lines.last, 'layout: face=standard modules=gaugeVoltage,readouts,cells');
+      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells');
     });
 
     test('the parameter is required, so no call site can drop it', () {
@@ -149,43 +149,63 @@ void main() {
   });
 
   group('the value says what the LAYOUT is, verbatim', () {
+    // 🔴 EVERY VALUE HERE CHANGED ON 2026-08-09 (design 0051), and the change
+    // is a WIRE-VISIBLE BREAK worth stating once: `face=` reads `fixed` from
+    // this build onwards, on every capture from every phone, because there is
+    // one face and nothing selects it. The line therefore has NO discriminating
+    // power any more — and it is still emitted unconditionally (FB-32: a field
+    // that is sometimes absent means both "default" and "old build").
+    //
+    // What it is still worth: `modules=` remains the record of WHICH cards the
+    // page declared, which is how a reader tells "the data was missing" from
+    // "the card was not on the page". That is the whole of design 0034 §8 and
+    // it is unaffected.
     test('default battery — the line a normal user exports', () {
       expect(
         exportLayoutValue(
             cls: ProductClass.smartBattery, layout: DisplayLayout.defaults),
-        'face=standard modules=gaugeVoltage,readouts,cells',
+        'face=fixed modules=gaugeVoltage,chart,readouts,cells',
       );
     });
 
-    test('a customised power bank', () {
+    test('a stored non-default face reports the drawn one, not the stored one',
+        () {
+      // 📦 Was "a customised power bank". Nothing is customised any more: the
+      // stored slug is READ (the column and its round-trip are skeleton the
+      // ruling kept) and then ignored by `effectiveWatchface`. The preamble
+      // must say what was DRAWN — a `face=diagnostic` line beside a screenshot
+      // of the fixed page would be the preamble lying about the screen, which
+      // is the one thing §8 exists to prevent.
       expect(
         exportLayoutValue(
           cls: ProductClass.powerBank,
           layout: const DisplayLayout(watchface: Watchface.diagnostic),
         ),
-        'face=diagnostic modules=chart,readouts,energyPath,gaugeSoc',
+        'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
       );
     });
 
-    test('a capacitor on the compact face', () {
+    test('a capacitor with a stored compact face', () {
       expect(
         exportLayoutValue(
           cls: ProductClass.supercapacitor,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=compact modules=gaugeVoltage',
+        'face=fixed modules=gaugeVoltage,chart,readouts',
       );
     });
 
-    test('an unclassified unit always reports the standard face (Q4)', () {
+    test('an unclassified unit reports the same face as everything else', () {
+      // 📦 Was design 0034 Q4 ("an unclassified unit always reports standard").
+      // Q4 protected a page from being rearranged by a preference carried over
+      // from another unit; design 0051 removed preferences, so the special case
+      // has nothing left to be special about.
       expect(
         exportLayoutValue(
           cls: ProductClass.unknown,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=standard modules=gaugeVoltage,readouts,cells',
-        reason: 'the stored face is not applied to an unclassified unit, so '
-            'the preamble must not claim it was',
+        'face=fixed modules=gaugeVoltage,chart,readouts,cells',
       );
     });
 
@@ -244,66 +264,58 @@ void main() {
   // `ProductClass.unknown` is absent by design — Q4 forces it onto the standard
   // face, which the group above already pins.
   group('T6: the exported module list, class by class and face by face', () {
-    const expected = <ProductClass, Map<Watchface, String>>{
-      ProductClass.smartBattery: {
-        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts,cells',
-        Watchface.compact: 'face=compact modules=gaugeVoltage,cells',
-        Watchface.diagnostic: 'face=diagnostic '
-            'modules=chart,readouts,cells,gaugeVoltage',
-        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage,cells',
-      },
-      // 🔴 A WIRE-VISIBLE CHANGE, 2026-08-08 (design 0050 D5).
-      //
-      // The capacitor's `modules=` no longer carries `cells`, because the class
-      // no longer has that card. Captures taken before this build list it and
-      // captures after do not, and the two are describing the same layout —
-      // the analysis side must not read the difference as a user having
-      // rearranged anything.
-      //
-      // Same class of boundary as design 0035's `usb` → `energyPath` rename
-      // (see `display_module.dart`), and recorded here for the same reason:
-      // `modules=` is read by people comparing captures across builds.
-      ProductClass.supercapacitor: {
-        Watchface.standard: 'face=standard modules=gaugeVoltage,readouts',
-        Watchface.compact: 'face=compact modules=gaugeVoltage',
-        Watchface.diagnostic: 'face=diagnostic '
-            'modules=chart,readouts,gaugeVoltage',
-        Watchface.riding: 'face=riding modules=speed,gForce,gaugeVoltage',
-      },
-      ProductClass.powerBank: {
-        Watchface.standard: 'face=standard modules=gaugeSoc,readouts,energyPath',
-        // No `readouts` here, and that is design 0040 Q2, not an omission: a
-        // one-screenful power-bank layout keeps the direction row and drops the
-        // grid — which also drops temperature (R3), accepted knowingly.
-        Watchface.compact: 'face=compact modules=gaugeSoc,energyPath',
-        Watchface.diagnostic: 'face=diagnostic '
-            'modules=chart,readouts,energyPath,gaugeSoc',
-        // design 0042: `compact`'s shell with the speed card on top. The value
-        // is what the LAYOUT declares and is emitted even when the master
-        // switch is off and the phone is actually drawing `standard` — the
-        // `speed detection: off` line beside it is what resolves the two. A
-        // preamble filtered by the switch would delete exactly the evidence a
-        // reader needs to explain the screenshot.
-        Watchface.riding: 'face=riding modules=speed,gForce,gaugeSoc,energyPath',
-      },
+    // 🔴 COLLAPSED by design 0051. Every stored face resolves to `fixed`, so
+    // the (class, face) matrix has one column: what a capture can print is
+    // decided by the CLASS alone.
+    //
+    // The table is still written out literally, for the reason it always was:
+    // a change to `watchfaceModules` must not land without somebody editing the
+    // exact strings that will appear in the field captures we analyse.
+    //
+    // ⚠️ COMPATIBILITY. There are now THREE breaks in `modules=`, each recorded
+    // where it happened, and this is the third and largest:
+    //
+    //  1. design 0040 — `chart` became placeable; `face=diagnostic` names a
+    //     different set across that boundary.
+    //  2. design 0041 — a pack's `compact` moved from `gaugeVoltage,readouts`
+    //     to `gaugeVoltage,cells`.
+    //  3. **design 0051 — `face=fixed` replaces every other value, and its
+    //     module list is not equal to any previous face's on any class.** Every
+    //     capture in the corpus so far reads `face=standard`; from this build
+    //     on none will. A reader comparing a 0.7.x capture with a 0.8.x one is
+    //     comparing two different pages, and `modules=` is what says so.
+    //
+    // Same class of thing as the `usb` → `energyPath` rename (design 0035 §5.3
+    // / R4) and recorded the same way, in `docs/feedback-index/conventions.md`.
+    const expected = <ProductClass, String>{
+      ProductClass.smartBattery: 'face=fixed modules=gaugeVoltage,chart,readouts,cells',
+      // No `cells` — design 0050 D5,「電容沒有分串電壓」.
+      ProductClass.supercapacitor: 'face=fixed modules=gaugeVoltage,chart,readouts',
+      ProductClass.powerBank: 'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
+      // 📌 `unknown` is IN the table now. Design 0034 Q4 used to force it onto
+      // the standard face, which is why it used to be excluded; it is an
+      // ordinary row today.
+      ProductClass.unknown: 'face=fixed modules=gaugeVoltage,chart,readouts,cells',
     };
 
-    expected.forEach((cls, byFace) {
-      byFace.forEach((face, value) {
-        test('${cls.name} / ${face.slug}', () {
+    expected.forEach((cls, value) {
+      for (final face in Watchface.values) {
+        test('${cls.name} / stored ${face.slug}', () {
           expect(
             exportLayoutValue(cls: cls, layout: DisplayLayout(watchface: face)),
             value,
+            reason: 'the stored slug must not reach the preamble — the '
+                'preamble records what was DRAWN',
           );
         });
-      });
+      }
     });
 
-    test('and the table itself covers every face of every listed class', () {
-      // A new face must be added here, not silently default to untested.
-      for (final byFace in expected.values) {
-        expect(byFace.keys.toSet(), Watchface.values.toSet());
-      }
+    test('and the table itself covers every product class', () {
+      // A new class must be added here, not silently default to untested. It
+      // is the class axis that carries the information now — the face axis is
+      // swept inside every test above and is expected to make no difference.
+      expect(expected.keys.toSet(), ProductClass.values.toSet());
     });
   });
 
@@ -356,13 +368,17 @@ void main() {
       }
     });
 
-    test('the two lines together explain a riding face that drew standard', () {
-      // The layout line reports what the LAYOUT declares, deliberately
-      // unfiltered by the switch. A phone with `riding` stored and detection
-      // off draws `standard` while still declaring `face=riding` — and it is
-      // ONLY the pair of lines that says why. Filtering the layout line would
-      // delete the evidence; omitting the switch line would leave the
-      // contradiction unexplained.
+    test('the switch line is now the ONLY evidence about the speed card', () {
+      // 📦 Was "the two lines together explain a riding face that drew
+      // standard". That pairing is gone with the face: since design 0051 no
+      // watchface names `speed`, so `layout:` can never declare a speed card
+      // and cannot contradict the switch.
+      //
+      // 🔴 That makes this line MORE load-bearing, not less. The speed card
+      // lives on the home grid now, so what a reader must cross-check is
+      // `speed detection:` against `home: tiles=…` — and against an empty
+      // `speed` column in the CSV, which still means either "off" or "on with
+      // no fix". The FB-32 rule is unchanged: state the switch, always.
       final lines = header(
         layout: exportLayoutValue(
           cls: ProductClass.smartBattery,
@@ -371,8 +387,9 @@ void main() {
         speedDetection: false,
       );
       expect(lines, contains('speed detection: off'));
-      expect(lines.last,
-          'layout: face=riding modules=speed,gForce,gaugeVoltage,cells');
+      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells',
+          reason: 'a stored riding face declares no speed module any more');
+      expect(lines.last, isNot(contains('speed')));
     });
   });
 
@@ -436,12 +453,17 @@ void main() {
       }
     });
 
-    test('three lines read together explain a riding face that drew standard',
-        () {
-      // The design 0045 ruling (iv) case, and the reason `exportLayoutValue`
-      // gained a note about DECLARED versus RENDERED. With both switches off,
-      // `riding` falls back to `standard` — while the layout line still
-      // declares all four of its modules. Only the three lines together say so.
+    test('neither switch can be contradicted by the layout line any more', () {
+      // 📦 Was "three lines read together explain a riding face that drew
+      // standard" (design 0045 ruling (iv)). Design 0051 took both phone
+      // modules off every face, so DECLARED and RENDERED can no longer disagree
+      // about them — the contradiction those three lines existed to resolve is
+      // structurally impossible.
+      //
+      // The DECLARED-versus-RENDERED note on `exportLayoutValue` still stands
+      // for the reason it was written: `cells` is declared on a session where
+      // DVOL never arrived. That half is asserted in "the list reports the
+      // CHOSEN cards" above.
       final lines = header(
         layout: exportLayoutValue(
           cls: ProductClass.smartBattery,
@@ -452,8 +474,8 @@ void main() {
       );
       expect(lines, contains('speed detection: off'));
       expect(lines, contains('g meter: off'));
-      expect(lines.last,
-          'layout: face=riding modules=speed,gForce,gaugeVoltage,cells');
+      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells');
+      expect(lines.last, isNot(contains('gForce')));
     });
   });
 
@@ -481,8 +503,9 @@ void main() {
       );
       final lines = out.text.split(RegExp(r'\r?\n'));
       final layoutLine = lines.firstWhere((l) => l.contains('layout: '));
-      expect(layoutLine,
-          '# layout: face=diagnostic modules=chart,readouts,gaugeVoltage');
+      expect(layoutLine, '# layout: face=fixed modules=gaugeVoltage,chart,readouts',
+          reason: 'the stored `diagnostic` is read and then ignored — the file '
+              'records the page that was drawn');
       // Still inside the commented preamble, above the column header.
       expect(lines.indexOf(layoutLine),
           lessThan(lines.indexWhere((l) => !l.startsWith('#'))));

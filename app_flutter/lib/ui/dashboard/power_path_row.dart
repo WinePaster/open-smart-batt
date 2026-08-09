@@ -115,8 +115,24 @@ import '../widgets/industrial_card.dart';
 import 'power_flow.dart';
 
 /// The energy-path row, as a standalone card (design 0035 Q3).
+///
+/// 🔴 [tele] and [shellClass] arrive as PARAMETERS (design 0051 §5). This was
+/// the only module card that fetched its own providers, which made it the only
+/// one the home editor's fake-data preview could not reach: `packLabel` there is
+/// `unknown`, so the row drew nothing at all and the user judged a layout with
+/// an invisible card in it. `dashboardCardFor` has both facts already.
 class PowerPathRow extends StatefulWidget {
-  const PowerPathRow({super.key});
+  const PowerPathRow({
+    super.key,
+    required this.tele,
+    required this.shellClass,
+  });
+
+  /// What to read. A real link's controller, or the editor's static preview.
+  final CardTelemetry tele;
+
+  /// The class the page is drawing as. Only a power bank has an energy path.
+  final ProductClass shellClass;
 
   @override
   State<PowerPathRow> createState() => _PowerPathRowState();
@@ -131,12 +147,13 @@ class _PowerPathRowState extends State<PowerPathRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final conn = context.watch<ConnectionController>();
+    final tele = widget.tele;
 
     // T10: only a power bank has an energy path. Not "draw an empty card" —
     // render nothing (design 0034 §4.3: an unavailable module is not offered).
-    if (conn.packLabel != ProductClass.powerBank) {
+    // Read off the parameter since design 0051, not off `packLabel`: same
+    // question, one source, and the home editor can answer it too.
+    if (widget.shellClass != ProductClass.powerBank) {
       return const SizedBox.shrink();
     }
 
@@ -147,7 +164,13 @@ class _PowerPathRowState extends State<PowerPathRow> {
       // 0x4B has not arrived yet. "connected N s" must read differently from a
       // decoded reading of zero — the difference between "not yet" and "--"
       // (design 0035 §4.6, 0017 §3.5).
-      final seconds = (conn.onlineFor ?? Duration.zero).inSeconds;
+      //
+      // The ONE thing still read from a provider here, and only on this branch:
+      // "how long has this link been up" is a fact about the link, not about
+      // the sample. The editor's preview never reaches it — its fake b7 is set.
+      final seconds =
+          (context.watch<ConnectionController>().onlineFor ?? Duration.zero)
+              .inSeconds;
       body = Text(
         l10n.powerPathWaiting(seconds),
         style: TextStyle(fontSize: 12.5, color: context.colors.muted),
@@ -189,7 +212,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
   /// (we do not ask the user to label a burst we do not trust). Since design
   /// 0041 "withheld" means the badge is absent, not that it says so in words.
   Widget _path(
-      BuildContext context, AppLocalizations l10n, TelemetryController tele,
+      BuildContext context, AppLocalizations l10n, CardTelemetry tele,
       {bool flagsContradicted = false}) {
     final flow = powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
     final active = flow == PowerFlow.charging || flow == PowerFlow.discharging;
@@ -399,7 +422,7 @@ class _PowerPathRowState extends State<PowerPathRow> {
   /// content, never shown on screen.
   void _recordTag(AppLocalizations l10n, String code, String label) {
     final conn = context.read<ConnectionController>();
-    final b7 = context.read<TelemetryController>().portFlagsRaw;
+    final b7 = widget.tele.portFlagsRaw;
     final hex =
         b7 == null ? 'null' : '0x${b7.toRadixString(16).padLeft(2, '0')}';
     conn.markCaptureState(CaptureMark.note, 'port-tag',

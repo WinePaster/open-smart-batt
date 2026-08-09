@@ -60,12 +60,22 @@ void main() {
           DisplayLayout.defaults);
     });
 
-    test('the default encodes the standard face and knows it is the default',
-        () {
-      expect(DisplayLayout.defaults.watchface, Watchface.standard);
+    test('the default encodes the FIXED face and knows it is the default', () {
+      // 🔴 Was `standard` until design 0051 (2026-08-09). The picker is gone
+      // and `effectiveWatchface` resolves everything to `fixed`, so the default
+      // is the face that is actually drawn — a default naming a face nobody
+      // renders would be a second answer to "what does this device show".
+      expect(DisplayLayout.defaults.watchface, Watchface.fixed);
       expect(DisplayLayout.defaults.isDefault, isTrue);
       expect(const DisplayLayout(watchface: Watchface.compact).isDefault,
           isFalse);
+      // The SKELETON, which the ruling kept: every retired slug still
+      // round-trips, so a row written by v0.7.10 is read back unchanged and no
+      // migration is needed. It simply does not reach the screen.
+      for (final f in Watchface.values) {
+        expect(DisplayLayout.decode(DisplayLayout(watchface: f).encode()),
+            DisplayLayout(watchface: f));
+      }
     });
 
     test('unknown keys are ignored, so interface C can add them without a '
@@ -248,22 +258,29 @@ void main() {
     // by absent data. Do not "simplify" this into a list comparison, and do not
     // delete it as a duplicate of T2 — T2 pins the lists, T2b pins that a
     // difference can actually be SEEN.
-    test('T2b: every pair of faces differs by a card that cannot vanish', () {
+    // 🔴 T2b IS RETIRED by design 0051, and this is what replaces it.
+    //
+    // T2b asserted that every PAIR of faces differed by a card that cannot
+    // vanish, because a face that renders as a copy of another face made the
+    // picker offer three entries and deliver two screens (v0.7.2, from the
+    // field). Owner ruling 2026-08-09 removed the picker, so nobody can land on
+    // the wrong one of a pair — and it took both phone modules off `riding`,
+    // which legitimately makes `riding` and `compact` the same list.
+    //
+    // Keeping T2b would mean putting a card back on `riding` that the ruling
+    // took off it. What survives is the half of T2b that was never about
+    // choosing: the ONE face that is drawn must have something on it that no
+    // data gate can take away, or a unit that never sends 0x24 renders a page
+    // with nothing but an instrument.
+    test('the drawn face always has a non-data-gated card besides the gauge',
+        () {
       for (final cls in ProductClass.values) {
-        final dataGated = (DisplayModules.forClass(cls)?.dataGated ?? const <DisplayModule>{});
-        final faces = Watchface.values;
-        for (var i = 0; i < faces.length; i++) {
-          for (var j = i + 1; j < faces.length; j++) {
-            final a = watchfaceModules(cls, faces[i]).toSet();
-            final b = watchfaceModules(cls, faces[j]).toSet();
-            final symmetricDifference = a.difference(b).union(b.difference(a));
-            final alwaysDrawn = symmetricDifference.difference(dataGated);
-            expect(alwaysDrawn, isNotEmpty,
-                reason: '$cls: ${faces[i].slug} vs ${faces[j].slug} differ only '
-                    'by $symmetricDifference, all of which is data-gated — on a '
-                    'unit without that data the two faces render identically');
-          }
-        }
+        final dataGated =
+            (DisplayModules.forClass(cls)?.dataGated ?? const <DisplayModule>{});
+        final drawn = watchfaceModules(cls, Watchface.fixed).toSet();
+        expect(drawn.difference(dataGated).length, greaterThanOrEqualTo(3),
+            reason: '\$cls: the fixed face collapses to \${drawn.difference(dataGated)} '
+                'on a unit that sends no gated data');
       }
     });
 
@@ -273,15 +290,20 @@ void main() {
     // Phase 1 landed and the toggle is gone, so "no face at all" would now mean
     // the chart is unreachable by anyone — hence the assertion still exists,
     // but it names the ONE face that carries it.
-    test('the chart is placeable, and only on diagnostic', () {
+    test('the chart is on the drawn face, and still not on the retired ones',
+        () {
       for (final cls in ProductClass.values) {
         // Q4: an unclassified unit is drawn with the standard face whatever is
         // stored, but watchfaceModules itself answers per (class, face) — the
         // Q4 remap happens in effectiveWatchface, tested separately below.
+        // 🔴 The FIXED face is the only page there is since design 0051, so
+        // dropping the chart from it removes the live curve from the product.
+        expect(watchfaceModules(cls, Watchface.fixed),
+            contains(DisplayModule.chart));
         expect(watchfaceModules(cls, Watchface.diagnostic),
             contains(DisplayModule.chart),
-            reason: 'diagnostic is the only route to the live curve now, so a '
-                'change that drops it here removes the feature outright');
+            reason: 'retired but still parsed — the list is what an old '
+                '`face=diagnostic modules=…` capture meant');
         // ⚠️ design 0040 Q1 was PROPOSED as "standard gets the chart, last",
         // implemented, and then REVERSED by the owner. The accepted cost is
         // that a user who never opens Settings has no live chart at all — they
@@ -297,21 +319,23 @@ void main() {
       }
     });
 
-    test('an unclassified unit is drawn with the standard face whatever is '
-        'stored (Q4)', () {
-      for (final f in Watchface.values) {
-        expect(effectiveWatchface(ProductClass.unknown, f), Watchface.standard);
-      }
-      // Every other class honours the stored choice.
-      for (final cls in [
-        ProductClass.smartBattery,
-        ProductClass.supercapacitor,
-        ProductClass.powerBank,
-      ]) {
+    test('EVERY unit is drawn with the fixed face, whatever is stored', () {
+      // 📦 Was design 0034 Q4: an unclassified unit kept `standard` while every
+      // other class honoured the stored choice. Q4's argument was that a screen
+      // asking the user what the device is must not ALSO be rearranged under
+      // them "by a preference carried over from another unit" — and design 0051
+      // removed preferences. With nothing to carry over there is nothing to
+      // protect against, and the special case collapses into the general one.
+      for (final cls in ProductClass.values) {
         for (final f in Watchface.values) {
-          expect(effectiveWatchface(cls, f), f);
+          expect(effectiveWatchface(cls, f), Watchface.fixed,
+              reason: '\${cls.name} / \${f.slug}');
         }
       }
+      // …and the stored value is NOT rewritten, which is what makes this a
+      // rendering decision rather than a migration.
+      expect(const DisplayLayout(watchface: Watchface.compact).watchface,
+          Watchface.compact);
     });
   });
 

@@ -98,7 +98,23 @@ class CardHeading extends StatelessWidget {
           Icon(icon, size: 13, color: AppColors.amber),
           const SizedBox(width: 7),
         ],
-        Text(text.toUpperCase(), style: AppTextStyles.cardHeading(context)),
+        // 🔴 Flexible + ellipsis. A heading is a LABEL, so losing its tail is
+        // the correct failure — losing the card to a striped overflow bar is
+        // not. At 1x1 on a 320 dp phone a tile is ~150 px and
+        // "PER-CELL VOLTAGE DVOL" needs ~210, so this overflowed by 62 px on
+        // every such card, waiting tiles included. Surfaced by design 0051's
+        // editor preview, which is the first screen that renders these cards
+        // at 1x1 with nothing connected; the same shape as the `Flexible` the
+        // readout tile's own label has carried since design 0037.
+        Flexible(
+          child: Text(
+            text.toUpperCase(),
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.cardHeading(context),
+          ),
+        ),
         const SizedBox(width: 7),
         const Expanded(child: _FadeRule()),
         if (trailing != null) ...[

@@ -34,15 +34,26 @@ library;
 
 import 'dart:convert';
 
-/// The named watchfaces offered per product class (design 0034 §7 Q2:
-/// interface A — pick one, no free editing yet).
+/// The named watchfaces (design 0034 §7 Q2: interface A — pick one).
+///
+/// 🔴 **NOTHING PICKS ONE ANY MORE (design 0051, owner ruling 2026-08-09).**
+/// The picker is gone from the device page and the Settings signpost with it;
+/// [effectiveWatchface] resolves every stored value to [fixed]. The enum, the
+/// slugs, [DisplayLayout.decode]'s round-trip and the `display_layout` column
+/// all stay — the ruling was "砍入口留骨架", on the reasoning that the feature
+/// shipped on 2026-08-04 and was still being changed on 2026-08-08, so the cost
+/// of keeping the storage shape is small and the cost of having thrown it away
+/// is not.
 ///
 /// The slug is the enum NAME and is a WIRE VALUE: it is written to the
 /// database and printed into export preambles, so it must not be renamed
 /// casually and must never be localized.
 enum Watchface {
-  /// Today's dashboard, card for card. The default, and the implementation of
-  /// design 0034 G4 — a user who never opens the setting sees no change.
+  /// Today's dashboard, card for card. Was the default and the implementation
+  /// of design 0034 G4 — a user who never opened the setting saw no change.
+  ///
+  /// Superseded as the default by [fixed] (design 0051). Still parsed, still
+  /// stored, no longer drawn.
   standard,
 
   /// Instrument + numbers only. Drops the per-cell / port card.
@@ -68,7 +79,34 @@ enum Watchface {
   ///
   /// The stored slug is untouched by the fallback, so turning the switch back
   /// on brings the face back with no migration and no lost setting.
-  riding;
+  ///
+  /// 🔴 Since design 0051 this face carries NEITHER phone module: the speed
+  /// card and the G ball live on the home grid only. What is left of it is
+  /// `[gauge, extra]` — the same list as [compact] — which is fine precisely
+  /// because nothing can select it any more.
+  riding,
+
+  /// 🔑 **The one face that is drawn** (design 0051).
+  ///
+  /// `圓錶 → 趨勢圖 → 數字格 → 類別卡`, and the ordering is a ruling rather
+  /// than an inheritance. It is deliberately NOT [diagnostic]'s order
+  /// (chart first, instrument last): that order was chosen in design 0041 Q4
+  /// on the premise that "anyone who goes out of their way to select this face
+  /// came for the curve". A face nobody selects has no such population, and
+  /// `watchfaces.dart` already records the cost that premise was paying —
+  /// for the first seconds of a link the chart has no points, so the TOP of
+  /// the page is a waiting card. Acceptable for an opt-in; not acceptable for
+  /// the only page there is.
+  ///
+  /// So the instrument leads (it is the one thing readable at a glance and it
+  /// draws from the first frame), the chart follows it, the numbers grid comes
+  /// third and the class's own card — per-cell voltages on a pack, the
+  /// energy-path row on a power bank — closes.
+  ///
+  /// The protection card is still NOT in this list and cannot be: design 0034
+  /// §6 makes "controls last, always, never customisable" structural by having
+  /// no [DisplayModule] for it.
+  fixed;
 
   /// Stable storage/export identifier. Deliberately the enum name, so adding a
   /// face cannot silently renumber the others (contrast an ordinal).
@@ -90,10 +128,16 @@ enum Watchface {
 /// Bound to a device, not to a class or to the app (design 0034 Q3): it lives
 /// in `saved_devices.display_layout`.
 class DisplayLayout {
-  const DisplayLayout({this.watchface = Watchface.standard});
+  const DisplayLayout({this.watchface = Watchface.fixed});
 
-  /// The layout every device has until someone changes it — and, by
-  /// construction, the one that draws exactly today's screen (G4).
+  /// The layout every device has, full stop (design 0051): nothing writes this
+  /// column from the UI any more, and [effectiveWatchface] ignores whatever a
+  /// pre-0051 build left in it.
+  ///
+  /// ⚠️ A device that stored `compact` still DECODES as `compact` — the
+  /// round-trip is part of the skeleton being kept — it simply does not RENDER
+  /// as one. No migration is needed and none is run: [decode] never throws
+  /// (see the library comment), so an old row is read, ignored and left alone.
   static const DisplayLayout defaults = DisplayLayout();
 
   /// JSON key for [watchface]. Also the token used in the export preamble, so

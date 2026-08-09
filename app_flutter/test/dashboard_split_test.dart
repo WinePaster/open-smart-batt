@@ -86,6 +86,13 @@ void main() {
   /// Pump [child] under the controller providers + English localization.
   Future<void> pumpUnder(
       WidgetTester tester, AppServices s, Widget child) async {
+    // A TALL surface. The pack shell is a ListView, so it builds only what
+    // fits — and since design 0051 the drawn face carries the trend chart,
+    // which pushes the control card past the bottom of the default 800x600.
+    // "the controls are absent" would then pass by never building them.
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MultiProvider(
         providers: [

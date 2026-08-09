@@ -38,16 +38,10 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
-import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
 import 'package:open_smart_batt/ui/dashboard/g_force_card.dart';
-import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
-import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
-import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
-import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:open_smart_batt/ui/dashboard/speed_card.dart';
-import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
 import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
-import 'package:open_smart_batt/ui/devices/watchface_sheet.dart';
+import 'package:open_smart_batt/ui/home/home_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// A valid, right-handed, orthonormal calibration. The IDENTITY is fine as
@@ -102,109 +96,84 @@ void main() {
   // =========================================================================
   // Pure: the ruling's table, module by module
   // =========================================================================
-  group('renderedModules — the four states of `riding`', () {
+  // 📦 REPOINTED by design 0051 (2026-08-09). This group used to sweep the four
+  // states of the `riding` WATCHFACE. Owner ruling A took both phone modules
+  // off every face —「表盤不會有速度卡跟Ｇ值卡 這兩個應該只會在主頁出現」— so
+  // the four states now live on the HOME grid, and `HomeLayout.renderedFor` is
+  // the resolver that decides them.
+  //
+  // 🔴 The QUESTION is identical and the stakes are higher, not lower: this is
+  // now the ONLY instance of design 0042's privacy chain (no module ⇒ no card
+  // ⇒ no `setFaceWantsSpeed` ⇒ no stream). Before, a bug here still had the
+  // watchface layer's copy of the same filter standing behind it.
+  group('HomeLayout.renderedFor — the four states of the two phone tiles', () {
     const off = AppSettings();
     const speedOn = AppSettings(speedDetection: true);
 
-    List<DisplayModule> riding(AppSettings s, {required bool g}) =>
-        renderedModules(ProductClass.smartBattery, Watchface.riding, s,
-            gForceAvailable: g);
+    const battery = SavedDevice(
+        id: 'DEV-A', alias: 'A', productClass: ProductClass.smartBattery);
+
+    /// A grid holding both phone tiles plus one device tile, resolved.
+    List<DisplayModule?> home(AppSettings s, {required bool g}) => const HomeLayout([
+          HomeTile.module(DisplayModule.speed),
+          HomeTile.module(DisplayModule.gForce),
+          HomeTile.device('DEV-A'),
+        ])
+            .renderedFor(const [battery], s, gForceAvailable: g)
+            .tiles
+            .map((t) => t.module)
+            .toList();
 
     test('speed on, G unavailable → the speed card, no ball', () {
-      expect(riding(speedOn, g: false), [
-        DisplayModule.speed,
-        DisplayModule.gaugeVoltage,
-        DisplayModule.cells,
-      ]);
+      expect(home(speedOn, g: false), [DisplayModule.speed, null]);
     });
 
     test('🔴 speed OFF, G available → the ball, and NO speed card', () {
-      // The state that did not exist before design 0045 and that the ruling was
-      // needed for. `riding` is drawn — the G meter is keeping it alive — and
-      // `speed` must not be in it, because laying it out would mount a
-      // SpeedCard, which opens the GNSS stream, for a user who never saw the
-      // location consent dialog.
-      expect(riding(off, g: true), [
-        DisplayModule.gForce,
-        DisplayModule.gaugeVoltage,
-        DisplayModule.cells,
-      ]);
+      // The state design 0045 introduced, and the reason the ruling was needed.
+      // Laying `speed` out would mount a SpeedCard, which opens the GNSS
+      // stream, for a user who never saw the location consent dialog.
+      expect(home(off, g: true), [DisplayModule.gForce, null]);
     });
 
     test('both on → both cards, speed first', () {
-      expect(riding(speedOn, g: true), [
-        DisplayModule.speed,
-        DisplayModule.gForce,
-        DisplayModule.gaugeVoltage,
-        DisplayModule.cells,
-      ]);
+      expect(home(speedOn, g: true),
+          [DisplayModule.speed, DisplayModule.gForce, null]);
     });
 
-    test('both off → the face falls back to standard entirely', () {
-      expect(riding(off, g: false), [
-        DisplayModule.gaugeVoltage,
-        DisplayModule.readouts,
-        DisplayModule.cells,
-      ]);
-      expect(
-          renderedWatchface(
-              ProductClass.smartBattery, Watchface.riding, off,
-              gForceAvailable: false),
-          Watchface.standard);
+    test('both off → neither tile, and the device card carries the page', () {
+      // 📦 Was "the face falls back to standard entirely". There is no face to
+      // fall back to; what stands in its place is T-new-2, the rule that the
+      // home grid is never empty. The device card is what keeps it non-empty.
+      expect(home(off, g: false), [null]);
     });
 
-    test('every one of the three drawn states differs from compact', () {
-      // T2b's property, restated for the state space design 0045 introduced. A
-      // face that renders as a copy of another face is the defect design 0041
-      // was written for and design 0034 G2 calls unreachable-by-design.
+    test('no WATCHFACE draws either module, in any state', () {
+      // What is left of the old assertions, in the form design 0051 leaves them
+      // in: whatever the switches say, the dashboard has no phone card. The
+      // export preamble depends on the same fact — `modules=` is printed from
+      // the pure `watchfaceModules`, so a leftover `speed` would claim a GPS
+      // card in every capture taken on any phone.
       for (final cls in ProductClass.values) {
-        if (cls == ProductClass.unknown) continue; // forced to standard, Q4
-        final compact = renderedModules(cls, Watchface.compact, speedOn,
-            gForceAvailable: true);
-        for (final (s, g) in [(speedOn, false), (off, true), (speedOn, true)]) {
-          final drawn =
-              renderedModules(cls, Watchface.riding, s, gForceAvailable: g);
-          expect(drawn.toSet().difference(compact.toSet()), isNotEmpty,
-              reason: '$cls with speed=${s.speedDetection} g=$g renders as a '
-                  'copy of compact');
-        }
-      }
-    });
-
-    test('the OTHER faces are untouched by either switch', () {
-      // G4: a user who never opens Settings sees the same screen. Both
-      // switches, both G states, all four classes, all three original faces.
-      for (final cls in ProductClass.values) {
-        for (final f in [
-          Watchface.standard,
-          Watchface.compact,
-          Watchface.diagnostic
-        ]) {
-          final base = watchfaceModules(cls, effectiveWatchface(cls, f));
-          for (final s in [off, speedOn]) {
+        for (final f in Watchface.values) {
+          for (final st in [off, speedOn]) {
             for (final g in [false, true]) {
-              expect(renderedModules(cls, f, s, gForceAvailable: g), base,
+              expect(renderedModules(cls, f, st, gForceAvailable: g),
+                  watchfaceModules(cls, effectiveWatchface(cls, f)),
+                  reason: '$cls / ${f.slug}');
+              expect(
+                  watchfaceModules(cls, f).where((m) => m.isPhoneModule),
+                  isEmpty,
                   reason: '$cls / ${f.slug}');
             }
           }
         }
       }
     });
-
-    test('the pure module list still declares everything, for the preamble',
-        () {
-      // `watchfaceModules` must NOT learn about the switches: it is what
-      // `modules=` prints, and a capture whose module list depended on a phone's
-      // settings could not be compared with another phone's.
-      expect(watchfaceModules(ProductClass.smartBattery, Watchface.riding), [
-        DisplayModule.speed,
-        DisplayModule.gForce,
-        DisplayModule.gaugeVoltage,
-        DisplayModule.cells,
-      ]);
-    });
   });
 
+  // ⚠️ VESTIGIAL since design 0051 — nothing selects a face any more. Kept
+  // because the predicate is kept (see `watchfaces.dart`), and an untested
+  // survivor is how the wrong expression comes back if a picker ever returns.
   group('ridingSelectable', () {
     const off = AppSettings();
     const speedOn = AppSettings(speedDetection: true);
@@ -243,9 +212,21 @@ void main() {
   });
 
   // =========================================================================
-  // The same four states, through the real dashboard
+  // The same four states, through the real HOME PAGE
   // =========================================================================
-  group('the dashboard draws the four states', () {
+  //
+  // 📦 REPOINTED by design 0051, not deleted. These used to pump `PackScaffold`
+  // with a stored `riding` face. Ruling A moved both phone cards off the
+  // dashboard, so the surface that draws them is the home grid — and the
+  // assertions about the CONTROLLER (a switch on with no calibration is not
+  // availability; calibrating must not need a restart) are exactly as
+  // load-bearing there as they were here, because design 0045 R1 expects
+  // "switched on, never calibrated" to be the common state.
+  //
+  // The two picker tests that used to close this group are gone with the
+  // picker; what they protected — "unavailable is not offered" — is asserted on
+  // the editor's own menu in the group below.
+  group('the home page draws the four states', () {
     late _FakeBleService ble;
 
     Future<AppServices> makeServices(WidgetTester tester) async {
@@ -256,6 +237,15 @@ void main() {
         ble = _FakeBleService();
         services = await AppServices.create(appDatabase: appDb, ble: ble);
         await services.devices.saveNew('DEV-A', 'unit A');
+        await services.devices
+            .setProductClass('DEV-A', ProductClass.smartBattery);
+        // Both phone tiles placed explicitly, so what is on screen is decided
+        // by availability alone rather than by whatever `defaultFor` generates.
+        await services.settings.setHomeLayout(const HomeLayout([
+          HomeTile.module(DisplayModule.speed),
+          HomeTile.module(DisplayModule.gForce),
+          HomeTile.device('DEV-A'),
+        ]).encode());
       });
       return services;
     }
@@ -266,8 +256,7 @@ void main() {
       await s.dispose();
     }
 
-    Future<void> pumpUnder(
-        WidgetTester tester, AppServices s, Widget child) async {
+    Future<void> pumpHome(WidgetTester tester, AppServices s) async {
       tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -294,7 +283,7 @@ void main() {
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             locale: const Locale('en'),
-            home: Scaffold(body: child),
+            home: const Scaffold(body: HomePage()),
           ),
         ),
       );
@@ -323,38 +312,16 @@ void main() {
       await tester.pump();
     }
 
-    Future<void> feedDvol(WidgetTester tester) async {
-      ble.emit(TelemetrySample(
-        timestamp: DateTime(2026, 8, 7, 9, 30),
-        pvlt: 13.2,
-        svlt: 13.1,
-        temperatureC: 31,
-        dvol: const [3.30, 3.31, 3.29, 3.30],
-      ));
-      await tester.pump();
-      await tester.pump();
-    }
-
-    Future<void> setRiding(WidgetTester tester, AppServices s) async {
-      await tester.runAsync(() => s.devices.setDisplayLayout(
-          'DEV-A', const DisplayLayout(watchface: Watchface.riding)));
-    }
-
     double dy(WidgetTester tester, Finder f) => tester.getTopLeft(f.first).dy;
 
     testWidgets('speed on, G unavailable → speed card only', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: true, g: false);
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
+      await pumpHome(tester, s);
 
       expect(find.byType(SpeedCard), findsOneWidget);
       expect(find.byType(GForceCard), findsNothing);
-      expect(find.byType(ReadoutsCard), findsNothing);
     });
 
     testWidgets('🔴 speed OFF, G available → the ball, and no speed card',
@@ -362,22 +329,13 @@ void main() {
       // The leak this ruling exists to prevent, asserted where it would happen.
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: false, g: true);
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
+      await pumpHome(tester, s);
 
-      expect(find.byType(GForceCard), findsOneWidget,
-          reason: 'the G meter alone keeps riding alive');
+      expect(find.byType(GForceCard), findsOneWidget);
       expect(find.byType(SpeedCard), findsNothing,
           reason: 'a speed card here would open the GNSS stream with the '
               'location consent dialog never having been shown');
-      // …and it is still not a copy of compact: the ball is the difference.
-      expect(find.byType(PvltGauge), findsOneWidget);
-      expect(find.byType(DvolBars), findsOneWidget);
-      expect(find.byType(ReadoutsCard), findsNothing);
     });
 
     testWidgets('🔴 …and the GNSS gate stayed shut while it did', (tester) async {
@@ -385,12 +343,10 @@ void main() {
       // by a SpeedCard mounting; with no card it must never have opened.
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: false, g: true);
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpHome(tester, s);
       await tester.pump();
+
       expect(s.speed.streaming, isFalse);
       expect(s.speed.permission, SpeedPermissionState.notRequested,
           reason: 'the OS was never asked, because nothing asked it');
@@ -399,90 +355,60 @@ void main() {
     testWidgets('both on → both cards, speed above the ball', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: true, g: true);
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
+      await pumpHome(tester, s);
 
       expect(find.byType(SpeedCard), findsOneWidget);
       expect(find.byType(GForceCard), findsOneWidget);
       expect(dy(tester, find.byType(SpeedCard)),
           lessThan(dy(tester, find.byType(GForceCard))));
-      expect(dy(tester, find.byType(GForceCard)),
-          lessThan(dy(tester, find.byType(PvltGauge))));
     });
 
-    testWidgets('both off → standard, with its numbers grid back',
-        (tester) async {
+    testWidgets('both off → neither tile', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: false, g: false);
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
+      await pumpHome(tester, s);
 
       expect(find.byType(SpeedCard), findsNothing);
       expect(find.byType(GForceCard), findsNothing);
-      expect(find.byType(ReadoutsCard), findsOneWidget,
-          reason: 'the fallback is standard — a page identical to compact is '
-              'what T2b exists to make unreachable');
-    });
-
-    testWidgets('a power bank gets the same treatment', (tester) async {
-      final s = await makeServices(tester);
-      addTearDown(() => teardown(tester, s));
-      await setSwitches(tester, s, speed: false, g: true);
-      await setRiding(tester, s);
-      await pumpUnder(tester, s, const PowerBankView());
-
-      expect(find.byType(GForceCard), findsOneWidget);
-      expect(find.byType(SpeedCard), findsNothing);
+      // …and the page is NOT empty, which is T-new-2. The device card is what
+      // keeps it non-empty; a blank home screen is the one outcome the grid is
+      // never allowed to reach.
+      expect(find.text('unit A'), findsOneWidget);
     });
 
     testWidgets('🔴 switched ON but never calibrated shows NOTHING',
         (tester) async {
       // Design 0045 Q8, and the state design 0045 R1 expects to be the common
       // one. Not a greyed-out card, not a placeholder, not a hint: the module
-      // is not laid out, so `riding` has nothing to be and falls back.
+      // is not laid out at all.
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await tester.runAsync(() async {
         await s.settings.setSpeedDetection(false);
         await s.settings.setGMeterEnabled(true);
         // Switch on, calibration absent — the exact half-configured state.
         await s.settings.setGCalibration(null);
       });
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
-      await feedDvol(tester);
+      await pumpHome(tester, s);
 
       expect(s.gforce.enabled, isTrue);
       expect(s.gforce.available, isFalse);
       expect(find.byType(GForceCard), findsNothing);
-      expect(find.byType(ReadoutsCard), findsOneWidget,
-          reason: 'fell back to standard, because nothing was available');
     });
 
     testWidgets('an unreadable stored calibration is the same as none',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await tester.runAsync(() async {
         await s.settings.setGMeterEnabled(true);
         // Orthonormal, unit length — and MIRRORED, which swaps left for right.
         await s.settings
             .setGCalibration('{"m":[1,0,0,0,-1,0,0,0,1],"at":0}');
       });
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpHome(tester, s);
 
       expect(s.gforce.available, isFalse);
       expect(find.byType(GForceCard), findsNothing);
@@ -491,15 +417,12 @@ void main() {
     testWidgets('calibrating makes the card appear without a restart',
         (tester) async {
       // The composition root's settings listener, end to end. Without it the
-      // user would calibrate, return to the dashboard and see no change.
+      // user would calibrate, return to the home page and see no change.
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSwitches(tester, s, speed: false, g: false);
       await tester.runAsync(() => s.settings.setGMeterEnabled(true));
-      await setRiding(tester, s);
-      await pumpUnder(
-          tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpHome(tester, s);
       expect(find.byType(GForceCard), findsNothing);
 
       await tester
@@ -507,49 +430,8 @@ void main() {
       await tester.pump();
       expect(find.byType(GForceCard), findsOneWidget);
     });
-
-    testWidgets('the picker offers riding when EITHER switch is available',
-        (tester) async {
-      final s = await makeServices(tester);
-      addTearDown(() => teardown(tester, s));
-      await setSwitches(tester, s, speed: false, g: true);
-      await pumpUnder(
-        tester,
-        s,
-        Builder(
-          builder: (context) => TextButton(
-            onPressed: () =>
-                showWatchfaceSheet(context, deviceId: 'DEV-A'),
-            child: const Text('open'),
-          ),
-        ),
-      );
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
-      expect(find.text('Riding'), findsOneWidget,
-          reason: 'the G meter alone makes riding worth offering');
-    });
-
-    testWidgets('and withholds it when neither is', (tester) async {
-      final s = await makeServices(tester);
-      addTearDown(() => teardown(tester, s));
-      await setSwitches(tester, s, speed: false, g: false);
-      await pumpUnder(
-        tester,
-        s,
-        Builder(
-          builder: (context) => TextButton(
-            onPressed: () =>
-                showWatchfaceSheet(context, deviceId: 'DEV-A'),
-            child: const Text('open'),
-          ),
-        ),
-      );
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
-      expect(find.text('Riding'), findsNothing);
-    });
   });
+
 
   // =========================================================================
   // 🔴 The two callers that would have leaked

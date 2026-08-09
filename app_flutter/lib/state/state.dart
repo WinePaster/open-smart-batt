@@ -9,6 +9,7 @@ export 'accel_estimator.dart';
 export 'app_services.dart';
 export 'background_window_tracker.dart';
 export 'build_info.dart';
+export 'card_telemetry.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';
 export 'g_force_config.dart';

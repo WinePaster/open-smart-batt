@@ -578,9 +578,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get deviceBadgeNotAnswering => '沒有回應';
 
   @override
-  String get deviceDetailWatchface => '錶盤';
-
-  @override
   String get homeAddFirstDevice => '加入第一台裝置';
 
   @override
@@ -883,7 +880,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsSpeedDetectionLabel => '速度偵測';
 
   @override
-  String get settingsSpeedDetectionSub => '在儀表板顯示 GPS 速度（新增「騎乘」錶盤）。預設關閉。';
+  String get settingsSpeedDetectionSub => '在主頁加上一張 GPS 速度卡。預設關閉。';
 
   @override
   String get settingsSpeedUnitLabel => '速度單位';
@@ -990,7 +987,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsGMeterLabel => 'G 值錶';
 
   @override
-  String get settingsGMeterSub => '在「騎乘」錶盤顯示前後／橫向 G 值。需要先做一次校準。預設關閉。';
+  String get settingsGMeterSub => '在主頁加上一張前後／橫向 G 值卡。需要先做一次校準。預設關閉。';
 
   @override
   String get settingsGCalibrationLabel => '校準車架';
@@ -1073,36 +1070,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gWizardRecalibrate => '重新校準';
-
-  @override
-  String get watchfaceRiding => '騎乘';
-
-  @override
-  String get settingsWatchfaceLabel => '錶盤';
-
-  @override
-  String get settingsWatchfaceGuidance => '在裝置頁選擇裝置後更換';
-
-  @override
-  String get settingsWatchfaceSub => '目前連線裝置的儀表板要放哪些卡片、依什麼順序。';
-
-  @override
-  String get settingsWatchfaceSubNoDevice => '此設定綁定裝置。請先連線並儲存裝置，才能在這裡調整。';
-
-  @override
-  String get watchfaceStandard => '標準';
-
-  @override
-  String get watchfaceCompact => '精簡';
-
-  @override
-  String get watchfaceDiagnostic => '診斷';
-
-  @override
-  String get settingsRestoreDisplayLabel => '還原預設顯示';
-
-  @override
-  String get settingsRestoreDisplayDone => '已還原為標準錶盤。';
 
   @override
   String get settingsTempUnitLabel => '溫度單位';

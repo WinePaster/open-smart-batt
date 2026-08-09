@@ -103,7 +103,7 @@ class PowerBankView extends StatelessWidget {
             // mistake as a permanent `--`.
             for (final m in order)
               ?dashboardCardFor(context, m,
-                  shellClass: ProductClass.powerBank),
+                  shellClass: ProductClass.powerBank, tele: tele),
           ],
         ),
       ),

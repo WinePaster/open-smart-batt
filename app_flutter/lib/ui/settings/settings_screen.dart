@@ -40,17 +40,13 @@ const String kProtocolUrl =
     'https://github.com/WinePaster/open-smart-batt/blob/main/docs/PROTOCOL.md';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({
-    super.key,
-    this.deviceInfoPanelBuilder,
-    this.onOpenDevices,
-  });
+  const SettingsScreen({super.key, this.deviceInfoPanelBuilder});
 
-  /// Switch to the devices tab (design 0046 R20). The watchface picker moved to
-  /// the device detail page, and this screen keeps a SIGNPOST pointing at it —
-  /// threaded from the shell for the same reason every other tab change is:
-  /// `_setTab` is the single writer that keeps the GNSS gate honest.
-  final VoidCallback? onOpenDevices;
+  // 🔴 `onOpenDevices` is GONE (design 0051). It existed for exactly one row —
+  // the design 0046 R20 signpost to the watchface picker — and that row went
+  // with the picker. A callback threaded from the shell to nothing is how a
+  // screen quietly grows a second navigation path later, so it is removed
+  // rather than left available.
 
   /// Optional device-info panel supplied by a closed-source build. NULL on the
   /// open build, where nothing is rendered and the screen is byte-identical to
@@ -70,7 +66,7 @@ class SettingsScreen extends StatelessWidget {
       children: [
         const _ConnectionCard(),
         if (panel != null) panel(context),
-        _DisplayCard(onOpenDevices: onOpenDevices),
+        const _DisplayCard(),
         const _DataCard(),
         const _DiagnosticsCard(),
         const _AboutCard(),
@@ -144,9 +140,7 @@ class _ConnectionCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _DisplayCard extends StatelessWidget {
-  const _DisplayCard({this.onOpenDevices});
-
-  final VoidCallback? onOpenDevices;
+  const _DisplayCard();
 
   @override
   Widget build(BuildContext context) {
@@ -224,7 +218,12 @@ class _DisplayCard extends StatelessWidget {
             label: l10n.settingsGForceExplainerLabel,
             onTap: () => showGForceMeasurementExplainer(context),
           ),
-          _WatchfaceGuidanceRow(onOpenDevices: onOpenDevices),
+          // 🔴 The 錶盤 signpost row is gone (design 0051, 2026-08-09). Design
+          // 0046 R20 kept it because "設定 → 錶盤" had shipped and a user who
+          // learned that path had to find out where it went. There is now
+          // nowhere for it to point: the picker itself is gone, and a row that
+          // said "the watchface moved" and then "there is no watchface" in two
+          // releases would be worse than the silence.
         ],
       ),
     );
@@ -435,45 +434,13 @@ String _calibratedWhen(DateTime at) {
       '${two(l.hour)}:${two(l.minute)}';
 }
 
-/// A SIGNPOST to the watchface picker, which now lives on the device's own page.
-///
-/// Design 0046 R20 moved the picker (see `ui/devices/watchface_sheet.dart`).
-/// This row is kept rather than deleted because "設定 → 錶盤" has shipped since
-/// v0.6.17: a user who learned that path must find out where it went, not find
-/// nothing.
-///
-/// 🔴 T-new-7 — it is a LINK, never a second editor. It renders no
-/// `SegmentedControl<Watchface>` and calls no `setDisplayLayout`. Two entry
-/// points writing one column is the double-knob problem design 0046 R18 had
-/// just finished removing; having the second one be the OLD one would be worse,
-/// because it is the one people already know.
-///
-/// The row it replaced carried a sentence explaining that the setting belongs to
-/// a device and there was none connected. That sentence is gone, and its absence
-/// is the point (§4.7): the state it explained is now expressed by navigation —
-/// you pick a device, then you get its watchface.
-class _WatchfaceGuidanceRow extends StatelessWidget {
-  const _WatchfaceGuidanceRow({this.onOpenDevices});
-
-  final VoidCallback? onOpenDevices;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    // `SettingsRow` + `InkWell` rather than `SettingsLinkRow`, which has no
-    // sub-line: the row has to say WHERE the picker went, and one short line is
-    // exactly the amount of explanation §4.7 allows here.
-    return InkWell(
-      onTap: onOpenDevices,
-      child: SettingsRow(
-        label: l10n.settingsWatchfaceLabel,
-        sub: l10n.settingsWatchfaceGuidance,
-        trailing:
-            Icon(Icons.chevron_right, size: 16, color: context.colors.muted),
-      ),
-    );
-  }
-}
+// 🔴 The watchface signpost row was DELETED on 2026-08-09 (design 0051).
+//
+// It was a signpost to the per-device watchface picker, which design 0046 R20
+// had moved out of this screen. Both are gone now: there is one dashboard
+// layout and nothing to pick. T-new-7 ("Settings is a link, never a second
+// writer of `display_layout`") is satisfied vacuously — this file no longer
+// mentions the column at all, which is the strongest form of that rule.
 
 // ---------------------------------------------------------------------------
 // 資料 / Data

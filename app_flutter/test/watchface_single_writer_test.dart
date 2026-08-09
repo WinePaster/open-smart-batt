@@ -1,20 +1,22 @@
-// T-new-7 — `display_layout` has exactly ONE writer in the UI.
+// T-new-7 — `display_layout` has exactly ZERO writers in the UI.
 //
-// Design 0046 R20 moved the watchface picker from Settings onto the device's own
-// page, and kept a row in Settings pointing at it. The failure mode that makes
-// this worth a test is not the move; it is the temptation to leave the old
-// control working "so nobody is stranded". Two screens writing one column is the
-// double-knob problem R18 had just finished removing from the multi-device
-// switch — and here the second knob would be the OLD one, the one people
-// already know, which makes it worse rather than better.
+// 🔴 TIGHTENED, not relaxed, by design 0051 (2026-08-09). Design 0046 R20 had
+// moved the watchface picker from Settings onto the device's own page and left
+// a signpost behind, and the risk this file was written for was a SECOND
+// writer appearing. The owner's ruling 「同意拿掉入口」 removes the picker
+// entirely, so the bound drops from one to none — the strongest form of the
+// same statement, and the one that cannot regress quietly: any new
+// `setDisplayLayout(` under `lib/ui/**` now fails this test outright.
 //
-// Three assertions, deliberately at three different levels:
-//   1. SOURCE — only one file under `lib/ui/**` calls `setDisplayLayout(`.
-//      A source scan is the only form that catches a THIRD writer being added
-//      somewhere neither of the widget tests below happens to look.
-//   2. RENDER — Settings shows no `SegmentedControl<Watchface>`.
-//   3. NAVIGATION — the Settings row is still there and is still a link, so the
-//      path that shipped in v0.6.17 leads somewhere instead of nowhere.
+// What the column is still FOR: it is skeleton (see `display_layout.dart`).
+// `DeviceController.setDisplayLayout` and the repo path below it stay, tested,
+// so restoring a picker is a UI change rather than a data-layer change. Nothing
+// in the interface calls them.
+//
+// Two assertions, at two levels:
+//   1. SOURCE — no file under `lib/ui/**` calls `setDisplayLayout(`.
+//   2. RENDER — Settings offers neither a picker nor the old signpost row, and
+//      the retired vocabulary is gone with them.
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
 import 'dart:io';
@@ -54,7 +56,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
 
-  test('exactly one UI file writes display_layout', () {
+  test('NO ui file writes display_layout', () {
     final dir = Directory('lib/ui');
     expect(dir.existsSync(), isTrue,
         reason: 'lib/ui is the input to this test; if it moved, point this at '
@@ -65,13 +67,12 @@ void main() {
             f.readAsStringSync().contains('setDisplayLayout('))
           f.path,
     ];
-    expect(writers, hasLength(1),
-        reason: 'design 0046 T-new-7: the watchface has ONE editor. Found: '
-            '$writers');
-    expect(writers.single, endsWith('watchface_sheet.dart'));
+    expect(writers, isEmpty,
+        reason: 'design 0051: the watchface picker is gone, so nothing in the '
+            'interface writes this column. Found: $writers');
   });
 
-  testWidgets('Settings has no picker, only a link', (tester) async {
+  testWidgets('Settings offers neither a picker nor a signpost', (tester) async {
     late final AppServices s;
     await tester.runAsync(() async {
       final db = await AppDatabase.open(
@@ -91,7 +92,6 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    var opened = 0;
     await tester.pumpWidget(
       MultiProvider(
         providers: [
@@ -115,30 +115,23 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
           home: Scaffold(
-            body: SettingsScreen(onOpenDevices: () => opened++),
+            body: const SettingsScreen(),
           ),
         ),
       ),
     );
     await tester.pump();
-    await tester.scrollUntilVisible(find.text('Watchface'), 60,
-        scrollable: find.byType(Scrollable).first);
-    await tester.pump();
+    // The screen rendered — otherwise every absence below is vacuous.
+    expect(find.text('Speed detection'), findsOneWidget);
 
-    // 2 — no second editor.
+    // No editor, and no row pointing at one either. The signpost went with the
+    // picker: a row that said "the watchface moved" in one release and "there
+    // is no watchface" in the next is worse than the silence.
     expect(find.byType(SegmentedControl<Watchface>), findsNothing);
+    expect(find.text('Watchface'), findsNothing);
     expect(find.text('Standard'), findsNothing);
     expect(find.text('Diagnostic'), findsNothing);
     expect(find.text('Restore default display'), findsNothing);
-
-    // 3 — the shipped path still leads somewhere.
-    expect(find.text('Watchface'), findsOneWidget);
-    await tester.tap(find.text('Watchface'));
-    await tester.pump();
-    expect(opened, 1,
-        reason: 'v0.6.17 shipped "設定 → 錶盤"; a user who learned that path '
-            'must find out where it went, not find nothing');
-    expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults,
-        reason: 'and the signpost writes nothing of its own');
+    expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults);
   });
 }
