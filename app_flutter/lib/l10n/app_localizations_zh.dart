@@ -596,6 +596,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeModuleClock => '時鐘';
 
   @override
+  String get homeStyleTitle => '卡片外觀';
+
+  @override
+  String get homeStyleShellSection => '外框';
+
+  @override
+  String get homeStyleViewSection => '內容';
+
+  @override
+  String get homeStyleApplyShellToAll => '外框套用到所有卡片';
+
+  @override
+  String get cardShellStandard => '標準';
+
+  @override
+  String get cardShellMinimal => '極簡';
+
+  @override
+  String get cardShellDense => '緊湊';
+
+  @override
+  String get cardViewReadoutsGrid => '格狀';
+
+  @override
+  String get cardViewReadoutsBig => '大數字';
+
+  @override
+  String get cardViewGaugeDial => '錶盤';
+
+  @override
+  String get cardViewGaugeNumeric => '數字';
+
+  @override
+  String get cardViewClockDigital => '數位';
+
+  @override
   String get devicesNoSaved => '尚無已儲存裝置';
 
   @override

@@ -14,6 +14,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'card_style.dart';
+
+export 'card_style.dart';
+
 /// Brand accent palette (mockup CSS custom properties). IDENTICAL in light and
 /// dark — kept `const` so accent-only widgets can stay `const`.
 class AppColors {
@@ -132,6 +136,12 @@ extension BuildContextPalette on BuildContext {
 ///
 /// These carry NEUTRAL colors, so they are methods taking a [BuildContext]:
 /// the color follows the active [AppPalette].
+///
+/// 🔑 That existing signature is what let design 0054's `dense` shell shrink
+/// values with NO change at any call site: the two VALUE styles multiply their
+/// size by `context.cardValueSize`, which reads the nearest [CardStyleScope] and
+/// answers 1.0 when there is none. The heading and label styles deliberately do
+/// not — see [CardShellTokens.valueScale].
 class AppTextStyles {
   AppTextStyles._();
 
@@ -144,7 +154,7 @@ class AppTextStyles {
 
   /// Large gauge readout (mockup `.ring .num`).
   static TextStyle gaugeValue(BuildContext context) => TextStyle(
-        fontSize: 50,
+        fontSize: context.cardValueSize(50),
         height: 1.0,
         fontWeight: FontWeight.w700,
         letterSpacing: -1,
@@ -155,7 +165,7 @@ class AppTextStyles {
   static TextStyle statValue(BuildContext context) => TextStyle(
         fontFamilyFallback: monoFallback,
         fontFeatures: const [FontFeature.tabularFigures()],
-        fontSize: 23,
+        fontSize: context.cardValueSize(23),
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
         color: context.colors.text,

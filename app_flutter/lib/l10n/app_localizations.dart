@@ -1082,6 +1082,78 @@ abstract class AppLocalizations {
   /// **'Clock'**
   String get homeModuleClock;
 
+  /// Title of the home editor's per-card appearance sheet (design 0054). Deliberately not the word 'style' alone: the sheet holds TWO axes — the shell (frame, fill, spacing) and the card's own content variant.
+  ///
+  /// In en, this message translates to:
+  /// **'Card appearance'**
+  String get homeStyleTitle;
+
+  /// Section label above the shell thumbnails. 'Frame' rather than 'style' because the difference between the three shells is pinned on the frame and the fill — see CardShell.minimal.
+  ///
+  /// In en, this message translates to:
+  /// **'Frame'**
+  String get homeStyleShellSection;
+
+  /// Section label above the content-variant thumbnails. Shown only for a card that declares two or more views; a picker with one option is worse than no picker (design 0054 §1.1).
+  ///
+  /// In en, this message translates to:
+  /// **'Content'**
+  String get homeStyleViewSection;
+
+  /// Applies THIS card's frame to every card on the grid. Frame only — content variants are scoped to one card and have no meaning on another. Chosen over a global setting because a second source of truth would need a precedence rule between 'global' and 'per card', and inventing one is how design 0041 happened.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply frame to every card'**
+  String get homeStyleApplyShellToAll;
+
+  /// Shell name. NEVER the stored value — the wire value is the enum name in card_shell.dart and is not localized.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get cardShellStandard;
+
+  /// Shell name: no frame, no fill, a hairline between cards.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimal'**
+  String get cardShellMinimal;
+
+  /// Shell name: frame and fill kept, padding and value type tightened. 'Compact' rather than a literal translation of 'dense' — it describes what the user gets, not the token bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Compact'**
+  String get cardShellDense;
+
+  /// Readouts card, default view: the two-column hairline grid.
+  ///
+  /// In en, this message translates to:
+  /// **'Grid'**
+  String get cardViewReadoutsGrid;
+
+  /// Readouts card, hero view: the first item at gauge size, the rest on one line. Every value is still shown — this names an emphasis, not a shorter card.
+  ///
+  /// In en, this message translates to:
+  /// **'Big number'**
+  String get cardViewReadoutsBig;
+
+  /// Gauge card, default view: the tick-ring dial.
+  ///
+  /// In en, this message translates to:
+  /// **'Dial'**
+  String get cardViewGaugeDial;
+
+  /// Gauge card, numeric view: the dial removed, caption and sub-line kept.
+  ///
+  /// In en, this message translates to:
+  /// **'Numbers'**
+  String get cardViewGaugeNumeric;
+
+  /// Clock card, V1 view: hours and minutes. The clock declares only this one today, so the picker does not appear for it.
+  ///
+  /// In en, this message translates to:
+  /// **'Digital'**
+  String get cardViewClockDigital;
+
   /// No description provided for @devicesNoSaved.
   ///
   /// In en, this message translates to:

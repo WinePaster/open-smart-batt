@@ -212,6 +212,33 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       _apply(HomeGridOps.moveIntoSlot(_tiles!, from, slot));
 
   // ---------------------------------------------------------------------------
+  // Appearance (design 0054)
+  // ---------------------------------------------------------------------------
+
+  /// One card's shell and view, through the same [_apply] / [_persist] funnel
+  /// every other edit uses. There is no second write path.
+  void _setTileStyle(int index, {required CardShell shell, String? view}) {
+    final next = List<HomeTile>.of(_tiles!);
+    next[index] = next[index].withStyle(shell: shell, view: view);
+    _apply(next);
+  }
+
+  /// The shell of every card at once — SHELL ONLY.
+  ///
+  /// 🔴 Views are deliberately not included, and cannot be: a view slug means
+  /// something only inside its own module's vocabulary, so "apply `big` to
+  /// everything" has no referent on seven of the nine cards.
+  ///
+  /// This is a batch OPERATION rather than a global setting, which is the whole
+  /// reason it is cheap. A global "default shell" would need a precedence rule
+  /// against the per-card value, and a second source of truth for what a card
+  /// looks like is how design 0041 happened.
+  void _applyShellToAll(CardShell shell) => _apply([
+        for (final t in _tiles!)
+          if (t.isEmpty) t else t.withStyle(shell: shell, view: t.view),
+      ]);
+
+  // ---------------------------------------------------------------------------
   // The preview (design 0051 §5)
   // ---------------------------------------------------------------------------
 
@@ -363,6 +390,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                         canDelete: canDelete,
                         onDelete: () => _remove(starts[r] + c),
                         onToggleSpan: () => _toggleSpan(starts[r] + c),
+                        onEditStyle: () => _showStyleSheet(
+                            context,
+                            starts[r] + c,
+                            _previewFor(rows[r][c],
+                                live: starts[r] + c == firstDeviceCard)),
                         onDropOnTile: _onDropOnTile,
                         onDropInSlot: _onDropInSlot,
                         onDragMoved: _onDragMoved,
@@ -424,6 +456,146 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// Design 0051 removes the other half of the old sentence as well: the
   /// `riding` watchface no longer carries either phone module, so this grid is
   /// the ONLY place they can be placed at all.
+  /// The per-card appearance sheet (design 0054 §7).
+  ///
+  /// ## Why tapping the card, and not a third icon
+  ///
+  /// The control row is `[handle] … [span] [✕]`, and a 1×1 tile's top edge is
+  /// already half icons. The card BODY, meanwhile, is an [AbsorbPointer] whose
+  /// tap does nothing — an idle gesture on the biggest target on the screen. So
+  /// the gesture goes there.
+  ///
+  /// ⚠️ This does NOT reopen design 0049 Q4, which refused a LONG-PRESS to ENTER
+  /// edit mode from the home page. Both halves differ: this is a tap, and it is
+  /// inside a screen the user reached by pressing 編輯主頁. Nothing on the home
+  /// page itself gains a gesture (S-R4: the style is chosen in the editor and
+  /// nowhere else — the direct reason design 0040 removed the readouts card's
+  /// own mode toggle).
+  ///
+  /// ## Why the thumbnails are real cards
+  ///
+  /// Design 0041's failure was a user CHOOSING and then discovering the choice
+  /// changed nothing. Colour swatches would reproduce it exactly: the difference
+  /// would again be invisible until after the decision. These are the same
+  /// widget the grid draws, with the same fake data, scaled — so the comparison
+  /// happens before the tap rather than after it.
+  ///
+  /// ## Why the view row is sometimes missing
+  ///
+  /// It lists exactly [cardViewSlugs] for this tile's module, and is omitted
+  /// below two entries. That is mechanism ① of §1.1: a user cannot select a view
+  /// their card does not implement, because it is not on the screen. A picker
+  /// holding one option is worse than no picker.
+  void _showStyleSheet(BuildContext context, int index, HomePreview preview) {
+    final l10n = AppLocalizations.of(context);
+    final tile = _tiles![index];
+    if (tile.isEmpty) return;
+    final module = tile.module;
+    final views = module == null ? const <String>[] : cardViewSlugs(module);
+
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0xB804060A),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          // Read back from the page's list rather than from a copy: `_apply`
+          // has already written, so this is the same single source of truth the
+          // grid draws from.
+          final current = _tiles![index];
+          final selectedView = current.view ?? (views.isEmpty ? null : views.first);
+          return SafeArea(
+            child: Material(
+              color: sheetContext.colors.panel,
+              clipBehavior: Clip.antiAlias,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(15, 14, 15, 20),
+                children: [
+                  Text(
+                    l10n.homeStyleTitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: sheetContext.colors.text,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _SheetSectionLabel(text: l10n.homeStyleShellSection),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final s in CardShell.values)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 9),
+                            child: _StyleThumb(
+                              label: cardShellLabel(l10n, s),
+                              selected: current.shell == s,
+                              tile: current.withStyle(
+                                  shell: s, view: current.view),
+                              preview: preview,
+                              onTap: () {
+                                _setTileStyle(index,
+                                    shell: s, view: current.view);
+                                setSheetState(() {});
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (views.length >= 2) ...[
+                    const SizedBox(height: 14),
+                    _SheetSectionLabel(text: l10n.homeStyleViewSection),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final v in views)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 9),
+                              child: _StyleThumb(
+                                label: cardViewLabel(l10n, module!, v),
+                                selected: selectedView == v,
+                                tile: current.withStyle(
+                                    shell: current.shell, view: v),
+                                preview: preview,
+                                onTap: () {
+                                  _setTileStyle(index,
+                                      shell: current.shell, view: v);
+                                  setSheetState(() {});
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () {
+                      _applyShellToAll(current.shell);
+                      setSheetState(() {});
+                    },
+                    child: Text(
+                      l10n.homeStyleApplyShellToAll,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showAddSheet(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final devices = context.read<DeviceController>().devices;
@@ -572,6 +744,7 @@ class _EditorCell extends StatefulWidget {
     required this.canDelete,
     required this.onDelete,
     required this.onToggleSpan,
+    required this.onEditStyle,
     required this.onDropOnTile,
     required this.onDropInSlot,
     required this.onDragMoved,
@@ -589,6 +762,11 @@ class _EditorCell extends StatefulWidget {
   final bool canDelete;
   final VoidCallback onDelete;
   final VoidCallback onToggleSpan;
+
+  /// Open the appearance sheet — fired by a tap on the card BODY, which was an
+  /// idle gesture until design 0054. See `_showStyleSheet`.
+  final VoidCallback onEditStyle;
+
   final void Function(int from, int to) onDropOnTile;
   final void Function(int from, int slot) onDropInSlot;
 
@@ -691,11 +869,22 @@ class _EditorCellState extends State<_EditorCell> {
                     ),
                     // The real tile, so what is being arranged is what will be
                     // seen — at the width it will be seen at, which the grid
-                    // now provides. Inert while editing: a tap here is a drag
-                    // that has not started yet.
-                    AbsorbPointer(
-                        child: HomeTileView(
-                            tile: widget.tile, preview: widget.preview)),
+                    // now provides.
+                    //
+                    // 🔴 The [AbsorbPointer] stays exactly as it was: the card's
+                    // OWN controls must remain inert here. It absorbs by
+                    // claiming the hit itself, so this [GestureDetector] — its
+                    // ancestor — still receives the tap, and design 0054 spends
+                    // that previously-idle gesture on the appearance sheet.
+                    // Dragging is unaffected: the drag source is the handle
+                    // alone, and a tap cannot start one.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onEditStyle,
+                      child: AbsorbPointer(
+                          child: HomeTileView(
+                              tile: widget.tile, preview: widget.preview)),
+                    ),
                   ],
                 ),
               ),
@@ -820,6 +1009,120 @@ class _DragGhost extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A row label in the appearance sheet.
+class _SheetSectionLabel extends StatelessWidget {
+  const _SheetSectionLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text.toUpperCase(),
+          style: AppTextStyles.cardHeading(context),
+        ),
+      );
+}
+
+/// One choice in the appearance sheet: THE CARD ITSELF, shrunk.
+///
+/// 🔴 Not a swatch, not an icon, not a name alone. Design 0041's defect was a
+/// user selecting something and only then finding out it changed nothing; an
+/// abstract chip would put the discovery after the decision again. Here both
+/// candidates are on screen, drawn by the same widget the grid uses, with the
+/// same fake data — so "these two look identical" is answerable before the tap.
+///
+/// The mechanics are the mockup's `transform: scale(.42)` on one shared DOM: the
+/// card is laid out at a realistic full-tile width and then scaled down, rather
+/// than laid out small. Laying it out small would exercise the card's own
+/// narrow-width branches (FittedBox scale-down, ellipsis) and show a rendering
+/// the user will never see.
+class _StyleThumb extends StatelessWidget {
+  const _StyleThumb({
+    required this.label,
+    required this.selected,
+    required this.tile,
+    required this.preview,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final HomeTile tile;
+  final HomePreview preview;
+  final VoidCallback onTap;
+
+  /// The width the card is LAID OUT at before scaling — a full-width tile on a
+  /// mid-size phone.
+  static const double _layoutWidth = 330;
+  static const double _thumbWidth = 126;
+  static const double _thumbHeight = 82;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      child: Container(
+        width: _thumbWidth + 14,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: colors.bg,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(
+            color: selected ? AppColors.amber : colors.line,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRect(
+              child: SizedBox(
+                width: _thumbWidth,
+                height: _thumbHeight,
+                child: OverflowBox(
+                  alignment: Alignment.topLeft,
+                  minWidth: 0,
+                  maxWidth: _layoutWidth,
+                  minHeight: 0,
+                  maxHeight: double.infinity,
+                  child: Transform.scale(
+                    scale: _thumbWidth / _layoutWidth,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: _layoutWidth,
+                      // Nothing inside a thumbnail is tappable — the tap belongs
+                      // to the choice, not to the card being illustrated.
+                      child: IgnorePointer(
+                        child: HomeTileView(tile: tile, preview: preview),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? AppColors.amber : colors.text,
+              ),
+            ),
+          ],
         ),
       ),
     );

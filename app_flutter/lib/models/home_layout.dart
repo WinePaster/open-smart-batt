@@ -53,6 +53,8 @@ library;
 import 'dart:convert';
 
 import 'app_settings.dart';
+import 'card_shell.dart';
+import 'card_view.dart';
 import 'display_module.dart';
 import 'product_class.dart';
 import 'saved_device.dart';
@@ -123,21 +125,32 @@ class HomeTile {
     this.module,
     this.deviceId,
     this.span = HomeSpan.full,
+    this.shell = CardShell.standard,
+    this.view,
   });
 
   /// A [DisplayModule] tile.
   const HomeTile.module(DisplayModule module,
-      {String? deviceId, HomeSpan span = HomeSpan.full})
+      {String? deviceId,
+      HomeSpan span = HomeSpan.full,
+      CardShell shell = CardShell.standard,
+      String? view})
       : this(
             kind: HomeTileKind.module,
             module: module,
             deviceId: deviceId,
-            span: span);
+            span: span,
+            shell: shell,
+            view: view);
 
   /// One unit's summary card.
-  const HomeTile.device(String deviceId, {HomeSpan span = HomeSpan.full})
+  const HomeTile.device(String deviceId,
+      {HomeSpan span = HomeSpan.full, CardShell shell = CardShell.standard})
       : this(
-            kind: HomeTileKind.deviceCard, deviceId: deviceId, span: span);
+            kind: HomeTileKind.deviceCard,
+            deviceId: deviceId,
+            span: span,
+            shell: shell);
 
   /// The zero-device empty state.
   const HomeTile.addDevice() : this(kind: HomeTileKind.addDevice);
@@ -164,11 +177,60 @@ class HomeTile {
 
   final HomeSpan span;
 
+  /// The card's SHELL — frame, fill, spacing (design 0054). A GLOBAL vocabulary:
+  /// every card understands every member.
+  final CardShell shell;
+
+  /// The card's CONTENT VARIANT, or null for that card's default.
+  ///
+  /// 🔴 A raw slug, and its meaning is scoped to [module] — `card_view.dart` is
+  /// where that is argued. It is deliberately not typed as a global `CardView`
+  /// enum: there is no such type, so "what does `analog` mean on the readouts
+  /// card" is a question this codebase cannot be asked.
+  ///
+  /// Always null when [module] is null (a device card has no variants), and
+  /// always null for a module's own default, so the default round-trips as
+  /// absence rather than as a written-out name.
+  final String? view;
+
+  /// [view] resolved against [module] — null for "this card's default".
+  ///
+  /// [HomeTile.fromJson] and [withStyle] already normalise, so this is only ever
+  /// different from [view] for a tile some code CONSTRUCTED with an explicit
+  /// default (`HomeTile.module(readouts, view: 'grid')`). Both writers go
+  /// through it anyway: storage and the export preamble are the two places where
+  /// "the default, spelled out" and "the default, absent" would look like two
+  /// different layouts to a reader.
+  String? get storedView => normaliseCardView(module, view);
+
+  /// 🔴 [shell] and [view] are carried THROUGH, not defaulted.
+  ///
+  /// This method's only callers are `HomeGridOps` (span toggles, moves), and a
+  /// version that dropped them would silently reset a card's appearance every
+  /// time it was dragged — an edit performing a second edit nobody asked for.
   HomeTile copyWith({HomeSpan? span, String? deviceId}) => HomeTile(
         kind: kind,
         module: module,
         deviceId: deviceId ?? this.deviceId,
         span: span ?? this.span,
+        shell: shell,
+        view: view,
+      );
+
+  /// Both style axes at once — the editor's style sheet writes them together.
+  ///
+  /// Separate from [copyWith] because "no view" is a VALUE here (it means the
+  /// card's default), and an optional named parameter cannot tell that apart
+  /// from "leave it alone". A sentinel object would; two methods are cheaper to
+  /// read.
+  HomeTile withStyle({required CardShell shell, required String? view}) =>
+      HomeTile(
+        kind: kind,
+        module: module,
+        deviceId: deviceId,
+        span: span,
+        shell: shell,
+        view: normaliseCardView(module, view),
       );
 
   Map<String, Object?> toJson() => {
@@ -176,6 +238,12 @@ class HomeTile {
         if (module != null) 'module': module!.name,
         if (deviceId != null) 'device': deviceId,
         'span': span.slug,
+        // Defaults are written as ABSENCE, both of them. Writing `standard` into
+        // every row would have to be told apart from never set
+        // (`display_layout.dart`), and it would grow every stored layout for a
+        // value that is already the answer.
+        if (shell != CardShell.standard) 'shell': shell.slug,
+        if (storedView != null) 'view': storedView,
       };
 
   /// Read one stored tile. Returns null for anything this build cannot make
@@ -186,6 +254,14 @@ class HomeTile {
     if (kind == null) return null;
     final span = HomeSpan.fromSlug(raw['span'] as String?) ?? HomeSpan.full;
     final device = raw['device'] is String ? raw['device'] as String : null;
+    // 🔴 Unknown shell / view ⇒ THE DEFAULT, and the tile survives. That is the
+    // opposite of the `module` rule twenty lines down, which drops the tile, and
+    // the asymmetry is deliberate: a module is what the card SAYS, a shell and a
+    // view are only how it looks. Losing a card because a later build retired a
+    // frame style would be a blank space where a reading used to be.
+    final shell = CardShell.fromSlug(raw['shell'] as String?) ??
+        CardShell.standard;
+    final storedView = raw['view'] is String ? raw['view'] as String : null;
     switch (kind) {
       case HomeTileKind.addDevice:
         return const HomeTile.addDevice();
@@ -196,12 +272,20 @@ class HomeTile {
       case HomeTileKind.deviceCard:
         // A device card with no device is not a tile, it is a corrupt row.
         if (device == null) return null;
-        return HomeTile.device(device, span: span);
+        return HomeTile.device(device, span: span, shell: shell);
       case HomeTileKind.module:
         final name = raw['module'];
         for (final m in DisplayModule.values) {
           if (m.name == name) {
-            return HomeTile.module(m, deviceId: device, span: span);
+            return HomeTile.module(m,
+                deviceId: device,
+                span: span,
+                shell: shell,
+                // Resolved against THIS module's vocabulary. A slug belonging to
+                // another card ("analog" on a readouts tile) is not an error and
+                // not a dropped tile — it is simply not a word this card knows,
+                // so the card draws its default.
+                view: normaliseCardView(m, storedView));
           }
         }
         // A module this build does not know: a layout written by a newer
@@ -217,15 +301,19 @@ class HomeTile {
       other.kind == kind &&
       other.module == module &&
       other.deviceId == deviceId &&
-      other.span == span;
+      other.span == span &&
+      other.shell == shell &&
+      other.view == view;
 
   @override
-  int get hashCode => Object.hash(kind, module, deviceId, span);
+  int get hashCode => Object.hash(kind, module, deviceId, span, shell, view);
 
   @override
   String toString() =>
       'HomeTile(${kind.slug}${module == null ? '' : ':${module!.name}'}'
-      '${deviceId == null ? '' : '@$deviceId'}, ${span.slug})';
+      '${deviceId == null ? '' : '@$deviceId'}, ${span.slug}'
+      '${shell == CardShell.standard ? '' : ', ${shell.slug}'}'
+      '${view == null ? '' : ', $view'})';
 }
 
 /// The home page's grid.

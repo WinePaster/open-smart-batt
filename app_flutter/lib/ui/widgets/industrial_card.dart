@@ -50,26 +50,40 @@ class IndustrialCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    // 🔴 Read from a SCOPE, not from the theme (design 0054). With no scope this
+    // is `standard`, which is what every card outside the home grid gets — the
+    // settings screen must not lose its frames because somebody chose `minimal`
+    // for their home page. See `card_style.dart`.
+    final shell = context.cardShellTokens;
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: EdgeInsets.only(bottom: shell.gapBelow),
       child: CustomPaint(
-        foregroundPainter:
-            CornerTicksPainter(colors.line2, AppTheme.radiusLg),
+        foregroundPainter: shell.cornerTicks
+            ? CornerTicksPainter(colors.line2, shell.radius)
+            : null,
         child: Container(
           decoration: BoxDecoration(
-            color: colors.panel,
-            borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: colors.line),
+            color: shell.filled ? colors.panel : null,
+            borderRadius: BorderRadius.circular(shell.radius),
+            border: shell.bordered
+                ? Border.all(color: colors.line)
+                : (shell.underlined
+                    ? Border(bottom: BorderSide(color: colors.line))
+                    : null),
           ),
-          padding: padding,
+          padding: context.scaleCardPadding(padding),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (heading != null) ...[
                 CardHeading(
-                    text: heading!, icon: headingIcon, trailing: headingTrailing),
-                const SizedBox(height: 13),
+                  text: heading!,
+                  icon: headingIcon,
+                  trailing: headingTrailing,
+                  rule: shell.headingRule,
+                ),
+                SizedBox(height: shell.headingGap),
               ],
               child,
             ],
@@ -82,13 +96,24 @@ class IndustrialCard extends StatelessWidget {
 
 /// Section header row (mockup `.card h3` + `.hl` fading rule).
 class CardHeading extends StatelessWidget {
-  const CardHeading({super.key, required this.text, this.icon, this.trailing});
+  const CardHeading({
+    super.key,
+    required this.text,
+    this.icon,
+    this.trailing,
+    this.rule = true,
+  });
 
   final String text;
   final IconData? icon;
 
   /// Optional control after the fade rule (see [IndustrialCard.headingTrailing]).
   final Widget? trailing;
+
+  /// Whether to draw the fading rule after the label (design 0054: the `dense`
+  /// shell drops it). The label KEEPS its `Flexible`/ellipsis either way — the
+  /// rule going away must not turn an overlong heading into an overflow bar.
+  final bool rule;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +141,9 @@ class CardHeading extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 7),
-        const Expanded(child: _FadeRule()),
+        // `Expanded` either way, so the heading row is the same width and the
+        // trailing slot lands in the same place with or without the rule.
+        Expanded(child: rule ? const _FadeRule() : const SizedBox.shrink()),
         if (trailing != null) ...[
           const SizedBox(width: 7),
           trailing!,

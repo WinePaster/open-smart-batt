@@ -627,6 +627,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeModuleClock => 'Clock';
 
   @override
+  String get homeStyleTitle => 'Card appearance';
+
+  @override
+  String get homeStyleShellSection => 'Frame';
+
+  @override
+  String get homeStyleViewSection => 'Content';
+
+  @override
+  String get homeStyleApplyShellToAll => 'Apply frame to every card';
+
+  @override
+  String get cardShellStandard => 'Standard';
+
+  @override
+  String get cardShellMinimal => 'Minimal';
+
+  @override
+  String get cardShellDense => 'Compact';
+
+  @override
+  String get cardViewReadoutsGrid => 'Grid';
+
+  @override
+  String get cardViewReadoutsBig => 'Big number';
+
+  @override
+  String get cardViewGaugeDial => 'Dial';
+
+  @override
+  String get cardViewGaugeNumeric => 'Numbers';
+
+  @override
+  String get cardViewClockDigital => 'Digital';
+
+  @override
   String get devicesNoSaved => 'No saved devices yet';
 
   @override
