@@ -599,9 +599,22 @@ class TelemetryController extends ChangeNotifier implements TelemetryHealth {
   /// to explain the gap.
   ///
   /// Flushing resets the bucket, so pausing and resuming inside one minute
-  /// yields TWO rows for that minute. That is deliberate: each row reports its
-  /// own `samples` count, which is more honest than silently merging them or
-  /// rewriting a row already on disk.
+  /// sends that minute here in SEVERAL segments. They no longer become several
+  /// rows: [HistoryRepo.insertSample] merges a segment into the row already
+  /// stored for that (device, minute), weighted by sample count (design 0048).
+  ///
+  /// This used to read "that is deliberate — each row reports its own `samples`
+  /// count, which is more honest than silently merging them". The honesty was
+  /// at the wrong layer. `samples` is never rendered on the history screen (it
+  /// exists only in the CSV), so what the user actually saw was two rows
+  /// stamped with the identical `HH:mm:ss` and no way to tell them apart. How
+  /// many segments a minute was cut into is diagnostic, and the diagnostic log
+  /// records every trigger — `app paused`, `app hidden`, `link: disconnected` —
+  /// so nothing is lost by keeping it there instead.
+  ///
+  /// The flush TRIGGERS are deliberately unchanged: merging is what makes an
+  /// extra flush harmless, so there is no longer any reason to risk dropping a
+  /// partial minute by flushing less often.
   ///
   /// Flushes EVERY open bucket: the app is about to lose control of its own
   /// execution, and a unit whose partial minute is left behind because another

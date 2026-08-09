@@ -118,8 +118,13 @@ void main() {
       final t = DateTime.utc(2026, 7, 29, 12);
       await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
       // Two rows written before attribution existed — the pre-fix state.
+      // ⚠️ Different MINUTES on purpose: since design 0048 two segments of one
+      // (device, minute) merge into a single row, so writing both at `t` would
+      // leave one unattributed row and quietly test a smaller claim than the
+      // count in the assertion below.
       await history.insertSample(sample(t), deviceId: null, samples: 3);
-      await history.insertSample(sample(t), deviceId: null, samples: 4);
+      await history.insertSample(sample(t.add(const Duration(minutes: 1))),
+          deviceId: null, samples: 4);
 
       final out = await history.exportCsv(
         deviceId: 'AA',
@@ -178,8 +183,12 @@ void main() {
         'row exactly once', () async {
       final t = DateTime.utc(2026, 7, 29, 12);
       await history.insertSample(sample(t), deviceId: 'AA', samples: 10);
+      // Distinct minutes for the two orphans — see the note in the first test:
+      // same-minute segments merge (design 0048), and the partition asserted
+      // below counts ROWS.
       await history.insertSample(sample(t), deviceId: null, samples: 3);
-      await history.insertSample(sample(t), deviceId: null, samples: 4);
+      await history.insertSample(sample(t.add(const Duration(minutes: 1))),
+          deviceId: null, samples: 4);
       await history.insertSample(sample(t), deviceId: 'BB', samples: 5);
 
       final out = await history.exportCsv(

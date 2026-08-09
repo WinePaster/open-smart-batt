@@ -150,6 +150,31 @@ class HistoryRepo {
   /// battery said. Null means the minute had no live GPS sample (or the feature
   /// is off) — never 0.0, which would claim the phone was measured standing
   /// still.
+  ///
+  /// **One row per (device, minute)** (design 0048). The controller flushes a
+  /// partial minute whenever the app may lose control of its own execution, so
+  /// one minute can arrive here in several segments; each extra segment used to
+  /// become another row with the same timestamp, and the history screen —
+  /// which renders `HH:mm:ss`, and every segment carries `:00` — showed them as
+  /// identical duplicates. Segments are merged instead: the numbers combine by
+  /// sample-count weight, which for a mean is exact (a weighted mean of the
+  /// segments IS the mean of the whole minute), so the merge loses nothing.
+  ///
+  /// "This minute was cut into N segments" is diagnostic, not user data, and
+  /// the diagnostic log already records it in full (`app paused` / `app hidden`
+  /// / `link: disconnected`). It was never on this screen: `samples` appears
+  /// only in the CSV.
+  ///
+  /// Rows written by earlier builds are NOT rewritten (design 0048 G2,
+  /// 2026-08-07 ruling). Past minutes may still hold several rows; only one of
+  /// them — the newest — is ever merged into, and the others are left alone.
+  ///
+  /// ⚠️ The read-modify-write runs in a TRANSACTION, and it has to. Design 0048
+  /// §3 argued it was already safe because writes go through [PendingWrites] —
+  /// but that class states plainly that it is "not a queue and not a
+  /// scheduler", it only tracks futures that are *already running*. Two flushes
+  /// of the same minute can therefore overlap, both see no existing row, and
+  /// both insert.
   Future<int> insertSample(
     TelemetrySample sample, {
     String? deviceId,
@@ -160,14 +185,107 @@ class HistoryRepo {
     double? gLongMs2,
     double? gLatMs2,
   }) {
-    return _db.insert(
-      Db.tableHistory,
-      _row(sample, deviceId, samples, appBuild,
-          speedMps: speedMps,
-          accelMps2: accelMps2,
-          gLongMs2: gLongMs2,
-          gLatMs2: gLatMs2),
-    );
+    final incoming = _row(sample, deviceId, samples, appBuild,
+        speedMps: speedMps,
+        accelMps2: accelMps2,
+        gLongMs2: gLongMs2,
+        gLatMs2: gLatMs2);
+
+    return _db.transaction<int>((txn) async {
+      // `device_id IS NULL` rather than `= ?`: unattributed rows are their own
+      // bucket, and SQL equality never matches NULL.
+      final existing = await txn.query(
+        Db.tableHistory,
+        columns: null,
+        where: deviceId == null
+            ? 'timestamp = ? AND device_id IS NULL'
+            : 'timestamp = ? AND device_id = ?',
+        whereArgs: deviceId == null
+            ? [incoming['timestamp']]
+            : [incoming['timestamp'], deviceId],
+        orderBy: 'id DESC',
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        return txn.insert(Db.tableHistory, incoming);
+      }
+      final old = existing.first;
+      final id = (old['id'] as num).toInt();
+      await txn.update(
+        Db.tableHistory,
+        _mergeRows(old, incoming),
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return id;
+    });
+  }
+
+  /// Columns holding a per-minute MEAN, so two segments of one minute combine
+  /// by sample-count weight. Everything else is last-value-wins, which is what
+  /// an uninterrupted minute would have produced anyway: the controller takes
+  /// non-averaged fields from the minute's last sample.
+  static const List<String> _meanColumns = <String>[
+    'pvlt',
+    'svlt',
+    'ampere',
+    'speed',
+    'accel',
+    'g_long',
+    'g_lat',
+  ];
+
+  /// Same, but stored as INTEGER — so the weighted mean is rounded back.
+  static const List<String> _meanIntColumns = <String>['temperature'];
+
+  /// Combine an incoming segment into the row already stored for that minute.
+  ///
+  /// A null on either side is not a zero: it contributes no weight, and the
+  /// other side's value survives unchanged. `samples` is null only when NEITHER
+  /// side counted — never 0, which would claim the row averaged nothing.
+  static Map<String, Object?> _mergeRows(
+    Map<String, Object?> old,
+    Map<String, Object?> incoming,
+  ) {
+    final oldN = (old['samples'] as num?)?.toInt();
+    final incN = (incoming['samples'] as num?)?.toInt();
+    // An unknown or non-positive count still has to weigh something, or a
+    // segment that forgot to count would silently erase one that did.
+    final wOld = (oldN != null && oldN > 0) ? oldN : 1;
+    final wInc = (incN != null && incN > 0) ? incN : 1;
+
+    final merged = <String, Object?>{};
+    for (final entry in incoming.entries) {
+      final col = entry.key;
+      final inc = entry.value;
+      final prev = old[col];
+
+      if (col == 'samples') {
+        merged[col] =
+            (oldN == null && incN == null) ? null : (oldN ?? 0) + (incN ?? 0);
+        continue;
+      }
+
+      final isMean = _meanColumns.contains(col);
+      final isMeanInt = _meanIntColumns.contains(col);
+      if (!isMean && !isMeanInt) {
+        merged[col] = inc ?? prev;
+        continue;
+      }
+
+      final a = (prev as num?)?.toDouble();
+      final b = (inc as num?)?.toDouble();
+      final double? value;
+      if (a == null) {
+        value = b;
+      } else if (b == null) {
+        value = a;
+      } else {
+        value = (a * wOld + b * wInc) / (wOld + wInc);
+      }
+      merged[col] = value == null ? null : (isMeanInt ? value.round() : value);
+    }
+    return merged;
   }
 
   /// Batch-insert many samples in a single transaction.
