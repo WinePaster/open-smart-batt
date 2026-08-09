@@ -142,7 +142,7 @@ class _StatTile extends StatelessWidget {
           ),
           if (item.badge != null) ...[
             const SizedBox(height: 6),
-            _BadgePill(text: item.badge!, accent: item.badgeColor),
+            ReadoutBadgePill(text: item.badge!, accent: item.badgeColor),
           ],
         ],
       ),
@@ -155,8 +155,14 @@ class _StatTile extends StatelessWidget {
 /// Sits UNDER the value rather than beside the label: the grid is two columns
 /// on a phone, and a pill on the label row pushes the label into an ellipsis
 /// exactly when the tile matters most.
-class _BadgePill extends StatelessWidget {
-  const _BadgePill({required this.text, this.accent});
+///
+/// PUBLIC since design 0054 so the readouts card's `big` view can print it too.
+/// It is not decoration: FB-47's whole point is that a bare `-0.43 A` reads as a
+/// defect, and the word beside it is what makes the minus a direction. A view
+/// that dropped the pill would be a view that changed the MEANING of a number,
+/// which is the line S-R1 draws.
+class ReadoutBadgePill extends StatelessWidget {
+  const ReadoutBadgePill({super.key, required this.text, this.accent});
 
   final String text;
   final Color? accent;

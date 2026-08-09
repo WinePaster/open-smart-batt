@@ -436,6 +436,54 @@
   "homeEditAddCard": "Add card",
   "homeEditRestoreDefaults": "Restore default layout",
   "homeModuleClock": "Clock",
+  "homeStyleTitle": "Card appearance",
+  "homeStyleShellSection": "Frame",
+  "homeStyleViewSection": "Content",
+  "homeStyleApplyShellToAll": "Apply frame to every card",
+  "cardShellStandard": "Standard",
+  "cardShellMinimal": "Minimal",
+  "cardShellDense": "Compact",
+  "cardViewReadoutsGrid": "Grid",
+  "cardViewReadoutsBig": "Big number",
+  "cardViewGaugeDial": "Dial",
+  "cardViewGaugeNumeric": "Numbers",
+  "cardViewClockDigital": "Digital",
+  "@homeStyleTitle": {
+    "description": "Title of the home editor's per-card appearance sheet (design 0054). Deliberately not the word 'style' alone: the sheet holds TWO axes — the shell (frame, fill, spacing) and the card's own content variant."
+  },
+  "@homeStyleShellSection": {
+    "description": "Section label above the shell thumbnails. 'Frame' rather than 'style' because the difference between the three shells is pinned on the frame and the fill — see CardShell.minimal."
+  },
+  "@homeStyleViewSection": {
+    "description": "Section label above the content-variant thumbnails. Shown only for a card that declares two or more views; a picker with one option is worse than no picker (design 0054 §1.1)."
+  },
+  "@homeStyleApplyShellToAll": {
+    "description": "Applies THIS card's frame to every card on the grid. Frame only — content variants are scoped to one card and have no meaning on another. Chosen over a global setting because a second source of truth would need a precedence rule between 'global' and 'per card', and inventing one is how design 0041 happened."
+  },
+  "@cardShellStandard": {
+    "description": "Shell name. NEVER the stored value — the wire value is the enum name in card_shell.dart and is not localized."
+  },
+  "@cardShellMinimal": {
+    "description": "Shell name: no frame, no fill, a hairline between cards."
+  },
+  "@cardShellDense": {
+    "description": "Shell name: frame and fill kept, padding and value type tightened. 'Compact' rather than a literal translation of 'dense' — it describes what the user gets, not the token bundle."
+  },
+  "@cardViewReadoutsGrid": {
+    "description": "Readouts card, default view: the two-column hairline grid."
+  },
+  "@cardViewReadoutsBig": {
+    "description": "Readouts card, hero view: the first item at gauge size, the rest on one line. Every value is still shown — this names an emphasis, not a shorter card."
+  },
+  "@cardViewGaugeDial": {
+    "description": "Gauge card, default view: the tick-ring dial."
+  },
+  "@cardViewGaugeNumeric": {
+    "description": "Gauge card, numeric view: the dial removed, caption and sub-line kept."
+  },
+  "@cardViewClockDigital": {
+    "description": "Clock card, V1 view: hours and minutes. The clock declares only this one today, so the picker does not appear for it."
+  },
   "@homeModuleSpeed": {
     "description": "Home-grid heading for the GPS speed module. The other six modules reuse the headings their cards already carry (design 0046 §4.2: the home editor and the watchface picker must name a module the same way), and speed is the one with no card heading of its own."
   },

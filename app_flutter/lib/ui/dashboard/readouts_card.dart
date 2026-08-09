@@ -36,6 +36,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../models/card_view.dart';
 import '../../state/live_trend_buffer.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
@@ -44,12 +45,23 @@ import 'live_trend_chart.dart';
 
 /// The numbers grid, as a card.
 ///
-/// Nothing but a [ReadoutGrid] in an [IndustrialCard]; the per-class decision
-/// about WHICH readouts appear is made by the view, from the registry.
+/// The per-class decision about WHICH readouts appear is made by the registry
+/// and handed in as [items]; this card only decides how they are ARRANGED.
+///
+/// 🔴 That division is design 0054 S-R1 / F5, and it is why [view] can exist at
+/// all: a content variant may change the arrangement and may never change the
+/// list. Nothing below inspects, filters or reorders [items].
 class ReadoutsCard extends StatelessWidget {
-  const ReadoutsCard({super.key, required this.items});
+  const ReadoutsCard({
+    super.key,
+    required this.items,
+    this.view = ReadoutsView.grid,
+  });
 
   final List<Readout> items;
+
+  /// Which arrangement. Scoped to THIS card — see `card_view.dart`.
+  final ReadoutsView view;
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +69,179 @@ class ReadoutsCard extends StatelessWidget {
     return IndustrialCard(
       heading: l10n.dashboardReadoutsHeading,
       headingIcon: Icons.speed,
-      child: ReadoutGrid(items: items),
+      // Exhaustive, no `default`: a new [ReadoutsView] is a compile error here
+      // rather than a silent fall-back to the grid.
+      child: switch (view) {
+        ReadoutsView.grid => ReadoutGrid(items: items),
+        ReadoutsView.big => ReadoutHero(items: items),
+      },
+    );
+  }
+}
+
+/// The `big` view: the FIRST readout at gauge size, the rest on one line.
+///
+/// ## Zero information loss, and why that is a hard requirement
+///
+/// Every item's label, value, unit AND badge is still on screen. Design 0054 F4
+/// permits a view to print less only when it buys emphasis with what it gave up;
+/// this one gives up nothing at all, it re-weights. A version that simply
+/// dropped the tail would leave the user unable to discover what they had lost —
+/// the defect F4 is named after.
+///
+/// ⚠️ The hero is `items.first` and the user cannot pick it (design 0054 Q1). On
+/// a battery that means the TEMPERATURE is what gets enlarged, which is a known
+/// and accepted cost: making it selectable is the per-card × per-field Cartesian
+/// product design 0040 Q4 refused, and reordering is the registry's job.
+class ReadoutHero extends StatelessWidget {
+  const ReadoutHero({super.key, required this.items});
+
+  final List<Readout> items;
+
+  @override
+  Widget build(BuildContext context) {
+    // A card with nothing in it has no first item to promote. The grid renders
+    // an empty list as an empty box, which is the same honest nothing.
+    if (items.isEmpty) return ReadoutGrid(items: items);
+    final hero = items.first;
+    final rest = items.skip(1).toList(growable: false);
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(hero.icon, size: 12, color: colors.muted),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                hero.label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.label(context),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        // Same overflow remedy as `_BigValue` and the clock: `Expanded` +
+        // `FittedBox(scaleDown)`, so a 50 px number in a half-width tile shrinks
+        // instead of drawing a striped RenderFlex bar over the one value this
+        // view exists to show.
+        Row(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(
+                  TextSpan(
+                    text: hero.value,
+                    style: AppTextStyles.gaugeValue(context),
+                    children: [
+                      if (hero.unit != null)
+                        TextSpan(
+                          text: ' ${hero.unit}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: colors.muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                  maxLines: 1,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (hero.badge != null) ...[
+          const SizedBox(height: 6),
+          ReadoutBadgePill(text: hero.badge!, accent: hero.badgeColor),
+        ],
+        if (rest.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.only(top: 9),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: colors.line)),
+            ),
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                for (final r in rest) _RestItem(item: r),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One of the demoted readouts: label, value, unit and badge on a single line.
+///
+/// ⚠️ The LABEL is the flexible part, and the value is not.
+///
+/// A demoted row is `TEMPERATURE TEMP 41 °C`, and one such item can be wider
+/// than the whole card — found by design 0054's own editor test, which lays a
+/// card out at 330 px for the appearance thumbnails and drew a striped
+/// RenderFlex bar across it. Ellipsising the LABEL is the correct failure, the
+/// same choice `CardHeading` makes: a label is a name and survives losing its
+/// tail; a reading that has lost digits is a lie.
+class _RestItem extends StatelessWidget {
+  const _RestItem({required this.item});
+
+  final Readout item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            item.label.toUpperCase(),
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.label(context),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text.rich(
+          TextSpan(
+            text: item.value,
+            style: AppTextStyles.mono(context).copyWith(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: colors.text,
+            ),
+            children: [
+              if (item.unit != null)
+                TextSpan(
+                  text: ' ${item.unit}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: colors.muted,
+                  ),
+                ),
+            ],
+          ),
+          maxLines: 1,
+          softWrap: false,
+        ),
+        // Never dropped — see [ReadoutBadgePill].
+        if (item.badge != null) ...[
+          const SizedBox(width: 5),
+          ReadoutBadgePill(text: item.badge!, accent: item.badgeColor),
+        ],
+      ],
     );
   }
 }

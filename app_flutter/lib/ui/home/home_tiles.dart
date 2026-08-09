@@ -65,6 +65,53 @@ String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
       DisplayModule.clock => l10n.homeModuleClock,
     };
 
+/// The name of a [CardShell] in the editor's appearance sheet (design 0054).
+///
+/// 🔴 A LABEL, never the stored value. The wire value is the enum name
+/// (`card_shell.dart`) and is not localized — same rule as [DisplayModule].
+/// Exhaustive, so a new shell is a compile error here rather than a blank chip.
+String cardShellLabel(AppLocalizations l10n, CardShell s) => switch (s) {
+      CardShell.standard => l10n.cardShellStandard,
+      CardShell.minimal => l10n.cardShellMinimal,
+      CardShell.dense => l10n.cardShellDense,
+    };
+
+/// The name of one of [m]'s own view slugs.
+///
+/// Takes the MODULE as well as the slug, because that is what a scoped name
+/// space means: `numeric` on a gauge and a hypothetical `numeric` somewhere else
+/// are different words that happen to be spelled alike, and this function is the
+/// place that would otherwise pretend they are one.
+String cardViewLabel(AppLocalizations l10n, DisplayModule m, String slug) {
+  switch (m) {
+    case DisplayModule.readouts:
+      return switch (ReadoutsView.fromSlug(slug) ?? ReadoutsView.grid) {
+        ReadoutsView.grid => l10n.cardViewReadoutsGrid,
+        ReadoutsView.big => l10n.cardViewReadoutsBig,
+      };
+    case DisplayModule.gaugeVoltage:
+    case DisplayModule.gaugeSoc:
+      return switch (GaugeView.fromSlug(slug) ?? GaugeView.dial) {
+        GaugeView.dial => l10n.cardViewGaugeDial,
+        GaugeView.numeric => l10n.cardViewGaugeNumeric,
+      };
+    case DisplayModule.clock:
+      return switch (ClockView.fromSlug(slug) ?? ClockView.digital) {
+        ClockView.digital => l10n.cardViewClockDigital,
+      };
+    // Modules that declare no views (`cardViewSlugs`) never reach this — the
+    // editor iterates that same list, so there is no slug to name. Returning the
+    // slug is a visible marker if that ever stops being true, rather than a
+    // crash or an empty chip.
+    case DisplayModule.chart:
+    case DisplayModule.cells:
+    case DisplayModule.energyPath:
+    case DisplayModule.speed:
+    case DisplayModule.gForce:
+      return slug;
+  }
+}
+
 /// The glyph a module is drawn with, matching its own card's heading icon.
 IconData homeModuleIcon(DisplayModule m) => switch (m) {
       DisplayModule.gaugeVoltage => Icons.bolt,
@@ -113,19 +160,20 @@ class HomeTileView extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (tile.kind) {
       case HomeTileKind.addDevice:
-        return _AddDeviceTile(onTap: onOpenDevices);
+        return _shell(_AddDeviceTile(onTap: onOpenDevices));
       case HomeTileKind.deviceCard:
-        return _DeviceTile(
+        return _shell(_DeviceTile(
           deviceId: tile.deviceId!,
           onTap: onOpenDetail,
           preview: preview,
-        );
+        ));
       case HomeTileKind.module:
-        return _ModuleTile(
+        return _shell(_ModuleTile(
           module: tile.module!,
           deviceId: tile.deviceId,
+          view: tile.view,
           preview: preview,
-        );
+        ));
       // 🔴 Nothing at all on the HOME page — the gap beside a lone 1x1 is the
       // point of it, and drawing a dotted box there would put a control-looking
       // thing on a page with no controls. The editor draws it visibly, because
@@ -134,6 +182,21 @@ class HomeTileView extends StatelessWidget {
         return const SizedBox.shrink();
     }
   }
+
+  /// 🔴 The ONLY place a [CardShell] is published (design 0054).
+  ///
+  /// It is a scope around each tile rather than a theme extension because the
+  /// same [IndustrialCard] draws the settings screen, the history screen and the
+  /// G-calibration wizard — 11 of its ~26 call sites — and choosing `minimal`
+  /// for a home page must not unframe any of them. `card_style.dart` has the
+  /// full argument.
+  ///
+  /// The WAITING tile is inside the scope too, deliberately: a card that looked
+  /// like a different card when the unit went offline would make the layout
+  /// unrecognisable exactly when the user is trying to work out what happened.
+  /// Only `view` stops at that boundary — see [HomeWaitingTile].
+  Widget _shell(Widget child) =>
+      CardStyleScope(shell: tile.shell, child: child);
 }
 
 /// The zero-device empty state. One card, one action, no explanation — the
@@ -394,7 +457,9 @@ class _BigValue extends StatelessWidget {
                     maxLines: 1,
                     softWrap: false,
                     style: AppTextStyles.mono(context).copyWith(
-                      fontSize: 32,
+                      // Shell-scaled (design 0054): `mono` carries no size, so
+                      // this reading asks for the multiplier explicitly.
+                      fontSize: context.cardValueSize(32),
                       fontWeight: FontWeight.w700,
                       height: 1,
                       color:
@@ -426,13 +491,17 @@ class _BigValue extends StatelessWidget {
 /// module two ways. Otherwise it is the waiting state, and that is a hard rule
 /// rather than a fallback: see the library comment.
 class _ModuleTile extends StatelessWidget {
-  const _ModuleTile({required this.module, this.deviceId, this.preview});
+  const _ModuleTile(
+      {required this.module, this.deviceId, this.view, this.preview});
 
   final DisplayModule module;
 
   /// Null for a module that reads no device at all (design 0042's `speed` reads
   /// the phone's own GNSS), in which case it is ALWAYS live.
   final String? deviceId;
+
+  /// The stored content-variant slug, or null for this module's default.
+  final String? view;
 
   final HomePreview? preview;
 
@@ -452,12 +521,12 @@ class _ModuleTile extends StatelessWidget {
       // Routed on `isPhoneModule`, an exhaustive switch, NOT on an
       // `== speed || == gForce` chain — see `display_module.dart` for why that
       // shape has failed here four times.
-      if (module.isPhoneModule) return previewCardFor(module, p);
+      if (module.isPhoneModule) return previewCardFor(module, p, view: view);
       // A device module with fake data. It can still return null — a class that
       // has no such card must not grow one in the editor either — and the
       // waiting tile is the honest rendering of that.
       return dashboardCardFor(context, module,
-              shellClass: p.shellClass, tele: p.tele) ??
+              shellClass: p.shellClass, tele: p.tele, view: view) ??
           HomeWaitingTile(module: module);
     }
     final conn = context.watch<ConnectionController>();
@@ -472,7 +541,8 @@ class _ModuleTile extends StatelessWidget {
     final shellClass = homeTileShellClass(id, conn);
     return dashboardCardFor(context, module,
             shellClass: shellClass,
-            tele: context.watch<TelemetryController>()) ??
+            tele: context.watch<TelemetryController>(),
+            view: view) ??
         HomeWaitingTile(module: module);
   }
 }
@@ -496,6 +566,17 @@ class _ModuleTile extends StatelessWidget {
 /// A card with nothing to say should take the room of something with nothing
 /// to say. The heading still identifies it, so the layout is still legible as
 /// the arrangement the user chose; it just stops shouting.
+///
+/// 🔴 **Takes no `view`, and never will** (design 0054 §2, last row). With no
+/// data there is no content to vary, and a "big-number version of `--`" would
+/// dress the honesty floor up as decoration. The SHELL still applies, because
+/// otherwise one card would look like two different cards depending on whether
+/// the unit happened to be connected.
+///
+/// That is also why design 0054's T-V2 is written as "either the renderings
+/// differ OR both are waiting tiles, asserted" — on this path the second arm is
+/// the correct answer, and a test that let it pass silently would be green
+/// forever.
 class HomeWaitingTile extends StatelessWidget {
   const HomeWaitingTile({super.key, required this.module});
 

@@ -257,7 +257,7 @@ final DateTime kPreviewClockTime = DateTime(2026, 8, 9, 19, 50);
 /// An exhaustive switch with no `default`, deliberately: this is the exact
 /// shape `display_module.dart` argues for, and a new module added to the enum
 /// becomes a compile error here rather than a silent live card in the editor.
-Widget previewCardFor(DisplayModule m, HomePreview p) {
+Widget previewCardFor(DisplayModule m, HomePreview p, {String? view}) {
   switch (m) {
     case DisplayModule.speed:
       return IndustrialCard(
@@ -277,7 +277,10 @@ Widget previewCardFor(DisplayModule m, HomePreview p) {
       // No `now:` seam used here at all — the BODY takes an instant, so there
       // is nothing to inject and nothing to forget to inject. The timer lives
       // in `ClockCard`, which this branch does not build.
-      return ClockCardBody(time: kPreviewClockTime);
+      return ClockCardBody(
+        time: kPreviewClockTime,
+        view: ClockView.fromSlug(view) ?? ClockView.digital,
+      );
     // Device modules draw through `dashboardCardFor` with `p.tele`; this
     // function is only asked about phone modules.
     case DisplayModule.gaugeVoltage:

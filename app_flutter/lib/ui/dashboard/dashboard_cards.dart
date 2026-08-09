@@ -68,11 +68,21 @@ import 'speed_card.dart';
 /// possible WITHOUT a `previewMode` flag — see [CardTelemetry] for why a flag
 /// was refused. Every caller watches its own source and passes it; the real
 /// paths physically cannot pass a fake one.
+/// [view] is the tile's stored CONTENT VARIANT slug, or null for that card's
+/// default (design 0054). It arrives as a raw string because the vocabulary is
+/// scoped to the module — `card_view.dart` argues why there is no global enum —
+/// and each branch below resolves it against its own, falling back to the
+/// default for anything it does not recognise.
+///
+/// 🔴 It reaches NO decision about which values are read or drawn (S-R1 / F5).
+/// Every gate above and below stays where it was: the class gates, the data
+/// gates and the registry lookups are all upstream of the `switch (view)`.
 Widget? dashboardCardFor(
   BuildContext context,
   DisplayModule m, {
   required ProductClass shellClass,
   required CardTelemetry tele,
+  String? view,
 }) {
   final l10n = AppLocalizations.of(context);
   // 🔴 `?? packFallback` and NOT a D3 early-return.
@@ -103,6 +113,19 @@ Widget? dashboardCardFor(
       // omitted. Both the gate AND the wording are the registry's (design 0034
       // §12.3 #2: the per-class difference here is content, not just presence).
       final sohText = modules.sohGaugeLine?.call(l10n, tele.sohBucket);
+      // design 0054. The caption and the sub-line are the SAME in both views —
+      // only the instrument around them changes. That is the whole point of
+      // `GaugeReadoutStack` being shared: a gauge card has no heading, so the
+      // caption is its identity and cannot be allowed to differ per view (F1).
+      if ((GaugeView.fromSlug(view) ?? GaugeView.dial) == GaugeView.numeric) {
+        return IndustrialCard(
+          child: PvltNumeric.voltage(
+            volts: tele.pvlt,
+            caption: l10n.gaugePvltLabel,
+            subText: sohText,
+          ),
+        );
+      }
       return IndustrialCard(
         child: LayoutBuilder(
           builder: (context, c) {
@@ -140,6 +163,19 @@ Widget? dashboardCardFor(
         PowerFlow.idle => l10n.powerBankDirectionIdle,
         PowerFlow.unknown => l10n.powerBankSocSubUnknown,
       };
+      if ((GaugeView.fromSlug(view) ?? GaugeView.dial) == GaugeView.numeric) {
+        return IndustrialCard(
+          child: PvltNumeric.percent(
+            percent: tele.socPercent,
+            caption: l10n.powerBankSocCaption,
+            subText: subText,
+            subIcon: flow == PowerFlow.unknown ? null : powerFlowIcon(flow),
+            subColor: flow == PowerFlow.unknown
+                ? null
+                : powerFlowColor(context, flow),
+          ),
+        );
+      }
       return IndustrialCard(
         child: LayoutBuilder(
           builder: (context, c) {
@@ -274,11 +310,15 @@ Widget? dashboardCardFor(
       );
 
     case DisplayModule.readouts:
+      // design 0054. Resolved once and handed to both branches: the ITEM LIST
+      // differs per class, the ARRANGEMENT does not.
+      final readoutsView = ReadoutsView.fromSlug(view) ?? ReadoutsView.grid;
       if (isPowerBank) {
         final flow =
             powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
         final soc = tele.socPercent;
         return ReadoutsCard(
+          view: readoutsView,
           items: [
             // Order (design 0035 §6, Q5+Q12): SOC, temperature, design
             // capacity. The 0037 "output voltage" and "current" tiles are GONE
@@ -313,6 +353,7 @@ Widget? dashboardCardFor(
         );
       }
       return ReadoutsCard(
+        view: readoutsView,
         items: [
           Readout(
             icon: Icons.thermostat,
@@ -421,7 +462,7 @@ Widget? dashboardCardFor(
     // (wasted rebuilds, not a sensor) but through the same seam:
     // `previewCardFor` mounts `ClockCardBody` with a fixed time.
     case DisplayModule.clock:
-      return const ClockCard();
+      return ClockCard(view: ClockView.fromSlug(view) ?? ClockView.digital);
   }
 }
 

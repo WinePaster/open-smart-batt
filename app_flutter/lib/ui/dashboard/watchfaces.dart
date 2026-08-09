@@ -555,10 +555,31 @@ String exportHomeValue(HomeLayout? layout) {
   // Omitting the common case keeps the line short and keeps the grammar
   // additive: a reader that does not know `:half` still parses the module name.
   String span(HomeTile t) => t.span == HomeSpan.half ? ':half' : '';
+  // design 0054's two style axes, as TAGGED suffixes: `:v<view>` then
+  // `:s<shell>`, appended after `:half` and omitted when they hold their
+  // defaults.
+  //
+  // 🔑 The `:half` grammar above is unchanged to the letter, so every existing
+  // export test still passes unmodified — this extension is additive in exactly
+  // the way `:half` itself was.
+  //
+  // ⚠️ TAGGED, not positional, and the tag letters are the reason. With defaults
+  // omitted, `readouts:big` and `readouts:minimal` would be indistinguishable
+  // without knowing which field had been left out; `readouts:vbig:sminimal`
+  // says which is which.
+  //
+  // ⚠️ And NOT `:view=big`, which is the shape a reader reaches for first. This
+  // value is pinned to `^tiles=[A-Za-z0-9@,:]+$` by
+  // `export_layout_header_test.dart` — an alphabet with no `=` in it, which
+  // exists to protect the ingest side's greedy `sed`. Widening a guard to fit a
+  // nicer syntax is not a trade this line gets to make (design 0054 Q3).
+  String style(HomeTile t) =>
+      '${t.storedView == null ? '' : ':v${t.storedView}'}'
+      '${t.shell == CardShell.standard ? '' : ':s${t.shell.slug}'}';
   final parts = <String>[
     for (final t in layout.tiles)
       switch (t.kind) {
-        HomeTileKind.addDevice => 'addDevice${span(t)}',
+        HomeTileKind.addDevice => 'addDevice${span(t)}${style(t)}',
         // 🔴 In the export line, because a capture must describe the layout the
         // user was actually looking at — and a row of one card plus a gap is a
         // different arrangement from a row of one full-width card. Added with
@@ -566,10 +587,11 @@ String exportHomeValue(HomeLayout? layout) {
         // have no `empty` entries, which reads correctly as the old derived
         // pairing.
         HomeTileKind.empty => 'empty',
-        HomeTileKind.deviceCard => 'deviceCard@${token(t.deviceId!)}${span(t)}',
+        HomeTileKind.deviceCard =>
+          'deviceCard@${token(t.deviceId!)}${span(t)}${style(t)}',
         HomeTileKind.module => t.deviceId == null
-            ? '${t.module!.name}${span(t)}'
-            : '${t.module!.name}@${token(t.deviceId!)}${span(t)}',
+            ? '${t.module!.name}${span(t)}${style(t)}'
+            : '${t.module!.name}@${token(t.deviceId!)}${span(t)}${style(t)}',
       },
   ];
   return 'tiles=${parts.join(',')}';

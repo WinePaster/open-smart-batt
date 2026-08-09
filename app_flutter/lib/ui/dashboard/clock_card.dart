@@ -57,34 +57,22 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/card_view.dart';
 import '../../theme/app_theme.dart';
 import '../util/aligned_ticker.dart';
 import '../widgets/industrial_card.dart';
 
-/// How the clock card draws itself.
+/// 📦 [ClockView] MOVED to `models/card_view.dart` by design 0054, and is
+/// re-exported here so seam ① still reads as a property of this card and every
+/// existing import still resolves.
 ///
-/// One member today. It is an enum rather than a bare widget because design
-/// 0052 §3 seam ① wants the branch point to EXIST before there is a second
-/// branch: the alternative — writing V1 as the only possible rendering and
-/// adding an `if` when `analog` arrives — is how a variant ends up as a copy of
-/// the card instead of a case of it.
-enum ClockView {
-  /// V1, ruled by the owner from four mockup variants: hours and minutes, no
-  /// seconds, no date, no weekday (`design/mockups/0052-clock-card.html`).
-  digital;
-
-  /// How often this view has to be redrawn.
-  ///
-  /// 🔑 The VIEW declares it, not the card. `digital` shows no seconds, so a
-  /// per-second rebuild would repaint an identical string 59 times out of 60;
-  /// a future `analog` with a sweep hand, or a variant carrying seconds, says
-  /// something different here and nothing else changes.
-  ///
-  /// Exhaustive, no `default` — see the library comment.
-  Duration get tickPeriod => switch (this) {
-        ClockView.digital => const Duration(minutes: 1),
-      };
-}
+/// The move is the same one design 0046 Step 6 made for [DisplayModule]: the
+/// view slug became a WIRE VALUE the moment it could be stored in
+/// `settings.home_layout` and printed into an export preamble, and a vocabulary
+/// two persisted formats depend on belongs beside the other storage shapes. The
+/// exhaustive `switch` — the part seam ① is actually about — did not move: it is
+/// still in [ClockCardBody] below.
+export '../../models/card_view.dart' show ClockView;
 
 /// The clock, ticking.
 ///
@@ -241,7 +229,10 @@ class _DigitalClock extends StatelessWidget {
                     maxLines: 1,
                     softWrap: false,
                     style: AppTextStyles.mono(context).copyWith(
-                      fontSize: 32,
+                      // Scaled by the shell (design 0054) — `mono` carries no
+                      // size of its own, so unlike `gaugeValue`/`statValue` this
+                      // one has to ask.
+                      fontSize: context.cardValueSize(32),
                       fontWeight: FontWeight.w700,
                       height: 1,
                       letterSpacing: -0.5,

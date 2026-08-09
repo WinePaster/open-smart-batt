@@ -153,7 +153,7 @@ class PvltGauge extends StatelessWidget {
               painter: _GaugePainter(value, colors),
             ),
           ),
-          _CenterReadout(
+          GaugeReadoutStack(
             value: value,
             unit: unit,
             fractionDigits: fractionDigits,
@@ -169,9 +169,102 @@ class PvltGauge extends StatelessWidget {
   }
 }
 
-/// Centre value stack (mockup `.ring .val`).
-class _CenterReadout extends StatelessWidget {
-  const _CenterReadout({
+/// The gauge's `numeric` view (design 0054): the same readout stack, WITHOUT
+/// the dial, left-aligned.
+///
+/// 🔴 [caption] is not optional and must not be dropped by any future tidy-up.
+/// A gauge card carries NO heading — `dashboardCardFor` passes only `child:` —
+/// so with the ring gone the caption is the entire identity of the card
+/// (design 0054 F1). A bare `13.87 V` in a list of cards names nothing.
+///
+/// [subText] survives for the same reason it exists on the dial: on a power bank
+/// it is the charge DIRECTION, which the caption promises, and on a pack it is
+/// the SOH grade. Neither is available anywhere else on the home grid.
+///
+/// What it costs and what it buys (F4): the tick ring goes, and about 190 px of
+/// card height becomes about 78 — the "see it all without scrolling" need design
+/// 0041 §3.1 described.
+class PvltNumeric extends StatelessWidget {
+  const PvltNumeric({
+    super.key,
+    required this.value,
+    required this.caption,
+    required this.subText,
+    this.subIcon,
+    this.subColor,
+    this.unit = 'V',
+    this.fractionDigits = 2,
+  });
+
+  /// Voltage-domain numeric readout — the counterpart of [PvltGauge.voltage].
+  factory PvltNumeric.voltage({
+    Key? key,
+    required double? volts,
+    required String caption,
+    required String? subText,
+  }) =>
+      PvltNumeric(
+        key: key,
+        value: volts,
+        caption: caption,
+        subText: subText,
+        unit: 'V',
+        fractionDigits: 2,
+      );
+
+  /// Percent-mode numeric readout — the counterpart of [PvltGauge.percent].
+  factory PvltNumeric.percent({
+    Key? key,
+    required num? percent,
+    required String caption,
+    required String? subText,
+    IconData? subIcon,
+    Color? subColor,
+  }) =>
+      PvltNumeric(
+        key: key,
+        value: percent?.toDouble(),
+        caption: caption,
+        subText: subText,
+        subIcon: subIcon,
+        subColor: subColor,
+        unit: '%',
+        fractionDigits: 0,
+      );
+
+  final double? value;
+  final String caption;
+  final String? subText;
+  final IconData? subIcon;
+  final Color? subColor;
+  final String unit;
+  final int fractionDigits;
+
+  @override
+  Widget build(BuildContext context) => GaugeReadoutStack(
+        value: value,
+        unit: unit,
+        fractionDigits: fractionDigits,
+        caption: caption,
+        subText: subText,
+        subIcon: subIcon,
+        subColor: subColor,
+        // No ring to stay inside, so no cap — and left-aligned, because a
+        // centred short stack in a full-width card reads as a dial that failed
+        // to draw.
+        maxWidth: null,
+        alignment: CrossAxisAlignment.start,
+        textAlign: TextAlign.start,
+      );
+}
+
+/// Value + caption + sub-line (mockup `.ring .val`).
+///
+/// Shared by the dial's centre and by [PvltNumeric], so the two views of a gauge
+/// cannot drift apart in what they print — only in how they are framed.
+class GaugeReadoutStack extends StatelessWidget {
+  const GaugeReadoutStack({
+    super.key,
     required this.value,
     required this.unit,
     required this.fractionDigits,
@@ -180,6 +273,8 @@ class _CenterReadout extends StatelessWidget {
     required this.subIcon,
     required this.subColor,
     required this.maxWidth,
+    this.alignment = CrossAxisAlignment.center,
+    this.textAlign = TextAlign.center,
   });
 
   final double? value;
@@ -191,8 +286,12 @@ class _CenterReadout extends StatelessWidget {
   final Color? subColor;
 
   /// Inner-ring width the centre stack must stay within (so the value never
-  /// collides with the tick ring at large dial sizes / high text scale).
-  final double maxWidth;
+  /// collides with the tick ring at large dial sizes / high text scale). Null
+  /// outside a ring.
+  final double? maxWidth;
+
+  final CrossAxisAlignment alignment;
+  final TextAlign textAlign;
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +299,7 @@ class _CenterReadout extends StatelessWidget {
       width: maxWidth,
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: alignment,
         children: [
           // Big value + amber unit (mockup `.num` / `.num .u`). FittedBox keeps
           // it inside the ring regardless of text scale / value width.
@@ -231,7 +331,7 @@ class _CenterReadout extends StatelessWidget {
           const SizedBox(height: 7),
           Text(
             caption,
-            textAlign: TextAlign.center,
+            textAlign: textAlign,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -248,7 +348,9 @@ class _CenterReadout extends StatelessWidget {
             // glance.
             Row(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: textAlign == TextAlign.center
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
               children: [
                 if (subIcon != null) ...[
                   Icon(subIcon, size: 13, color: subColor ?? AppColors.cyan),
@@ -257,7 +359,7 @@ class _CenterReadout extends StatelessWidget {
                 Flexible(
                   child: Text(
                     subText!,
-                    textAlign: TextAlign.center,
+                    textAlign: textAlign,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
