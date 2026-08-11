@@ -146,11 +146,23 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // the same class of mistake as FB-41's session attribution.
     final live = conn.isOnline && conn.connectedDeviceId == deviceId;
 
-    // When the title IS the id there is no point repeating it underneath; say
-    // instead why there is nothing better to show.
-    final subtitle = title == deviceId || title == shortDeviceId(deviceId)
-        ? l10n.devicesNoAdvertisedName
-        : shortDeviceId(deviceId);
+    // The second line, best-first (design 0055 §4.2 / §7 Q2):
+    //
+    //   1. the unit's OWN MAC, once 0x38 has said it on THIS link — the only
+    //      identifier that is the same string on both platforms, and on iOS the
+    //      only real MAC obtainable at all;
+    //   2. otherwise the platform id, abbreviated;
+    //   3. …unless the title already IS that id, in which case repeating it
+    //      says nothing and we say why there was nothing better instead.
+    //
+    // 🔴 `live` gates the MAC — it is the CONNECTED unit's address, and this
+    // page can be open on a unit that is not the connected one.
+    final wireMac = live ? conn.liveMac : null;
+    final subtitle = wireMac != null && wireMac.isNotEmpty
+        ? wireMac
+        : (title == deviceId || title == shortDeviceId(deviceId)
+            ? l10n.devicesNoAdvertisedName
+            : shortDeviceId(deviceId));
 
     return Scaffold(
       appBar: AppBar(
