@@ -1175,20 +1175,22 @@ class _TrendPainter extends CustomPainter {
 ///  * **battery** — MAGNITUDE plus a direction word (design 0056, ruled
 ///    2026-08-11). A bare `-35.0A` is the FB-47 defect: two people who knew the
 ///    protocol read one as a fault rather than as a direction.
-///  * **power bank, or a row whose class is unknown** — the stored number,
-///    signed, exactly as before. The power bank's sign runs the OTHER way
-///    (`0x4A − 0x49`, positive = discharge), so `packFlowOf` would label it
-///    backwards; naming its direction here is a behaviour change nobody has
-///    ruled on, and an unattributed row (written before history carried a
-///    device id at all) has no family to pick a convention from. Leaving the
-///    number alone is the only honest answer in both cases.
+///  * **power bank** — magnitude plus a word as well (ruled 2026-08-11, after
+///    the battery shipped), but through its OWN derivation: `0x4A − 0x49` is
+///    positive while DIScharging, the exact opposite of `0x2E`, so `packFlowOf`
+///    would label it backwards. This is the family FB-47 was actually filed on,
+///    which is why leaving it as the only bare signed number in the app did not
+///    survive review.
+///  * **a row whose class is unknown** — the stored number, signed, exactly as
+///    before. Written before history carried a device id at all, it has no
+///    family to pick a convention from, and guessing one is FB-43's shape.
 ///
 /// PUBLIC so a test can call it without pumping the whole screen; the widget
 /// test that proves the row actually renders it lives beside it.
 String? historyCurrentBit(
     AppLocalizations l10n, ProductClass cls, double amps) {
   if (cls == ProductClass.supercapacitor) return null;
-  if (cls != ProductClass.smartBattery) {
+  if (cls == ProductClass.unknown) {
     return l10n.historyRowCurrent(amps.toStringAsFixed(1));
   }
   // 🔑 The direction is derived from the number the reader can SEE, not from
@@ -1198,18 +1200,46 @@ String? historyCurrentBit(
   // same visible number, different words, is a bug report waiting to happen.
   // Rounding first makes the word answerable from the row itself.
   final shown = (amps * 10).roundToDouble() / 10;
-  // The SAME 1.5 A dead-band as the live readout, deliberately. Averaging does
-  // not recover what quantisation threw away: `0x2E` is 1 A per count and a
-  // device that truncates reports a true 0.4 A as 0 in every sample of the
-  // minute, so an average inside one count is no more trustworthy than an
-  // instantaneous reading inside one count. A second, tighter threshold here
-  // would mean the same battery reads 靜置 on one screen and 放電中 on the
-  // other — the disagreement `power_flow.dart` exists to prevent.
-  final direction = switch (packFlowOf(shown)) {
-    PowerFlow.charging => l10n.packDirectionCharging,
-    PowerFlow.discharging => l10n.packDirectionDischarging,
-    PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
-  };
+  // 🔴 ONE derivation per family, and never the other one's.
+  //
+  // Each keeps its own dead-band, because each band is a fact about its own
+  // register rather than a taste setting:
+  //
+  //  * pack — the SAME 1.5 A line as the live readout. Averaging does not
+  //    recover what quantisation threw away: `0x2E` is 1 A per count and a
+  //    device that truncates reports a true 0.4 A as 0 in every sample of the
+  //    minute, so an average inside one count is no more trustworthy than an
+  //    instantaneous reading inside one count. A second, tighter threshold here
+  //    would mean the same battery reads 靜置 on one screen and 放電中 on the
+  //    other — the disagreement `power_flow.dart` exists to prevent.
+  //  * power bank — its own 0.05 A band, at mA resolution.
+  //
+  // ⚠️ THE RAIL-OFF VETO CANNOT APPLY HERE, and that is a real limitation
+  // rather than an oversight: the veto reads the same burst's `0x4B` b7, and
+  // history stores no flag column (see the schema in `app_database.dart`) — a
+  // per-minute average of a bit-field would not be one anyway. So a unit with
+  // the RSPB-01 residual (a constant 58–69 mA charge-side offset with its boost
+  // rail off) will show a small CHARGING row where the live screen reads
+  // STANDBY. `powerFlowOf` is called with no flags, which is exactly its
+  // documented pre-veto behaviour; widening the band here instead would be a
+  // second derivation, which is the thing this comment exists to forbid.
+  final flow =
+      cls == ProductClass.powerBank ? powerFlowOf(shown) : packFlowOf(shown);
+  // Its own vocabulary too. Nothing new was coined for this: `powerBankDirection*`
+  // has been on the SOC dial and the energy-path row since design 0037. Sharing
+  // ONE set of keys across the families would mean a wording change made for a
+  // car battery silently rewording a power bank.
+  final direction = cls == ProductClass.powerBank
+      ? switch (flow) {
+          PowerFlow.charging => l10n.powerBankDirectionCharging,
+          PowerFlow.discharging => l10n.powerBankDirectionDischarging,
+          PowerFlow.idle || PowerFlow.unknown => l10n.powerBankDirectionIdle,
+        }
+      : switch (flow) {
+          PowerFlow.charging => l10n.packDirectionCharging,
+          PowerFlow.discharging => l10n.packDirectionDischarging,
+          PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
+        };
   return l10n.historyRowCurrentDirected(
       shown.abs().toStringAsFixed(1), direction);
 }

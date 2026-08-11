@@ -31,6 +31,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/power_flow.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -156,7 +157,7 @@ void main() {
     });
   });
 
-  group('H5 the other three classes are untouched', () {
+  group('H5 the other classes', () {
     test('a capacitor still shows no current at all', () {
       // Its `0x2E` is pinned at 0.0 A on a unit that cannot measure current,
       // and the CSV blanks the column — the row must not disagree with the file
@@ -165,22 +166,98 @@ void main() {
       expect(historyCurrentBit(zh, ProductClass.supercapacitor, -35.0), isNull);
     });
 
-    test('H6 a power bank keeps its signed number — its sign is the OTHER way',
-        () {
-      // `0x4A − 0x49` is positive while DIScharging, so `packFlowOf` would
-      // label it backwards. Naming its direction here is a behaviour change
-      // nobody has ruled on; printing the stored number is what it always did.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.43),
-          '電流 -0.4A');
-      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.43),
-          isNot(contains('充電中')));
-    });
-
-    test('H7 a row with no attribution keeps its number too', () {
+    test('H7 a row with no attribution keeps its signed number', () {
       // Written before history rows carried a device id. With no family there
       // is no convention to read the sign by, and inventing one is how FB-43
-      // happened.
+      // happened. The ONLY place a bare signed current still reaches a screen.
       expect(historyCurrentBit(zh, ProductClass.unknown, -35.0), '電流 -35.0A');
+      expect(historyCurrentBit(zh, ProductClass.unknown, 0.43), '電流 0.4A');
+    });
+  });
+
+  // ===========================================================================
+  // P — the power bank's history row (ruled 2026-08-11, after the battery)
+  // ===========================================================================
+  group('P1 a power bank names its direction with its OWN convention', () {
+    test('positive is DIScharging — the opposite of a battery', () {
+      // 🔴 The assertion that catches anyone routing this family through
+      // `packFlowOf`: the same sign gets the opposite word on the two families.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 2.72),
+          '電流 2.7A 放電中');
+      expect(historyCurrentBit(zh, ProductClass.smartBattery, 2.72),
+          '電流 2.7A 充電中');
+    });
+
+    test('negative is charging — the FB-47 reading, now explained', () {
+      // The 2026-08-04 capture: `−0.43 A` with no direction shown, which the
+      // owner — who had ruled on the sign convention himself — read as a fault.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.43),
+          '電流 0.4A 充電中');
+      expect(historyCurrentBit(en, ProductClass.powerBank, -0.43),
+          'Current 0.4A CHARGING');
+    });
+
+    test('P2 no minus sign survives on a power bank row either', () {
+      for (final a in [-0.43, -2.712, -0.06, -0.667]) {
+        expect(historyCurrentBit(zh, ProductClass.powerBank, a),
+            isNot(contains('-')));
+      }
+    });
+
+    test('P3 its own 0.05 A band, not the pack 1.5 A one', () {
+      // A power bank at 0.5 A is discharging; a battery at 0.5 A is a rounding
+      // artefact. One shared band would be wrong on both families at once.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.5),
+          '電流 0.5A 放電中');
+      expect(historyCurrentBit(zh, ProductClass.smartBattery, 0.5),
+          '電流 0.5A 靜置');
+      // In-band: a magnitude, no direction claimed.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.02),
+          '電流 0.0A 待機');
+    });
+
+    test('P4 it uses the EXISTING power-bank words, coining nothing', () {
+      // `powerBankDirection*` has been on the SOC dial since design 0037. The
+      // pack's idle word is 靜置 and the bank's is 待機, and they must stay
+      // separately changeable — hence separate keys, asserted here as different
+      // so a future "tidy-up" that merges them fails.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.0),
+          contains(zh.powerBankDirectionIdle));
+      expect(zh.powerBankDirectionIdle, isNot(zh.packDirectionIdle));
+    });
+
+    test('P5 the same PRINTED number never carries two different words', () {
+      // The H3 property, re-run for this family: its 0.05 A line sits strictly
+      // between the 0.0 and 0.1 a one-decimal row can print, so no displayed
+      // value can straddle it. Swept rather than reasoned about, because that
+      // is the claim.
+      final wordFor = <String, Set<String>>{};
+      for (var milli = -4000; milli <= 4000; milli += 1) {
+        final a = milli / 1000.0;
+        final bit = historyCurrentBit(zh, ProductClass.powerBank, a)!;
+        final parts = bit.split(' ');
+        wordFor
+            .putIfAbsent('${a.isNegative ? '-' : '+'}${parts[1]}', () => {})
+            .add(parts[2]);
+      }
+      for (final e in wordFor.entries) {
+        expect(e.value, hasLength(1), reason: '${e.key} → ${e.value}');
+      }
+    });
+
+    test('P6 the rail-off residual reads as a small charge — known and why',
+        () {
+      // ⚠️ NOT the live screen's answer, and this test exists so nobody
+      // "fixes" it by widening the band. `powerFlowOf`'s rail-off veto needs
+      // the same burst's `0x4B` b7; history has no flag column, and a
+      // per-minute average of a bit-field would not be one. So the RSPB-01
+      // unit's 58–69 mA offset reads CHARGING here while the dashboard reads
+      // STANDBY. Documented in `historyCurrentBit`; the remedy, if one is ever
+      // ruled, is to persist b7 — not a second dead-band.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.06),
+          '電流 0.1A 充電中');
+      // The live derivation, for contrast — same number, with the flag.
+      expect(powerFlowOf(-0.06, portFlagsRaw: 0x00), PowerFlow.idle);
     });
   });
 
@@ -260,6 +337,38 @@ void main() {
 
       expect(find.textContaining('35.0A 放電中'), findsOneWidget);
       expect(find.textContaining('-35.0A'), findsNothing);
+    });
+
+    testWidgets('P7 a power bank row on screen reads 充電中, never −0.4A',
+        (tester) async {
+      // The end-to-end proof for the family FB-47 was filed on: the stored
+      // value is NEGATIVE and the word is CHARGING, which is only correct
+      // because the row went through `powerFlowOf` and not `packFlowOf`.
+      await boot(tester);
+      final now = DateTime.now();
+      await tester.runAsync(() async {
+        await services.devices.save(SavedDevice(
+          id: 'DEV-PB',
+          alias: 'Power bank',
+          lastSeen: now,
+          productClass: ProductClass.powerBank,
+        ));
+        await services.historyRepo.insertSample(
+          TelemetrySample(
+            timestamp: now.subtract(const Duration(minutes: 3)),
+            pvlt: 3.95,
+            temperatureC: 30,
+            current: -0.43,
+          ),
+          deviceId: 'DEV-PB',
+        );
+      });
+
+      await pumpHistory(tester);
+
+      expect(find.textContaining('0.4A 充電中'), findsOneWidget);
+      expect(find.textContaining('-0.4A'), findsNothing);
+      expect(find.textContaining('放電中'), findsNothing);
     });
   });
 
