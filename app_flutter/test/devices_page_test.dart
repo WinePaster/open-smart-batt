@@ -448,6 +448,79 @@ void main() {
 
 
 
+
+  // ---------------------------------------------------------------------------
+  // 「儲存」 must SAVE — reported 2026-08-11 on v0.7.12 / v0.7.13 as「儲存裝置後
+  // 沒反應」, and the most likely reading of a dealer's「新儲存的也不會顯示」the
+  // same day.
+  //
+  // `_submit` popped null for a blank field, and null is how every caller spells
+  // "the user declined". So 儲存 with nothing typed did precisely what 跳過 does,
+  // silently — no record, no message, and a filled amber button that looked like
+  // it had worked. Then the unit is missing from the saved list and has no page,
+  // because it was never saved at all.
+  //
+  // 🔑 This is also why N5b could not reproduce that report: every existing test
+  // types a name first.
+  // ---------------------------------------------------------------------------
+  group('the naming dialog: two buttons, two outcomes', () {
+    Future<void> connectNearby(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          const DiscoveredDevice(
+              id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await openScanTab(tester);
+      await tester.tap(find.text('Connect').last);
+      await settle(tester);
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'the naming prompt follows the connect');
+    }
+
+    testWidgets('儲存 with an EMPTY name still saves the device', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      // Type nothing at all, and press the save button.
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 400)); // tab transition
+
+      expect(s.devices.isSaved('DEV-NEW'), isTrue,
+          reason: 'pressing 儲存 must produce a record — silently doing nothing '
+              'is what the v0.7.12/0.7.13 reports are');
+      expect(s.devices.deviceFor('DEV-NEW')!.alias, '');
+      // An empty alias has always been renderable; it just had no way in.
+      expect(find.text('Unnamed device'), findsOneWidget);
+      // …and the advertised name is still captured, so a rename is not the only
+      // way to tell it apart later.
+      expect(s.devices.deviceFor('DEV-NEW')!.name, 'RCE-CarBatt');
+    });
+
+    testWidgets('跳過 still saves NOTHING', (tester) async {
+      // The other half. Without this the fix would just move the defect: a
+      // device the user declined to name is one they declined to remember
+      // (`DeviceController.setDisplayLayout`'s rule), and quietly saving it
+      // would put a row in their list they never asked for.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      await tester.tap(find.text('Skip'));
+      await settle(tester);
+
+      expect(s.devices.isSaved('DEV-NEW'), isFalse);
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Deleting a device must RELEASE ITS LINK — reported 2026-08-11 by the owner,
   // reproduced on v0.7.13: 「我刪除儲存的裝置就不見了　我沒辦法在附近裝置找回他」。

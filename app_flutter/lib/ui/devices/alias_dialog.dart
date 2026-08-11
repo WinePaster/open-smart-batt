@@ -49,10 +49,26 @@ class _AliasDialogState extends State<_AliasDialog> {
     super.dispose();
   }
 
-  void _submit() {
-    final v = _ctrl.text.trim();
-    Navigator.of(context).pop(v.isEmpty ? null : v);
-  }
+  /// 🔴 An empty field returns '' — NOT null (2026-08-11, reported on v0.7.12
+  /// and v0.7.13 as「儲存裝置後沒反應」, and almost certainly the same thing a
+  /// dealer described the same day as「新儲存的也不會顯示」).
+  ///
+  /// This used to pop `null` when the field was blank, and every caller reads
+  /// null as "the user declined" — so pressing 儲存 without typing did exactly
+  /// what pressing 跳過 does: closed the dialog, saved nothing, said nothing.
+  /// The button is filled amber and looks perfectly live, so there was no clue
+  /// at all; the user believes the unit is saved and then cannot find it in the
+  /// list or open its page, because it never existed.
+  ///
+  /// The two buttons now mean two different things, which is the least a pair of
+  /// buttons can be asked to do:
+  ///   * 跳過 / 取消 → null → nothing is written;
+  ///   * 儲存 → the text, empty or not → the record is written.
+  ///
+  /// An empty alias was ALWAYS a supported value — the list has rendered it as
+  /// 未命名裝置 since design 0046 (`devices_page.dart`), and the pencil renames
+  /// it. The only thing missing was a way to produce one.
+  void _submit() => Navigator.of(context).pop(_ctrl.text.trim());
 
   @override
   Widget build(BuildContext context) {
