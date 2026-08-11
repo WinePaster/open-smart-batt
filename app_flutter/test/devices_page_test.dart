@@ -255,6 +255,45 @@ void main() {
     expect(find.byType(DevicesPage), findsOneWidget);
   });
 
+  // N5b: the gap N5 left. N5 stops at "the record exists"; what the user does
+  // next is TAP THAT ROW, and nothing pinned that the row promoted from the
+  // nearby list behaves like every other saved row. Reported 2026-08-11 (何先生,
+  // 經銷商): 原來儲存的點得開、新儲存的點不開 — this is the assertion that
+  // report is about, and it passes, so whatever he hit is not in this path.
+  testWidgets('N5b: a just-named device opens its detail page like any saved row',
+      (tester) async {
+    final s = await makeServices(tester);
+    addTearDown(() => teardown(tester, s));
+    await pumpPage(tester, s);
+    await settle(tester);
+
+    await tester.runAsync(() async {
+      ble._scanOut.add([
+        const DiscoveredDevice(
+            id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pump();
+
+    await tester.tap(find.text('Connect').last);
+    await settle(tester);
+    await tester.enterText(find.byType(TextField), 'Car #2');
+    await tester.pump();
+    await tester.tap(find.text('Save alias'));
+    await settle(tester);
+    expect(s.devices.isSaved('DEV-NEW'), isTrue);
+
+    // The row is now a SAVED row. Same tap that works for 'Cap #1' (W-3).
+    expect(find.text('Car #2'), findsOneWidget);
+    await tester.tap(find.text('Car #2'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+
+    expect(find.byType(DeviceDetailPage), findsOneWidget);
+  });
+
   testWidgets('N6: disconnecting leaves the user on this page too',
       (tester) async {
     final s = await makeServices(tester);
