@@ -160,12 +160,18 @@ the charge state labelled". Batch `006` *already* carries in-band charge
 labelling: `0x2E` (signed main current, §8.2) is present on all 5,398 telemetry
 groups, and 339 of them are negative. But those 339 fall into **28 separate
 runs, the longest lasting 25.8 s** (2026-07-30 17:05:17.756 → 17:05:43.527),
-with current swinging −41 A … +14 A. That is a running vehicle's alternator,
-not a charge cycle — labelled, in band, and useless for this purpose.
+with current swinging −41 A … +14 A. ~~That is a running vehicle's alternator,
+not a charge cycle~~ — 🔴 corrected 2026-08-11: the `0x2E` sign convention was
+flipped (§8.2 — negative = discharge, positive = charge), so those brief
+negative runs are load transients, not charging. Either way the verdict
+stands: labelled, in band, and useless for this purpose — the capture never
+holds a sustained charge.
 
 ⇒ **The capture that would actually settle it:** the same `0x10` = `0x02` unit,
-on a **sustained** charge — **≥30 min continuous** with `0x2E` negative
-throughout — held in **one continuous connection**, with `!#` issued at both ends
+on a **sustained** charge — **≥30 min continuous** with `0x2E` positive
+throughout (🔴 sign corrected 2026-08-11; this line previously said "negative",
+which under the corrected convention would have been unsatisfiable) — held in
+**one continuous connection**, with `!#` issued at both ends
 so the connect burst brackets the run (§10.2 — without it the metadata
 registers never arrive). Anything shorter re-measures the transient that batch
 `006` already contains.

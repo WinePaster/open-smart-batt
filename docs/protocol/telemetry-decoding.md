@@ -52,7 +52,7 @@
 | **Temperature** (°C) | all | `0x21` | signed int8 of `b4`; no scaling. ⚠️ LEN differs by class — see §9.1 |
 | **DVOL** cell 1..4 (V) | pack | `0x24` | `dvol_i = (b[i] / 1000.0) * VADJ`, i = 4..7. **Ungated** |
 | **VADJ** (scale factor) | pack | `0x30` | `(b4*256 + b5) / 100.0` — the DVOL multiplier |
-| **Main current** (A) | pack | `0x2E` | `512 − (b4*256 + b5)`. Signed: positive = discharge |
+| **Main current** (A) | pack | `0x2E` | `512 − (b4*256 + b5)`. Signed: **negative = discharge, positive = charge**. 🔴 Corrected 2026-08-11 — this row previously said ~~positive = discharge~~. Evidence: five engine-start events on one pack read −211…−446 A while PVLT collapsed 0.90–1.87 V, then current turned positive as PVLT climbed to 14.5 V (the starter motor is the only multi-hundred-amp load, and it can only discharge); an independent second pack shows the same monotonic current↔voltage relation across 139k frames. Earlier captures that were read under the old convention are annotated in place |
 | Secondary current (mA) | pack | `0x2F` | parsed/logged only |
 | **Warning OV** (V) | pack | `0x2B` | `b4 * 0.025 + 14.4` |
 | **Warning UV** (V) | pack | `0x2B` | `b5 * 0.025 + 10.4` |
