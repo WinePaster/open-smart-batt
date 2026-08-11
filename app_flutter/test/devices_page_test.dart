@@ -447,6 +447,50 @@ void main() {
 
 
 
+
+  // ---------------------------------------------------------------------------
+  // Deleting a device must RELEASE ITS LINK — reported 2026-08-11 by the owner,
+  // reproduced on v0.7.13: 「我刪除儲存的裝置就不見了　我沒辦法在附近裝置找回他」。
+  //
+  // The guard was `isOnline && …`, and `isOnline` is `_link == ready` and
+  // nothing else. Delete during connecting / connected / disconnecting and the
+  // link stayed up; a connected peripheral does not advertise, so the unit
+  // vanished from the saved list AND from every scan. Unrecoverable, too: the
+  // only control that drops a link lives on the row that was just deleted.
+  //
+  // The not-yet-`ready` window is where FB-51/FB-52 live — "connected but never
+  // ready" — which is the state a user is most likely to delete from.
+  // ---------------------------------------------------------------------------
+  testWidgets('deleting a device drops its link even before `ready`',
+      (tester) async {
+    final s = await makeServices(tester);
+    addTearDown(() => teardown(tester, s));
+    await pumpPage(tester, s);
+    await settle(tester);
+
+    await tester.tap(find.text('Connect'));
+    await settle(tester);
+    expect(ble.connectedId, 'DEV-A');
+
+    // Fall back out of `ready` without dropping the link — the FB-51/52 shape.
+    ble._linkOut.add(BleLinkState.connected);
+    await settle(tester);
+    expect(s.connection.isOnline, isFalse, reason: 'the precondition: NOT ready');
+    expect(s.connection.connectedDeviceId, 'DEV-A',
+        reason: '…but the link is still on this unit');
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await settle(tester);
+    await tester.tap(find.text('Remove'));
+    await settle(tester);
+
+    expect(s.devices.isSaved('DEV-A'), isFalse);
+    expect(ble.connectedId, isNull,
+        reason: 'a peripheral we are still connected to never advertises, so '
+            'leaving the link up makes the deleted unit unfindable in the very '
+            'scan the delete kicks off');
+  });
+
   // ---------------------------------------------------------------------------
   // Design 0055 (ruled 2026-08-11): every row is a door, saved or not, and the
   // devices tab is two sub-tabs sharing one scan.

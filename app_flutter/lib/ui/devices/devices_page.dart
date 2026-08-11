@@ -333,7 +333,26 @@ class _DevicesPageState extends State<DevicesPage>
       ),
     );
     if (ok != true) return;
-    if (conn.isOnline && conn.connectedDeviceId == d.id) {
+    // 🔴 `connectedDeviceId`, NOT `isOnline` (2026-08-11, reproduced by the
+    // owner on v0.7.13: "刪除儲存的裝置就不見了　我沒辦法在附近裝置找回他").
+    //
+    // `isOnline` is `_link == ready` and nothing else, so deleting during
+    // `connecting` / `connected` / `disconnecting` left the LINK UP. A BLE
+    // peripheral does not advertise while it is connected, so the unit was
+    // then invisible to every scan — deleted from the list and unfindable in
+    // it, which is exactly what the report describes.
+    //
+    // It also could not be recovered: the only control that releases a link is
+    // the row's own 中斷 button, and that row is the one just deleted. The
+    // not-yet-`ready` window is not an edge case either — it is the whole of
+    // FB-51/FB-52 ("connected but never ready"), i.e. precisely the state a
+    // user is most likely to give up on and delete the device from.
+    //
+    // `connectedDeviceId` falls back to `_desiredDeviceId`, so this also covers
+    // a link that is between retries; `disconnect()` clears that target and
+    // sets `_manualDisconnect`, so auto-reconnect cannot pull it straight back
+    // up under a record that no longer exists.
+    if (conn.connectedDeviceId == d.id) {
       await conn.disconnect();
     }
     await devices.remove(d.id);
