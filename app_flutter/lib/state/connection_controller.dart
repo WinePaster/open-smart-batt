@@ -28,6 +28,7 @@ import '../platform/platform.dart';
 import '../protocol/protocol.dart';
 import 'background_window_tracker.dart';
 import 'device_controller.dart';
+import 'device_facts_controller.dart';
 import 'pack_class_resolver.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
@@ -39,6 +40,7 @@ class ConnectionController extends ChangeNotifier {
     this._ble, {
     required SettingsController settings,
     DeviceController? devices,
+    DeviceFactsController? facts,
     LogRepo? logs,
     SessionContext? session,
     String? appBuild,
@@ -47,6 +49,7 @@ class ConnectionController extends ChangeNotifier {
   }) {
     _settings = settings;
     _devices = devices;
+    _facts = facts;
     _logs = logs;
     _pending = pending ?? PendingWrites();
     _session = session ?? SessionContext();
@@ -300,6 +303,18 @@ class ConnectionController extends ChangeNotifier {
   bool get monitorRunning => _monitorRunning;
   late final SettingsController _settings;
   late final DeviceController? _devices;
+
+  /// design 0057's identity cache — 🔴 **WRITE-ONLY from this controller.**
+  ///
+  /// Routing reads `saved_devices` and nothing else: [_seedClass], the lookup in
+  /// [connect] that fills it, [resolvedClass] and [routing] are all untouched by
+  /// this field, and must stay that way. The reason is the owner's, verbatim:
+  /// deleting a device means「就是當一個陌生的裝置重新開始」— which is only true
+  /// while the next connection has no memory to fall back on. A cache read here
+  /// would give it one, and the first symptom would be that a unit the user
+  /// deleted came back already classified, skipping the identification the
+  /// deletion was meant to redo. T57-3 in `device_facts_test.dart` is the guard.
+  late final DeviceFactsController? _facts;
 
   /// In-flight log/device writes, so teardown can wait for them before the
   /// database closes. See [PendingWrites] for the race this closes.
@@ -1743,6 +1758,7 @@ class ConnectionController extends ChangeNotifier {
       // from the same instant. See [_touchLastSeen].
       _touchLastSeen(id, value: s.pvlt);
       _persistIdentity(id, s);
+      _persistFacts(id, s);
     }
   }
 
@@ -1759,6 +1775,39 @@ class ConnectionController extends ChangeNotifier {
   void _persistIdentity(String id, TelemetrySample s) {
     final write = _devices?.setIdentity(id, mac: s.mac, serial: s.fullSerial);
     if (write != null) _pending.add(write);
+  }
+
+  /// Cache what this unit just said about itself, named or not (design 0057
+  /// §4.2).
+  ///
+  /// The sibling of [_persistIdentity], and the difference between them is the
+  /// whole point of design 0057: that one writes onto a SAVED record and quietly
+  /// does nothing when there is none, which is how an unnamed capacitor's
+  /// export came to state its permanent, unmeasurable `0.0 A` as a measurement.
+  /// This one always writes. For a saved unit the two now record the same facts
+  /// in two places, deliberately — §4.5 leaves the duplicate columns on
+  /// `saved_devices` alone, because removing them would move a read that
+  /// routing performs.
+  ///
+  /// 🔴 The class comes from [PackClassResolver.deviceClass] — the `0x10` byte
+  /// and nothing else. NOT `label` (which includes the user's manual pick) and
+  /// NOT [resolvedClass] (which includes the saved-record seed). A guess stored
+  /// in a table called `device_facts` would be read back later as an
+  /// observation, and on a rebound iOS id the seed belongs to another unit
+  /// entirely — the FB-25 shape, which is why [_recomputePackLabel] guards its
+  /// own write the same way.
+  void _persistFacts(String id, TelemetrySample s) {
+    final facts = _facts;
+    if (facts == null) return;
+    final advertised = _ble.connectedDeviceName;
+    final wireClass = _packResolver.deviceClass;
+    _pending.add(facts.record(
+      id,
+      name: advertised.isEmpty ? null : advertised,
+      productClass: wireClass == ProductClass.unknown ? null : wireClass,
+      mac: s.mac,
+      serial: s.fullSerial,
+    ));
   }
 
   /// Keep the `0x38` MAC in memory for the live link (design 0055 §7 Q2).

@@ -132,7 +132,40 @@ class Db {
   /// v14: data-only — force-migrates `settings.log_max_bytes` 20 MB → 100 MB
   /// (2026-08-11 ruling; the Dart default moved the same day). No column
   /// change, so fresh and upgraded schemas stay identical.
-  static const int schemaVersion = 14;
+  /// v15: the new table `device_facts` (design 0057) — what each unit said
+  /// about ITSELF, kept whether or not the user ever named it. Until now the
+  /// only way into storage was the naming dialog, so "the user declined to give
+  /// it a name" also threw away the advertised name, the `0x10` class, the
+  /// `0x38` MAC and the serial it had just reported; an unnamed capacitor's
+  /// export then had no class to gate on and wrote its permanent, unmeasurable
+  /// `0.0 A` out as a measurement (0057 §2 G2).
+  ///
+  /// A SEPARATE table rather than more columns on `saved_devices`, because the
+  /// two answer different questions and only one of them may reach routing:
+  /// `saved_devices` decides what the NEXT connection draws, `device_facts`
+  /// decides how PAST records read back (0057 §3). Nothing in routing reads
+  /// this table, which is what keeps "delete a device ⇒ it is a stranger again"
+  /// literally true.
+  ///
+  ///   device_facts.id           TEXT PRIMARY KEY — the BLE remote id, i.e. the
+  ///     same key `history.device_id` is written with. NOT the MAC, even though
+  ///     the MAC is the stable identity of the physical unit: an iOS reinstall
+  ///     mints a fresh NSUUID, and re-keying the old row onto the new id would
+  ///     orphan every history row already written under the old one. Duplicate
+  ///     machines are handled by reconciling ACROSS rows instead — see
+  ///     [DeviceFactsRepo.observe] (§4.1.1).
+  ///   device_facts.name / product_class / mac / serial   nullable, NO default:
+  ///     NULL is "never observed", and each is written only when a value is
+  ///     actually in hand, so a frame without `0x38` cannot blank a known MAC.
+  ///   device_facts.first_seen / last_seen   INTEGER NOT NULL — a row exists
+  ///     because a connection happened, so both instants always exist.
+  ///
+  /// NO BACKFILL from `saved_devices` (0048 G2's discipline): a unit that
+  /// connected before v15 simply has no row and reads back exactly as it does
+  /// today. Copying the saved columns across would look free and would not be —
+  /// it would assert that facts were observed under ids we never observed them
+  /// under, and on iOS those ids may since have been rebound.
+  static const int schemaVersion = 15;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -142,6 +175,10 @@ class Db {
   static const String tableSavedDevices = 'saved_devices';
   static const String tableSettings = 'settings';
   static const String tableDiagLog = 'diag_log';
+
+  /// design 0057. Read the warning on [DeviceFacts] before wiring anything new
+  /// to it: this table serves the READ-BACK of past records only.
+  static const String tableDeviceFacts = 'device_facts';
 
   /// Fixed single-row id for the settings table.
   static const int settingsRowId = 1;
@@ -484,7 +521,45 @@ class AppDatabase {
         );
       }
     }
+    if (from < 15) {
+      // design 0057: keep what a unit said about itself even when the user
+      // never named it. A NEW table, so the upgrade is a pure addition — no
+      // existing column, row or query changes, and every screen that does not
+      // know about it behaves exactly as it did (T57-8).
+      //
+      // Deliberately EMPTY afterwards. Backfilling it from `saved_devices`
+      // would be one line and would state something we never observed: that
+      // those facts were seen under those ids at some knowable time. Same
+      // discipline as 0048 G2 — an upgrade may add capability, never evidence.
+      for (final stmt in _deviceFactsStatements) {
+        await db.execute(stmt);
+      }
+    }
   }
+
+  /// design 0057's table, written ONCE and used by both [_createStatements] and
+  /// the v15 branch of [_onUpgrade]. Two copies of a `CREATE TABLE` is how a
+  /// fresh install and an upgraded one end up with schemas that differ in some
+  /// column nobody remembers adding to the second copy.
+  static const List<String> _deviceFactsStatements = <String>[
+    '''
+    CREATE TABLE ${Db.tableDeviceFacts} (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      product_class TEXT,
+      mac TEXT,
+      serial TEXT,
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL
+    )
+    ''',
+    // 🔴 Deliberately NOT UNIQUE (design 0057 §4.1.1). One physical unit
+    // legitimately owns several rows here — an iOS reinstall gives it a new
+    // NSUUID and the old row must survive, because history recorded under the
+    // old id is keyed by it. A UNIQUE index would turn the intended shape into
+    // a constraint violation on the second connection after a reinstall.
+    'CREATE INDEX idx_device_facts_mac ON ${Db.tableDeviceFacts} (mac)',
+  ];
 
   /// All `CREATE TABLE`/index DDL for the current schema version.
   ///
@@ -571,5 +646,6 @@ class AppDatabase {
     ''',
     'CREATE INDEX idx_diag_log_ts ON ${Db.tableDiagLog} (timestamp)',
     'CREATE INDEX idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
+    ..._deviceFactsStatements,
   ];
 }

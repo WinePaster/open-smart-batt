@@ -96,8 +96,9 @@ ExportTarget? currentDeviceTarget(
 Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
   DeviceController devices,
   TelemetryController tele,
-  ExportTarget target,
-) async {
+  ExportTarget target, {
+  DeviceFactsController? facts,
+}) async {
   final ids = target.deviceId != null
       ? <String>[target.deviceId!]
       : await tele.logDistinctDeviceIds();
@@ -106,26 +107,31 @@ Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
     for (final id in ids)
       () {
         final saved = devices.deviceFor(id);
+        // design 0057 §4.3: the middle rung. Without it the header could only
+        // name a unit that was either saved or still on the link, so the
+        // provenance of an unnamed unit's rows — G3 — went missing the moment
+        // it disconnected. It is consulted BELOW the saved record (one answer,
+        // and the user's own record is the one to keep) and ABOVE the live
+        // fallback (a stored observation outranks re-reading it).
+        final cached = facts?.factFor(id);
         final isLive = id == recordingId;
+        final savedName = saved?.name ?? '';
         return ExportDeviceIdentity(
           deviceId: id,
-          mac: saved?.mac ?? (isLive ? tele.mac : null),
-          serial: saved?.serial ?? (isLive ? tele.fullSerial : null),
-          classSlug: productClassSlug(saved?.productClass),
-          name: saved?.name,
+          mac: saved?.mac ?? cached?.mac ?? (isLive ? tele.mac : null),
+          serial:
+              saved?.serial ?? cached?.serial ?? (isLive ? tele.fullSerial : null),
+          classSlug: productClassSlug(deviceClassFor(devices, id, facts: facts)),
+          // `saved.name` is NOT NULL and defaults to '', so an empty one is
+          // "this record predates the name column" rather than a name — fall
+          // through to the cache instead of writing the blank out.
+          name: savedName.isNotEmpty ? savedName : cached?.name,
           label: saved?.alias,
         );
       }(),
   ];
 }
 
-/// Human-readable identity for one stored `device_id`, used for the CSV
-/// `device` column. Falls back to the short hash so a row is never blank when
-/// the unit was never named.
-///
-/// Takes the controller rather than a [BuildContext] on purpose: this runs
-/// inside the repo AFTER an await, by which time the screen may be gone and a
-/// `context.read` would throw mid-export.
 /// The product class for one `device_id`, or [ProductClass.unknown].
 ///
 /// Used by the CSV export to blank the current column for a super-capacitor,
@@ -147,36 +153,108 @@ Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
 ///
 /// Takes plain values rather than a [BuildContext] for [deviceNameFor]'s reason
 /// — this runs inside the repo after an await, when the screen may be gone.
+/// [facts] is design 0057's middle rung: what the unit itself said, cached on
+/// every connection whether or not it was ever named. It sits BELOW the saved
+/// record (which the user owns) and ABOVE the live pair, and it is what makes
+/// the capacitor case survive a disconnect — before it, connect / look / export
+/// / never name it left the class `unknown` the instant the link dropped, and
+/// the file went out with a fabricated `0.0 A` again.
 ProductClass deviceClassFor(
   DeviceController devices,
   String? deviceId, {
+  DeviceFactsController? facts,
   String? liveDeviceId,
   ProductClass liveClass = ProductClass.unknown,
 }) {
   if (deviceId == null) return ProductClass.unknown;
   final stored = devices.deviceFor(deviceId)?.productClass;
   if (stored != null && stored != ProductClass.unknown) return stored;
+  final cached = facts?.factFor(deviceId)?.productClass;
+  if (cached != null && cached != ProductClass.unknown) return cached;
   if (liveDeviceId != null && deviceId == liveDeviceId) return liveClass;
   return ProductClass.unknown;
 }
 
-String deviceLabelFor(DeviceController devices, String? deviceId) {
-  if (deviceId == null) return '';
-  final named = deviceNameFor(devices, deviceId);
-  if (named.isNotEmpty) return named;
-  return shortDeviceHash(deviceId);
+/// Where a unit's displayed name came from. The distinction is not cosmetic —
+/// see [deviceLabelFor] for what rides on it (design 0057 Q2).
+enum _NameSource {
+  /// The user's alias, or the advertised name on their own saved record.
+  user,
+
+  /// The advertised name out of `device_facts` — a MODEL name, which two units
+  /// in the same room can share.
+  advertised,
+
+  /// Nothing is known.
+  none,
 }
 
-/// The name the USER gave one `device_id` (their alias, else the advertised
-/// name), or '' when the unit was never named. No hash fallback: callers that
-/// need a never-blank string use [deviceLabelFor], while the scope sheet has to
-/// be able to tell "unnamed" apart from "named a3f1c2d4".
-String deviceNameFor(DeviceController devices, String? deviceId) {
-  if (deviceId == null) return '';
+/// The one name-resolution chain, so [deviceNameFor] and [deviceLabelFor]
+/// cannot drift apart: alias → saved advertised name → `device_facts` name.
+({String name, _NameSource source}) _resolveName(
+  DeviceController devices,
+  String deviceId,
+  DeviceFactsController? facts,
+) {
   final saved = devices.deviceFor(deviceId);
   final alias = saved?.alias ?? '';
-  if (alias.isNotEmpty) return alias;
-  return saved?.name ?? '';
+  if (alias.isNotEmpty) return (name: alias, source: _NameSource.user);
+  final savedName = saved?.name ?? '';
+  if (savedName.isNotEmpty) return (name: savedName, source: _NameSource.user);
+  final cached = facts?.factFor(deviceId)?.name ?? '';
+  if (cached.isNotEmpty) {
+    return (name: cached, source: _NameSource.advertised);
+  }
+  return (name: '', source: _NameSource.none);
+}
+
+/// A never-blank label for one `device_id`, used for the CSV `device` column
+/// and the history picker. Falls back to the short hash so a row is never blank
+/// when the unit was never named.
+///
+/// Takes the controllers rather than a [BuildContext] on purpose: this runs
+/// inside the repo AFTER an await, by which time the screen may be gone and a
+/// `context.read` would throw mid-export.
+///
+/// 🔴 A name that came from `device_facts` ALWAYS carries the short hash
+/// (`RCE_RSPB-01 · a3f1c2d4`), and that is the Q2 ruling rather than a
+/// preference: it is the advertised name, i.e. a model, and models repeat. Two
+/// power banks in the 2026-07-29 capture both advertise `RCE_RSPB-01` — the
+/// vendor's own scan list shows them side by side — so a picker offering that
+/// string twice would be asking the user to choose between two identical
+/// entries. A name the USER wrote needs no such suffix; they know which unit
+/// they meant.
+String deviceLabelFor(
+  DeviceController devices,
+  String? deviceId, {
+  DeviceFactsController? facts,
+}) {
+  if (deviceId == null) return '';
+  final resolved = _resolveName(devices, deviceId, facts);
+  return switch (resolved.source) {
+    _NameSource.user => resolved.name,
+    _NameSource.advertised => '${resolved.name} · ${shortDeviceHash(deviceId)}',
+    _NameSource.none => shortDeviceHash(deviceId),
+  };
+}
+
+/// The name for one `device_id` (their alias, else the advertised name, else —
+/// with [facts] — the one cached from the wire), or '' when nothing is known.
+/// No hash fallback: callers that need a never-blank string use
+/// [deviceLabelFor], while the scope sheet has to be able to tell "unnamed"
+/// apart from "named a3f1c2d4".
+///
+/// Returns the bare name even when it came from `device_facts`; the caller that
+/// renders it decides how to disambiguate. The scope sheet already pairs it with
+/// [ExportTarget.ident], which produces the same `name · hash` shape Q2 asks
+/// for, so appending a second one here would print the hash twice.
+String deviceNameFor(
+  DeviceController devices,
+  String? deviceId, {
+  DeviceFactsController? facts,
+}) {
+  if (deviceId == null) return '';
+  return _resolveName(devices, deviceId, facts).name;
 }
 
 /// Label for the "this device only" row of the scope sheet.
@@ -213,7 +291,14 @@ Future<ExportTarget?> chooseExportScope(
       offerSession ? currentDeviceTarget(context, sessionOnly: true) : null;
   final l10n = AppLocalizations.of(context);
   final label = exportScopeDeviceLabel(
-    name: deviceNameFor(context.read<DeviceController>(), current.deviceId),
+    // Looked up as a nullable type on purpose (design 0057): provider returns
+    // null instead of throwing where nobody supplied one, so a screen without
+    // the cache degrades to the pre-0057 label rather than failing to build.
+    name: deviceNameFor(
+      context.read<DeviceController>(),
+      current.deviceId,
+      facts: context.read<DeviceFactsController?>(),
+    ),
     ident: current.ident,
   );
 

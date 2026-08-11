@@ -121,6 +121,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // its list — the saved devices are read at use time, so a device list that
     // finishes loading during this load is still taken into account.
     final devices = context.read<DeviceController>();
+    // Same capture rule for design 0057's cache, and the same nullable lookup
+    // that lets a harness without one keep working.
+    final facts = context.read<DeviceFactsController?>();
     final since = _sinceFor(_range);
 
     // Options first, and the default chosen FROM them (design 0043 §3.3.1).
@@ -130,7 +133,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // empty screen with no way back. Resolving both inside one load makes that
     // race impossible rather than unlikely.
     final groups = await tele.historyDeviceGroups();
-    final options = _optionsFor(groups, devices);
+    final options = _optionsFor(groups, devices, facts);
     final known = {for (final o in options) o.id};
     var scoped = _deviceId;
     if (scoped == null || !known.contains(scoped)) {
@@ -199,6 +202,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Captured now: the label lookup runs after an await, when this screen may
     // already be gone.
     final devices = context.read<DeviceController>();
+    // design 0057: the identity cache, captured with everything else. Nullable
+    // lookup — provider yields null where nobody supplied one, and the read
+    // path then behaves exactly as it did before 0057.
+    final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
     // The live pair, captured with everything else (design 0055 follow-up): a
     // unit that was never named has no stored class, and without this its
@@ -206,10 +213,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // the link is eligible — see [deviceClassFor].
     final liveId = context.read<TelemetryController>().recordingDeviceId;
     final liveClass = context.read<ConnectionController>().resolvedClass;
-    String labelFor(String? id) => deviceLabelFor(devices, id);
+    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
     ProductClass classFor(String? id) => deviceClassFor(
           devices,
           id,
+          facts: facts,
           liveDeviceId: liveId,
           liveClass: liveClass,
         );
@@ -303,6 +311,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // For the class of the unit currently on the link — a never-named unit has
     // no stored class, and the current column is class-gated.
     final conn = context.watch<ConnectionController>();
+    // Watched, not read: a fact learned mid-connection (the `0x10` byte for a
+    // unit nobody named) has to reach the rows already on screen — that is the
+    // whole of design 0057 G2 for the live case.
+    final facts = context.watch<DeviceFactsController?>();
     final ov = tele.warnOv, uv = tele.warnUv, ot = tele.warnOt;
 
     return Column(
@@ -378,6 +390,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 deviceClass: deviceClassFor(
                                   devices,
                                   r.deviceId,
+                                  facts: facts,
                                   liveDeviceId: tele.recordingDeviceId,
                                   liveClass: conn.resolvedClass,
                                 ),
@@ -502,7 +515,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// bar is how the screen says WHICH unit these numbers belong to, and that
   /// sentence is needed just as much when there is only one answer to it.
   Widget? _deviceBar() {
-    final options = _optionsFor(_groups, context.watch<DeviceController>());
+    final options = _optionsFor(
+      _groups,
+      context.watch<DeviceController>(),
+      context.watch<DeviceFactsController?>(),
+    );
     final selected = _deviceId;
     // Both empty only before the first load has resolved; `selected` is kept
     // inside `options` by [_load], and a Dropdown whose value is not among its
@@ -608,6 +625,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static List<_DeviceOption> _optionsFor(
     List<({String deviceId, int count, DateTime lastAt})> groups,
     DeviceController devices,
+    DeviceFactsController? facts,
   ) {
     // DeviceController hands its list back most-recently-seen first, so the
     // index IS the lastSeen order; deriving a second one here would be a second
@@ -618,6 +636,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final named = <({String deviceId, int count, DateTime lastAt})>[];
     final orphans = <({String deviceId, int count, DateTime lastAt})>[];
     for (final g in groups) {
+      // 🔴 Asked WITHOUT `facts`, deliberately (design 0057 §4.3). The question
+      // here is not "does this unit have a name" but "does it have a place in
+      // the saved-device order" — the `named` branch sorts by `rank[id]!`, and
+      // only a saved unit has a rank. A unit known solely from `device_facts`
+      // now HAS a name, so passing the cache in would put it in the branch that
+      // then dereferences a null rank. Its label still shows that name; it is
+      // ordered by recency instead, which is the honest order for a unit with
+      // no saved record.
       (deviceNameFor(devices, g.deviceId).isNotEmpty ? named : orphans).add(g);
     }
     named.sort((a, b) => rank[a.deviceId]!.compareTo(rank[b.deviceId]!));
@@ -626,7 +652,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       for (final g in [...named, ...orphans])
         _DeviceOption(
           id: g.deviceId,
-          label: deviceLabelFor(devices, g.deviceId),
+          label: deviceLabelFor(devices, g.deviceId, facts: facts),
         ),
     ];
   }

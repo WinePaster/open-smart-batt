@@ -210,6 +210,12 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
         // Controllers (lifecycle owned by AppServices, hence .value).
         ChangeNotifierProvider<SettingsController>.value(value: s.settings),
         ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+        // design 0057. Every consumer looks it up as `DeviceFactsController?`,
+        // which provider resolves to null where it is absent — a screen that
+        // does not get one falls back to exactly the pre-0057 behaviour rather
+        // than throwing, and no test harness has to learn about a table it is
+        // not testing.
+        ChangeNotifierProvider<DeviceFactsController>.value(value: s.facts),
         ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
         ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
         ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),

@@ -469,16 +469,22 @@ class _DataCardState extends State<_DataCard> {
     // Captured now: the label lookup runs after an await, when this screen may
     // already be gone.
     final devices = context.read<DeviceController>();
+    // design 0057: what each unit said about itself, saved or not. Captured
+    // with the rest and looked up as a nullable type, so a harness that
+    // provides no cache still builds and simply behaves as it did before.
+    final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
-    String labelFor(String? id) => deviceLabelFor(devices, id);
+    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
     // Live pair captured with the rest (design 0055 follow-up): an unnamed unit
     // has no stored class, and the CSV's current column is class-gated — see
-    // [deviceClassFor].
+    // [deviceClassFor]. design 0057 puts the cache between the two, which is
+    // what keeps the column right after the link drops.
     final liveId = tele.recordingDeviceId;
     final liveClass = context.read<ConnectionController>().resolvedClass;
     ProductClass classFor(String? id) => deviceClassFor(
           devices,
           id,
+          facts: facts,
           liveDeviceId: liveId,
           liveClass: liveClass,
         );
@@ -691,6 +697,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final l10n = AppLocalizations.of(context);
     // Captured now: the lookup runs after an await, when this screen may be gone.
     final devices = context.read<DeviceController>();
+    final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
     final speedOn = context.read<SettingsController>().speedDetection;
@@ -700,13 +707,17 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // (design 0046 Step 10).
     final layout = currentExportLayoutValue(context);
     final home = currentExportHomeValue(context);
-    String labelFor(String? id) => deviceLabelFor(devices, id);
+    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
       // design 0027 §3.1: name every unit this export touches in the header,
       // even an all-devices export where the rows carry only nicknames.
-      final identities = await exportDeviceIdentities(devices, tele, target);
+      // design 0057 G3: with the cache the header can still name a unit that
+      // was never saved and is no longer on the link — before it, provenance
+      // for those rows vanished the moment the connection ended.
+      final identities =
+          await exportDeviceIdentities(devices, tele, target, facts: facts);
       final header =
           await _logHeader(
               tele, services, target, rawLog, speedOn, gMeterOn, layout,
