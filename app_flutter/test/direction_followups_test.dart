@@ -311,6 +311,23 @@ void main() {
       await tester.pump();
     }
 
+    /// A sample time that is guaranteed to be inside the screen's DEFAULT range.
+    ///
+    /// 🔴 The screen opens on `HistoryRange.today`, whose floor is literal
+    /// midnight (`_sinceFor` → `DateTime(y, m, d)`). These tests used to insert
+    /// at `now - 3 min`, which is yesterday for the first three minutes of every
+    /// day — the row was then filtered out, the finders found nothing, and both
+    /// tests failed for reasons that had nothing to do with what they assert.
+    /// Caught 2026-08-12 at 00:02 while verifying an unrelated branch.
+    ///
+    /// A few minutes back is only there to look like real data, so it yields to
+    /// the range floor rather than the other way round.
+    DateTime recentlyToday(DateTime now) {
+      final midnight = DateTime(now.year, now.month, now.day);
+      final wanted = now.subtract(const Duration(minutes: 3));
+      return wanted.isBefore(midnight) ? now : wanted;
+    }
+
     testWidgets('a battery row on screen reads 放電中, never −35.0A',
         (tester) async {
       await boot(tester);
@@ -324,7 +341,7 @@ void main() {
         ));
         await services.historyRepo.insertSample(
           TelemetrySample(
-            timestamp: now.subtract(const Duration(minutes: 3)),
+            timestamp: recentlyToday(now),
             pvlt: 12.4,
             temperatureC: 30,
             current: -35.0,
@@ -355,7 +372,7 @@ void main() {
         ));
         await services.historyRepo.insertSample(
           TelemetrySample(
-            timestamp: now.subtract(const Duration(minutes: 3)),
+            timestamp: recentlyToday(now),
             pvlt: 3.95,
             temperatureC: 30,
             current: -0.43,
