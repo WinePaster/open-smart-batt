@@ -190,7 +190,9 @@ void _logBudgetTests() {
     test('the offered set is exactly 20 and 100 MB', () {
       expect(AppSettings.logMaxBytesOptions,
           [20 * 1024 * 1024, 100 * 1024 * 1024]);
-      expect(AppSettings.defaultLogMaxBytes, 20 * 1024 * 1024);
+      // Default raised 20 → 100 MB on 2026-08-11: a 20 MB cap rotated away a
+      // field device's ten oldest sessions before they could be exported.
+      expect(AppSettings.defaultLogMaxBytes, 100 * 1024 * 1024);
     });
 
     test('a legacy 5 MB row normalises to the new default', () {

@@ -208,7 +208,11 @@ class AppSettings {
   /// run about 13 KB/min while connected, so 5 MB started rotating after ~6.5 h
   /// of dense capture — and rotation drops the OLDEST rows, which is exactly
   /// where the connect-time GATT dump and metadata burst live.
-  static const int defaultLogMaxBytes = 20 * 1024 * 1024;
+  /// Raised again from 20 MB on 2026-08-11: a field device logging all day
+  /// hit the 20 MB cap in under two weeks and rotation silently dropped its
+  /// ten oldest sessions before anyone exported. 100 MB buys roughly 5× that
+  /// horizon at a cost that is negligible on any phone that runs this app.
+  static const int defaultLogMaxBytes = 100 * 1024 * 1024;
 
   const AppSettings({
     this.autoReconnect = true,
