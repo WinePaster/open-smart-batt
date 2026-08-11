@@ -9,4 +9,5 @@ export 'alias_dialog.dart';
 export 'connection_failure.dart';
 export 'device_detail_page.dart';
 export 'devices_page.dart';
+export 'save_device_flow.dart';
 export 'signal_bars.dart';

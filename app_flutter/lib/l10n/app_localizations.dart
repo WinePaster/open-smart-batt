@@ -2653,6 +2653,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version.'**
   String get unidentifiedBody;
+
+  /// No description provided for @devicesTabSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get devicesTabSaved;
+
+  /// No description provided for @devicesTabScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan'**
+  String get devicesTabScan;
+
+  /// No description provided for @devicesUnsavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not saved'**
+  String get devicesUnsavedTitle;
+
+  /// No description provided for @devicesUnsavedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Save it to put it on the home page and keep its history.'**
+  String get devicesUnsavedBody;
+
+  /// No description provided for @devicesSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get devicesSave;
+
+  /// No description provided for @devicesNoAdvertisedName.
+  ///
+  /// In en, this message translates to:
+  /// **'No advertised name'**
+  String get devicesNoAdvertisedName;
 }
 
 class _AppLocalizationsDelegate

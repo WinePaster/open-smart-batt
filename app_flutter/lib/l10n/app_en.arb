@@ -962,5 +962,11 @@
   "settingsGForceExplainerLabel": "How G is measured",
   "homeEditLayout": "Edit layout",
   "unidentifiedTitle": "Device not recognised",
-  "unidentifiedBody": "This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version."
+  "unidentifiedBody": "This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version.",
+  "devicesTabSaved": "Saved",
+  "devicesTabScan": "Scan",
+  "devicesUnsavedTitle": "This device is not saved",
+  "devicesUnsavedBody": "Save it to put it on the home page and keep its history.",
+  "devicesSave": "Save",
+  "devicesNoAdvertisedName": "No advertised name"
 }

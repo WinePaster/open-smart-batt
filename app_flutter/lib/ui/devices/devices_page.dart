@@ -1,10 +1,37 @@
-/// OpenSmartBatt — the devices tab (design 0046 P1, R2 / R21 / R22).
+/// OpenSmartBatt — the devices tab (design 0046 P1, R2 / R21 / R22; design 0055).
 ///
-/// A list of:
-///   * 已儲存裝置 — saved units (editable alias, signal if nearby, a status
-///     badge, 連線 / 已連線), and
-///   * 附近掃描中 — live vendor-service (07b9fff0) scan results, filtered to the
-///     RCE service, sorted by RSSI, with signal bars.
+/// TWO SUB-TABS (design 0055 §4.5, ruled 2026-08-11):
+///   * 已儲存 — saved units (editable alias, signal if nearby, a status badge,
+///     連線 / 已連線), and
+///   * 搜尋裝置 — live vendor-service (07b9fff0) scan results minus anything
+///     already saved, sorted by RSSI, with signal bars and the show-all toggle.
+///
+/// ## Both sub-tabs read ONE scan (design 0055 §4.5)
+///
+/// The obvious reason to split a page in two is to stop doing the expensive half
+/// while the cheap half is on screen, and that is explicitly NOT what this split
+/// does. The scan belongs to [ConnectionController], not to a tab, and the saved
+/// rows spend it: their signal bars and "is it nearby" all come out of the same
+/// `scanResults` the scan tab lists. Switch it off behind the saved tab and the
+/// saved rows go blind — so the radio stays on for both, and the power saving a
+/// split would have bought is knowingly given up. Ruled 2026-08-11: 「都掃描啊
+/// 共用同一個結果就好」.
+///
+/// W-3 is untouched by any of this: opening a DETAIL page still stops the scan.
+///
+/// ## Two rules the split cannot be shipped without (design 0055 §7.1)
+///
+/// A tab is a harder fold than a scroll, and both of these are the same failure —
+/// something the user needs, on a surface they have no reason to look at:
+///
+///   1. **No saved devices ⇒ open on 搜尋裝置.** Otherwise a first run lands on
+///      an empty list whose only remedy is on the tab they cannot see. (The
+///      single-page version could not have this bug: the empty saved section had
+///      the scan directly underneath it.)
+///   2. **Naming a device switches to 已儲存.** Otherwise the row VANISHES from
+///      the tab the user is looking at — which is, word for word, what a dealer
+///      reported on 2026-08-11 as「新儲存的不會顯示」about the single-page build.
+///      Shipping the split without this would make that complaint true.
 ///
 /// ## Why this is a TAB and no longer a bottom sheet
 ///
@@ -25,6 +52,15 @@
 /// lives on [DeviceDetailPage], and the badge is what gets you there. It must
 /// never be only a colour: FB-53's complaint was precisely that "the app stopped
 /// trying, and the only clue was that the spinner had gone".
+///
+/// ## Every row is a door now (design 0055 §4.1)
+///
+/// R21's badge rule is intact. What 0055 overturned is the other half — that an
+/// unsaved unit had no detail page to be a door TO — so the gesture is now the
+/// same on all three kinds of row: **the row body looks at it, the button
+/// connects it.** An unsaved row still carries no badge (§4.6: five to ten
+/// nearby units each captioned 未連線 is noise, not status), so on those rows the
+/// row body carries the whole responsibility the badge carries elsewhere.
 library;
 
 import 'dart:async';
@@ -40,6 +76,7 @@ import '../../theme/app_theme.dart';
 import 'alias_dialog.dart';
 import 'connection_failure.dart';
 import 'device_detail_page.dart';
+import 'save_device_flow.dart';
 import 'signal_bars.dart';
 
 /// The devices tab's body (sits inside the app shell's [Scaffold]).
@@ -71,7 +108,13 @@ class DevicesPage extends StatefulWidget {
   State<DevicesPage> createState() => _DevicesPageState();
 }
 
-class _DevicesPageState extends State<DevicesPage> {
+/// Sub-tab index. Named rather than bare `0` / `1` because two rules in the
+/// library comment are stated in terms of WHICH tab, and `animateTo(0)` in the
+/// middle of a save flow does not say "go back to the list you just added to".
+enum _Tab { saved, scan }
+
+class _DevicesPageState extends State<DevicesPage>
+    with SingleTickerProviderStateMixin {
   /// BLE id of the row whose connect is in flight (drives the row spinner).
   String? _connectingId;
 
@@ -83,10 +126,27 @@ class _DevicesPageState extends State<DevicesPage> {
   /// the (possibly deactivated) element tree.
   ConnectionController? _conn;
 
+  late final TabController _tabs;
+
   @override
   void initState() {
     super.initState();
     _conn = context.read<ConnectionController>();
+    // Rule 1 (design 0055 §7.1): with nothing saved, the saved tab is an empty
+    // list whose only remedy lives on the tab the user cannot see. Open on the
+    // scan instead.
+    //
+    // Read once, at construction, and never corrected afterwards: this decides
+    // where the user LANDS, and a list that re-aims itself under a finger
+    // because a save landed is worse than one that opened on the wrong tab.
+    // `AppServices.create` awaits `devices.load()` before the first frame, so
+    // this is the real saved count and not an empty pre-load one.
+    final hasSaved = context.read<DeviceController>().devices.isNotEmpty;
+    _tabs = TabController(
+      length: _Tab.values.length,
+      vsync: this,
+      initialIndex: (hasSaved ? _Tab.saved : _Tab.scan).index,
+    );
     // Begin scanning as soon as the page is ON SCREEN. D.1: startScan awaits
     // the adapter and surfaces adapter-off / unauthorized as real errors (via
     // the controller's lastError + the adapter note below) rather than throwing
@@ -112,6 +172,7 @@ class _DevicesPageState extends State<DevicesPage> {
   void dispose() {
     // Best-effort stop; controller tolerates a no-op when not scanning.
     _conn?.stopScan();
+    _tabs.dispose();
     super.dispose();
   }
 
@@ -162,8 +223,6 @@ class _DevicesPageState extends State<DevicesPage> {
   /// each; both predate this page and neither may be dropped in the move.
   Future<void> _connectNew(DiscoveredDevice d) async {
     final conn = context.read<ConnectionController>();
-    final devices = context.read<DeviceController>();
-    final tele = context.read<TelemetryController>();
     setState(() => _connectingId = d.id);
     try {
       await conn.connect(d.id);
@@ -175,19 +234,11 @@ class _DevicesPageState extends State<DevicesPage> {
         return;
       }
       setState(() => _connectingId = null);
-      if (devices.isSaved(d.id)) return; // already named elsewhere
-      // Capture the stable advertised name now (D.3): on iOS the saved id is a
-      // volatile NSUUID, so the name is what rebinds the record after a
-      // reinstall.
-      final advName = conn.connectedDeviceName;
-      // Seed the persisted product class with whatever has resolved so far
-      // (design 0001 §5 Phase 5); the connection controller keeps it current
-      // afterwards.
-      final initialClass = conn.isPowerBank ? conn.resolvedClass : conn.packLabel;
-      final alias = await showAliasDialog(context);
-      if (alias == null || !mounted) return;
-      await devices.saveNew(d.id, alias,
-          name: advName, lastValue: tele.pvlt, productClass: initialClass);
+      // 🔴 The prompt itself now lives in `save_device_flow.dart` — the detail
+      // page can connect too (design 0055), and a prompt that only one of the
+      // two entrances runs is a "save" the other entrance cannot reach.
+      final saved = await promptAndSaveDevice(context, d.id);
+      if (saved && mounted) _revealSavedTab();
     } catch (_) {
       if (mounted) {
         setState(() => _connectingId = null);
@@ -291,9 +342,22 @@ class _DevicesPageState extends State<DevicesPage> {
     if (mounted) await _rescan();
   }
 
+  /// Rule 2 (design 0055 §7.1): a unit that was just named belongs on the tab
+  /// that now holds it. Without this the row disappears from the tab the user is
+  /// looking at, and the split would manufacture the very complaint it was
+  /// designed around — see the library comment.
+  void _revealSavedTab() {
+    if (_tabs.index != _Tab.saved.index) _tabs.animateTo(_Tab.saved.index);
+  }
+
   /// The full report for one unit (R21): everything this list deliberately does
   /// not have room for.
-  Future<void> _openDetail(SavedDevice d) async {
+  ///
+  /// [fallbackName] is the advertised name, and it has to travel WITH the push:
+  /// the first thing this does is stop the scan, so an unsaved unit's only name
+  /// stops being reachable the moment the page it is needed on appears
+  /// (design 0055 §4.2).
+  Future<void> _openDetail(String deviceId, {String fallbackName = ''}) async {
     // 🔴 Stop scanning for the duration, and start again on the way back.
     //
     // [active] cannot express this: the shell derives it from the TAB, and the
@@ -308,11 +372,20 @@ class _DevicesPageState extends State<DevicesPage> {
     _conn?.stopScan();
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => DeviceDetailPage(
-        deviceId: d.id,
+        deviceId: deviceId,
+        fallbackName: fallbackName,
         onOpenSettings: widget.onOpenSettings,
       ),
     ));
-    if (!mounted || !widget.active) return;
+    if (!mounted) return;
+    // Rule 2 again, for the OTHER entrance. The detail page can name a unit too
+    // (its 尚未儲存 row), and a save that happened up there lands in a list down
+    // here that the user is not looking at: they would pop back to the scan tab
+    // and find the row they just named gone from it. Same rule, same reason —
+    // stated twice because there are two ways in, not because one call site
+    // covers both.
+    if (context.read<DeviceController>().isSaved(deviceId)) _revealSavedTab();
+    if (!widget.active) return;
     unawaited(_startScan());
   }
 
@@ -342,23 +415,57 @@ class _DevicesPageState extends State<DevicesPage> {
 
     final working = conn.isBusy || conn.isRetrying;
 
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _Header(scanning: conn.isScanning, onRescan: _rescan),
+              if (!conn.isAdapterOn)
+                _AdapterOffNote(
+                  // D.2: distinguish "permission denied" (deep-link Settings)
+                  // from "radio off" (toggle Bluetooth).
+                  unauthorized: conn.isAdapterUnauthorized,
+                  onOpenSettings: conn.openBluetoothSettings,
+                ),
+            ],
+          ),
+        ),
+        // 🔴 The adapter note sits ABOVE the tabs, not inside one of them. "The
+        // radio is off" is not news about a list — it is the reason both lists
+        // are empty, and a copy of it per tab would be two chances to disagree.
+        _SubTabs(
+          controller: _tabs,
+          savedCount: saved.length,
+          scanCount: nearby.length,
+          scanning: conn.isScanning,
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              _savedList(saved, rssiById, conn, connectedId, working, l10n),
+              _scanList(nearby, hiddenCount, conn, connectedId, l10n),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _savedList(
+    List<SavedDevice> saved,
+    Map<String, int> rssiById,
+    ConnectionController conn,
+    String? connectedId,
+    bool working,
+    AppLocalizations l10n,
+  ) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
       children: [
-        _Header(scanning: conn.isScanning, onRescan: _rescan),
-        if (!conn.isAdapterOn)
-          _AdapterOffNote(
-            // D.2: distinguish "permission denied" (deep-link Settings) from
-            // "radio off" (toggle Bluetooth).
-            unauthorized: conn.isAdapterUnauthorized,
-            onOpenSettings: conn.openBluetoothSettings,
-          ),
-
-        // ---- saved devices ------------------------------------------------
-        _SectionLabel(
-          icon: Icons.bluetooth,
-          text: l10n.devicesSavedCount(saved.length),
-        ),
         if (saved.isEmpty)
           _EmptyHint(l10n.devicesNoSaved)
         else
@@ -381,19 +488,33 @@ class _DevicesPageState extends State<DevicesPage> {
                 setupStalled: conn.isSetupStalled,
                 lastError: conn.lastError,
               ),
-              onOpenDetail: () => unawaited(_openDetail(d)),
+              onOpenDetail: () =>
+                  unawaited(_openDetail(d.id, fallbackName: d.name)),
               onEdit: () => _rename(d),
               onDelete: () => _removeDevice(d),
               onDisconnect: _disconnect,
               onConnect: () => _connectSaved(d),
             ),
+      ],
+    );
+  }
 
-        // ---- nearby scan --------------------------------------------------
-        _ScanSectionLabel(scanning: conn.isScanning),
+  Widget _scanList(
+    List<DiscoveredDevice> nearby,
+    int hiddenCount,
+    ConnectionController conn,
+    String? connectedId,
+    AppLocalizations l10n,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
+      children: [
         // This toggle used to sit at the very bottom of the sheet — below the
         // saved list and below the fold when devices were saved. A user whose
         // unit was filtered out never learned that anything had been hidden. It
-        // belongs directly under the section it filters.
+        // belongs directly under the section it filters, and since design 0055
+        // that section IS this tab: it filters the scan and nothing else, so it
+        // has no business being on screen while the saved list is.
         Center(
           child: TextButton(
             onPressed: () => setState(() => _showAllNearby = !_showAllNearby),
@@ -426,13 +547,20 @@ class _DevicesPageState extends State<DevicesPage> {
               alias: r.name.isEmpty ? l10n.devicesUnknownName : r.name,
               aliasMuted: true,
               isVendor: r.isVendor,
-              meta: '${_shortId(r.id)} · RSSI ${r.rssi} dBm',
+              meta: '${shortDeviceId(r.id)} · RSSI ${r.rssi} dBm',
               signalLevel: signalLevelFromRssi(r.rssi),
               isConnected: conn.isOnline && connectedId == r.id,
               isConnecting: _connectingId == r.id,
-              // No badge and no detail route: an unsaved unit has no saved row
-              // to hold a layout or a history, so there is no detail page for
-              // it to be a door to.
+              // Still NO BADGE (design 0055 §4.6): five to ten nearby units each
+              // captioned 未連線 is noise, and 0046's "the list is for scanning"
+              // holds. But there IS a detail route now — the reason there wasn't
+              // ("an unsaved unit has no layout or history for a page to show")
+              // stopped being true at design 0051, which left the detail page
+              // with nothing to configure: connected it is the dashboard, and
+              // not connected it is the failure report, and an unsaved unit has
+              // both of those just the same. §4.1.
+              onOpenDetail: () =>
+                  unawaited(_openDetail(r.id, fallbackName: r.name)),
               onDisconnect: _disconnect,
               onConnect: () => _connectNew(r),
             ),
@@ -441,10 +569,94 @@ class _DevicesPageState extends State<DevicesPage> {
   }
 }
 
+/// The two sub-tabs, with live counts (design 0055 §4.5).
+///
+/// The counts are not decoration: they are what makes "there is nothing here"
+/// legible from the OTHER tab, which is the whole hazard a split introduces.
+class _SubTabs extends StatelessWidget {
+  const _SubTabs({
+    required this.controller,
+    required this.savedCount,
+    required this.scanCount,
+    required this.scanning,
+  });
+
+  final TabController controller;
+  final int savedCount;
+  final int scanCount;
+  final bool scanning;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return TabBar(
+      controller: controller,
+      labelColor: AppColors.amber,
+      unselectedLabelColor: context.colors.muted,
+      indicatorColor: AppColors.amber,
+      indicatorSize: TabBarIndicatorSize.tab,
+      dividerColor: context.colors.line,
+      labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+      unselectedLabelStyle:
+          const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+      tabs: [
+        Tab(
+          height: 44,
+          child: _TabLabel(text: l10n.devicesTabSaved, count: savedCount),
+        ),
+        Tab(
+          height: 44,
+          child: _TabLabel(
+            text: l10n.devicesTabScan,
+            count: scanCount,
+            leading: _ScanDot(active: scanning),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TabLabel extends StatelessWidget {
+  const _TabLabel({required this.text, required this.count, this.leading});
+
+  final String text;
+  final int count;
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (leading != null) ...[leading!, const SizedBox(width: 7)],
+        Flexible(child: Text(text, overflow: TextOverflow.ellipsis)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: context.colors.panel2,
+            border: Border.all(color: context.colors.line),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: context.colors.muted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ---- meta / formatting helpers ------------------------------------------
 
 String _savedMeta(SavedDevice d, int? rssi, AppLocalizations l10n) {
-  final parts = <String>[_shortId(d.id)];
+  final parts = <String>[shortDeviceId(d.id)];
   if (d.lastValue != null) parts.add('${d.lastValue!.toStringAsFixed(2)}V');
   final t = d.lastSeen;
   if (t != null) {
@@ -462,13 +674,6 @@ String _savedMeta(SavedDevice d, int? rssi, AppLocalizations l10n) {
     }
   }
   return parts.join(' · ');
-}
-
-/// Condense a BLE id (MAC / UUID) to "head…tail" like the mockup.
-String _shortId(String id) {
-  final s = id.replaceAll(':', '');
-  if (s.length <= 9) return s;
-  return '${s.substring(0, 4)}…${s.substring(s.length - 4)}';
 }
 
 // ---- sub-widgets ---------------------------------------------------------
@@ -540,62 +745,6 @@ class _Header extends StatelessWidget {
     );
   }
 }
-
-/// Section label with a leading icon (mockup `.devsec`).
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 14, 2, 9),
-      child: Row(
-        children: [
-          Icon(icon, size: 12, color: AppColors.amber),
-          const SizedBox(width: 8),
-          Text(text, style: _devsecStyle(context)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Nearby-scan section label with the pulsing scan dot (mockup `.scan-dot`).
-class _ScanSectionLabel extends StatelessWidget {
-  const _ScanSectionLabel({required this.scanning});
-
-  final bool scanning;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 14, 2, 9),
-      child: Row(
-        children: [
-          _ScanDot(active: scanning),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              scanning ? l10n.devicesNearbyScanning : l10n.devicesNearby,
-              style: _devsecStyle(context),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-TextStyle _devsecStyle(BuildContext context) => TextStyle(
-      fontSize: 10,
-      letterSpacing: 2,
-      color: context.colors.muted,
-      fontWeight: FontWeight.w600,
-    );
 
 /// Pulsing amber dot (mockup `@keyframes pulse`).
 class _ScanDot extends StatefulWidget {

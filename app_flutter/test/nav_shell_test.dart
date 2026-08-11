@@ -217,6 +217,14 @@ void main() {
     await drain(tester);
     expect(gps.speedSurfaceVisible, isFalse);
 
+    // The shell mounted with nothing saved, so the devices tab opened on 搜尋裝置
+    // (design 0055 rule 1) and this row — saved programmatically afterwards,
+    // which no real path does — is on the other sub-tab. Go and get it.
+    await tester.tap(find.text('已儲存'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await drain(tester);
+
     // …and opening one unit's page — where the dashboard now lives — reopens
     // it. Without this the detail page's own speed card would sit on "waiting
     // for a fix" for as long as it was on screen, with nothing to explain why.

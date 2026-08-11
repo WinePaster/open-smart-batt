@@ -25,6 +25,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
 import 'connection_failure.dart';
+import 'save_device_flow.dart';
 
 /// The per-device page, pushed from the devices tab.
 ///
@@ -40,6 +41,7 @@ class DeviceDetailPage extends StatefulWidget {
   const DeviceDetailPage({
     super.key,
     required this.deviceId,
+    this.fallbackName = '',
     this.onOpenSettings,
   });
 
@@ -50,6 +52,16 @@ class DeviceDetailPage extends StatefulWidget {
   /// Conflating the two is exactly how FB-41/FB-42 filed one unit's telemetry
   /// under another's, a defect only fixed in v0.6.13.
   final String deviceId;
+
+  /// The advertised name, for a device with no saved record (design 0055 §4.2).
+  ///
+  /// 🔴 Passed IN rather than looked up. This page's own `didChangeDependencies`
+  /// is downstream of the list stopping the scan (W-3), so by the time it could
+  /// read `scanResults` the entry it needs may be gone — and for an unsaved unit
+  /// the advertised name is the only human-readable thing there is. Looking it
+  /// up here would work in a test, where the scan stream is whatever the test
+  /// last pushed, and fail on a phone.
+  final String fallbackName;
 
   /// Handed on to [DashboardPage] for its stale-telemetry banner. See
   /// [DevicesPage.onOpenSettings] for why it is threaded rather than derived.
@@ -96,6 +108,24 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     });
   }
 
+  /// Connect an unsaved unit and then ask for its name (design 0055 §4.4).
+  ///
+  /// Lives on the State rather than in `_OfflineBody` for one reason: the
+  /// connect it awaits is what replaces `_OfflineBody` with the dashboard. This
+  /// element survives that swap; that one does not.
+  Future<void> _connectAndName() async {
+    final conn = context.read<ConnectionController>();
+    try {
+      await conn.connect(widget.deviceId);
+    } catch (_) {
+      return; // the controller recorded the reason; the page rebuilds on it
+    }
+    // A refused connect RETURNS rather than throws (bluetooth_off and friends
+    // are answers, not exceptions) — so the error is checked, not just caught.
+    if (!mounted || conn.lastError != null) return;
+    await promptAndSaveDevice(context, widget.deviceId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final deviceId = widget.deviceId;
@@ -103,27 +133,58 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final conn = context.watch<ConnectionController>();
     final saved = devices.deviceFor(deviceId);
     final l10n = AppLocalizations.of(context);
+    // 🔴 Ruled 2026-08-11 (design 0055 §4.2): NOT `devicesUnnamed`. This used to
+    // read the alias of a saved record that, for an unsaved unit, does not
+    // exist — so every nearby device was titled 未命名裝置, which names nothing
+    // in a room that may hold six of them. Advertised name, else the id.
     final title = (saved?.alias.isNotEmpty ?? false)
         ? saved!.alias
-        : l10n.devicesUnnamed;
+        : unsavedDeviceTitle(id: deviceId, advertisedName: widget.fallbackName);
 
     // "This unit's live page" is `online AND it is this unit`. Reading only
     // `isOnline` would draw another device's telemetry under this one's name —
     // the same class of mistake as FB-41's session attribution.
     final live = conn.isOnline && conn.connectedDeviceId == deviceId;
 
+    // When the title IS the id there is no point repeating it underneath; say
+    // instead why there is nothing better to show.
+    final subtitle = title == deviceId || title == shortDeviceId(deviceId)
+        ? l10n.devicesNoAdvertisedName
+        : shortDeviceId(deviceId);
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: context.colors.text,
-          ),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: context.colors.text,
+                height: 1.25,
+              ),
+            ),
+            // The second line is what makes two units of the same model
+            // distinguishable at all — they ship with identical advertised
+            // names (a 2026-07-29 field capture: two power banks both
+            // 'RCE_RSPB-01'), so the title alone cannot say which one this is.
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.mono(context).copyWith(
+                fontSize: 10.5,
+                color: context.colors.muted,
+                height: 1.3,
+              ),
+            ),
+          ],
         ),
         // 🔴 NO ACTIONS. The 錶盤 button that design 0046 R20 put here was
         // removed on 2026-08-09 (design 0051, 「同意拿掉入口」) together with
@@ -134,8 +195,103 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         // 11/11 usable captures carried `face=standard`.
       ),
       body: live
-          ? DashboardPage(onOpenSettings: widget.onOpenSettings)
-          : _OfflineBody(deviceId: deviceId),
+          ? (saved == null
+              ? Column(
+                  children: [
+                    _UnsavedNotice(deviceId: deviceId),
+                    Expanded(
+                      child: DashboardPage(
+                          onOpenSettings: widget.onOpenSettings),
+                    ),
+                  ],
+                )
+              : DashboardPage(onOpenSettings: widget.onOpenSettings))
+          : _OfflineBody(
+              deviceId: deviceId,
+              fallbackName: widget.fallbackName,
+              onConnectUnsaved: _connectAndName,
+            ),
+    );
+  }
+}
+
+/// "This one is not saved", and the way to change that (design 0055 §4.4).
+///
+/// 🔴 A SENTENCE with a button, not an AppBar icon. An icon cannot say what it
+/// does before you press it, and design 0046 §4.7 exists to keep controls that
+/// only explain themselves after the fact off these screens.
+///
+/// It also closes a hole that predates design 0055: cancel the alias prompt
+/// after a connect and the unit stays connected but unsaved FOREVER, with no
+/// route back to naming it short of disconnecting and reconnecting. That state
+/// was unreachable-by-design when the only entrance was the connect itself; it
+/// is ordinary now, so it gets a way out.
+class _UnsavedNotice extends StatelessWidget {
+  const _UnsavedNotice({required this.deviceId});
+
+  final String deviceId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(15, 10, 15, 1),
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: BoxDecoration(
+        color: const Color(0x12F6A821),
+        border: Border.all(color: const Color(0x73F6A821)),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.devicesUnsavedTitle,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.5,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.text,
+                  ),
+                ),
+                Text(
+                  l10n.devicesUnsavedBody,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.5,
+                    color: context.colors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            onTap: () => unawaited(promptAndSaveDevice(context, deviceId)),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.amber,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Text(
+                l10n.devicesSave,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppColors.onAmber,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -147,9 +303,19 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
 /// facts and a second visual language for one state is how two screens start
 /// disagreeing.
 class _OfflineBody extends StatelessWidget {
-  const _OfflineBody({required this.deviceId});
+  const _OfflineBody({
+    required this.deviceId,
+    required this.onConnectUnsaved,
+    this.fallbackName = '',
+  });
 
   final String deviceId;
+  final String fallbackName;
+
+  /// Connect a unit with no saved record, then ask for its name — owned by the
+  /// page's State because a successful connect unmounts this widget. See
+  /// [retry] below.
+  final VoidCallback onConnectUnsaved;
 
   @override
   Widget build(BuildContext context) {
@@ -182,13 +348,30 @@ class _OfflineBody extends StatelessWidget {
     final saved = devices.deviceFor(deviceId);
 
     void retry() {
-      if (saved == null) return;
       // `connectToSaved` rather than a bare `connect`: it carries the routing
       // seed, which is the difference between coming back to the same layout
       // and coming back to an unclassified one. The future is absorbed for
       // FB-44's reason — the controller has already recorded the reason in
       // `lastError`, and this widget rebuilds on it.
-      unawaited(conn.connectToSaved(saved).catchError((Object _) {}));
+      //
+      // 🔴 An UNSAVED unit takes the plain `connect` (design 0055 §4.3). Before
+      // 0055 this method opened with `if (saved == null) return;` and the button
+      // below disabled itself on the same condition — which was consistent right
+      // up until unsaved units could reach this page at all, and then it was
+      // just a page whose one action was greyed out with no explanation. There
+      // is no routing seed to carry for a unit nobody has named; a first
+      // connection never had one either.
+      if (saved != null) {
+        unawaited(conn.connectToSaved(saved).catchError((Object _) {}));
+        return;
+      }
+      // 🔴 An unsaved unit's connect is followed by the naming prompt (design
+      // 0055 §4.4) — and it is run from the PAGE, not from here. A successful
+      // connect flips this page to its dashboard, which unmounts this widget;
+      // driving the prompt from a context that the connect destroys is how the
+      // alias gets typed and then dropped. The page's own State outlives the
+      // switch, so it owns the sequence.
+      onConnectUnsaved();
     }
 
     return LayoutBuilder(
@@ -248,9 +431,7 @@ class _OfflineBody extends StatelessWidget {
                     child: SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: (mine && working) || saved == null
-                            ? null
-                            : retry,
+                        onPressed: (mine && working) ? null : retry,
                         icon: const Icon(Icons.bluetooth, size: 16),
                         label: Text(l10n.devicesConnect),
                         style: OutlinedButton.styleFrom(
