@@ -400,6 +400,68 @@ class _RootShellState extends State<RootShell> {
         MaterialPageRoute<void>(builder: (_) => const HomeEditorPage()),
       );
 
+  /// One unit's page, pushed from the shell (home tile, or the pill below).
+  ///
+  /// The scan does not have to be stopped around this: [DeviceDetailPage]
+  /// reports its own visibility and [ConnectionController.setDetailVisible]
+  /// pauses the radio off that (W-3, rewired 2026-08-12). It used to be the
+  /// pusher's job, which is why this route could only safely be opened from the
+  /// devices list.
+  void _openDetail(String deviceId, {String fallbackName = ''}) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => DeviceDetailPage(
+            deviceId: deviceId,
+            fallbackName: fallbackName,
+            onOpenSettings: () => _setTab(_Tab.settings),
+          ),
+        ),
+      );
+
+  /// Where the app-bar connection pill goes (ruled 2026-08-12).
+  ///
+  /// 🔴 Reported by the owner the same day as the unsaved-device defect:
+  /// 「點選右上角的藍牙符號按鈕　就沒作用了」. It was not broken — it did the only
+  /// thing it had ever done, `_setTab(devices)`, and the user was ALREADY on the
+  /// devices tab. A control whose entire effect is a no-op from the surface a
+  /// user most often presses it on is a dead control.
+  ///
+  /// Design 0046 R2 ruled the pill "switches tab instead of covering the page",
+  /// and this does not overturn that: R2 was about not throwing a MODAL SHEET
+  /// over the dashboard. A device page is a full route with a back affordance —
+  /// the same one every row of the list has pushed since design 0055 — and the
+  /// list itself keeps its own bottom-nav tab, so no destination is lost.
+  ///
+  /// 🔑 Stated as a THREE-way rule on purpose, so FB-49 (multi-device, filed
+  /// 2026-08-03, blocked behind FB-20) does not have to re-open this ruling:
+  ///
+  ///   * nothing linked ⇒ the list, exactly as before;
+  ///   * exactly one ⇒ that unit's page;
+  ///   * more than one ⇒ the list, because "take me to the one I am connected
+  ///     to" has no answer when there are three, and a list is the right answer
+  ///     to a plural question.
+  ///
+  /// Today the middle case is simply `connectedDeviceId != null` — the service
+  /// is single-connection (`BleService`: `_links` holds 0 or 1, `connect()`
+  /// awaits `disconnect()` first), so there is no third case to write yet.
+  ///
+  /// `connectedDeviceId`, not `isOnline`: it falls back to `_desiredDeviceId`,
+  /// so a link that is connecting or between retries goes there too — and that
+  /// is the state where the page is worth the most, because the FB-52 stalled
+  /// copy and the FB-53 retry button are on it and nowhere else.
+  void _openConnectionTarget() {
+    final conn = context.read<ConnectionController>();
+    final id = conn.connectedDeviceId;
+    if (id == null) {
+      _setTab(_Tab.devices);
+      return;
+    }
+    // The advertised name travels with the push: for a unit with no saved
+    // record — the one this fix is about — it is the only name there is, and
+    // the page cannot look it up (design 0055 §4.2).
+    _openDetail(id, fallbackName: conn.connectedDeviceName);
+  }
+
   void _syncDashboardVisible() {
     final home = _tab == _Tab.home;
     context.read<GpsSpeedController>().setDashboardVisible(home);
@@ -423,7 +485,7 @@ class _RootShellState extends State<RootShell> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: _BrandAppBar(
-        onOpenDevices: () => _setTab(_Tab.devices),
+        onOpenConnection: _openConnectionTarget,
         // Only on 主頁, and only there: an "edit" action on top of History or
         // Settings would be an action with no object.
         onEditHome: _tab == _Tab.home ? _openHomeEditor : null,
@@ -441,14 +503,7 @@ class _RootShellState extends State<RootShell> {
             HomePage(
               onOpenDevices: () => _setTab(_Tab.devices),
               onEdit: _openHomeEditor,
-              onOpenDetail: (id) => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => DeviceDetailPage(
-                    deviceId: id,
-                    onOpenSettings: () => _setTab(_Tab.settings),
-                  ),
-                ),
-              ),
+              onOpenDetail: _openDetail,
             ),
             // The dashboard's stale-telemetry banner links to Settings, and the
             // dashboard now lives inside a route this page pushes — so the
@@ -521,14 +576,14 @@ class _RootShellState extends State<RootShell> {
 }
 
 /// App bar showing the brand mark + a live connection-state pill (mockup
-/// `.appbar` / `.conn`). Tapping the pill is wired by the device-list screen;
-/// here it surfaces the current link state.
+/// `.appbar` / `.conn`). The pill surfaces the current link state; where a tap
+/// on it goes is the shell's decision ([_RootShellState._openConnectionTarget]).
 class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _BrandAppBar({required this.onOpenDevices, this.onEditHome});
+  const _BrandAppBar({required this.onOpenConnection, this.onEditHome});
 
-  /// Where the connection pill goes. Design 0046 R2: the device list is a tab,
-  /// not a modal, so the pill switches tab instead of covering the page.
-  final VoidCallback onOpenDevices;
+  /// Where the connection pill goes — see [_RootShellState._openConnectionTarget]
+  /// for the rule and why design 0046 R2 survives it.
+  final VoidCallback onOpenConnection;
 
   /// Open the home editor (design 0046 P3). Null on every tab but 主頁.
   final VoidCallback? onEditHome;
@@ -582,7 +637,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         Padding(
           padding: const EdgeInsets.only(right: 14),
-          child: Center(child: _ConnectionPill(onTap: onOpenDevices)),
+          child: Center(child: _ConnectionPill(onTap: onOpenConnection)),
         ),
       ],
     );

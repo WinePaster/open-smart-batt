@@ -79,6 +79,13 @@ class _FakeBle extends BleService {
   Future<void> startScan(
       {Duration timeout = const Duration(seconds: 15)}) async {
     startScans++;
+    // 🔴 A fresh scan CLEARS THE ROSTER, because the real one does:
+    // `BleService.startScan` opens with `_scanSeen.clear(); _scan.add(const
+    // [])`. This fake used to leave the previous results standing, and that
+    // infidelity is the whole reason the 2026-08-12 defect shipped — every
+    // test here saw a nearby list that could only ever grow, so no test could
+    // notice a row that only the LAST scan was holding on screen.
+    _scanOut.add(const []);
   }
 
   @override
@@ -159,7 +166,11 @@ void main() {
   Future<void> teardown(WidgetTester tester, AppServices s) =>
       tester.runAsync(s.dispose);
 
-  Future<void> pumpPage(WidgetTester tester, AppServices s) async {
+  /// Pump the page. [active] is the shell's "this is the tab on screen" flag —
+  /// pumping again with a different value is how a test leaves for another tab
+  /// and comes back, since the State survives and only `didUpdateWidget` runs.
+  Future<void> pumpPage(WidgetTester tester, AppServices s,
+      {bool active = true}) async {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
@@ -181,7 +192,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: const Scaffold(body: DevicesPage(active: true)),
+          home: Scaffold(body: DevicesPage(active: active)),
         ),
       ),
     );
@@ -701,6 +712,69 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // The same family as the delete bug above, one step further along: there the
+  // link was one the user did NOT want and the fix was to release it. Here it
+  // is a link they DO want, and releasing it would be wrong — so the row has to
+  // come back instead.
+  //
+  // Owner, 2026-08-12, on v0.7.14: 「我先連線一個電池裝置　然後我沒有儲存　然後
+  // 我跳到主頁再回去　我就沒辦法再搜尋裝置看到他了」.
+  // ---------------------------------------------------------------------------
+  testWidgets('a connected-but-unnamed unit survives leaving the tab and '
+      'coming back', (tester) async {
+    final s = await makeServices(tester);
+    addTearDown(() => teardown(tester, s));
+    await pumpPage(tester, s);
+    await settle(tester);
+
+    await tester.runAsync(() async {
+      ble._scanOut.add([
+        const DiscoveredDevice(
+            id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pump();
+    await openScanTab(tester);
+
+    // Connect it, then DECLINE the name. "A device the user declined to name is
+    // one they declined to remember" — so nothing is written, and 已儲存 will
+    // never list it.
+    await tester.tap(find.text('Connect').last);
+    await settle(tester);
+    await tester.tap(find.text('Skip'));
+    await settle(tester);
+    expect(s.devices.isSaved('DEV-NEW'), isFalse, reason: 'the precondition');
+    expect(s.connection.connectedDeviceId, 'DEV-NEW',
+        reason: '…and the link is up on a unit no list owns');
+
+    // 主頁 and back. `active` goes false (stopScan) then true (startScan), and
+    // a fresh scan starts from an empty roster — while the unit, being
+    // connected, is not advertising for it to find.
+    await pumpPage(tester, s, active: false);
+    await settle(tester);
+    await pumpPage(tester, s, active: true);
+    await settle(tester);
+
+    expect(find.text('RCE-CarBatt'), findsOneWidget,
+        reason: 'a connected peripheral does not advertise, so no scan can '
+            'ever bring this row back — the page has to keep it. Without it '
+            'the unit is on neither tab, has no home tile (those are built '
+            'from SAVED devices), and the only control that could release the '
+            'link is the 中斷 button on the row that just disappeared.');
+    expect(find.text('Disconnect'), findsOneWidget,
+        reason: 'and the way out has to be on it');
+
+    // The row is a door too: 儲存 lives behind the detail page, which is the
+    // only route left to naming this unit without dropping the link first.
+    await tester.tap(find.text('RCE-CarBatt'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+    expect(find.byType(DeviceDetailPage), findsOneWidget);
+  });
+
+  // ---------------------------------------------------------------------------
   // Design 0055 (ruled 2026-08-11): every row is a door, saved or not, and the
   // devices tab is two sub-tabs sharing one scan.
   //
@@ -712,10 +786,16 @@ void main() {
   // ---------------------------------------------------------------------------
   group('design 0055', () {
     /// Push one nearby unit and land on the tab that lists it.
+    ///
+    /// [openTab] exists for the second half of a test that is ALREADY on 搜尋
+    /// 裝置: tapping a tab you are standing on is a no-op the framework still
+    /// hit-tests, and it warns when a route is on its way out over the tab bar.
+    /// Saying "I am already here" beats tapping and ignoring the miss.
     Future<void> seeNearby(
       WidgetTester tester, {
       String id = 'DEV-NEW',
       String name = 'RCE-CarBatt',
+      bool openTab = true,
     }) async {
       await tester.runAsync(() async {
         ble._scanOut.add([
@@ -724,7 +804,16 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pump();
-      await openScanTab(tester);
+      if (openTab) {
+        await openScanTab(tester);
+      } else {
+        // The tap is skipped; the FRAMES are not. `openScanTab`'s value on a
+        // tab you are already standing on was never the tap — it was the
+        // 400 ms it pumps afterwards, which is what lets the TabBarView finish
+        // sliding back into place once a route stops covering it.
+        await tester.pump(const Duration(milliseconds: 400));
+        await settle(tester);
+      }
     }
 
     Future<void> tapRow(WidgetTester tester, String label) async {
@@ -767,11 +856,16 @@ void main() {
           reason: 'ruled 2026-08-11: 未命名裝置 names nothing in a room that may '
               'hold six of them');
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      // The route's exit animation, then the frame that follows it. `settle`
+      // alone pumps once, which leaves it mid-fade over the tab bar.
+      await tester.pump(const Duration(milliseconds: 400));
       await settle(tester);
 
       // (b) no advertised name ⇒ the id stands in. A MAC-shaped id is shown
-      // whole; only a UUID gets shortened (design 0055 §4.2).
-      await seeNearby(tester, id: 'C4:D5:66:12:1A:2B', name: '');
+      // whole; only a UUID gets shortened (design 0055 §4.2). Already on the
+      // scan tab from (a) — see `seeNearby`'s [openTab].
+      await seeNearby(tester,
+          id: 'C4:D5:66:12:1A:2B', name: '', openTab: false);
       await tapRow(tester, 'Unknown');
       expect(onPage('C4:D5:66:12:1A:2B'), findsOneWidget);
       expect(onPage('Unnamed device'), findsNothing);

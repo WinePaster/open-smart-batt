@@ -377,18 +377,18 @@ class _DevicesPageState extends State<DevicesPage>
   /// stops being reachable the moment the page it is needed on appears
   /// (design 0055 §4.2).
   Future<void> _openDetail(String deviceId, {String fallbackName = ''}) async {
-    // 🔴 Stop scanning for the duration, and start again on the way back.
+    // 🔴 The scan is NOT stopped here, and that is the fix rather than the bug
+    // (ruled 2026-08-12). W-3 — "reading one device must not leave the radio
+    // scanning" — is a rule about a WINDOW, and stating it here stated it about
+    // a CALL SITE instead: correct only while this was the only way in. It is
+    // not. The shell pushes the same page from a home tile and from the app-bar
+    // pill, and neither knows a list is scanning behind it.
     //
-    // [active] cannot express this: the shell derives it from the TAB, and the
-    // tab is still 裝置 while a detail route sits on top of it. So without this
-    // the scan ran for the whole time the user was reading a device page — the
-    // old bottom sheet stopped on `dispose` the moment it closed, and the
-    // promotion to a tab quietly took that away.
-    //
-    // It is also the same window the GNSS gate calls "a detail page is open".
-    // Having one of them treat it as "somebody is looking" while the other left
-    // a radio running is the kind of disagreement that only shows up as battery.
-    _conn?.stopScan();
+    // [DeviceDetailPage] reports its own visibility now — as it already did to
+    // the GNSS and G-force gates, which is the same window under a different
+    // name — and [ConnectionController.setDetailVisible] pauses and resumes the
+    // scan off that. `_wantScan` carries this tab's intent across the gap, so
+    // the list comes back scanning without this method saying anything.
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => DeviceDetailPage(
         deviceId: deviceId,
@@ -404,8 +404,6 @@ class _DevicesPageState extends State<DevicesPage>
     // stated twice because there are two ways in, not because one call site
     // covers both.
     if (context.read<DeviceController>().isSaved(deviceId)) _revealSavedTab();
-    if (!widget.active) return;
-    unawaited(_startScan());
   }
 
   @override
@@ -434,6 +432,36 @@ class _DevicesPageState extends State<DevicesPage>
 
     final working = conn.isBusy || conn.isRetrying;
 
+    // 🔴 The unit we are LINKED TO, when neither list would otherwise hold it.
+    //
+    // Owner, 2026-08-12, on v0.7.14: 「我先連線一個電池裝置　然後我沒有儲存
+    // 然後我跳到主頁再回去　我就沒辦法再搜尋裝置看到他了」.
+    //
+    // Decline the alias prompt and the unit is connected with no saved record,
+    // so 已儲存 cannot list it. It survives on the 搜尋裝置 tab only because the
+    // scan results that produced it are still in memory — and leaving this tab
+    // calls `stopScan`, coming back calls `startScan`, and `startScan` OPENS by
+    // clearing the roster. A connected peripheral does not advertise, so the
+    // fresh scan can never re-find it. Both tabs are then empty of it, the home
+    // page has no tile for an unsaved unit either, and the only thing left on
+    // screen that knows the link exists is the app-bar pill.
+    //
+    // Nor can the user recover: 中斷 is the ONLY control that releases a link
+    // and it lives on the missing row, and 儲存 lives behind the detail page
+    // that same row is the door to. Same family as the 2026-08-11 delete bug
+    // (see `_removeDevice`) — there the fix was to release a link the user did
+    // not want; here the link is one they DO want, so the row comes back
+    // instead.
+    //
+    // Keyed on `connectedDeviceId`, not `isOnline`, for the delete fix's exact
+    // reason: it falls back to `_desiredDeviceId`, so a unit stuck in
+    // connecting / between retries — the whole of FB-51/FB-52 — is covered too.
+    final pinnedId = connectedId != null &&
+            !devices.isSaved(connectedId) &&
+            !scan.any((r) => r.id == connectedId)
+        ? connectedId
+        : null;
+
     return Column(
       children: [
         Padding(
@@ -458,7 +486,10 @@ class _DevicesPageState extends State<DevicesPage>
         _SubTabs(
           controller: _tabs,
           savedCount: saved.length,
-          scanCount: nearby.length,
+          // The pinned row counts: the badge is what makes "there is something
+          // over there" legible from the tab the user is standing on, and a
+          // connected unit is the last thing that should be invisible from it.
+          scanCount: nearby.length + (pinnedId == null ? 0 : 1),
           scanning: conn.isScanning,
         ),
         Expanded(
@@ -466,7 +497,9 @@ class _DevicesPageState extends State<DevicesPage>
             controller: _tabs,
             children: [
               _savedList(saved, rssiById, conn, connectedId, working, l10n),
-              _scanList(nearby, hiddenCount, conn, connectedId, l10n),
+              _scanList(
+                  nearby, hiddenCount, pinnedId, conn, connectedId, working,
+                  l10n),
             ],
           ),
         ),
@@ -521,8 +554,10 @@ class _DevicesPageState extends State<DevicesPage>
   Widget _scanList(
     List<DiscoveredDevice> nearby,
     int hiddenCount,
+    String? pinnedId,
     ConnectionController conn,
     String? connectedId,
+    bool working,
     AppLocalizations l10n,
   ) {
     return ListView(
@@ -547,7 +582,44 @@ class _DevicesPageState extends State<DevicesPage>
             ),
           ),
         ),
-        if (nearby.isEmpty)
+        // The linked-but-unsaved unit, ABOVE the scan and outside every filter
+        // that applies to it (see `pinnedId` in [build] for the report). It is
+        // not a scan hit — it is the reason there is no scan hit — so the
+        // vendor toggle must not be able to hide it and the RSSI column has
+        // nothing to put in it.
+        if (pinnedId != null)
+          _DeviceRow(
+            alias: unsavedDeviceTitle(
+                id: pinnedId, advertisedName: conn.connectedDeviceName),
+            aliasMuted: true,
+            // 🔴 No RSSI, and no bars. There is no advertisement to measure
+            // while the link is up, and inventing a number here would make the
+            // one row on this page whose signal reading is a guess look exactly
+            // like the ones that are measured.
+            meta: '${shortDeviceId(pinnedId)} · ${l10n.devicesLinkedNoAdvert}',
+            signalLevel: 0,
+            isConnected: conn.isOnline,
+            isConnecting:
+                _connectingId == pinnedId || (!conn.isOnline && working),
+            // 🔴 This row DOES carry a badge, and §4.6 is not bent by it. That
+            // rule bans 未連線 on five-to-ten nearby rows because a wall of
+            // "no" is noise; there is exactly one of these and it is the only
+            // row on the page that can say 連線中 / 沒有回應. FB-53's lesson
+            // applies to it and not to them.
+            badge: connectionBadgeFor(
+              isCurrentDevice: true,
+              isOnline: conn.isOnline,
+              working: working || _connectingId == pinnedId,
+              setupStalled: conn.isSetupStalled,
+              lastError: conn.lastError,
+            ),
+            onOpenDetail: () => unawaited(_openDetail(pinnedId,
+                fallbackName: conn.connectedDeviceName)),
+            onDisconnect: _disconnect,
+            onConnect: () => _connectNew(DiscoveredDevice(
+                id: pinnedId, name: conn.connectedDeviceName, rssi: 0)),
+          ),
+        if (nearby.isEmpty && pinnedId == null)
           // "Nothing nearby" and "nothing nearby that looks like ours" are
           // different facts, and the second one has an action. The old copy
           // asserted the first even when N devices were being hidden — telling

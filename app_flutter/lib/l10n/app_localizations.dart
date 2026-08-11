@@ -2863,6 +2863,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No advertised name'**
   String get devicesNoAdvertisedName;
+
+  /// No description provided for @devicesLinkedNoAdvert.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked · not advertising, so no scan finds it'**
+  String get devicesLinkedNoAdvert;
 }
 
 class _AppLocalizationsDelegate

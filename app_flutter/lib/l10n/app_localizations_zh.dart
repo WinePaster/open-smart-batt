@@ -1572,4 +1572,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get devicesNoAdvertisedName => '無廣播名';
+
+  @override
+  String get devicesLinkedNoAdvert => '連線中 · 連線時不廣播，所以掃不到';
 }

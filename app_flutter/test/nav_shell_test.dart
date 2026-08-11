@@ -43,16 +43,38 @@ class _FakeBleService extends BleService {
   @override
   bool get isScanning => false;
 
+  @override
+  Future<bool> ensurePermissions() async => true;
+
+  /// The unit the shell believes it is linked to. Set directly rather than
+  /// through `connect()`: what the pill reads is `connectedDeviceId`, and these
+  /// tests are about where a TAP goes, not about how a link is established.
+  String? connectedId;
+
+  @override
+  String? get connectedDeviceId => connectedId;
+
+  @override
+  String get connectedDeviceName => connectedId == null ? '' : 'RCE-CarBatt';
+
+  /// W-3 is a claim about the radio, so the radio has to be counted.
+  int startScans = 0;
+  int stopScans = 0;
+
   // The devices tab starts a scan when it becomes visible. Left to the real
   // implementation that would await the adapter behind a 6 s timer this test's
   // fake-async zone never advances, and the suite would report a pending timer
   // instead of the thing under test.
   @override
   Future<void> startScan(
-      {Duration timeout = const Duration(seconds: 15)}) async {}
+      {Duration timeout = const Duration(seconds: 15)}) async {
+    startScans++;
+  }
 
   @override
-  Future<void> stopScan() async {}
+  Future<void> stopScan() async {
+    stopScans++;
+  }
 }
 
 void main() {
@@ -66,6 +88,8 @@ void main() {
     await tester.pump();
   }
 
+  late _FakeBleService ble;
+
   Future<AppServices> pumpShell(WidgetTester tester) async {
     late final AppServices services;
     await tester.runAsync(() async {
@@ -73,8 +97,8 @@ void main() {
         path: inMemoryDatabasePath,
         factory: databaseFactoryFfi,
       );
-      services =
-          await AppServices.create(appDatabase: appDb, ble: _FakeBleService());
+      ble = _FakeBleService();
+      services = await AppServices.create(appDatabase: appDb, ble: ble);
     });
     await tester.pumpWidget(OpenSmartBattApp(services: services));
     await tester.pump();
@@ -248,5 +272,119 @@ void main() {
     expect(find.byType(DeviceDetailPage), findsNothing);
     expect(gps.detailVisible, isFalse);
     expect(gps.speedSurfaceVisible, isFalse);
+  });
+
+  // ==========================================================================
+  // The app-bar connection pill (ruled 2026-08-12)
+  // ==========================================================================
+  //
+  // Owner report: 「點選右上角的藍牙符號按鈕　就沒作用了」. It was not broken — it
+  // did the one thing it had ever done, `_setTab(devices)`, from the devices
+  // tab. Nothing was supposed to happen, and nothing did.
+  //
+  // The rule is three-way so FB-49 (multi-device, filed 2026-08-03) never has
+  // to re-open it: nothing linked ⇒ the list; exactly one ⇒ that unit's page;
+  // several ⇒ the list. The third case is unreachable today — `BleService` is
+  // single-connection — so only the first two can be pinned here. **When FB-49
+  // lands, the plural case belongs in this group.**
+  group('the connection pill', () {
+    Finder pill() => find.byIcon(Icons.bluetooth);
+
+    Future<void> tapPill(WidgetTester tester) async {
+      await tester.tap(pill());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+    }
+
+    testWidgets('with nothing linked it still goes to the list', (tester) async {
+      await pumpShell(tester);
+
+      await tapPill(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'there is no unit to open — pushing a page titled by a null '
+              'id would be worse than the tab switch it replaced');
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1,
+          reason: 'design 0046 R2 unchanged for this case');
+    });
+
+    testWidgets('with one unit linked it opens THAT unit', (tester) async {
+      await pumpShell(tester);
+      ble.connectedId = 'DEV-A';
+      await tester.pump();
+
+      await tapPill(tester);
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+      final page =
+          tester.widget<DeviceDetailPage>(find.byType(DeviceDetailPage));
+      expect(page.deviceId, 'DEV-A');
+      // 🔴 The advertised name travels WITH the push. The case this was
+      // reported from is a link with no saved record, and for that unit the
+      // advertised name is the only name there is — the page cannot look it up,
+      // because the scan that carried it has been stopped (design 0055 §4.2).
+      // Without this the title falls back to the raw id.
+      expect(page.fallbackName, 'RCE-CarBatt');
+    });
+
+    testWidgets('from the devices tab it is no longer a no-op', (tester) async {
+      // The report, exactly: standing on 裝置 and pressing it.
+      await pumpShell(tester);
+      ble.connectedId = 'DEV-A';
+      await tester.tap(find.byIcon(Icons.list_alt_outlined));
+      await tester.pump();
+      await drain(tester);
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
+
+      await tapPill(tester);
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the tab switch it used to do is a no-op from here, which is '
+              'the whole complaint');
+    });
+
+    // ------------------------------------------------------------------------
+    // W-3, rewired 2026-08-12: the scan pauses because a DEVICE PAGE IS UP, not
+    // because the devices list was the thing that pushed it.
+    //
+    // 🔴 This is the test the old wiring could not have. W-3 lived inside
+    // `DevicesPage._openDetail`, so it was true by construction for the only
+    // entrance that existed and vacuously untested for any other. The pill is a
+    // second entrance and it pushes from the SHELL, which has no idea a list is
+    // scanning behind it — so under the old code the radio ran for the whole
+    // time the user read the page.
+    // ------------------------------------------------------------------------
+    testWidgets('a page opened from the pill still stops the scan',
+        (tester) async {
+      await pumpShell(tester);
+      ble.connectedId = 'DEV-A';
+      await tester.tap(find.byIcon(Icons.list_alt_outlined));
+      await tester.pump();
+      await drain(tester);
+      expect(ble.startScans, greaterThan(0),
+          reason: 'the precondition: the tab is scanning');
+
+      final stopsBefore = ble.stopScans;
+      await tapPill(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+      expect(ble.stopScans, greaterThan(stopsBefore),
+          reason: 'the GNSS and G-force gates already call this window '
+              '"somebody is looking at one unit". One of them leaving a radio '
+              'on only ever shows up as battery.');
+
+      final startsBefore = ble.startScans;
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pump();
+      // Two frames past the transition: the page defers its report to a
+      // post-frame callback, so the value lands after the route is gone.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+      expect(find.byType(DeviceDetailPage), findsNothing);
+      expect(ble.startScans, greaterThan(startsBefore),
+          reason: '`_wantScan` carries the tab\'s intent across the gap, so '
+              'the list comes back scanning without anyone re-asking');
+    });
   });
 }

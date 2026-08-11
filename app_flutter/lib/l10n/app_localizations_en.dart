@@ -1659,4 +1659,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesNoAdvertisedName => 'No advertised name';
+
+  @override
+  String get devicesLinkedNoAdvert =>
+      'Linked · not advertising, so no scan finds it';
 }

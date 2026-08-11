@@ -472,6 +472,9 @@ class ConnectionController extends ChangeNotifier {
   bool _autoConnectGaveUp = false;
   String? _lastError;
   bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
+
+  /// A device page is covering whatever asked for the scan ([setDetailVisible]).
+  bool _detailVisible = false;
   int _reconnectAttempts = 0;
 
   /// Cap on consecutive auto-reconnect attempts before giving up (D.4). Without
@@ -940,6 +943,36 @@ class ConnectionController extends ChangeNotifier {
   Future<void> stopScan() {
     _wantScan = false;
     return _ble.stopScan();
+  }
+
+  /// W-3: a per-device page is on screen — from ANY entrance (ruled 2026-08-12).
+  ///
+  /// 🔴 This used to be `DevicesPage._openDetail`'s private business: it stopped
+  /// the scan before pushing and started it again on the way back. That is a
+  /// rule about a WINDOW ("somebody is looking at one unit") wearing the shape
+  /// of a rule about a CALL SITE, and it only held while that call site was the
+  /// only way in. The app-bar pill is a second entrance and the home tiles are a
+  /// third — both push from the shell, which has no idea a list is scanning
+  /// behind it — so the radio would have run for as long as the user read the
+  /// page. That is the disagreement `_openDetail` warned about in so many words:
+  /// the GNSS and G-force gates already call this window "somebody is looking",
+  /// and one of them leaving a radio on only ever shows up as battery.
+  ///
+  /// So the page reports itself, exactly as it already does to those two gates,
+  /// and the scan reads the same signal. Whoever pushes it is no longer a fact
+  /// anyone has to know.
+  void setDetailVisible(bool visible) {
+    if (_detailVisible == visible) return;
+    _detailVisible = visible;
+    if (visible) {
+      // 🔴 `_ble.stopScan()`, NOT `stopScan()`. The latter clears `_wantScan`,
+      // and `_wantScan` is the record of the devices tab WANTING a scan — the
+      // one thing that has to survive being covered up, or the list comes back
+      // blind and the adapter-turned-on re-fire below never happens either.
+      unawaited(_ble.stopScan());
+    } else if (_wantScan) {
+      unawaited(startScan());
+    }
   }
 
   // ---- connection -------------------------------------------------------
@@ -2035,10 +2068,17 @@ class ConnectionController extends ChangeNotifier {
     // not-yet-on (iOS `.unknown`/`.unauthorized`/`.notDetermined` → `.on`, or
     // the user toggled the radio), automatically re-fire a scan the user had
     // asked for so they don't have to tap rescan again.
+    //
+    // `!_detailVisible` closes the one hole the W-3 rewiring leaves: the user
+    // can turn the radio on while a device page is up, and re-firing then would
+    // start a scan behind a page that is supposed to have stopped it. The
+    // intent is not lost — `_wantScan` still holds it, and [setDetailVisible]
+    // starts the scan when the page closes.
     if (s == BluetoothAdapterState.on &&
         prev != BluetoothAdapterState.on &&
         _wantScan &&
-        !_scanning) {
+        !_scanning &&
+        !_detailVisible) {
       unawaited(startScan());
     }
     notifyListeners();

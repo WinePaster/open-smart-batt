@@ -80,11 +80,19 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// half for BOTH streams (design 0042 §3.4, design 0045 §3.5).
   GForceController? _gforce;
 
+  /// Third listener of the same signal (W-3, ruled 2026-08-12): the BLE scan.
+  ///
+  /// It used to be told by whoever pushed this page, which worked only while
+  /// the devices list was the only thing that could. See
+  /// [ConnectionController.setDetailVisible].
+  ConnectionController? _conn;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _gps = context.read<GpsSpeedController>();
     _gforce = context.read<GForceController>();
+    _conn = context.read<ConnectionController>();
     _setVisible(true);
   }
 
@@ -102,9 +110,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   void _setVisible(bool v) {
     final gps = _gps;
     final gforce = _gforce;
+    final conn = _conn;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       gps?.setDetailVisible(v);
       gforce?.setDetailVisible(v);
+      conn?.setDetailVisible(v);
     });
   }
 
