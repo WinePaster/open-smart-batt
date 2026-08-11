@@ -17,6 +17,7 @@ import '../protocol/protocol.dart';
 import 'build_info.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
+import 'device_facts_controller.dart';
 import 'g_force_controller.dart';
 import 'gps_speed_controller.dart';
 import 'session_context.dart';
@@ -30,10 +31,12 @@ class AppServices {
     required this.ble,
     required this.historyRepo,
     required this.deviceRepo,
+    required this.deviceFactsRepo,
     required this.settingsRepo,
     required this.logRepo,
     required this.settings,
     required this.devices,
+    required this.facts,
     required this.connection,
     required this.telemetry,
     required this.speed,
@@ -48,11 +51,18 @@ class AppServices {
 
   final HistoryRepo historyRepo;
   final DeviceRepo deviceRepo;
+  final DeviceFactsRepo deviceFactsRepo;
   final SettingsRepo settingsRepo;
   final LogRepo logRepo;
 
   final SettingsController settings;
   final DeviceController devices;
+
+  /// What each unit said about ITSELF, cached whether or not it was ever named
+  /// (design 0057). 🔴 Serves the read-back of past records only — see
+  /// [DeviceFacts] for the boundary, and note that [connection] holds this to
+  /// WRITE and never to route.
+  final DeviceFactsController facts;
   final ConnectionController connection;
   final TelemetryController telemetry;
 
@@ -104,11 +114,13 @@ class AppServices {
 
     final historyRepo = HistoryRepo(db.db);
     final deviceRepo = DeviceRepo(db.db);
+    final deviceFactsRepo = DeviceFactsRepo(db.db);
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
 
     final settings = SettingsController(settingsRepo, history: historyRepo);
     final devices = DeviceController(deviceRepo);
+    final facts = DeviceFactsController(deviceFactsRepo);
     // ONE session context shared by both controllers, so the log events and the
     // packet/history rows are attributed to the same unit — attribution has to
     // come from a single place or the two writers will disagree. Seed
@@ -121,6 +133,7 @@ class AppServices {
       bleService,
       settings: settings,
       devices: devices,
+      facts: facts,
       logs: logRepo,
       session: session,
       appBuild: env.build,
@@ -161,7 +174,7 @@ class AppServices {
     telemetry.bindGForceEstimates(gforce.estimates);
 
     // Prime the persisted controllers before the first frame.
-    await Future.wait([settings.load(), devices.load()]);
+    await Future.wait([settings.load(), devices.load(), facts.load()]);
 
     // 🔴 The G meter's ONLY input. It holds no persistence of its own (see
     // [GForceController]), so the stored switch and matrix reach it here and
@@ -182,10 +195,12 @@ class AppServices {
       ble: bleService,
       historyRepo: historyRepo,
       deviceRepo: deviceRepo,
+      deviceFactsRepo: deviceFactsRepo,
       settingsRepo: settingsRepo,
       logRepo: logRepo,
       settings: settings,
       devices: devices,
+      facts: facts,
       connection: connection,
       telemetry: telemetry,
       speed: speed,
@@ -226,6 +241,10 @@ class AppServices {
     speed.dispose();
     gforce.dispose();
     devices.dispose();
+    // After the drain for [devices]' reason: `record()` finishes with
+    // `load()` -> `notifyListeners()`, and the connection controller queues
+    // those writes without awaiting them.
+    facts.dispose();
     settings.dispose();
     await appDb.close();
   }

@@ -19,3 +19,4 @@ export 'product_class.dart';
 export 'routing_decision.dart';
 export 'device_capabilities.dart';
 export 'device_ident.dart';
+export 'device_facts.dart';

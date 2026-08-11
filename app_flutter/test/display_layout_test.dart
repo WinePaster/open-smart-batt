@@ -550,8 +550,12 @@ void main() {
       // That number is the one this line exists for: v12 was claimed by two
       // plans at once, and the collision was settled by merging them, so the
       // constant and the migration body have to move together.
+      // v14 was data-only (log_max_bytes 20 MB → 100 MB). v15 added the
+      // `device_facts` TABLE (design 0057) — the first new table since the
+      // original schema, and a pure addition: no existing column moves, so
+      // everything asserted above still reads back identically.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 14);
+      expect(Db.schemaVersion, 15);
     });
   });
 }
