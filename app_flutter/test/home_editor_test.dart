@@ -508,15 +508,19 @@ void main() {
     });
 
 
-    testWidgets('🔴 a data-gated card is never offered', (tester) async {
-      // design 0050, 缺陷 B. `cells` only draws when DVOL actually arrives, so
-      // offering it unconditionally lets someone add a card that can never
-      // render on their unit — and `watchfaces.dart` already records why that
-      // is worse than not offering it: "a permanent empty card is the wrong
-      // fix". The menu now asks `isDataGated` as well as `has`.
+    testWidgets('🔴 the data-gated cells card IS offered to a battery',
+        (tester) async {
+      // design 0059, flipping the second half of design 0050 缺陷 B. The old
+      // `!isDataGated` filter feared "a card that can never render", but on the
+      // home surface that card does not exist: a module tile whose body is null
+      // draws `HomeWaitingTile` (`home_tiles.dart`), the same honest `--` every
+      // module card shows offline. And the only class this menu ever offers
+      // `cells` to is the battery, whose DVOL (`0x24`) streams ungated every
+      // second (`telemetry-decoding.md` §8.2) — connected, the card has data.
       //
-      // A BATTERY is used deliberately: it is the class that still HAS `cells`,
-      // so this asserts the data gate rather than re-testing D5.
+      // The registry still declares the gate (`dataGated: {cells}`): the
+      // DASHBOARD keeps showing the card only once data arrives. What changed
+      // is this menu alone.
       final s = await boot(tester, devices: 1);
       addTearDown(() => teardown(tester, s));
       await pumpEditor(tester, s);
@@ -528,9 +532,25 @@ void main() {
       await tester.tap(find.text('Add card'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining('Per-Cell Voltage'), findsOneWidget);
+    });
+
+    testWidgets('🔴 and never to a capacitor', (tester) async {
+      // design 0050 D5 pinned through the MENU: with the data-gate filter gone
+      // (design 0059), the only thing keeping 分串電壓 away from a capacitor
+      // owner — the 2026-08-08 report — is the class registry itself.
+      final s = await boot(tester, devices: 0);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.devices.saveNew('CAP-0', 'cap unit',
+          productClass: ProductClass.supercapacitor));
+      await pumpEditor(tester, s);
+
+      await tester.tap(find.text('Add card'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.textContaining('Per-Cell Voltage'), findsNothing);
       // …and the menu is not empty, so this is not vacuous.
-      expect(find.textContaining('unit 0'), findsWidgets);
+      expect(find.textContaining('cap unit'), findsWidgets);
     });
 
     testWidgets('🔴 and a device with no class offers no class-specific card',

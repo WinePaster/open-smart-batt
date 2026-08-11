@@ -29,6 +29,8 @@ import 'dart:io';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/ui/dashboard/clock_card.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
+import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
+import 'package:open_smart_batt/ui/widgets/pending_note.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
@@ -51,8 +53,10 @@ class _FakeBle extends BleService {
   Stream<BluetoothAdapterState> get adapterState =>
       const Stream<BluetoothAdapterState>.empty();
 
+  final _teleOut = StreamController<TelemetrySample>.broadcast();
+
   @override
-  Stream<TelemetrySample> get telemetry => const Stream<TelemetrySample>.empty();
+  Stream<TelemetrySample> get telemetry => _teleOut.stream;
 
   @override
   Stream<bool> get scanning => const Stream<bool>.empty();
@@ -62,9 +66,12 @@ class _FakeBle extends BleService {
 
   void emitLink(BleLinkState s) => _linkOut.add(s);
 
+  void emitTelemetry(TelemetrySample s) => _teleOut.add(s);
+
   @override
   Future<void> dispose() async {
     await _linkOut.close();
+    await _teleOut.close();
     await super.dispose();
   }
 }
@@ -246,6 +253,77 @@ void main() {
       expect(find.text('11.10'), findsOneWidget,
           reason: 'B keeps its dated last reading; what it must not do is take '
               "A's live one");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // design 0059. The add menu now offers `cells` to a battery, on the argument
+  // that this surface has no "card that can never render": a null body draws
+  // `HomeWaitingTile`. These three pin that argument — every state a cells
+  // tile can reach on the home grid is an honest one.
+  // ---------------------------------------------------------------------------
+  group('design 0059: a cells tile on the home grid', () {
+    final battery = SavedDevice(
+      id: 'A',
+      productClass: ProductClass.smartBattery,
+      alias: 'Batt',
+      lastSeen: DateTime.now(),
+    );
+    const layout = HomeLayout([HomeTile.module(DisplayModule.cells, deviceId: 'A')]);
+
+    testWidgets('offline it is the waiting tile', (tester) async {
+      final s = await boot(tester, devices: [battery]);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setHomeLayout(layout.encode()));
+      await pumpHome(tester, s);
+
+      expect(find.byType(HomeWaitingTile), findsOneWidget);
+      expect(find.byType(DvolBars), findsNothing);
+    });
+
+    testWidgets('live with DVOL it is the bars', (tester) async {
+      final s = await boot(tester, devices: [battery]);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setHomeLayout(layout.encode()));
+      ble.connectedId = 'A';
+      await pumpHome(tester, s);
+      await tester.runAsync(() async {
+        ble.emitLink(BleLinkState.ready);
+        ble.emitTelemetry(TelemetrySample(
+          timestamp: DateTime.now(),
+          dvol: const [3.304, 3.306, 3.292, 3.319],
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+
+      expect(find.byType(DvolBars), findsOneWidget);
+      expect(find.byType(HomeWaitingTile), findsNothing);
+    });
+
+    testWidgets('live with DVOL streaming but VADJ missing it says so',
+        (tester) async {
+      // The one state between "waiting" and "bars": frames arriving, scale
+      // unknown. The dashboard's PendingNote branch must reach this surface
+      // too, rather than the tile faking a voltage or degrading to `--`.
+      final s = await boot(tester, devices: [battery]);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setHomeLayout(layout.encode()));
+      ble.connectedId = 'A';
+      await pumpHome(tester, s);
+      await tester.runAsync(() async {
+        ble.emitLink(BleLinkState.ready);
+        ble.emitTelemetry(TelemetrySample(
+          timestamp: DateTime.now(),
+          dvolPending: true,
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+
+      expect(find.byType(PendingNote), findsOneWidget);
+      expect(find.byType(DvolBars), findsNothing);
+      expect(find.byType(HomeWaitingTile), findsNothing);
     });
   });
 

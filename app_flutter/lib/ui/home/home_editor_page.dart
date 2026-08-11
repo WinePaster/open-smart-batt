@@ -675,20 +675,24 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       for (final d in devices)
         for (final m in DisplayModule.values)
           if (!m.isPhoneModule &&
-              // 🔴 design 0050 D3 + the data gate.
+              // 🔴 design 0050 D3.
               //
               // `forClass` is null when the unit has no class, and that is the
               // whole point: this menu used to hand back the battery's entire
               // card set for a device nobody had identified — which is how a
               // capacitor came to be offered 分串電壓 (reported 2026-08-08).
               //
-              // `!isDataGated` is the second half: `cells` only draws when DVOL
-              // actually arrives, so offering it unconditionally lets someone
-              // add a card that can never render. A permanent empty card is
-              // worse than no card (`watchfaces.dart`).
-              (DisplayModules.forClass(d.productClass)?.has(m) ?? false) &&
-              !(DisplayModules.forClass(d.productClass)?.isDataGated(m) ??
-                  true))
+              // No `!isDataGated` here any more (design 0059). It kept `cells`
+              // out of this menu for fear of "a card that can never render",
+              // but on THIS surface that card does not exist: a module tile
+              // whose body is null draws `HomeWaitingTile` (`home_tiles.dart`),
+              // the same honest `--` every module card shows while the unit is
+              // offline. And the only class this gate ever offers `cells` to is
+              // the battery, whose DVOL (`0x24`) streams ungated every second
+              // (`telemetry-decoding.md` §8.2) — connected, the card has data.
+              // The gate itself stays declared in the registry: the DASHBOARD
+              // still shows the card only once data arrives.
+              (DisplayModules.forClass(d.productClass)?.has(m) ?? false))
             (
               '${homeModuleLabel(l10n, m)} · ${d.alias.isEmpty ? d.id : d.alias}',
               HomeTile.module(m, deviceId: d.id),
