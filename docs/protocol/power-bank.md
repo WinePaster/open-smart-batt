@@ -425,8 +425,10 @@ unit; recorded as a hypothesis, not a decode.
 > **bit 1** = a Type-C cable is present (this part is evidenced, see the table).
 > **bit 0** = the **Type-A output path is currently enabled** — a live state,
 > not a latch. Observed rule: enabled by default when **no Type-C cable is
-> present**; dropped roughly **15–20 s** after the Type-C port starts
-> delivering; dropped while the unit is **charging**.
+> present**; dropped ~~roughly **15–20 s** after~~ **when** the Type-C port
+> takes over delivery — the delay between takeover and the drop is **not
+> fixed** (withdrawn 2026-08-11, see note below); dropped while the unit is
+> **charging**.
 
 Checked against every capture in the corpus:
 
@@ -436,15 +438,25 @@ Checked against every capture in the corpus:
 | Type-A cable only, no load | 1 | **1** |
 | Type-A cable + load | 1 | **1** (6/6, 7/7) |
 | A cable pulled, still no C cable | 1 | **1** |
-| C cable just inserted (< 20 s) | 1 | **1** (4/4) |
-| C cable delivering (> 20 s) | 0 | **0** (4/4, 9/9) |
+| C cable just inserted (C not yet delivering) | 1 | **1** (4/4) |
+| C cable delivering (steady state) | 0 | **0** (4/4, 9/9) |
 | both cables present, C idle | 1 | **1** (`0x07` held 9 min) |
 | charging over Type-C | 0 | **0** (7/7 PD, 6/6 non-PD) |
 | rail down | — (`b7` = `0x00`) | **`0x00`** |
 
-The one soft spot is the ~20 s window in which the C port is already delivering
+~~The one soft spot is the ~20 s window in which the C port is already delivering
 and bit 0 is still set. Reading that as "the A path takes a while to be switched
-out" is fitted after the fact, from a single occurrence.
+out" is fitted after the fact, from a single occurrence.~~
+
+🔴 **2026-08-11 — the fixed-delay figure is withdrawn.** A corpus-wide rescan of
+Type-C handover transitions (eight `07→06` handovers across three units) found
+**no fixed delay**: bit 0 has been observed to drop both *before* the C port
+starts delivering and *long after* it already has, and two gap-free captures
+individually contradict any single window. What remains evidenced is only
+**that** bit 0 drops around the C port taking over — not **when**. Do not build
+any timing assumption (UI transition delays, "wait N seconds then refresh") on
+this flag. The single occurrence the 15–20 s figure was fitted to is one of the
+eight; the others do not agree.
 
 **What does not depend on any of this:** bit 0 is **not** "a Type-A device is
 attached" and **not** "the Type-A port is drawing current". That refutation
@@ -558,7 +570,7 @@ collected here so an implementer does not have to reconstruct it from prose.
 | Item | Status | The capture that would settle it |
 |---|---|---|
 | `0x4B` b7 **bit 0** | 🚫 **Unknown.** Four readings tested, **all four refuted** — including "Type-A active", killed 2026-08-04 by a capture where the bit was set 7/7 with both ports empty | Separate "A cable present" from "A load present" the way bit 1 was: both ports empty → let the rail time out → plug a Type-A cable with **nothing** on the far end → let the rail restart → record 25 s |
-| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
+| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**~~, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one~~ (🔴 2026-08-11: the fixed-delay window is withdrawn — see the bit 0 note above; the on/off predictions themselves remain unbroken) | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
 | Which port carries the flow when **bit 1 is SET** | 🔲 bit 1 is *cable present*, so an idle C cable with the load on Type-A reads as Type-C — 46 frames in one batch are exactly that. The elimination rule only settles the bit-1-**clear** half | A capture with a C cable inserted and untouched while the load is moved between A and C, marked at each move |
 | Charging with **bit 1 clear** | 🚫 **Never observed.** The elimination rule therefore says nothing about it, and the row keeps its feedback hook there | Any capture that produces it |
 | Boost-rail auto-off delay | **32–37 s** after the last load is removed, four measurements, **one unit**. Model behaviour, not protocol | Same measurement on a second unit |
