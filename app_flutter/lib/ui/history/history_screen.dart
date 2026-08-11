@@ -21,6 +21,7 @@ import '../../models/models.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../dashboard/power_flow.dart';
 import '../dashboard/watchfaces.dart';
 import '../util/export_header.dart';
 import '../util/export_naming.dart';
@@ -30,6 +31,27 @@ import '../widgets/industrial.dart';
 
 /// Selectable chart/list time range.
 enum HistoryRange { today, week, all }
+
+/// The export preamble's `window:` value for [r] (FB-60).
+///
+/// Says WHAT WAS ASKED FOR, which the repo-computed `range: A .. B` cannot: a
+/// file whose rows start on Tuesday is a complete "last 7 days" export from a
+/// phone that has only been recording since Tuesday, and an incomplete-looking
+/// one otherwise. Only this line tells the two apart.
+///
+/// Machine-stable slugs, never the localized segmented-control captions — the
+/// reader of a preamble is whoever receives the file, not the phone that made
+/// it (the rule `exportScopeLabel` already follows). [since] is the computed
+/// cut-off, appended so the window is reproducible rather than relative to an
+/// export timestamp the reader has to do arithmetic on; `all` has none.
+String historyWindowLabel(HistoryRange r, DateTime? since) {
+  final slug = switch (r) {
+    HistoryRange.today => 'today',
+    HistoryRange.week => '7d',
+    HistoryRange.all => 'all',
+  };
+  return since == null ? slug : '$slug  since=${since.toIso8601String()}';
+}
 
 /// Row classification derived from a stored [TelemetrySample].
 enum _RowStatus { normal, warning, event }
@@ -194,10 +216,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // arrived", which is the ambiguity FB-32 exists to prevent.
     final speedDetection = context.read<SettingsController>().speedDetection;
     final gMeter = context.read<SettingsController>().gMeterEnabled;
+    final since = _sinceFor(_range);
     try {
-      final csv = await _tele.exportHistoryCsv(
-        since: _sinceFor(_range),
-        limit: _rowCap,
+      final filename = exportFileName(
+        base: 'opensmartbatt-history',
+        classSlug: target.classSlug,
+        ident: target.ident,
+        stamp: exportStamp(),
+        extension: 'csv',
+      );
+      final file = await exportTempFile(filename);
+      // Streamed straight into the file (design 0030 T4b) and NOT capped at
+      // `_rowCap` (T4c / FB-59): that cap belongs to the list below, which
+      // pages a screen at a time, and passing it here silently threw away
+      // everything past the newest 1,000 rows of whatever range the user had
+      // chosen.
+      final rows = await _tele.exportHistoryCsvToFile(
+        file,
+        since: since,
         deviceId: target.deviceId,
         labelFor: labelFor,
         classFor: classFor,
@@ -207,6 +243,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          window: historyWindowLabel(_range, since),
+          // design 0056 follow-up: this file HAS an `ampere` column, so it
+          // states what that column's sign means. See `export_header.dart`.
+          ampereColumn: true,
           layout: layout,
           home: home,
           speedDetection: speedDetection,
@@ -216,22 +256,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // Row count, not text emptiness: every export carries a provenance
       // preamble (app build, platform, scope, timestamp), so the file is never
       // literally empty and testing the text would never fire.
-      if (csv.rows == 0) {
+      if (rows == 0) {
+        // The header-only file is already on disk; delete it rather than leave
+        // a plausible-looking export in the temp directory for a share sheet
+        // (or a file manager) to pick up later.
+        await file.delete().catchError((_) => file);
         messenger.showSnackBar(SnackBar(
           duration: const Duration(milliseconds: 1600),
           content: Text(l10n.commonNoRecordsToExport),
         ));
         return;
       }
-      await shareTextAsFile(
-        content: csv.text,
-        filename: exportFileName(
-          base: 'opensmartbatt-history',
-          classSlug: target.classSlug,
-          ident: target.ident,
-          stamp: exportStamp(),
-          extension: 'csv',
-        ),
+      await shareExportFile(
+        file: file,
+        filename: filename,
         mimeType: 'text/csv',
         subject: l10n.historyExportSubject,
         sharePositionOrigin: origin,
@@ -319,14 +357,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 tempUnit: tempUnit,
                                 status: _classify(r.sample,
                                     ov: ov, uv: uv, ot: ot),
-                                // Class-gated, not data-driven: a capacitor
-                                // streams 0x2E pinned at 0.0 A but cannot
-                                // measure current. The CSV
-                                // already blanks it; showing it here would have
-                                // the two disagree about the same row.
-                                showCurrent: deviceClassFor(
-                                        devices, r.deviceId) !=
-                                    ProductClass.supercapacitor,
+                                // Class-gated, not data-driven — and the class
+                                // now decides the WORDING as well as the
+                                // presence (design 0056). See
+                                // [historyCurrentBit] for all three cases.
+                                deviceClass:
+                                    deviceClassFor(devices, r.deviceId),
                               ),
                           ],
                         ),
@@ -1127,19 +1163,99 @@ class _TrendPainter extends CustomPainter {
 
 // ====================== list row + status tag ===========================
 
+/// The `電流 …` fragment of a history row's sub-line, or null when the row's
+/// unit cannot measure current at all.
+///
+/// 🔴 THE CLASS DECIDES, and it decides three different things — which is why
+/// this is a function and not a `showCurrent` bool (its previous shape):
+///
+///  * **super-capacitor** — no fragment. Its `0x2E` is pinned at 0.0 A on a
+///    unit that cannot measure current, and the CSV already blanks the column;
+///    showing it here would have the two disagree about the same row.
+///  * **battery** — MAGNITUDE plus a direction word (design 0056, ruled
+///    2026-08-11). A bare `-35.0A` is the FB-47 defect: two people who knew the
+///    protocol read one as a fault rather than as a direction.
+///  * **power bank** — magnitude plus a word as well (ruled 2026-08-11, after
+///    the battery shipped), but through its OWN derivation: `0x4A − 0x49` is
+///    positive while DIScharging, the exact opposite of `0x2E`, so `packFlowOf`
+///    would label it backwards. This is the family FB-47 was actually filed on,
+///    which is why leaving it as the only bare signed number in the app did not
+///    survive review.
+///  * **a row whose class is unknown** — the stored number, signed, exactly as
+///    before. Written before history carried a device id at all, it has no
+///    family to pick a convention from, and guessing one is FB-43's shape.
+///
+/// PUBLIC so a test can call it without pumping the whole screen; the widget
+/// test that proves the row actually renders it lives beside it.
+String? historyCurrentBit(
+    AppLocalizations l10n, ProductClass cls, double amps) {
+  if (cls == ProductClass.supercapacitor) return null;
+  if (cls == ProductClass.unknown) {
+    return l10n.historyRowCurrent(amps.toStringAsFixed(1));
+  }
+  // 🔑 The direction is derived from the number the reader can SEE, not from
+  // the stored one. A history row is a MINUTE AVERAGE, so unlike the live card
+  // it is a float — and `packFlowOf`'s 1.5 A line would otherwise put −1.46 and
+  // −1.52 on opposite sides of it while BOTH print as `1.5A`. Two rows, the
+  // same visible number, different words, is a bug report waiting to happen.
+  // Rounding first makes the word answerable from the row itself.
+  final shown = (amps * 10).roundToDouble() / 10;
+  // 🔴 ONE derivation per family, and never the other one's.
+  //
+  // Each keeps its own dead-band, because each band is a fact about its own
+  // register rather than a taste setting:
+  //
+  //  * pack — the SAME 1.5 A line as the live readout. Averaging does not
+  //    recover what quantisation threw away: `0x2E` is 1 A per count and a
+  //    device that truncates reports a true 0.4 A as 0 in every sample of the
+  //    minute, so an average inside one count is no more trustworthy than an
+  //    instantaneous reading inside one count. A second, tighter threshold here
+  //    would mean the same battery reads 靜置 on one screen and 放電中 on the
+  //    other — the disagreement `power_flow.dart` exists to prevent.
+  //  * power bank — its own 0.05 A band, at mA resolution.
+  //
+  // ⚠️ THE RAIL-OFF VETO CANNOT APPLY HERE, and that is a real limitation
+  // rather than an oversight: the veto reads the same burst's `0x4B` b7, and
+  // history stores no flag column (see the schema in `app_database.dart`) — a
+  // per-minute average of a bit-field would not be one anyway. So a unit with
+  // the RSPB-01 residual (a constant 58–69 mA charge-side offset with its boost
+  // rail off) will show a small CHARGING row where the live screen reads
+  // STANDBY. `powerFlowOf` is called with no flags, which is exactly its
+  // documented pre-veto behaviour; widening the band here instead would be a
+  // second derivation, which is the thing this comment exists to forbid.
+  final flow =
+      cls == ProductClass.powerBank ? powerFlowOf(shown) : packFlowOf(shown);
+  // Its own vocabulary too. Nothing new was coined for this: `powerBankDirection*`
+  // has been on the SOC dial and the energy-path row since design 0037. Sharing
+  // ONE set of keys across the families would mean a wording change made for a
+  // car battery silently rewording a power bank.
+  final direction = cls == ProductClass.powerBank
+      ? switch (flow) {
+          PowerFlow.charging => l10n.powerBankDirectionCharging,
+          PowerFlow.discharging => l10n.powerBankDirectionDischarging,
+          PowerFlow.idle || PowerFlow.unknown => l10n.powerBankDirectionIdle,
+        }
+      : switch (flow) {
+          PowerFlow.charging => l10n.packDirectionCharging,
+          PowerFlow.discharging => l10n.packDirectionDischarging,
+          PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
+        };
+  return l10n.historyRowCurrentDirected(
+      shown.abs().toStringAsFixed(1), direction);
+}
+
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
     required this.sample,
     required this.tempUnit,
     required this.status,
-    required this.showCurrent,
+    required this.deviceClass,
   });
 
-  /// False when the row's unit cannot measure current — i.e. a super-capacitor,
-  /// whose current register is pinned at 0.0 A. Rows with no device id (written
-  /// before history rows were attributed to a device at all) keep whatever was
-  /// stored: we do not know their class, so we do not edit their reading.
-  final bool showCurrent;
+  /// The stored product class of the row's unit, or [ProductClass.unknown] for
+  /// a row written before history rows were attributed to a device at all.
+  /// Read only by [historyCurrentBit] — see there for what each value means.
+  final ProductClass deviceClass;
 
   final TelemetrySample sample;
   final TempUnit tempUnit;
@@ -1221,8 +1337,9 @@ class _HistoryRow extends StatelessWidget {
         if (sample.sohBucket != null) {
           bits.add(l10n.historyRowSoh(sample.sohBucket!));
         }
-        if (showCurrent && sample.current != null) {
-          bits.add(l10n.historyRowCurrent(sample.current!.toStringAsFixed(1)));
+        if (sample.current != null) {
+          final bit = historyCurrentBit(l10n, deviceClass, sample.current!);
+          if (bit != null) bits.add(bit);
         }
         return bits.isEmpty ? l10n.commonNormal : bits.join(' · ');
     }

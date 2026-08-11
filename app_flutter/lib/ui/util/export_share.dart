@@ -1,8 +1,14 @@
 /// OpenSmartBatt — file export + share helper.
 ///
-/// Writes a text blob (CSV / `.log`) to a temp file and hands it to the system
-/// share sheet via `share_plus`. Used by the History (CSV) and Settings
-/// (data CSV / diagnostics `.log`) screens.
+/// Writes a text blob (`.log`) to a temp file and hands it to the system share
+/// sheet via `share_plus`. Used by the History (CSV) and Settings (data CSV /
+/// diagnostics `.log`) screens.
+///
+/// Two entry points, because the two exports differ in where the bytes come
+/// from: the diagnostic log is built as one string and goes through
+/// [shareTextAsFile], while the history CSV is streamed page by page into the
+/// file itself ([exportTempFile] + [shareExportFile]) so that a 90,000-row
+/// export never exists in memory (design 0030 T4b).
 library;
 
 import 'dart:io';
@@ -79,9 +85,42 @@ Future<ShareResultStatus> shareTextAsFile({
   String? subject,
   Rect? sharePositionOrigin,
 }) async {
-  final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}/$filename');
+  final file = await exportTempFile(filename);
   await file.writeAsString(content);
+  return shareExportFile(
+    file: file,
+    filename: filename,
+    mimeType: mimeType,
+    subject: subject,
+    sharePositionOrigin: sharePositionOrigin,
+  );
+}
+
+/// The temp-directory [File] an export of [filename] should be written to.
+///
+/// Split out of [shareTextAsFile] for the CSV path, which no longer has a
+/// string to hand over: since design 0030 T4b the history export is written
+/// page by page straight into this file, so the whole export never exists in
+/// memory at once. The caller writes, then calls [shareExportFile].
+Future<File> exportTempFile(String filename) async {
+  final dir = await getTemporaryDirectory();
+  return File('${dir.path}/$filename');
+}
+
+/// Hand an ALREADY-WRITTEN [file] to the system share sheet.
+///
+/// [filename] is the name the receiving app sees, which is deliberately a
+/// separate argument from the path: it is the same value [exportTempFile] was
+/// given, so a streamed export and a string one present identically.
+/// [sharePositionOrigin] carries the same FB-40 obligation as in
+/// [shareTextAsFile] — in-bounds or null, never a raw widget Rect.
+Future<ShareResultStatus> shareExportFile({
+  required File file,
+  required String filename,
+  String? mimeType,
+  String? subject,
+  Rect? sharePositionOrigin,
+}) async {
   final result = await Share.shareXFiles(
     [XFile(file.path, mimeType: mimeType, name: filename)],
     subject: subject,

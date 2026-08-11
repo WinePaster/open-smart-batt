@@ -487,7 +487,21 @@ class _DataCardState extends State<_DataCard> {
     final speedDetection = context.read<SettingsController>().speedDetection;
     final gMeter = context.read<SettingsController>().gMeterEnabled;
     try {
-      final csv = await tele.exportHistoryCsv(
+      final filename = exportFileName(
+        base: 'opensmartbatt-history',
+        classSlug: target.classSlug,
+        ident: target.ident,
+        stamp: exportStamp(),
+        extension: 'csv',
+      );
+      final file = await exportTempFile(filename);
+      // "Export all data" means all of it, and it always did — this path never
+      // carried a row cap. What it DID carry was the whole table in memory
+      // three times over, which is the same defect as the History screen's cap
+      // seen from the other side: one lost rows silently, this one fell over
+      // silently. Both now stream page by page (design 0030 T4b).
+      final rows = await tele.exportHistoryCsvToFile(
+        file,
         deviceId: target.deviceId,
         labelFor: labelFor,
         classFor: classFor,
@@ -497,6 +511,13 @@ class _DataCardState extends State<_DataCard> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          // FB-60. Unconditional here and always `all`: this button has no
+          // range picker, so the file has to say so rather than leave the
+          // recipient to infer it from a missing line.
+          window: 'all',
+          // Same column, same rule as the History screen's export — the two
+          // paths write the same CSV shape and must describe it identically.
+          ampereColumn: true,
           layout: layout,
           home: home,
           speedDetection: speedDetection,
@@ -506,19 +527,14 @@ class _DataCardState extends State<_DataCard> {
       // Row count, not text emptiness: the preamble means the file is never
       // empty, so the older `!csv.contains('\n')` test would always pass and
       // hand the user a header-only file with no warning.
-      if (csv.rows == 0) {
+      if (rows == 0) {
+        await file.delete().catchError((_) => file);
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.commonNoRecordsToExport)));
         return;
       }
-      await shareTextAsFile(
-        content: csv.text,
-        filename: exportFileName(
-          base: 'opensmartbatt-history',
-          classSlug: target.classSlug,
-          ident: target.ident,
-          stamp: exportStamp(),
-          extension: 'csv',
-        ),
+      await shareExportFile(
+        file: file,
+        filename: filename,
         mimeType: 'text/csv',
         subject: l10n.settingsExportSubjectAllData,
         sharePositionOrigin: origin,

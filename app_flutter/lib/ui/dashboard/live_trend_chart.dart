@@ -28,6 +28,7 @@ class TrendTrack {
     this.spanZero = false,
     this.height = 74,
     this.minSpan = 1,
+    this.directionKey,
   });
 
   final TrendField field;
@@ -50,6 +51,22 @@ class TrendTrack {
   /// Smallest Y span to show. Without it, a reading that is flat to the
   /// millivolt fills the track with amplified noise.
   final double minSpan;
+
+  /// What the two halves of a signed axis MEAN, e.g. 「＋充電 · −放電」.
+  ///
+  /// Only for a [spanZero] track, and only where the direction is established:
+  /// it is a claim about the hardware, not decoration. Drawn under the plot
+  /// rather than in the header row, because the header already holds a legend
+  /// and a live value that fight for width on a 1x1 home tile (see
+  /// [_TrackHeader]) — a third element there would ellipsise one of them.
+  ///
+  /// 🔴 It does NOT change the data. The 2026-08-03 ruling that the current
+  /// track stays signed and zero-crossing (design 0030 §3.2 / §7 Q5) is
+  /// untouched; that ruling's companion clause — "axis text says only 電流 A,
+  /// never 充電／放電" — rested on the direction being unverified, which stopped
+  /// being true on 2026-08-11 (`telemetry-decoding.md` §8.2). Design 0056 is
+  /// the ruling that replaces it. `abs()` remains forbidden.
+  final String? directionKey;
 }
 
 /// Stacked live tracks with a scrub cursor.
@@ -142,6 +159,20 @@ class _LiveTrendChartState extends State<LiveTrendChart> {
               ),
             ),
           ),
+          // Under the plot and right-aligned: the left edge is where the axis
+          // numbers are, and this is a key to the axis, not another value.
+          if (track.directionKey != null) ...[
+            const SizedBox(height: 3),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                track.directionKey!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.label(context),
+              ),
+            ),
+          ],
           const SizedBox(height: 9),
         ],
       ],

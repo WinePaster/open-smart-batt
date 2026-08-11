@@ -28,8 +28,9 @@ enum TrendField {
   /// Secondary voltage (`0x37`) — on a power bank this is the output rail.
   svlt,
 
-  /// Main current. Signed on a pack (`0x2E`); on a power bank the sign comes
-  /// from WHICH register carries the reading (see [LiveTrendBuffer.add]).
+  /// Main current, signed — but with OPPOSITE conventions per family: a pack's
+  /// `0x2E` is negative while discharging, a power bank's `0x4A − 0x49` is
+  /// positive while discharging (see [LiveTrendBuffer.add]).
   current,
 
   /// Temperature in the unit the device reports (°C).
@@ -96,10 +97,16 @@ class LiveTrendBuffer extends ChangeNotifier {
   /// Fold one decoded sample in.
   ///
   /// [current] is taken from [TelemetrySample.current] as-is, INCLUDING its
-  /// sign. On a pack that is `512 - u16(0x2E)`; whether positive means
-  /// discharge is still unverified, so the chart states the number and not a
-  /// direction. Flattening it to a magnitude here would be worse than either:
-  /// it would erase the reversal that makes a cranking load recognisable.
+  /// sign. On a pack that is `512 - u16(0x2E)`, where **negative is discharge**
+  /// (`docs/protocol/telemetry-decoding.md` §8.2, established 2026-08-11);
+  /// on a power bank it is `0x4A − 0x49`, the other way round.
+  ///
+  /// 🔒 Flattening it to a magnitude here is forbidden (2026-08-03 ruling,
+  /// design 0030 §7 Q5: `abs()`, `clamp(0, …)` and a positive-only Y range all
+  /// violate it). It would erase the reversal that makes a cranking load
+  /// recognisable — the one thing the curve shows that the readout cannot. The
+  /// readout is where the magnitude-plus-word presentation lives (design 0056);
+  /// this buffer feeds both, so it stores neither presentation.
   void add(TelemetrySample s) {
     final i = _next;
     _t[i] = s.timestamp.millisecondsSinceEpoch.toDouble();

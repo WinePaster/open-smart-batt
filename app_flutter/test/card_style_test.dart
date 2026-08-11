@@ -713,6 +713,12 @@ void main() {
       // `current` is hidden when it has not arrived (the data gate inside
       // `dashboardCardFor`). The hero layout must not resurrect it, and must not
       // hide one that IS there.
+      //
+      // 🔴 The pack tile prints the MAGNITUDE with a direction badge since
+      // design 0056, so the presence check is on `12.5` and on the badge. The
+      // BADGE is the load-bearing half here: F4 says a view may not print less,
+      // and `big` demoting the current would now drop a word as well as a
+      // number.
       final withCurrent = teleOf(TelemetrySample(
           timestamp: kNow, temperatureC: 41, svlt: 13.9, current: -12.5));
       await pumpCard(tester,
@@ -720,7 +726,8 @@ void main() {
           cls: ProductClass.smartBattery,
           tele: withCurrent,
           view: 'big');
-      expect(find.textContaining('-12.5'), findsOneWidget);
+      expect(find.textContaining('12.5'), findsOneWidget);
+      expect(find.text('DISCHARGING'), findsOneWidget);
 
       await pumpCard(tester,
           module: DisplayModule.readouts,

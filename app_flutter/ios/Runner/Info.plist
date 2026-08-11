@@ -41,11 +41,24 @@
 	     contradicts (speed DOES go to history and to exports; only the
 	     coordinate is forbidden). Keep the promise and the implementation
 	     saying the same thing.
-	     WhenInUse only. No NSLocationAlways* key: the GPS speed feature is
-	     foreground-only (0042 N1). The UIBackgroundModes entry below belongs
+	     The GPS speed feature is foreground-only (0042 N1) and the app only
+	     ever requests WhenInUse. The UIBackgroundModes entry below belongs
 	     to BLE (design 0047), NOT to location. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>顯示騎乘速度時需要取得定位（位置座標不會被儲存或上傳）。</string>
+	<!-- ITMS-90683 on the v0.7.12 (26081002) delivery: Apple's static scan
+	     demands NSLocationAlwaysAndWhenInUseUsageDescription because plugin
+	     sources reference requestAlwaysAuthorization — geolocator_apple's
+	     PermissionHandler.m and permission_handler_apple's
+	     LocationPermissionStrategy.m — even though this app never calls those
+	     paths. Declared DEFENSIVELY, same pattern as NSMotionUsageDescription
+	     below: the key alone neither requests nor grants Always authorization,
+	     and no code asks for it, so this string should never be shown. The
+	     foreground-only promise (0042 N1) is unchanged; the wording repeats the
+	     WhenInUse string plus the honest "前景使用期間" qualifier so the two
+	     strings cannot drift into contradicting each other. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>顯示騎乘速度時需要取得定位，且僅在 App 前景使用期間（位置座標不會被儲存或上傳）。</string>
 	<!-- design 0047 Phase 1. bluetooth-central lets GATT events (notify /
 	     disconnect) on an already-connected peripheral wake the app for a short
 	     execution window while it is backgrounded, so the frame-driven history

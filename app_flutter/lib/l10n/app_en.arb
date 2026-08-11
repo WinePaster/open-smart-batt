@@ -661,6 +661,18 @@
       }
     }
   },
+  "historyRowCurrentDirected": "Current {amps}A {direction}",
+  "@historyRowCurrentDirected": {
+    "description": "History row current for a family whose sign convention is established: the MAGNITUDE plus a direction word, so no bare signed number reaches the reader. {direction} is one of the packDirection* strings (design 0056).",
+    "placeholders": {
+      "amps": {
+        "type": "String"
+      },
+      "direction": {
+        "type": "String"
+      }
+    }
+  },
   "historyRowThresholdWarning": "Protection threshold warning",
   "historyStatusEvent": "Event",
   "historyChartInsufficientData": "Not enough data to chart (need at least 2 records)",
@@ -1003,6 +1015,15 @@
   "powerBankDirectionCharging": "CHARGING",
   "powerBankDirectionDischarging": "DISCHARGING",
   "powerBankDirectionIdle": "STANDBY",
+  "packDirectionCharging": "CHARGING",
+  "@packDirectionCharging": {
+    "description": "Badge under a pack's main-current reading, shown when 0x2E is positive. Deliberately NOT the powerBankDirection* keys: the two families sign current the opposite way round, and one shared key would invite a caller to reuse the wrong derivation (design 0056)."
+  },
+  "packDirectionDischarging": "DISCHARGING",
+  "packDirectionIdle": "AT REST",
+  "@packDirectionIdle": {
+    "description": "Pack current inside the quantisation dead-band: a magnitude, no direction. 'At rest' rather than 'standby' — a vehicle battery is never on standby, it is parked."
+  },
   "usbPortTypeA": "Type-A",
   "usbPortTypeC": "Type-C",
   "powerPathHeading": "Energy Path",
@@ -1028,6 +1049,10 @@
   "dashboardChartHeading": "Live Trend",
   "dashboardChartWaiting": "Waiting for telemetry…",
   "dashboardTrackCurrent": "Main current",
+  "dashboardTrackCurrentDirectionKey": "+ charge · − discharge",
+  "@dashboardTrackCurrentDirectionKey": {
+    "description": "Direction key under the pack current track. The track itself stays SIGNED and zero-crossing (2026-08-03 ruling); this line is what tells the reader which half of the axis is which, now that 0x2E's direction is established (design 0056)."
+  },
   "dashboardTrackPvlt": "PVLT · main voltage",
   "dashboardTrackTemperature": "Temperature",
   "powerBankTrackCurrent": "Current",

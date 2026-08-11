@@ -266,11 +266,21 @@ Widget? dashboardCardFor(
               label: l10n.dashboardTrackCurrent,
               unit: 'A',
               color: AppColors.cyan,
-              // Signed, and the axis must cross zero. 0x2E carries a sign whose
-              // DIRECTION is still unverified, so the axis states the number and
-              // never labels it charge/discharge — but hiding the sign would
-              // erase the reversal that makes a cranking load recognisable.
+              // Signed, and the axis must cross zero (2026-08-03 ruling,
+              // design 0030 §3.2: `abs()` was explicitly rejected — flattening
+              // the track would erase the reversal that makes a cranking load
+              // recognisable, which is the one thing a curve shows that a
+              // number cannot).
+              //
+              // 🔴 What DID change (design 0056): the axis now says which half
+              // is which. Until 2026-08-11 it deliberately did not, because
+              // 0x2E's direction was unverified and a label would have smuggled
+              // out an unsettled conclusion. `telemetry-decoding.md` §8.2 now
+              // states it — negative = discharge, positive = charge — so the
+              // silence has lost its reason, and an unexplained sign is exactly
+              // what FB-47 was reported for.
               spanZero: true,
+              directionKey: l10n.dashboardTrackCurrentDirectionKey,
               minSpan: 10,
               height: 92,
             ),
@@ -352,6 +362,10 @@ Widget? dashboardCardFor(
           ],
         );
       }
+      // Derived once, beside the power-bank branch's own `flow` and by the
+      // deliberately DIFFERENT function — see `power_flow.dart` for why a pack
+      // and a power bank cannot share one derivation.
+      final packFlow = packFlowOf(tele.current);
       return ReadoutsCard(
         view: readoutsView,
         items: [
@@ -371,12 +385,33 @@ Widget? dashboardCardFor(
           // different questions and are answered in different places (design
           // 0034 §12.3 #2). A capacitor DOES stream 0x2E, but it is a constant
           // 0.0 A, so the readout is hidden rather than shown as a real zero.
+          //
+          // 🔴 MAGNITUDE + DIRECTION BADGE, not a signed number (design 0056,
+          // owner's 2026-08-11 ruling B). It printed `-35.0 A` until then, and
+          // a bare signed number with no word beside it is the defect FB-47 was
+          // filed for — twice over, since both times the person who misread it
+          // was the one who had ruled on the sign convention. The sign is NOT
+          // flipped (ruling A): it is spent here on choosing the word.
+          //
+          // Same three-part language as the power bank's tiles (design 0037):
+          // one glyph table, one colour table, one vocabulary — read from
+          // `packFlowOf`, which signs a pack the opposite way to `powerFlowOf`.
           if (modules.showsCurrentReadout && tele.current != null)
             Readout(
-              icon: Icons.electric_bolt,
+              icon: powerFlowIcon(packFlow),
               label: l10n.dashboardReadoutCurrentLabel,
-              value: _fmt1(tele.current),
+              value: _fmt1(tele.current!.abs()),
               unit: 'A',
+              // `unknown` shares the idle word rather than getting one of its
+              // own: it is unreachable under the `!= null` gate above, and a
+              // fourth string for a state this tile cannot be in would be a
+              // claim nobody could ever see to check.
+              badge: switch (packFlow) {
+                PowerFlow.charging => l10n.packDirectionCharging,
+                PowerFlow.discharging => l10n.packDirectionDischarging,
+                PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
+              },
+              badgeColor: powerFlowColor(context, packFlow),
             ),
           if (modules.showsSohReadout && tele.sohBucket != null)
             Readout(

@@ -107,7 +107,7 @@ void main() {
   /// Build a real v11 file (an in-memory DB is discarded on close, so the
   /// upgrade path would never see the old data), seed one row per table, then
   /// open it with the current app and hand back the upgraded handle.
-  Future<AppDatabase> upgradeFromV11(String tag) async {
+  Future<AppDatabase> upgradeFromV11(String tag, {int? logMaxBytes}) async {
     final dir = await Directory.systemTemp.createTemp('osb_$tag');
     addTearDown(() => dir.delete(recursive: true));
     final path = p.join(dir.path, 'v11.db');
@@ -125,7 +125,11 @@ void main() {
     );
     await legacy.insert('history', {'timestamp': 60000, 'pvlt': 12.5});
     await legacy.insert('saved_devices', {'id': 'AA:BB', 'alias': '電池 #1'});
-    await legacy.insert('settings', {'id': 1, 'poll_interval_ms': 2000});
+    await legacy.insert('settings', {
+      'id': 1,
+      'poll_interval_ms': 2000,
+      'log_max_bytes': ?logMaxBytes,
+    });
     await legacy.close();
     final upgraded =
         await AppDatabase.open(path: path, factory: databaseFactoryFfi);
@@ -265,6 +269,24 @@ void main() {
     test('history', () => expectSameColumns('history'));
     test('saved_devices', () => expectSameColumns('saved_devices'));
     test('diag_log', () => expectSameColumns('diag_log'));
+  });
+
+  group('v14 log-budget force-migration', () {
+    test('a row still at the old 20 MB default moves to 100 MB', () async {
+      // The v11 fixture column DEFAULT is 20971520, so the seeded row is
+      // exactly the persisted-old-default case the migration targets.
+      final db = await upgradeFromV11('v14_budget_default');
+      final row = (await db.db.query('settings')).single;
+      expect(row['log_max_bytes'], 100 * 1024 * 1024);
+    });
+
+    test('a row at any other value is untouched', () async {
+      // The WHERE clause matches only the old default; anything else — here a
+      // nonsense value that fromMap would normalise at read time — stays put.
+      final db = await upgradeFromV11('v14_budget_kept', logMaxBytes: 12345678);
+      final row = (await db.db.query('settings')).single;
+      expect(row['log_max_bytes'], 12345678);
+    });
   });
 
   group('the settings row survives a save', () {

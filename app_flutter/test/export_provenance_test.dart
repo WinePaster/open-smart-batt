@@ -145,6 +145,45 @@ void main() {
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);
     });
+
+    test('and keeps the CSV header shape byte-for-byte too', () {
+      // The twin of the test above, added with the `ampere sign:` lines
+      // (design 0056 follow-up, 2026-08-11). The CSV preamble had drifted two
+      // lines away from the log's — `window:` (FB-60) and now these — with
+      // nothing writing the difference down, so a change to the CSV shape could
+      // land with every test still green. It cannot now.
+      //
+      // Same discipline as the log: whole-list equality, not `containsAll`, so
+      // the NEXT line added to a CSV export has to be written here as well.
+      final lines = exportHeaderLines(
+        title: 'OpenSmartBatt history export',
+        exportedAt: at,
+        appBuild: '0.6.8+26072812',
+        platform: 'android 15',
+        scope: 'device=battery/7809',
+        window: 'all',
+        ampereColumn: true,
+        layout: layout,
+        home: 'tiles=auto',
+        speedDetection: false,
+        gMeter: false,
+      );
+      expect(lines, <String>[
+        'OpenSmartBatt history export',
+        'exported: ${at.toIso8601String()}',
+        'scope: device=battery/7809',
+        'app: 0.6.8+26072812  platform: android 15',
+        'window: all',
+        'ampere sign: battery negative=discharge positive=charge; '
+            'power bank positive=discharge (0x4A-0x49)',
+        'ampere sign: capacitor rows are blank - that unit cannot measure '
+            'current',
+        'speed detection: off',
+        'g meter: off',
+        'home: tiles=auto',
+        'layout: face=standard modules=gaugeVoltage,readouts,cells',
+      ]);
+    });
   });
 
   group('resolveBuildInfo', () {

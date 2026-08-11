@@ -882,6 +882,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String historyRowCurrentDirected(String amps, String direction) {
+    return '電流 ${amps}A $direction';
+  }
+
+  @override
   String get historyRowThresholdWarning => '保護門檻警告';
 
   @override
@@ -1412,6 +1417,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankDirectionIdle => '待機';
 
   @override
+  String get packDirectionCharging => '充電中';
+
+  @override
+  String get packDirectionDischarging => '放電中';
+
+  @override
+  String get packDirectionIdle => '靜置';
+
+  @override
   String get usbPortTypeA => 'Type-A';
 
   @override
@@ -1447,6 +1461,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dashboardTrackCurrent => '主電流';
+
+  @override
+  String get dashboardTrackCurrentDirectionKey => '＋充電 · −放電';
 
   @override
   String get dashboardTrackPvlt => 'PVLT · 主電壓';

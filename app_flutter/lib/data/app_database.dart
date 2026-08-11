@@ -129,7 +129,10 @@ class Db {
   /// Q4 "default off" ruling in schema form (same shape as v12's
   /// `speed_detection`). Note this v13 does NOT touch the 0044 Q2 ruling —
   /// that ruled out a v13 for the SPEED column family, not the version number.
-  static const int schemaVersion = 13;
+  /// v14: data-only — force-migrates `settings.log_max_bytes` 20 MB → 100 MB
+  /// (2026-08-11 ruling; the Dart default moved the same day). No column
+  /// change, so fresh and upgraded schemas stay identical.
+  static const int schemaVersion = 14;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -461,6 +464,25 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN background_monitoring_ios '
         'INTEGER NOT NULL DEFAULT 0',
       );
+    }
+    if (from < 14) {
+      // Diagnostic-log budget 20 MB → 100 MB, forced (2026-08-11 ruling): a
+      // 20 MB cap rotated away a field device's ten oldest sessions before
+      // anyone exported, and stored 20s are overwhelmingly the persisted old
+      // default rather than a choice. This does sweep along anyone who
+      // deliberately picked 20 over 100 after 2026-07-29 — accepted, because
+      // the option remains and re-choosing 20 afterwards sticks (fromMap
+      // keeps any value in logMaxBytesOptions). Rows at other values (e.g.
+      // an explicit 100 MB) are untouched.
+      // Guarded: a database old enough to predate the column reads the Dart
+      // default (now 100 MB) via fromMap anyway, so there is nothing to move.
+      final cols = await db.rawQuery('PRAGMA table_info(${Db.tableSettings})');
+      if (cols.any((r) => r['name'] == 'log_max_bytes')) {
+        await db.execute(
+          'UPDATE ${Db.tableSettings} SET log_max_bytes = ${100 * 1024 * 1024} '
+          'WHERE log_max_bytes = ${20 * 1024 * 1024}',
+        );
+      }
     }
   }
 

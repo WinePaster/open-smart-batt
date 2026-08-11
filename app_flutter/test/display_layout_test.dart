@@ -551,7 +551,7 @@ void main() {
       // plans at once, and the collision was settled by merging them, so the
       // constant and the migration body have to move together.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 13);
+      expect(Db.schemaVersion, 14);
     });
   });
 }
