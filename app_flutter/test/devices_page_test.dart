@@ -191,6 +191,19 @@ void main() {
     await tester.pump();
   }
 
+  /// Move to the 搜尋裝置 sub-tab (design 0055 §4.5).
+  ///
+  /// The harness saves DEV-A before the first frame, so the page opens on 已儲存
+  /// (rule 1) and the scan results are on the OTHER tab. Every test that wants a
+  /// nearby row has to come here first — that is the split working, not a
+  /// workaround for it.
+  Future<void> openScanTab(WidgetTester tester) async {
+    await tester.tap(find.text('Scan'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400)); // tab transition
+    await settle(tester);
+  }
+
   testWidgets('N4: connecting a saved device leaves the user on this page',
       (tester) async {
     // FB `2026.08.02/004`'s closing criterion, stated as an absence.
@@ -232,6 +245,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     await tester.pump();
+    await openScanTab(tester);
     expect(find.text('RCE-CarBatt'), findsOneWidget);
 
     await tester.tap(find.text('Connect').last);
@@ -253,6 +267,51 @@ void main() {
     // a volatile NSUUID and the name is what rebinds the record.
     expect(s.devices.deviceFor('DEV-NEW')!.name, 'RCE-CarBatt');
     expect(find.byType(DevicesPage), findsOneWidget);
+  });
+
+  // N5b: the gap N5 left. N5 stops at "the record exists"; what the user does
+  // next is TAP THAT ROW, and nothing pinned that the row promoted from the
+  // nearby list behaves like every other saved row. Reported 2026-08-11 (何先生,
+  // 經銷商): 原來儲存的點得開、新儲存的點不開 — this is the assertion that
+  // report is about, and it passes, so whatever he hit is not in this path.
+  testWidgets('N5b: a just-named device opens its detail page like any saved row',
+      (tester) async {
+    final s = await makeServices(tester);
+    addTearDown(() => teardown(tester, s));
+    await pumpPage(tester, s);
+    await settle(tester);
+
+    await tester.runAsync(() async {
+      ble._scanOut.add([
+        const DiscoveredDevice(
+            id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pump();
+    await openScanTab(tester);
+
+    await tester.tap(find.text('Connect').last);
+    await settle(tester);
+    await tester.enterText(find.byType(TextField), 'Car #2');
+    await tester.pump();
+    await tester.tap(find.text('Save alias'));
+    await settle(tester);
+    await tester.pump(const Duration(milliseconds: 400)); // tab transition
+    expect(s.devices.isSaved('DEV-NEW'), isTrue);
+
+    // Rule 2 (design 0055 §7.1): the naming happened on the SCAN tab, and the
+    // row it produced lives on the other one. Landing back on the scan tab
+    // would show the user a list their new device just vanished from — which is
+    // the 2026-08-11 dealer complaint, manufactured by our own layout.
+    expect(find.text('Car #2'), findsOneWidget,
+        reason: 'naming a device must reveal the tab that now holds it');
+    await tester.tap(find.text('Car #2'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+
+    expect(find.byType(DeviceDetailPage), findsOneWidget);
   });
 
   testWidgets('N6: disconnecting leaves the user on this page too',
@@ -386,6 +445,209 @@ void main() {
     }
   });
 
+
+
+  // ---------------------------------------------------------------------------
+  // Design 0055 (ruled 2026-08-11): every row is a door, saved or not, and the
+  // devices tab is two sub-tabs sharing one scan.
+  //
+  // The rule these replace was not an oversight — 0046 R21 stated it and
+  // `devices_page.dart` carried it in a comment ("an unsaved unit has no saved
+  // row to hold a layout or a history, so there is no detail page for it to be a
+  // door to"). What made it false was design 0051 emptying the detail page of
+  // everything a saved record was needed for.
+  // ---------------------------------------------------------------------------
+  group('design 0055', () {
+    /// Push one nearby unit and land on the tab that lists it.
+    Future<void> seeNearby(
+      WidgetTester tester, {
+      String id = 'DEV-NEW',
+      String name = 'RCE-CarBatt',
+    }) async {
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          DiscoveredDevice(id: id, name: name, rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await openScanTab(tester);
+    }
+
+    Future<void> tapRow(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // route transition
+      await settle(tester);
+    }
+
+    testWidgets('T55-1: an UNSAVED row opens its detail page', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await seeNearby(tester);
+
+      await tapRow(tester, 'RCE-CarBatt');
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'design 0055 §4.1: the row body looks at it, the button '
+              'connects it — on every kind of row');
+      expect(s.devices.isSaved('DEV-NEW'), isFalse,
+          reason: 'looking at a unit must not silently remember it');
+    });
+
+    testWidgets('T55-2: an unsaved page is titled by name, else by id — never '
+        '"unnamed"', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      // (a) advertised name present ⇒ it is the title.
+      await seeNearby(tester);
+      await tapRow(tester, 'RCE-CarBatt');
+      Finder onPage(String t) => find.descendant(
+          of: find.byType(DeviceDetailPage), matching: find.text(t));
+      expect(onPage('RCE-CarBatt'), findsOneWidget);
+      expect(onPage('Unnamed device'), findsNothing,
+          reason: 'ruled 2026-08-11: 未命名裝置 names nothing in a room that may '
+              'hold six of them');
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await settle(tester);
+
+      // (b) no advertised name ⇒ the id stands in. A MAC-shaped id is shown
+      // whole; only a UUID gets shortened (design 0055 §4.2).
+      await seeNearby(tester, id: 'C4:D5:66:12:1A:2B', name: '');
+      await tapRow(tester, 'Unknown');
+      expect(onPage('C4:D5:66:12:1A:2B'), findsOneWidget);
+      expect(onPage('Unnamed device'), findsNothing);
+    });
+
+    testWidgets('T55-3: the connect button on an unsaved page is LIVE',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await seeNearby(tester);
+      await tapRow(tester, 'RCE-CarBatt');
+
+      // Before 0055 this button disabled itself on `saved == null`, which made
+      // the page's one action grey with no explanation.
+      final btn = tester.widget<OutlinedButton>(
+        find.descendant(
+          of: find.byType(DeviceDetailPage),
+          matching: find.byType(OutlinedButton),
+        ),
+      );
+      expect(btn.onPressed, isNotNull,
+          reason: 'design 0055 §4.3: an unsaved unit connects with a plain '
+              'connect — there is no routing seed to carry, and a first '
+              'connection never had one');
+
+      await tester.tap(find.byType(OutlinedButton).last);
+      await settle(tester);
+      expect(ble.connectedId, 'DEV-NEW');
+    });
+
+    testWidgets('T55-4: connecting FROM the detail page still asks for a name',
+        (tester) async {
+      // The regression this file exists to prevent (design 0055 §4.4): 0055
+      // built a second entrance to connecting, and the alias prompt lived
+      // inside the first one. Leave it there and "save" becomes unreachable
+      // through the new door.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await seeNearby(tester);
+      await tapRow(tester, 'RCE-CarBatt');
+
+      await tester.tap(find.byType(OutlinedButton).last);
+      await settle(tester);
+
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'the naming prompt must follow the connect, not the caller');
+      await tester.enterText(find.byType(TextField), 'Car #9');
+      await tester.pump();
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #9');
+    });
+
+    testWidgets('T55-5: connected-but-unnamed has a way out', (tester) async {
+      // This state predates 0055 and had NO exit: cancel the prompt and the
+      // unit stayed connected and unsaved until you disconnected.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await seeNearby(tester);
+
+      await tester.tap(find.text('Connect').last);
+      await settle(tester);
+      await tester.tap(find.text('Skip')); // decline to name it
+      await settle(tester);
+      expect(s.devices.isSaved('DEV-NEW'), isFalse);
+
+      await tapRow(tester, 'RCE-CarBatt');
+      expect(find.text('This device is not saved'), findsOneWidget);
+
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), 'Car #7');
+      await tester.pump();
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #7');
+    });
+
+    testWidgets('T55-6: an unsaved row still carries NO badge', (tester) async {
+      // 0055 widened who has a detail page; it did not weaken 0046 R21. Five to
+      // ten nearby units each captioned 未連線 is noise, not status.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await seeNearby(tester);
+
+      expect(find.text('RCE-CarBatt'), findsOneWidget);
+      for (final word in const ['Not connected', 'Connecting', 'Connected']) {
+        expect(find.text(word), findsNothing, reason: 'design 0055 §4.6');
+      }
+    });
+
+    testWidgets('rule 1: with nothing saved, the page opens on the scan tab',
+        (tester) async {
+      // A first run that lands on an empty saved list puts the only remedy on a
+      // tab the user has no reason to look at (design 0055 §7.1).
+      late final AppServices s;
+      await tester.runAsync(() async {
+        final db = await AppDatabase.open(
+          path: inMemoryDatabasePath,
+          factory: databaseFactoryFfi,
+        );
+        ble = _FakeBle();
+        s = await AppServices.create(appDatabase: db, ble: ble); // NOTHING saved
+      });
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          const DiscoveredDevice(
+              id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+
+      // No tab tap anywhere above: the scan is what came up.
+      expect(find.text('RCE-CarBatt'), findsOneWidget);
+    });
+  });
 
   // ---------------------------------------------------------------------------
   // W-3 (2026-08-07 交付一查核): pushing the detail page left the BLE scan

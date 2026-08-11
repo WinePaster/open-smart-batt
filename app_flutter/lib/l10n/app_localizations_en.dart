@@ -1620,4 +1620,23 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get unidentifiedBody =>
       'This unit reports a device type this build does not know, so nothing can be shown for it — a layout chosen by guesswork would be worse than none.\n\nExport the diagnostic log and send it to us; support for it can then be added in a later version.';
+
+  @override
+  String get devicesTabSaved => 'Saved';
+
+  @override
+  String get devicesTabScan => 'Scan';
+
+  @override
+  String get devicesUnsavedTitle => 'This device is not saved';
+
+  @override
+  String get devicesUnsavedBody =>
+      'Save it to put it on the home page and keep its history.';
+
+  @override
+  String get devicesSave => 'Save';
+
+  @override
+  String get devicesNoAdvertisedName => 'No advertised name';
 }

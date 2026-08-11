@@ -614,6 +614,26 @@ class ConnectionController extends ChangeNotifier {
   /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
   String get connectedDeviceName => _ble.connectedDeviceName;
 
+  String? _liveMac;
+
+  /// The device's OWN BLE address, as reported by `0x38` on this link — or null
+  /// until it has said so (design 0055 §7 Q2).
+  ///
+  /// 🔴 This belongs to the CONNECTED device, and it is a lie about any other
+  /// one. Callers must gate it on `connectedDeviceId == <the unit they are
+  /// drawing>`; the same rule as every other live reading, and the same rule
+  /// FB-41/FB-42 were about. It is cleared on disconnect for that reason rather
+  /// than kept as a "last known" — a stale MAC under a fresh unit's name is
+  /// precisely the class of mistake this project keeps paying for.
+  ///
+  /// Why the wire and not the platform id: on Android those are the same string
+  /// anyway, and on iOS the platform id is an install-scoped NSUUID, so `0x38`
+  /// is the ONLY route to a real MAC there.
+  ///
+  /// 🔴 CLEAN-ROOM: raw, in memory, for display on this device only. Nothing
+  /// exports it — the export path hashes the MAC (design 0027 §3.1).
+  String? get liveMac => _liveMac;
+
   /// Last connection error message (cleared on a successful connect).
   String? get lastError => _lastError;
 
@@ -1438,6 +1458,10 @@ class ConnectionController extends ChangeNotifier {
       final gone = _lastSeenDeviceId;
       if (gone != null) _touchLastSeen(gone, force: true);
       _lastSeenDeviceId = null;
+      // The 0x38 MAC dies with the link it described. Keeping it as a "last
+      // known" would put one unit's address under the next unit's name the
+      // moment the user switched devices — see [liveMac].
+      _liveMac = null;
       // If the byte never arrived, say so on the way out — otherwise the
       // connections that FAILED to resolve are exactly the ones absent from
       // the measurement, and the distribution reads clean. That includes an
@@ -1712,6 +1736,7 @@ class ConnectionController extends ChangeNotifier {
     _logUnknownCapacitorStatus(s);
     // Every frame proves the unit is still alive, so last-seen advances with
     // the data rather than sitting at the connect time.
+    _observeLiveMac(s);
     final id = _ble.connectedDeviceId;
     if (id != null) {
       // The sample is right here, so the stored value and the stored age come
@@ -1734,6 +1759,25 @@ class ConnectionController extends ChangeNotifier {
   void _persistIdentity(String id, TelemetrySample s) {
     final write = _devices?.setIdentity(id, mac: s.mac, serial: s.fullSerial);
     if (write != null) _pending.add(write);
+  }
+
+  /// Keep the `0x38` MAC in memory for the live link (design 0055 §7 Q2).
+  ///
+  /// Separate from [_persistIdentity] on purpose, and NOT behind its
+  /// `connectedDeviceId != null` gate: that gate belongs to a database write
+  /// keyed by the platform id, while this value describes the LINK that
+  /// produced the sample. It also has to work where the write does not —
+  /// `setIdentity` no-ops on a device with no saved record, which is exactly
+  /// the device whose identity is hardest to show.
+  ///
+  /// A sample without `0x38` leaves it alone rather than clearing it: the
+  /// selector is not on every frame, and clearing on absence would flicker the
+  /// subtitle between the address and "no advertised name" at frame rate.
+  void _observeLiveMac(TelemetrySample s) {
+    final mac = s.mac;
+    if (mac == null || mac.isEmpty || mac == _liveMac) return;
+    _liveMac = mac;
+    notifyListeners();
   }
 
   /// Name a device-type byte this build does not map, the moment it arrives.

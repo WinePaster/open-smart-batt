@@ -1534,4 +1534,22 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get unidentifiedBody =>
       '這台回報的裝置類型是本版本不認得的，因此不會顯示任何讀數 —— 用猜的選出一套版面，比什麼都不顯示更糟。\n\n請匯出診斷紀錄寄給我們，之後的版本就能支援它。';
+
+  @override
+  String get devicesTabSaved => '已儲存';
+
+  @override
+  String get devicesTabScan => '搜尋裝置';
+
+  @override
+  String get devicesUnsavedTitle => '這台裝置尚未儲存';
+
+  @override
+  String get devicesUnsavedBody => '儲存後才會出現在主頁，並記住它的歷史。';
+
+  @override
+  String get devicesSave => '儲存';
+
+  @override
+  String get devicesNoAdvertisedName => '無廣播名';
 }

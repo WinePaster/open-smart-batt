@@ -331,4 +331,80 @@ void main() {
       expect(row.sessionId, session.sessionId);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // The 0x38 MAC is the CONNECTED unit's address (design 0055 §7 Q2).
+  //
+  // It exists in memory at all because `setIdentity` writes to a SAVED record
+  // and no-ops otherwise, which left the one device that most needs an identity
+  // on screen — the unsaved one the user just tapped — with nothing to show. On
+  // iOS it is the only real MAC obtainable: the platform id is an
+  // install-scoped NSUUID.
+  //
+  // Which makes it exactly the kind of value FB-41/FB-42 were about, so what is
+  // pinned here is that it dies with its link rather than lingering as a "last
+  // known" under the next unit's name.
+  // ---------------------------------------------------------------------------
+  group('liveMac belongs to one link', () {
+    late AppDatabase db;
+    late AppServices services;
+    late _StubBle ble;
+
+    setUp(() async {
+      db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      ble = _StubBle();
+      services = await AppServices.create(appDatabase: db, ble: ble);
+    });
+
+    tearDown(() async => services.dispose());
+
+    Future<void> settle() async {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await services.pending.drain();
+    }
+
+    test('0x38 fills it in, and a disconnect empties it', () async {
+      final conn = services.connection;
+      expect(conn.liveMac, isNull, reason: 'nothing has said one yet');
+
+      services.connection.session.begin('AA');
+      ble.emitTelemetry(TelemetrySample(
+        timestamp: DateTime.utc(2026, 8, 11, 12),
+        pvlt: 12.8,
+        mac: '34:14:B5:B4:70:93',
+        twfRaw: 0x00,
+      ));
+      await settle();
+      expect(conn.liveMac, '34:14:B5:B4:70:93');
+
+      ble.emitLink(BleLinkState.disconnected);
+      await settle();
+      expect(conn.liveMac, isNull,
+          reason: 'a MAC that outlives its link ends up under the next '
+              "unit's name — FB-41's mistake with a different field");
+    });
+
+    test('a sample with no MAC does not erase the one we have', () async {
+      // 0x38 is not on every frame. Clearing on absence would make the subtitle
+      // flicker between the address and "no advertised name" at frame rate.
+      final conn = services.connection;
+      services.connection.session.begin('AA');
+      ble.emitTelemetry(TelemetrySample(
+        timestamp: DateTime.utc(2026, 8, 11, 12),
+        mac: '34:14:B5:B4:70:93',
+        twfRaw: 0x00,
+      ));
+      await settle();
+      ble.emitTelemetry(TelemetrySample(
+        timestamp: DateTime.utc(2026, 8, 11, 12, 0, 1),
+        pvlt: 12.8,
+        twfRaw: 0x00,
+      ));
+      await settle();
+      expect(conn.liveMac, '34:14:B5:B4:70:93');
+    });
+  });
 }
