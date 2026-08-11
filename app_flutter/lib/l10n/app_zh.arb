@@ -363,6 +363,7 @@
   "settingsRawPacketLogSub": "記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉。內容含裝置自身的藍牙位址。",
   "settingsLogMaxSizeLabel": "日誌容量上限",
   "settingsLogMaxSizeSub": "超過自動輪替覆蓋",
+  "settingsLogMaxUnlimited": "無上限",
   "settingsExportLogLabel": "匯出診斷日誌 (.log)",
   "settingsClearLogLabel": "清除診斷日誌",
   "settingsLogEmpty": "診斷日誌為空",

@@ -186,31 +186,44 @@ void main() {
 // no longer offered leaves the control with nothing selected — which reads as a
 // broken screen, not a stale preference. These pin the normalisation.
 void _logBudgetTests() {
-  group('log budget options (20 / 100 MB)', () {
-    test('the offered set is exactly 20 and 100 MB', () {
+  group('log budget options (100 MB / unlimited)', () {
+    test('the offered set is exactly 100 MB and unlimited', () {
       expect(AppSettings.logMaxBytesOptions,
-          [20 * 1024 * 1024, 100 * 1024 * 1024]);
+          [100 * 1024 * 1024, AppSettings.unlimitedLogBytes]);
       // Default raised 20 → 100 MB on 2026-08-11: a 20 MB cap rotated away a
       // field device's ten oldest sessions before they could be exported.
+      // Unlimited replaced 20 the same day, but the DEFAULT stays finite —
+      // unbounded growth is a choice, not an inheritance.
       expect(AppSettings.defaultLogMaxBytes, 100 * 1024 * 1024);
     });
 
-    test('a legacy 5 MB row normalises to the new default', () {
-      // Pre-2026-07-29 installs stored 5 MB. Left alone it would render an
-      // unselected control.
-      final s = AppSettings.fromMap({'log_max_bytes': 5 * 1024 * 1024});
-      expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);
-      expect(AppSettings.logMaxBytesOptions.contains(s.logMaxBytes), isTrue);
-    });
-
-    test('a stored 20 MB row is kept as-is', () {
-      final s = AppSettings.fromMap({'log_max_bytes': 20 * 1024 * 1024});
-      expect(s.logMaxBytes, 20 * 1024 * 1024);
+    test('legacy 5 MB and 20 MB rows normalise to the new default', () {
+      // 5 MB was the pre-2026-07-29 default; 20 MB was offered until
+      // 2026-08-11. Left alone either would render an unselected control.
+      for (final legacy in [5 * 1024 * 1024, 20 * 1024 * 1024]) {
+        final s = AppSettings.fromMap({'log_max_bytes': legacy});
+        expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);
+        expect(AppSettings.logMaxBytesOptions.contains(s.logMaxBytes), isTrue);
+      }
     });
 
     test('100 MB round-trips', () {
       final s = AppSettings.fromMap({'log_max_bytes': 100 * 1024 * 1024});
       expect(s.logMaxBytes, 100 * 1024 * 1024);
+    });
+
+    test('unlimited round-trips and yields a null trim budget', () {
+      final s = AppSettings.fromMap(
+          {'log_max_bytes': AppSettings.unlimitedLogBytes});
+      expect(s.logMaxBytes, AppSettings.unlimitedLogBytes);
+      // null is LogRepo.insertLog's existing "don't trim" contract — the
+      // whole feature hangs on this getter, so pin it here.
+      expect(s.logTrimBudget, isNull);
+    });
+
+    test('a finite budget passes through logTrimBudget untouched', () {
+      final s = AppSettings.fromMap({'log_max_bytes': 100 * 1024 * 1024});
+      expect(s.logTrimBudget, 100 * 1024 * 1024);
     });
 
     test('a missing or nonsense value falls back to the default', () {

@@ -1256,6 +1256,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLogMaxSizeSub => '超過自動輪替覆蓋';
 
   @override
+  String get settingsLogMaxUnlimited => '無上限';
+
+  @override
   String get settingsExportLogLabel => '匯出診斷日誌 (.log)';
 
   @override

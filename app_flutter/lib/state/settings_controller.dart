@@ -72,6 +72,7 @@ class SettingsController extends ChangeNotifier {
   RetentionPolicy get retention => _settings.retention;
   bool get rawPacketLog => _settings.rawPacketLog;
   int get logMaxBytes => _settings.logMaxBytes;
+  int? get logTrimBudget => _settings.logTrimBudget;
 
   /// Load the persisted row (or defaults if none stored yet).
   Future<void> load() async {

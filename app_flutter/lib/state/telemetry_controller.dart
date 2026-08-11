@@ -836,7 +836,7 @@ class TelemetryController extends ChangeNotifier
       sessionId: _session.sessionIdFor(deviceId),
       appBuild: _appBuild,
     );
-    _pending.add(_logs.insertLog(entry, maxBytes: _settings.logMaxBytes));
+    _pending.add(_logs.insertLog(entry, maxBytes: _settings.logTrimBudget));
   }
 
   void _onLinkState(BleLinkState s) {

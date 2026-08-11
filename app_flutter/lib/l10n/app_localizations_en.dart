@@ -1329,6 +1329,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Automatically rotates and overwrites when exceeded';
 
   @override
+  String get settingsLogMaxUnlimited => 'Unlimited';
+
+  @override
   String get settingsExportLogLabel => 'Export diagnostic log (.log)';
 
   @override

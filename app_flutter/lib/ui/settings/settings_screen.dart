@@ -897,9 +897,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
             trailing: SegmentedControl<int>(
               selected: s.logMaxBytes,
               onChanged: s.setLogMaxBytes,
-              options: const [
-                (value: 20 * 1024 * 1024, label: '20 MB'),
+              options: [
                 (value: 100 * 1024 * 1024, label: '100 MB'),
+                (
+                  value: AppSettings.unlimitedLogBytes,
+                  label: l10n.settingsLogMaxUnlimited,
+                ),
               ],
             ),
           ),

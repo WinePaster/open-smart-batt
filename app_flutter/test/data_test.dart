@@ -361,7 +361,7 @@ void main() {
         tempUnit: TempUnit.fahrenheit,
         retention: RetentionPolicy.days90,
         rawPacketLog: true,
-        logMaxBytes: 20 * 1024 * 1024,
+        logMaxBytes: AppSettings.unlimitedLogBytes,
       );
       await repo.saveSettings(custom);
 
@@ -375,7 +375,9 @@ void main() {
       expect(s.tempUnit, TempUnit.fahrenheit);
       expect(s.retention, RetentionPolicy.days90);
       expect(s.rawPacketLog, isTrue);
-      expect(s.logMaxBytes, 20 * 1024 * 1024);
+      // Unlimited is the interesting round-trip: it must survive storage as 0
+      // rather than being normalised away as an unknown budget.
+      expect(s.logMaxBytes, AppSettings.unlimitedLogBytes);
     });
 
     test('saveSettings stays a single row (insert-or-replace)', () async {

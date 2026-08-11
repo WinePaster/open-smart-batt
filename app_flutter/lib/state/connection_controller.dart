@@ -355,7 +355,7 @@ class ConnectionController extends ChangeNotifier {
         sessionId: foreign ? null : _session.sessionId,
         appBuild: _appBuild,
       ),
-      maxBytes: _settings.logMaxBytes,
+      maxBytes: _settings.logTrimBudget,
     ));
   }
 

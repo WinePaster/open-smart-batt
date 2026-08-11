@@ -942,6 +942,7 @@
   "settingsRawPacketLogSub": "Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device's own Bluetooth address.",
   "settingsLogMaxSizeLabel": "Log size limit",
   "settingsLogMaxSizeSub": "Automatically rotates and overwrites when exceeded",
+  "settingsLogMaxUnlimited": "Unlimited",
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",

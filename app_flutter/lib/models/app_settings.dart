@@ -192,17 +192,30 @@ class AppSettings {
   /// Log raw TX/RX BLE packets as hex. DEFAULT OFF.
   final bool rawPacketLog;
 
-  /// Diagnostic log size cap (bytes) before rotation. Mockup: 5 MB / 20 MB.
+  /// Diagnostic log size cap (bytes) before rotation, or
+  /// [unlimitedLogBytes] for no rotation at all.
   final int logMaxBytes;
 
-  /// The budgets the UI offers, smallest first. `fromMap` normalises anything
-  /// else to [defaultLogMaxBytes] — a stored value outside this set would leave
-  /// the segmented control with NOTHING selected (it matches on `==`), which
-  /// reads as a broken screen rather than a stale preference.
+  /// Sentinel for "no cap": stored as 0 because the column is INTEGER NOT NULL
+  /// and 0 bytes is not a budget anyone could mean literally. Callers that trim
+  /// must go through [logTrimBudget] rather than compare against this directly.
+  static const int unlimitedLogBytes = 0;
+
+  /// The budgets the UI offers, in display order (unlimited last). `fromMap`
+  /// normalises anything else to [defaultLogMaxBytes] — a stored value outside
+  /// this set would leave the segmented control with NOTHING selected (it
+  /// matches on `==`), which reads as a broken screen rather than a stale
+  /// preference. That same normalisation is what retires the old 20 MB tier
+  /// (offered 2026-07-29 → 2026-08-11): a stored 20 reads back as the default.
   static const List<int> logMaxBytesOptions = [
-    20 * 1024 * 1024,
     100 * 1024 * 1024,
+    unlimitedLogBytes,
   ];
+
+  /// The cap to actually trim to, or null when the user chose unlimited —
+  /// which is [LogRepo.insertLog]'s existing "don't trim" contract.
+  int? get logTrimBudget =>
+      logMaxBytes == unlimitedLogBytes ? null : logMaxBytes;
 
   /// Default diagnostic-log budget. Raised from 5 MB on 2026-07-29: field logs
   /// run about 13 KB/min while connected, so 5 MB started rotating after ~6.5 h
@@ -212,6 +225,9 @@ class AppSettings {
   /// hit the 20 MB cap in under two weeks and rotation silently dropped its
   /// ten oldest sessions before anyone exported. 100 MB buys roughly 5× that
   /// horizon at a cost that is negligible on any phone that runs this app.
+  /// The default stays a FINITE cap even though unlimited is now offered:
+  /// unbounded growth (~13 KB/min while connected) is a choice the user
+  /// should make, not inherit.
   static const int defaultLogMaxBytes = 100 * 1024 * 1024;
 
   const AppSettings({
@@ -402,9 +418,9 @@ class AppSettings {
     return AppThemeMode.light;
   }
 
-  /// Map a stored budget onto one the UI can display. Legacy 5 MB rows (the
-  /// pre-2026-07-29 default) land on the new default rather than leaving the
-  /// segmented control blank.
+  /// Map a stored budget onto one the UI can display. Legacy rows — 5 MB (the
+  /// pre-2026-07-29 default) and 20 MB (offered until 2026-08-11) — land on
+  /// the new default rather than leaving the segmented control blank.
   static int _normaliseLogMaxBytes(int? stored) =>
       logMaxBytesOptions.contains(stored) ? stored! : defaultLogMaxBytes;
 }

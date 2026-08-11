@@ -2276,6 +2276,12 @@ abstract class AppLocalizations {
   /// **'Automatically rotates and overwrites when exceeded'**
   String get settingsLogMaxSizeSub;
 
+  /// No description provided for @settingsLogMaxUnlimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlimited'**
+  String get settingsLogMaxUnlimited;
+
   /// No description provided for @settingsExportLogLabel.
   ///
   /// In en, this message translates to:
