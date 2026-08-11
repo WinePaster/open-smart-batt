@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
-import 'package:open_smart_batt/state/session_context.dart';
+import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/ui/util/export_naming.dart';
 import 'package:open_smart_batt/ui/util/export_scope.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -217,6 +217,76 @@ void main() {
       await repo.insertSample(sampleAt(1000));
       final csv = (await repo.exportCsv(labelFor: (id) => 'pack-$id')).text;
       expect(csv.split(RegExp(r'\r?\n'))[1], isNot(contains('pack-')));
+    });
+  });
+
+
+  // ---------------------------------------------------------------------------
+  // The class that gates the current column has to work for a unit nobody named.
+  //
+  // A super-capacitor streams a permanent 0.0 A it cannot measure, so the export
+  // blanks that column — and it decided whether to by reading the SAVED record
+  // alone. That was safe only while "connected but not saved" was a dead end.
+  // Design 0055 made it an ordinary way to use the app: connect, look, export,
+  // never name it. On that path the class read `unknown`, the column was not
+  // blanked, and the file stated 0.0 A as a measurement.
+  // ---------------------------------------------------------------------------
+  group('deviceClassFor: the live unit still has a class', () {
+    late DeviceController devices;
+
+    setUp(() async {
+      devices = DeviceController(DeviceRepo(appDb.db));
+      await devices.load();
+    });
+
+    test('a SAVED unit reads its stored class (unchanged)', () async {
+      await devices.saveNew('CAP', 'Cap #1',
+          productClass: ProductClass.supercapacitor);
+      expect(deviceClassFor(devices, 'CAP'), ProductClass.supercapacitor);
+    });
+
+    test('an UNSAVED unit on the link takes the class off the wire', () {
+      expect(deviceClassFor(devices, 'CAP'), ProductClass.unknown,
+          reason: 'nothing stored, and no live pair offered');
+      expect(
+        deviceClassFor(devices, 'CAP',
+            liveDeviceId: 'CAP', liveClass: ProductClass.supercapacitor),
+        ProductClass.supercapacitor,
+        reason: 'this is the unit on the link; the wire already said what it is',
+      );
+    });
+
+    test('🔴 another unit on the link lends NOTHING', () {
+      // The guard that keeps this from becoming FB-41 in a new column: the live
+      // class describes ONE link, and applying it to a different unit's stored
+      // rows would relabel history that was recorded from other hardware.
+      expect(
+        deviceClassFor(devices, 'OTHER',
+            liveDeviceId: 'CAP', liveClass: ProductClass.supercapacitor),
+        ProductClass.unknown,
+      );
+    });
+
+    test('a stored class wins over the live one', () async {
+      // Same precedence as `currentDeviceTarget`. Both are wire-derived, so this
+      // is about having ONE answer rather than about trusting one more.
+      await devices.saveNew('CAP', 'Cap #1',
+          productClass: ProductClass.supercapacitor);
+      expect(
+        deviceClassFor(devices, 'CAP',
+            liveDeviceId: 'CAP', liveClass: ProductClass.smartBattery),
+        ProductClass.supercapacitor,
+      );
+    });
+
+    test('an unattributed row (null id) stays unknown', () {
+      expect(
+        deviceClassFor(devices, null,
+            liveDeviceId: 'CAP', liveClass: ProductClass.supercapacitor),
+        ProductClass.unknown,
+        reason: 'pre-0006 rows have no unit to be about — guessing is worse '
+            'than leaving them alone',
+      );
     });
   });
 

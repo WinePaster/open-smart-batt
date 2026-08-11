@@ -471,7 +471,17 @@ class _DataCardState extends State<_DataCard> {
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
     String labelFor(String? id) => deviceLabelFor(devices, id);
-    ProductClass classFor(String? id) => deviceClassFor(devices, id);
+    // Live pair captured with the rest (design 0055 follow-up): an unnamed unit
+    // has no stored class, and the CSV's current column is class-gated — see
+    // [deviceClassFor].
+    final liveId = tele.recordingDeviceId;
+    final liveClass = context.read<ConnectionController>().resolvedClass;
+    ProductClass classFor(String? id) => deviceClassFor(
+          devices,
+          id,
+          liveDeviceId: liveId,
+          liveClass: liveClass,
+        );
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     // The dashboard layout in force right now (design 0034 §8). Captured here

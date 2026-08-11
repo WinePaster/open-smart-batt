@@ -126,14 +126,38 @@ Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
 /// Takes the controller rather than a [BuildContext] on purpose: this runs
 /// inside the repo AFTER an await, by which time the screen may be gone and a
 /// `context.read` would throw mid-export.
-/// The stored product class for one `device_id`, or [ProductClass.unknown].
+/// The product class for one `device_id`, or [ProductClass.unknown].
 ///
 /// Used by the CSV export to blank the current column for a super-capacitor,
 /// which streams a permanent 0.0 A it cannot actually measure. Exporting that
 /// zero would state, as fact, that the unit is drawing no current.
-ProductClass deviceClassFor(DeviceController devices, String? deviceId) {
+///
+/// 🔴 [liveDeviceId] / [liveClass] are not an optional nicety. This read the
+/// SAVED record and nothing else, which was safe only while "connected but not
+/// saved" was a dead end — design 0055 made it an ordinary way to use the app,
+/// and an unsaved capacitor's export therefore carried its fake `0.0 A` as
+/// measured fact. The live pair closes that: for the unit actually on the link,
+/// the class comes from the wire.
+///
+/// The stored value still wins where both exist — same order as
+/// [currentDeviceTarget] — and the live one is consulted ONLY for the unit whose
+/// id matches, never as an ambient default. That restriction is the whole point:
+/// applying the connected unit's class to another unit's rows is FB-41 with a
+/// different column.
+///
+/// Takes plain values rather than a [BuildContext] for [deviceNameFor]'s reason
+/// — this runs inside the repo after an await, when the screen may be gone.
+ProductClass deviceClassFor(
+  DeviceController devices,
+  String? deviceId, {
+  String? liveDeviceId,
+  ProductClass liveClass = ProductClass.unknown,
+}) {
   if (deviceId == null) return ProductClass.unknown;
-  return devices.deviceFor(deviceId)?.productClass ?? ProductClass.unknown;
+  final stored = devices.deviceFor(deviceId)?.productClass;
+  if (stored != null && stored != ProductClass.unknown) return stored;
+  if (liveDeviceId != null && deviceId == liveDeviceId) return liveClass;
+  return ProductClass.unknown;
 }
 
 String deviceLabelFor(DeviceController devices, String? deviceId) {

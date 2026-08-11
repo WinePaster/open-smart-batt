@@ -200,8 +200,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // already be gone.
     final devices = context.read<DeviceController>();
     final services = context.read<AppServices>();
+    // The live pair, captured with everything else (design 0055 follow-up): a
+    // unit that was never named has no stored class, and without this its
+    // capacitor `0.0 A` would be exported as a measurement. Only the unit on
+    // the link is eligible — see [deviceClassFor].
+    final liveId = context.read<TelemetryController>().recordingDeviceId;
+    final liveClass = context.read<ConnectionController>().resolvedClass;
     String labelFor(String? id) => deviceLabelFor(devices, id);
-    ProductClass classFor(String? id) => deviceClassFor(devices, id);
+    ProductClass classFor(String? id) => deviceClassFor(
+          devices,
+          id,
+          liveDeviceId: liveId,
+          liveClass: liveClass,
+        );
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     // Captured with the rest, and for the same reason (design 0034 §8): the
@@ -289,6 +300,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final tempUnit = context.watch<SettingsController>().tempUnit;
     final tele = context.watch<TelemetryController>();
     final devices = context.watch<DeviceController>();
+    // For the class of the unit currently on the link — a never-named unit has
+    // no stored class, and the current column is class-gated.
+    final conn = context.watch<ConnectionController>();
     final ov = tele.warnOv, uv = tele.warnUv, ot = tele.warnOt;
 
     return Column(
@@ -361,8 +375,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 // now decides the WORDING as well as the
                                 // presence (design 0056). See
                                 // [historyCurrentBit] for all three cases.
-                                deviceClass:
-                                    deviceClassFor(devices, r.deviceId),
+                                deviceClass: deviceClassFor(
+                                  devices,
+                                  r.deviceId,
+                                  liveDeviceId: tele.recordingDeviceId,
+                                  liveClass: conn.resolvedClass,
+                                ),
                               ),
                           ],
                         ),
