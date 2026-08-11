@@ -2564,6 +2564,24 @@ abstract class AppLocalizations {
   /// **'STANDBY'**
   String get powerBankDirectionIdle;
 
+  /// Badge under a pack's main-current reading, shown when 0x2E is positive. Deliberately NOT the powerBankDirection* keys: the two families sign current the opposite way round, and one shared key would invite a caller to reuse the wrong derivation (design 0056).
+  ///
+  /// In en, this message translates to:
+  /// **'CHARGING'**
+  String get packDirectionCharging;
+
+  /// No description provided for @packDirectionDischarging.
+  ///
+  /// In en, this message translates to:
+  /// **'DISCHARGING'**
+  String get packDirectionDischarging;
+
+  /// Pack current inside the quantisation dead-band: a magnitude, no direction. 'At rest' rather than 'standby' — a vehicle battery is never on standby, it is parked.
+  ///
+  /// In en, this message translates to:
+  /// **'AT REST'**
+  String get packDirectionIdle;
+
   /// No description provided for @usbPortTypeA.
   ///
   /// In en, this message translates to:
@@ -2629,6 +2647,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Main current'**
   String get dashboardTrackCurrent;
+
+  /// Direction key under the pack current track. The track itself stays SIGNED and zero-crossing (2026-08-03 ruling); this line is what tells the reader which half of the axis is which, now that 0x2E's direction is established (design 0056).
+  ///
+  /// In en, this message translates to:
+  /// **'+ charge · − discharge'**
+  String get dashboardTrackCurrentDirectionKey;
 
   /// No description provided for @dashboardTrackPvlt.
   ///

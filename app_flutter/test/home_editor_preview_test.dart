@@ -318,7 +318,15 @@ void main() {
       // the widest number it can be asked to print.
       // `findRichText`, because a readout tile composes value + unit into ONE
       // `Text.rich` (`readout_grid.dart`), so the plain text carries the unit.
-      expect(find.text('-128.4 A', findRichText: true), findsOneWidget);
+      //
+      // 🔴 MAGNITUDE, not the signed number, since design 0056: the sample is
+      // still −128.4 and the tile now prints `128.4 A` with a DISCHARGING
+      // badge. That is MORE layout stress, not less — the widest number plus
+      // the longest direction word, on the tallest grid — which is why the
+      // preview sample was left alone.
+      expect(find.text('128.4 A', findRichText: true), findsOneWidget);
+      expect(find.text('-128.4 A', findRichText: true), findsNothing);
+      expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('41 °C', findRichText: true), findsOneWidget);
       expect(find.text('45 %', findRichText: true), findsOneWidget);
       // The device tile: an alias long enough to ellipsis, over a 4-significant

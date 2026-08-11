@@ -39,7 +39,9 @@
 /// ⚠️ Two knowing inconsistencies, recorded so they are not "fixed" into
 /// blandness later:
 ///
-///  * the pack's CURRENT READOUT reads −128.4 A while its chart swings −29→+8.
+///  * the pack's CURRENT READOUT reads 128.4 A DISCHARGING (from a −128.4
+///    sample — design 0056 prints the magnitude and names the direction beside
+///    it) while its chart swings −29→+8.
 ///    The readout is dimensioned for the widest string; the chart is
 ///    dimensioned for a real shape (the swing is from an actual capture, and it
 ///    is what makes the zero axis draw). They optimise different things and
@@ -154,8 +156,10 @@ HomePreview buildHomePreview({
 ///    health labels;
 ///  * `temperatureC` 41 — 106 °F, a three-digit reading for anyone on
 ///    Fahrenheit;
-///  * `current` −128.4 — sign + three digits + a decimal, the widest number the
-///    grid can be asked to print;
+///  * `current` −128.4 — three digits + a decimal, the widest number the grid
+///    can be asked to print, AND the sign that makes it the longest direction
+///    word (`DISCHARGING` / 放電中). The tile draws `128.4 A` over that badge
+///    (design 0056), so this one value stresses both the width and the height;
 ///  * `dvol` deliberately RAGGED: two cells near the top of the band, one low
 ///    (2.55) and one high (3.65). A flat set of four equal bars does not show
 ///    what the card is for, and the two extremes are what exercise the clamps.

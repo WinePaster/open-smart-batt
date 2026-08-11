@@ -57,14 +57,22 @@ class TelemetrySample {
 
   /// Main current (A).
   ///
-  /// TWO sources with DIFFERENT sign conventions, because the two product
-  /// classes use different registers:
-  /// * pack (battery / capacitor) — selector 0x2E, `512 - u16`, **signed**
-  ///   (negative while charging).
-  /// * power bank — selector 0x4A second field, mA, **unsigned magnitude**.
-  ///   Direction is not established (see [Selectors.discharge]), so no sign is
-  ///   invented. Anything reasoning about charge/discharge direction must not
-  ///   read this field on a power bank.
+  /// TWO sources with OPPOSITE sign conventions, because the two product
+  /// families use different registers. Both are signed and both directions are
+  /// established; what is NOT shared is which sign means what:
+  /// * pack (battery / capacitor) — selector 0x2E, `512 - u16`. **Negative =
+  ///   discharge, positive = charge** (`docs/protocol/telemetry-decoding.md`
+  ///   §8.2, corrected 2026-08-11: five engine starts read −211…−446 A while
+  ///   PVLT collapsed, then turned positive as PVLT climbed to 14.5 V).
+  ///   Quantised to whole amps — 1 A per count, no fine structure near zero.
+  /// * power bank — selector 0x4A minus 0x49, in amps. **Positive = discharge,
+  ///   negative = charge** (design 0030; signed since FB-46, when publishing a
+  ///   magnitude made a charging bank read 0.00 A forever).
+  ///
+  /// 🔴 Nothing may reason about direction from this field without knowing
+  /// which family produced it. `ui/dashboard/power_flow.dart` has one
+  /// derivation per family — `packFlowOf` and `powerFlowOf` — and they are not
+  /// interchangeable.
   final double? current;
 
   /// Warning over-voltage threshold (V) — selector 0x2B.

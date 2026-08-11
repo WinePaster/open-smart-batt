@@ -1493,6 +1493,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankDirectionIdle => 'STANDBY';
 
   @override
+  String get packDirectionCharging => 'CHARGING';
+
+  @override
+  String get packDirectionDischarging => 'DISCHARGING';
+
+  @override
+  String get packDirectionIdle => 'AT REST';
+
+  @override
   String get usbPortTypeA => 'Type-A';
 
   @override
@@ -1528,6 +1537,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dashboardTrackCurrent => 'Main current';
+
+  @override
+  String get dashboardTrackCurrentDirectionKey => '+ charge · − discharge';
 
   @override
   String get dashboardTrackPvlt => 'PVLT · main voltage';

@@ -30,9 +30,14 @@ class Readout {
 
   /// Optional pill under the value, for a fact the NUMBER cannot carry on its
   /// own. Added for FB-47: a power bank's current is signed (design 0030 —
-  /// discharge positive, charge negative), and a bare `-0.43 A` was read as a
-  /// defect by the owner who ruled on the sign convention. The word beside it
-  /// is what makes the minus a direction rather than an error.
+  /// discharge positive, charge negative **on that family only**), and a bare
+  /// `-0.43 A` was read as a defect by the owner who ruled on the sign
+  /// convention. The word beside it is what makes the minus a direction rather
+  /// than an error.
+  ///
+  /// The same shape now carries a PACK's direction too (design 0056), where the
+  /// sign runs the other way (`0x2E`: negative = discharge). Two families, one
+  /// pill, two derivations — see `power_flow.dart`.
   ///
   /// Null means "nothing to add" — never an empty pill, which would read as a
   /// missing value.

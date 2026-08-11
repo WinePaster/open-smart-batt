@@ -1,23 +1,45 @@
-/// OpenSmartBatt — power-bank energy direction (single source).
+/// OpenSmartBatt — energy direction (single source), per product family.
 ///
-/// Direction is the SIGN of the signed current (design 0030: discharge
-/// positive, charge negative — `0x4A` − `0x49`). It is the ONLY direction the
-/// device gives us, and it must be derived in exactly ONE place so the readout
-/// tiles (design 0037) and the energy-path row (design 0035) can never tell
-/// two different stories about which way energy is moving.
+/// Direction is the SIGN of the signed current. It must be derived in exactly
+/// ONE place per family so the readout tiles (design 0037), the energy-path row
+/// (design 0035) and the pack current tile (design 0056) can never tell two
+/// different stories about which way energy is moving.
 ///
-/// This was `_flowOf` / `_Flow` private to `power_bank_view.dart` (design
-/// 0037). Design 0035 §6 converges it here so the energy-path row reuses the
-/// same derivation and, critically, the SAME dead-band — a second copy of the
-/// ±0.05 A band that drifted would reintroduce exactly the disagreement this
-/// prevents.
+/// 🔴 THE TWO FAMILIES SIGN CURRENT THE OPPOSITE WAY ROUND, and that is a wire
+/// fact, not a choice this layer may normalise away:
+///
+///  * **power bank** — `0x4A` − `0x49`, **positive = discharge** (design 0030).
+///    Derived by [powerFlowOf].
+///  * **pack** (battery / capacitor) — `0x2E` = `512 − u16`, **negative =
+///    discharge, positive = charge** (`docs/protocol/telemetry-decoding.md`
+///    §8.2, corrected 2026-08-11). Derived by [packFlowOf].
+///
+/// Two functions rather than one with a class parameter, because the two have
+/// nothing in common below the enum: different sign, different quantisation,
+/// different dead-band, and one of them has a flag veto the other has no
+/// register for. A single `if (isPack)` body is how a change made for one
+/// family silently lands on the other — the exact hazard design 0056 §4 names.
+/// The owner's 2026-08-11 ruling A is that neither wire sign is flipped: the
+/// DISPLAY names the direction, the number keeps the convention it was decoded
+/// with.
+///
+/// [powerFlowOf] was `_flowOf` / `_Flow` private to `power_bank_view.dart`
+/// (design 0037). Design 0035 §6 converged it here so the energy-path row
+/// reuses the same derivation and, critically, the SAME dead-band — a second
+/// copy of the ±0.05 A band that drifted would reintroduce exactly the
+/// disagreement this prevents.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Which way energy is moving through a power bank.
+/// Which way energy is moving through a device.
+///
+/// Family-neutral since design 0056: the same four states describe a pack and a
+/// power bank, only the derivation differs (see the library comment). Sharing
+/// the enum is what lets [powerFlowColor] and [powerFlowIcon] stay one table —
+/// "charging is green with a charging glyph" must not be answered twice.
 ///
 /// [unknown] is NOT a fourth state to render — it is the absence of a reading
 /// (no current yet). A page with no current has nothing to say about direction,
@@ -26,7 +48,12 @@ import '../../theme/app_theme.dart';
 /// state to name.
 enum PowerFlow { charging, discharging, idle, unknown }
 
-/// Amps below which the current is noise rather than a direction (design 0037).
+/// Amps below which a POWER BANK's current is noise rather than a direction
+/// (design 0037).
+///
+/// ⚠️ Power-bank scale only. A pack's `0x2E` is quantised to whole amps and has
+/// its own, much coarser band — see [kPackFlowDeadbandA]. Reusing this number
+/// there would make every single quantisation step a direction claim.
 ///
 /// 🔒 Do NOT lower below 0.03 A: a power bank with its boost rail off (`0x4B`
 /// b7 == 0x00) still reports a charge-side `0x49` offset, and this band is the
@@ -63,8 +90,12 @@ const double kPowerFlowDeadbandA = 0.05;
 /// invents a direction, and it never touches the discharge sign.
 const double kRailOffChargeVetoA = 0.3;
 
-/// Direction from the SIGN of the signed current. Sign only — the magnitude
-/// never decides a direction, only whether there is one at all.
+/// A POWER BANK's direction, from the SIGN of its signed current. Sign only —
+/// the magnitude never decides a direction, only whether there is one at all.
+///
+/// 🔴 Power banks ONLY, and the sign it reads is the power bank's
+/// (positive = discharge). A pack is the other way round; call [packFlowOf],
+/// which is not a wrapper around this one for exactly that reason.
 ///
 /// [portFlagsRaw] is the same burst's raw `0x4B` b7, when the caller has one
 /// (power banks only). It can only VETO: a charging-signed current under
@@ -85,6 +116,50 @@ PowerFlow powerFlowOf(double? current, {int? portFlagsRaw}) {
     return PowerFlow.idle;
   }
   return current < 0 ? PowerFlow.charging : PowerFlow.discharging;
+}
+
+/// Amps below which a PACK's current names no direction (design 0056).
+///
+/// 🔑 This is a QUANTISATION band, not a noise filter, and the difference is
+/// why it may not be tuned like [kPowerFlowDeadbandA]. `0x2E` decodes as
+/// `512 − u16` in whole amperes — 1 A per count — so the readings a pack can
+/// produce near zero are exactly …, −2, −1, 0, +1, +2, …. There is no fine
+/// structure between them to filter.
+///
+/// At 1 A/LSB a ±1 reading is ONE count away from zero, i.e. inside the
+/// device's own rounding, and its sign is the least trustworthy bit it emits.
+/// A resting vehicle whose reading dithers 0 / −1 would otherwise flash
+/// 「放電中」at a parked car — the FB-47 failure mode in reverse: a direction
+/// asserted where the wire cannot support one. ±2 is the first magnitude that
+/// survives a full count of quantisation error in either direction, so the line
+/// sits at 1.5 A — the MIDPOINT between the two counts, so that no float
+/// representation of an integer ampere can land on the boundary.
+///
+/// 🔒 Do NOT raise this to swallow "small" currents. Nothing a driver cares
+/// about lives near it: alternator charge runs tens of amps and a cranking load
+/// runs hundreds (`docs/devices/car-battery.md`), so widening the band buys
+/// nothing and would start hiding real low-rate charge on a bench supply.
+const double kPackFlowDeadbandA = 1.5;
+
+/// A PACK's direction (battery / capacitor), from the sign of `0x2E`.
+///
+/// 🔴 THE SIGN IS THE OPPOSITE of [powerFlowOf]'s: on a pack **negative is
+/// discharge and positive is charge** (`docs/protocol/telemetry-decoding.md`
+/// §8.2, corrected 2026-08-11 — five engine-start events reading −211…−446 A
+/// while PVLT collapsed, then positive as PVLT climbed). Delegating to
+/// [powerFlowOf] with a negated argument was considered and rejected: it would
+/// make one function's dead-band and its power-bank-only rail-off veto apply to
+/// a family that has neither, and it would hide the sign flip inside a call.
+///
+/// There is no flag veto here because a pack has no `0x4B` — the sign of
+/// `0x2E` is the whole of what the device says about direction.
+///
+/// [PowerFlow.unknown] is the absence of a reading, [PowerFlow.idle] the
+/// in-band near-zero case: a magnitude worth showing but no direction to name.
+PowerFlow packFlowOf(double? current) {
+  if (current == null) return PowerFlow.unknown;
+  if (current.abs() < kPackFlowDeadbandA) return PowerFlow.idle;
+  return current > 0 ? PowerFlow.charging : PowerFlow.discharging;
 }
 
 /// The colour a direction is drawn in, wherever it is drawn.

@@ -1412,6 +1412,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankDirectionIdle => '待機';
 
   @override
+  String get packDirectionCharging => '充電中';
+
+  @override
+  String get packDirectionDischarging => '放電中';
+
+  @override
+  String get packDirectionIdle => '靜置';
+
+  @override
   String get usbPortTypeA => 'Type-A';
 
   @override
@@ -1447,6 +1456,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dashboardTrackCurrent => '主電流';
+
+  @override
+  String get dashboardTrackCurrentDirectionKey => '＋充電 · −放電';
 
   @override
   String get dashboardTrackPvlt => 'PVLT · 主電壓';
