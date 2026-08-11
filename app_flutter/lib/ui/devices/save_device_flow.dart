@@ -21,6 +21,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/models.dart';
 import '../../state/state.dart';
 import 'alias_dialog.dart';
 
@@ -39,6 +40,33 @@ Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
   final conn = context.read<ConnectionController>();
   final tele = context.read<TelemetryController>();
 
+  // 🔴 The diagnostic trail this flow used to leave behind: NOTHING (design
+  // 0058 §3.3). `saveNew` / `save` write no event, so on a phone's log these
+  // four were indistinguishable — an empty name pressed 儲存, a tap on the
+  // barrier, a deliberate 跳過, and a prompt that never appeared. Three
+  // independent「無法儲存裝置」reports landed on 2026-08-11 and the analysis of
+  // FB `08.11/005` could only reach "compatible with the defect", never
+  // "confirmed", for exactly that reason.
+  //
+  // Written straight to [LogRepo] rather than through
+  // `ConnectionController._event` (ruled 2026-08-11, design 0058 §6 Q1):
+  // saving a device is a UI decision, not a link event, and borrowing that
+  // pipeline would grow the connection controller a responsibility that has
+  // nothing to do with connections.
+  final services = context.read<AppServices>();
+  final settings = context.read<SettingsController>();
+  void note(String what) {
+    services.pending.add(services.logRepo.insertLog(
+      LogEntry.event(
+        'save-device: $what',
+        deviceId: deviceId,
+        sessionId: services.connection.session.sessionIdFor(deviceId),
+        appBuild: services.appBuild,
+      ),
+      maxBytes: settings.logTrimBudget,
+    ));
+  }
+
   // Captured BEFORE the dialog awaits, and both for reasons that outlive it:
   //
   //   * the advertised name is the stable secondary key an iOS NSUUID is
@@ -53,8 +81,17 @@ Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
   final initialClass = conn.isPowerBank ? conn.resolvedClass : conn.packLabel;
   final pvlt = tele.pvlt;
 
+  // Q2 (ruled 2026-08-11): the prompt APPEARING is its own fact. Without it,
+  // "the dialog never opened" and "it opened and the user declined" collapse
+  // into the same silence — and telling those two apart is half the reason
+  // this trail exists.
+  note('prompt');
+
   final alias = await showAliasDialog(context);
-  if (alias == null) return false;
+  if (alias == null) {
+    note('result=declined');
+    return false;
+  }
   // 🔴 NOT gated on `context.mounted`. Every caller of this lives on a widget
   // that the save itself removes — the 尚未儲存 row unmounts the moment a record
   // exists, and the offline body unmounts the moment the link goes ready — so a
@@ -64,7 +101,10 @@ Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
   //
   // Re-checked after the await instead: the same unit may have been named from
   // the other surface while this dialog was open.
-  if (devices.isSaved(deviceId)) return false;
+  if (devices.isSaved(deviceId)) {
+    note('result=already-saved');
+    return false;
+  }
 
   await devices.saveNew(
     deviceId,
@@ -73,6 +113,10 @@ Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
     lastValue: pvlt,
     productClass: initialClass,
   );
+  // 🔴 The OUTCOME only — never the alias itself. It is free text a user typed
+  // about their own vehicle, and names and plate numbers are exactly what ends
+  // up in it; a diagnostic log is shared with us by email.
+  note(alias.isEmpty ? 'result=unnamed' : 'result=named');
   return true;
 }
 

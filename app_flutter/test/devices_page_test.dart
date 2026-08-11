@@ -171,6 +171,10 @@ void main() {
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
           ChangeNotifierProvider<GForceController>.value(value: s.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
+          // design 0058 §3.3: the save flow writes its own diagnostic trail
+          // straight to LogRepo, so it needs the service locator the shell
+          // already provides (`main.dart:204`).
+          Provider<AppServices>.value(value: s),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -534,6 +538,105 @@ void main() {
       await settle(tester);
       await tester.pump(const Duration(milliseconds: 400));
       expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #3');
+    });
+
+
+    testWidgets('T58-1/T58-2: the save flow leaves a trail, without the name',
+        (tester) async {
+      // design 0058 §3.3. Before this, `saveNew` wrote no event at all, so a
+      // phone's log could not tell an empty-name 儲存 from a barrier tap from a
+      // deliberate 跳過 from a prompt that never appeared — which is why the
+      // FB `08.11/005` analysis could only reach "compatible with the defect".
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      await tester.enterText(find.byType(TextField), '老王的機車');
+      await tester.pump();
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(s.pending.drain);
+
+      // 🔴 `runAsync`: `queryLog` is real (ffi) I/O, and a widget test's fake
+      // async zone never completes it otherwise — the same reason `settle` and
+      // `makeServices` are wrapped.
+      final notes = await tester.runAsync(() async =>
+          (await s.logRepo.queryLog())
+              .map((e) => e.note ?? '')
+              .where((n) => n.startsWith('save-device:'))
+              .toList()) as List<String>;
+
+      expect(notes, contains('save-device: prompt'),
+          reason: 'Q2: "the dialog never opened" and "it opened and was '
+              'declined" must not collapse into one silence');
+      expect(notes, contains('save-device: result=named'));
+
+      // 🔴 T58-2. The alias is free text about someone's own vehicle — names
+      // and plate numbers land in it — and a diagnostic log gets emailed to us.
+      for (final n in notes) {
+        expect(n, isNot(contains('老王')), reason: 'the outcome, never the name');
+      }
+      final leaked = await tester.runAsync(() async => (await s.logRepo.queryLog())
+          .where((e) => (e.note ?? '').contains('老王'))
+          .toList());
+      expect(leaked, isEmpty);
+    });
+
+    testWidgets('T58-1: 跳過 is recorded as declined, not as silence',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      await tester.tap(find.text('Skip'));
+      await settle(tester);
+      await tester.runAsync(s.pending.drain);
+
+      // 🔴 `runAsync`: `queryLog` is real (ffi) I/O, and a widget test's fake
+      // async zone never completes it otherwise — the same reason `settle` and
+      // `makeServices` are wrapped.
+      final notes = await tester.runAsync(() async =>
+          (await s.logRepo.queryLog())
+              .map((e) => e.note ?? '')
+              .where((n) => n.startsWith('save-device:'))
+              .toList()) as List<String>;
+      expect(notes, containsAll(<String>[
+        'save-device: prompt',
+        'save-device: result=declined',
+      ]));
+      expect(s.devices.isSaved('DEV-NEW'), isFalse);
+    });
+
+    testWidgets('T58-1: an empty name is recorded as `unnamed`, not `named`',
+        (tester) async {
+      // The two outcomes 儲存 can produce are distinguishable in the log —
+      // otherwise the very defect this trail was added for stays invisible.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(s.pending.drain);
+
+      // 🔴 `runAsync`: `queryLog` is real (ffi) I/O, and a widget test's fake
+      // async zone never completes it otherwise — the same reason `settle` and
+      // `makeServices` are wrapped.
+      final notes = await tester.runAsync(() async =>
+          (await s.logRepo.queryLog())
+              .map((e) => e.note ?? '')
+              .where((n) => n.startsWith('save-device:'))
+              .toList()) as List<String>;
+      expect(notes, contains('save-device: result=unnamed'));
+      expect(notes, isNot(contains('save-device: result=named')));
     });
 
     testWidgets('跳過 still saves NOTHING', (tester) async {
