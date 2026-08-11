@@ -82,14 +82,25 @@ void main() {
     });
 
     test('no always-on location, and no location background mode', () {
-      for (final forbidden in [
-        'NSLocationAlwaysAndWhenInUseUsageDescription',
-        'NSLocationAlwaysUsageDescription',
-      ]) {
-        expect(plist.contains(forbidden), isFalse,
-            reason: '$forbidden would turn a foreground speed readout into a '
-                'background-location app (0042 N1 / R1)');
-      }
+      // ITMS-90683 (v0.7.12 delivery, 26081002) forced a retreat here: Apple's
+      // static scan requires the AlwaysAndWhenInUse purpose STRING because
+      // geolocator_apple and permission_handler_apple reference
+      // requestAlwaysAuthorization, regardless of whether the app calls it.
+      // The invariant this test defends is therefore no longer "the key is
+      // absent" — it is that the key stays a dead letter: no Dart code
+      // requests Always (the macros test forces every Permission.x through
+      // review), and geolocator_apple only reaches requestAlwaysAuthorization
+      // when the WhenInUse key is MISSING, which the test above pins verbatim.
+      expect(
+        plist,
+        contains('<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>'),
+        reason: 'ITMS-90683: Apple requires the purpose string while any '
+            'linked plugin references requestAlwaysAuthorization',
+      );
+      expect(plist.contains('NSLocationAlwaysUsageDescription</key>'), isFalse,
+          reason: 'the deprecated pre-iOS-11 Always key is not demanded by '
+              'ITMS-90683 and would widen the surface for no reason '
+              '(0042 N1 / R1)');
       // UIBackgroundModes EXISTS since design 0047 Phase 1, but it belongs to
       // BLE and to BLE only. The 0042 invariant this file defends is narrower
       // than "no background modes" ever needed to be: no background LOCATION.
