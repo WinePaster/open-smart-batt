@@ -25,6 +25,26 @@ Future<String?> showAliasDialog(
   return showDialog<String>(
     context: context,
     barrierColor: const Color(0xD904060A), // mockup rgba(4,6,10,.85)
+    // 🔴 Explicitly false — it DEFAULTS TO TRUE, and the default was the second
+    // silent way to lose a save (found 2026-08-11 while analysing FB batch
+    // `08.11/005`, a third independent「無法儲存裝置」report).
+    //
+    // Tapping the barrier pops with null, and null is how every caller spells
+    // "the user declined": no record, no message, nothing on screen changes.
+    // That is the same dead end the empty-field bug produced, reached by a
+    // gesture nobody thinks of as an answer.
+    //
+    // And it is the gesture this dialog invites: the field is `autofocus: true`,
+    // so the keyboard is up the moment it opens, and tapping outside a field to
+    // dismiss a keyboard is a reflex. On a 375 pt-wide phone — the reporter's
+    // iPhone X — there is barely anywhere else to put that tap.
+    //
+    // The app's other two dialogs already pass false (`main.dart:660`,
+    // `capture_wizard.dart:47`); this one being open was an omission, not a
+    // decision. Closing it costs nothing: 儲存 and 跳過 are both one tap away,
+    // and on Android the back button still cancels — an explicit gesture, not
+    // a stray one.
+    barrierDismissible: false,
     builder: (_) => _AliasDialog(initial: initial, isRename: isRename),
   );
 }

@@ -503,6 +503,39 @@ void main() {
       expect(s.devices.deviceFor('DEV-NEW')!.name, 'RCE-CarBatt');
     });
 
+    testWidgets('tapping OUTSIDE the dialog cannot lose the save', (tester) async {
+      // The second silent path, found 2026-08-11 while analysing FB batch
+      // `08.11/005`. `showDialog`'s `barrierDismissible` DEFAULTS TO TRUE, so a
+      // tap on the scrim popped null — the same "user declined" answer, given by
+      // a gesture nobody means as an answer.
+      //
+      // It is also the gesture this dialog invites: the field is `autofocus`, so
+      // the keyboard is up, and tapping outside a field to dismiss a keyboard is
+      // a reflex — on the reporter's 375 pt iPhone X there is nowhere else for
+      // that tap to land.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await connectNearby(tester);
+
+      await tester.enterText(find.byType(TextField), 'Car #3');
+      await tester.pump();
+      // Top-left corner: outside the 300 pt-wide centred dialog, on the scrim.
+      await tester.tapAt(const Offset(8, 8));
+      await settle(tester);
+
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'the prompt must survive a stray tap — dismissing it there is '
+              'indistinguishable from the empty-field bug we just fixed');
+
+      // …and the answer the user actually typed still lands.
+      await tester.tap(find.text('Save alias'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #3');
+    });
+
     testWidgets('跳過 still saves NOTHING', (tester) async {
       // The other half. Without this the fix would just move the defect: a
       // device the user declined to name is one they declined to remember
