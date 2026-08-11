@@ -882,6 +882,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String historyRowCurrentDirected(String amps, String direction) {
+    return '電流 ${amps}A $direction';
+  }
+
+  @override
   String get historyRowThresholdWarning => '保護門檻警告';
 
   @override

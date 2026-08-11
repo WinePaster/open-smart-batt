@@ -244,6 +244,7 @@
   "historyRowEventAntiTheft": "防盜模式已啟動",
   "historyRowSoh": "SOH {percent}%",
   "historyRowCurrent": "電流 {amps}A",
+  "historyRowCurrentDirected": "電流 {amps}A {direction}",
   "historyRowThresholdWarning": "保護門檻警告",
   "historyStatusEvent": "事件",
   "historyChartInsufficientData": "資料不足以繪圖（需至少 2 筆）",

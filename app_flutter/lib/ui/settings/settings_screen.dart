@@ -515,6 +515,9 @@ class _DataCardState extends State<_DataCard> {
           // range picker, so the file has to say so rather than leave the
           // recipient to infer it from a missing line.
           window: 'all',
+          // Same column, same rule as the History screen's export — the two
+          // paths write the same CSV shape and must describe it identically.
+          ampereColumn: true,
           layout: layout,
           home: home,
           speedDetection: speedDetection,

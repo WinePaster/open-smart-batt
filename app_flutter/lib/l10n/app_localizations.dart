@@ -1562,6 +1562,12 @@ abstract class AppLocalizations {
   /// **'Current {amps}A'**
   String historyRowCurrent(String amps);
 
+  /// History row current for a family whose sign convention is established: the MAGNITUDE plus a direction word, so no bare signed number reaches the reader. {direction} is one of the packDirection* strings (design 0056).
+  ///
+  /// In en, this message translates to:
+  /// **'Current {amps}A {direction}'**
+  String historyRowCurrentDirected(String amps, String direction);
+
   /// No description provided for @historyRowThresholdWarning.
   ///
   /// In en, this message translates to:

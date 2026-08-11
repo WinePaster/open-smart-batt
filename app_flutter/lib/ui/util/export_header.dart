@@ -84,6 +84,9 @@ String? deviceLine(ExportDeviceIdentity d) {
 ///
 /// Optional fields are omitted entirely rather than rendered empty — a line
 /// that says `connections=` tells the reader nothing and looks like a bug.
+/// [ampereColumn] follows that rule at the level of a whole COLUMN: the two
+/// CSV paths pass true and the diagnostic log does not, because only the CSV
+/// has an `ampere` column for the sign rule to be about.
 /// [layout] is the exception: it is REQUIRED, so that no call site can quietly
 /// stop emitting it. See the line itself for why.
 ///
@@ -102,6 +105,7 @@ List<String> exportHeaderLines({
   required bool speedDetection,
   required bool gMeter,
   String? window,
+  bool ampereColumn = false,
   int? connections,
   bool? rawPacketLog,
   List<ExportDeviceIdentity> devices = const [],
@@ -136,6 +140,33 @@ List<String> exportHeaderLines({
     // be a field with nothing behind it (the rule the rest of this preamble
     // follows). Both CSV call sites supply it.
     if (window != null) 'window: $window',
+    // design 0056 follow-up, ruled 2026-08-11. The `ampere` column is SIGNED,
+    // and the sign means OPPOSITE things on the two product families. Until
+    // this line existed the file stated a number and nothing else, so a
+    // recipient holding a mixed-device export had no way to read it at all —
+    // and the people who misread a bare signed current in the app (a dealer,
+    // then the owner who had ruled on the convention) are the same people who
+    // receive these files.
+    //
+    // Two lines rather than one because the third case is not a sign at all:
+    // a capacitor's cells are EMPTY, and folding "blank" into a sentence about
+    // signs is how a reader concludes the column failed to export. A repeated
+    // key has precedent here — `note:` is emitted twice for the same reason.
+    //
+    // ASCII only, and `=` rather than prose, because the ingest recipes read
+    // this file with `sed`/`grep`. Not localized, like every other preamble
+    // line: the reader is whoever receives the file, months later.
+    //
+    // Emitted only where the column EXISTS. The diagnostic log has no `ampere`
+    // column, and a rule describing a column that is not in the file is the
+    // same defect as `window: -` on a file with no time range. Both CSV call
+    // sites pass it; `export_provenance_test` asserts they do, so this cannot
+    // be quietly dropped the way an unasserted optional could.
+    if (ampereColumn) ...[
+      'ampere sign: battery negative=discharge positive=charge; '
+          'power bank positive=discharge (0x4A-0x49)',
+      'ampere sign: capacitor rows are blank - that unit cannot measure current',
+    ],
     // FB-32. A capture arrived holding ONE line of content beside a CSV with
     // 366 samples: raw packet logging defaults off, so the packets were never
     // written at all. Nothing in the file said so, and we spent three replies

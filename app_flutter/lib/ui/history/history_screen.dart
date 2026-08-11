@@ -21,6 +21,7 @@ import '../../models/models.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../dashboard/power_flow.dart';
 import '../dashboard/watchfaces.dart';
 import '../util/export_header.dart';
 import '../util/export_naming.dart';
@@ -243,6 +244,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           window: historyWindowLabel(_range, since),
+          // design 0056 follow-up: this file HAS an `ampere` column, so it
+          // states what that column's sign means. See `export_header.dart`.
+          ampereColumn: true,
           layout: layout,
           home: home,
           speedDetection: speedDetection,
@@ -353,14 +357,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 tempUnit: tempUnit,
                                 status: _classify(r.sample,
                                     ov: ov, uv: uv, ot: ot),
-                                // Class-gated, not data-driven: a capacitor
-                                // streams 0x2E pinned at 0.0 A but cannot
-                                // measure current. The CSV
-                                // already blanks it; showing it here would have
-                                // the two disagree about the same row.
-                                showCurrent: deviceClassFor(
-                                        devices, r.deviceId) !=
-                                    ProductClass.supercapacitor,
+                                // Class-gated, not data-driven — and the class
+                                // now decides the WORDING as well as the
+                                // presence (design 0056). See
+                                // [historyCurrentBit] for all three cases.
+                                deviceClass:
+                                    deviceClassFor(devices, r.deviceId),
                               ),
                           ],
                         ),
@@ -1161,19 +1163,69 @@ class _TrendPainter extends CustomPainter {
 
 // ====================== list row + status tag ===========================
 
+/// The `電流 …` fragment of a history row's sub-line, or null when the row's
+/// unit cannot measure current at all.
+///
+/// 🔴 THE CLASS DECIDES, and it decides three different things — which is why
+/// this is a function and not a `showCurrent` bool (its previous shape):
+///
+///  * **super-capacitor** — no fragment. Its `0x2E` is pinned at 0.0 A on a
+///    unit that cannot measure current, and the CSV already blanks the column;
+///    showing it here would have the two disagree about the same row.
+///  * **battery** — MAGNITUDE plus a direction word (design 0056, ruled
+///    2026-08-11). A bare `-35.0A` is the FB-47 defect: two people who knew the
+///    protocol read one as a fault rather than as a direction.
+///  * **power bank, or a row whose class is unknown** — the stored number,
+///    signed, exactly as before. The power bank's sign runs the OTHER way
+///    (`0x4A − 0x49`, positive = discharge), so `packFlowOf` would label it
+///    backwards; naming its direction here is a behaviour change nobody has
+///    ruled on, and an unattributed row (written before history carried a
+///    device id at all) has no family to pick a convention from. Leaving the
+///    number alone is the only honest answer in both cases.
+///
+/// PUBLIC so a test can call it without pumping the whole screen; the widget
+/// test that proves the row actually renders it lives beside it.
+String? historyCurrentBit(
+    AppLocalizations l10n, ProductClass cls, double amps) {
+  if (cls == ProductClass.supercapacitor) return null;
+  if (cls != ProductClass.smartBattery) {
+    return l10n.historyRowCurrent(amps.toStringAsFixed(1));
+  }
+  // 🔑 The direction is derived from the number the reader can SEE, not from
+  // the stored one. A history row is a MINUTE AVERAGE, so unlike the live card
+  // it is a float — and `packFlowOf`'s 1.5 A line would otherwise put −1.46 and
+  // −1.52 on opposite sides of it while BOTH print as `1.5A`. Two rows, the
+  // same visible number, different words, is a bug report waiting to happen.
+  // Rounding first makes the word answerable from the row itself.
+  final shown = (amps * 10).roundToDouble() / 10;
+  // The SAME 1.5 A dead-band as the live readout, deliberately. Averaging does
+  // not recover what quantisation threw away: `0x2E` is 1 A per count and a
+  // device that truncates reports a true 0.4 A as 0 in every sample of the
+  // minute, so an average inside one count is no more trustworthy than an
+  // instantaneous reading inside one count. A second, tighter threshold here
+  // would mean the same battery reads 靜置 on one screen and 放電中 on the
+  // other — the disagreement `power_flow.dart` exists to prevent.
+  final direction = switch (packFlowOf(shown)) {
+    PowerFlow.charging => l10n.packDirectionCharging,
+    PowerFlow.discharging => l10n.packDirectionDischarging,
+    PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
+  };
+  return l10n.historyRowCurrentDirected(
+      shown.abs().toStringAsFixed(1), direction);
+}
+
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
     required this.sample,
     required this.tempUnit,
     required this.status,
-    required this.showCurrent,
+    required this.deviceClass,
   });
 
-  /// False when the row's unit cannot measure current — i.e. a super-capacitor,
-  /// whose current register is pinned at 0.0 A. Rows with no device id (written
-  /// before history rows were attributed to a device at all) keep whatever was
-  /// stored: we do not know their class, so we do not edit their reading.
-  final bool showCurrent;
+  /// The stored product class of the row's unit, or [ProductClass.unknown] for
+  /// a row written before history rows were attributed to a device at all.
+  /// Read only by [historyCurrentBit] — see there for what each value means.
+  final ProductClass deviceClass;
 
   final TelemetrySample sample;
   final TempUnit tempUnit;
@@ -1255,8 +1307,9 @@ class _HistoryRow extends StatelessWidget {
         if (sample.sohBucket != null) {
           bits.add(l10n.historyRowSoh(sample.sohBucket!));
         }
-        if (showCurrent && sample.current != null) {
-          bits.add(l10n.historyRowCurrent(sample.current!.toStringAsFixed(1)));
+        if (sample.current != null) {
+          final bit = historyCurrentBit(l10n, deviceClass, sample.current!);
+          if (bit != null) bits.add(bit);
         }
         return bits.isEmpty ? l10n.commonNormal : bits.join(' · ');
     }

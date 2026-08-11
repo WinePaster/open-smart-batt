@@ -661,6 +661,18 @@
       }
     }
   },
+  "historyRowCurrentDirected": "Current {amps}A {direction}",
+  "@historyRowCurrentDirected": {
+    "description": "History row current for a family whose sign convention is established: the MAGNITUDE plus a direction word, so no bare signed number reaches the reader. {direction} is one of the packDirection* strings (design 0056).",
+    "placeholders": {
+      "amps": {
+        "type": "String"
+      },
+      "direction": {
+        "type": "String"
+      }
+    }
+  },
   "historyRowThresholdWarning": "Protection threshold warning",
   "historyStatusEvent": "Event",
   "historyChartInsufficientData": "Not enough data to chart (need at least 2 records)",

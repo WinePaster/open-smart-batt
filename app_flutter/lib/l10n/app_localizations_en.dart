@@ -929,6 +929,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String historyRowCurrentDirected(String amps, String direction) {
+    return 'Current ${amps}A $direction';
+  }
+
+  @override
   String get historyRowThresholdWarning => 'Protection threshold warning';
 
   @override
