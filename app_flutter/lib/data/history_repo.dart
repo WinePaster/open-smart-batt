@@ -4,6 +4,8 @@
 /// Rows are written when `AppSettings.autoLog` is on (controller decides).
 library;
 
+import 'dart:io';
+
 import 'package:csv/csv.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -555,10 +557,10 @@ class HistoryRepo {
     );
   }
 
-  /// Render matching rows (newest-first) as a CSV string with header.
+  /// Write matching rows (newest-first) into [file] as CSV with header.
   ///
   /// `timestamp` is emitted as ISO-8601; remaining columns are the raw values
-  /// (empty cell for nulls). Safe for `share_plus` / file export.
+  /// (empty cell for nulls). The finished file is what goes to `share_plus`.
   ///
   /// [labelFor] turns a stored `device_id` into the human-readable identity for
   /// the `device` column — never the raw id, which is a MAC address on Android
@@ -580,19 +582,119 @@ class HistoryRepo {
   /// is any of it missing?" from the file alone. The split of duties is
   /// deliberate: the caller knows the PROVENANCE (app build, platform, which
   /// scope the user picked) and only it can reach `PackageInfo`; this repo knows
-  /// the CONTENT and already holds the query result, so it counts without a
-  /// second trip to the database.
+  /// the CONTENT and can count it DB-side, without a result set to walk.
   ///
-  /// Returns the text together with the number of DATA rows. Callers must test
-  /// `rows == 0` for "nothing to export" — with a preamble present the file is
-  /// never empty, so the old `!csv.contains('\n')` check would always pass.
-  Future<({String text, int rows})> exportCsv({
+  /// Returns the number of DATA rows written. Callers must test `rows == 0` for
+  /// "nothing to export" — with a preamble present the file is never empty, so
+  /// the old `!csv.contains('\n')` check would always pass.
+  ///
+  /// 🔑 **No `limit` parameter, deliberately** (design 0030 T4c, FB-59). The
+  /// History screen used to pass its own `_rowCap = 1000` — the list's UI paging
+  /// bound — straight into the export, so an export of a longer range was
+  /// SILENTLY truncated to its newest 1,000 rows and nothing in the file or on
+  /// the screen said so. The cap is a property of a scrolling list, never of a
+  /// file; the export's bound is the time range the user picked and nothing
+  /// else. It is absent rather than defaulted to null so that no call site can
+  /// reintroduce one by passing a variable that happens to be in scope.
+  ///
+  /// 📄 **Paged and streamed** (design 0030 T4b). Rows are fetched
+  /// [_exportPageSize] at a time and appended to [file] as they are converted,
+  /// so the peak memory cost is one page — not the whole export, which used to
+  /// exist THREE times over at once (`List<Map>` → `List<List>` → one `String`).
+  /// The event loop is yielded between pages, so BLE notifications keep being
+  /// delivered and the keep-alive write cannot time out mid-export (FB-40's
+  /// neighbourhood).
+  Future<int> exportCsvToFile(
+    File file, {
     DateTime? since,
-    int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    void Function(int written, int total)? onProgress,
+  }) async {
+    final sink = file.openWrite();
+    try {
+      return await _exportCsvStream(
+        // Flushing per page is what keeps the streaming honest: an unawaited
+        // `IOSink.write` only queues, so without this the whole export would
+        // pile up in the sink's buffer and we would have moved the peak rather
+        // than removed it.
+        emit: (chunk) async {
+          sink.write(chunk);
+          await sink.flush();
+        },
+        since: since,
+        deviceId: deviceId,
+        labelFor: labelFor,
+        classFor: classFor,
+        header: header,
+        onProgress: onProgress,
+      );
+    } finally {
+      await sink.flush();
+      await sink.close();
+    }
+  }
+
+  /// In-memory variant of [exportCsvToFile], for tests and callers that already
+  /// hold the whole thing (there are none in the app — every export path writes
+  /// a file). Same bytes, same row count; it just accumulates them in a
+  /// [StringBuffer] instead of a sink, so it carries the memory cost the file
+  /// path exists to avoid. Do not reach for it from the UI.
+  Future<({String text, int rows})> exportCsv({
+    DateTime? since,
+    String? deviceId,
+    String Function(String? deviceId)? labelFor,
+    ProductClass Function(String? deviceId)? classFor,
+    List<String> header = const [],
+  }) async {
+    final buf = StringBuffer();
+    final rows = await _exportCsvStream(
+      emit: (chunk) async => buf.write(chunk),
+      since: since,
+      deviceId: deviceId,
+      labelFor: labelFor,
+      classFor: classFor,
+      header: header,
+    );
+    return (text: buf.toString(), rows: rows);
+  }
+
+  /// Rows fetched (and converted, and written) per page — design 0030 T4b.
+  static const int _exportPageSize = 5000;
+
+  /// The row separator the CSV body uses. Spelled out and handed to the
+  /// converter rather than left to its default, because the streamed writer has
+  /// to emit it itself between pages: if the two ever disagreed, every 5,000th
+  /// row would join the one before it.
+  static const String _csvEol = '\r\n';
+  static const ListToCsvConverter _csv = ListToCsvConverter(eol: _csvEol);
+
+  /// The paged core behind [exportCsvToFile] / [exportCsv].
+  ///
+  /// The preamble has to be written BEFORE any row, yet its `rows: / range: /
+  /// devices: / builds:` summary describes all of them. It is therefore
+  /// computed with aggregate SQL (see [_contentSummarySql]) over the same scope
+  /// the pages walk — no result set is held to derive it.
+  ///
+  /// 🔑 That summary is only trustworthy if the scope cannot move underneath
+  /// the paging, and it can: this app writes a history row every minute while
+  /// the export runs. `LIMIT/OFFSET` over a newest-first order shifts by one
+  /// for every row inserted mid-export, which duplicates a row at each page
+  /// boundary, and a count taken up front would then disagree with what was
+  /// written. So the whole export is pinned to the rows that existed when it
+  /// started, by id — every later row sorts above the pin and is simply not
+  /// part of this file. `rows:` then equals the number of rows written, by
+  /// construction rather than by luck.
+  Future<int> _exportCsvStream({
+    required Future<void> Function(String chunk) emit,
+    DateTime? since,
+    String? deviceId,
+    String Function(String? deviceId)? labelFor,
+    ProductClass Function(String? deviceId)? classFor,
+    List<String> header = const [],
+    void Function(int written, int total)? onProgress,
   }) async {
     // No `attributedOnly` here, and there must never be one: since design 0043
     // the History screen hides rows with no device, so this export is the only
@@ -600,31 +702,13 @@ class HistoryRepo {
     // precisely because this path keeps them reachable — a CSV names the device
     // on every row, so one file holding several units cannot mislead the way a
     // single averaged chart line does.
-    final (where, args) = _scope(since: since, deviceId: deviceId);
-    final raw = await _db.query(
-      Db.tableHistory,
-      where: where,
-      whereArgs: args,
-      orderBy: 'timestamp DESC, id DESC',
-      limit: limit,
-    );
-    final rows = <List<Object?>>[csvColumns];
-    for (final m in raw) {
-      final s = TelemetrySample.fromMap(m);
-      final id = m['device_id'] as String?;
-      final isCapacitor =
-          id != null && classFor?.call(id) == ProductClass.supercapacitor;
-      rows.add(<Object?>[
-        s.timestamp.toIso8601String(),
-        for (final c in csvColumns.skip(1))
-          if (c == 'device')
-            (id == null ? null : labelFor?.call(id))
-          else if (c == 'ampere' && isCapacitor)
-            null // see [classFor]: the device cannot measure current
-          else
-            m[c],
-      ]);
-    }
+    final (scopeClause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final pin = await _maxRowId();
+    final where =
+        scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
+    final args = <Object?>[...?scopeArgs, pin];
+
+    final total = await _countWhere(where, args);
     // A per-device export cannot state its own completeness from the result set
     // — the rows it excluded are, by definition, not in it. So count them
     // separately. `_contentSummary` can say "(+unattributed)" only for an
@@ -638,19 +722,82 @@ class HistoryRepo {
     final fromOthers = deviceId == null
         ? 0
         : await countOtherDevices(deviceId, since: since);
-    final body = const ListToCsvConverter().convert(rows);
-    final lines = <String>[
+
+    final preamble = <String>[
       for (final h in header) '# $h',
-      if (header.isNotEmpty) '# ${_contentSummary(raw)}',
+      if (header.isNotEmpty) '# ${await _contentSummarySql(where, args)}',
       // Omitted entirely at zero: an empty field reads as a missing feature
       // (export_header.dart's rule).
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
       if (header.isNotEmpty && fromOthers > 0)
         '# excluded: $fromOthers rows from other devices',
-      body,
     ];
-    return (text: lines.join('\n'), rows: raw.length);
+    // The column header closes the preamble block. There is no `# truncated:`
+    // line to go with it and there cannot be one any more: with the row cap
+    // gone (T4c) this path has no way to stop early, so a line reporting
+    // truncation would be unreachable code claiming to guard against something
+    // that can no longer happen.
+    await emit([...preamble, ''].join('\n'));
+    await emit(_csv.convert(<List<Object?>>[csvColumns]));
+
+    var written = 0;
+    while (written < total) {
+      final page = await _db.query(
+        Db.tableHistory,
+        where: where,
+        whereArgs: args,
+        orderBy: 'timestamp DESC, id DESC',
+        limit: _exportPageSize,
+        offset: written,
+      );
+      if (page.isEmpty) break; // rows deleted under us; stop rather than spin
+      final rows = <List<Object?>>[];
+      for (final m in page) {
+        final id = m['device_id'] as String?;
+        final isCapacitor =
+            id != null && classFor?.call(id) == ProductClass.supercapacitor;
+        rows.add(<Object?>[
+          // Read straight off the row rather than through
+          // `TelemetrySample.fromMap`: only the timestamp is taken from the
+          // model, and building a whole sample object per row to reach one
+          // field costs an allocation the streaming exists to avoid. Same
+          // conversion, epoch-ms to local ISO-8601.
+          DateTime.fromMillisecondsSinceEpoch((m['timestamp'] as num?)?.toInt() ?? 0)
+              .toIso8601String(),
+          for (final c in csvColumns.skip(1))
+            if (c == 'device')
+              (id == null ? null : labelFor?.call(id))
+            else if (c == 'ampere' && isCapacitor)
+              null // see [classFor]: the device cannot measure current
+            else
+              m[c],
+        ]);
+      }
+      await emit(_csvEol + _csv.convert(rows));
+      written += page.length;
+      onProgress?.call(written, total);
+      // Design 0030 T4b: hand the event loop back between pages. `convert()` is
+      // synchronous and does not, so without this a large export is one
+      // uninterrupted block of work with BLE notifications queued behind it.
+      await Future<void>.delayed(Duration.zero);
+    }
+    return written;
+  }
+
+  /// Highest `id` currently in the table, used to pin an export's scope. Zero on
+  /// an empty table — `id <= 0` then matches nothing, which is correct.
+  Future<int> _maxRowId() async {
+    final r = await _db.rawQuery('SELECT MAX(id) AS m FROM ${Db.tableHistory}');
+    return (r.first['m'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> _countWhere(String where, List<Object?> args) async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE $where',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
   /// Rows in range that carry no device attribution, and are therefore absent
@@ -718,27 +865,43 @@ class HistoryRepo {
 
   /// `rows: N  range: A .. B  devices: N` — what the file actually contains, so
   /// a recipient can see the size and span of the data instead of guessing.
-  /// Rows are ordered newest-first, hence `last`/`first` for the range ends.
-  static String _contentSummary(List<Map<String, Object?>> raw) {
-    if (raw.isEmpty) return 'rows: 0';
-    String at(Map<String, Object?> m) =>
-        DateTime.fromMillisecondsSinceEpoch((m['timestamp'] as num).toInt())
+  ///
+  /// Computed DB-side over the export's pinned scope, because the preamble is
+  /// written before the first page is fetched and no result set exists yet to
+  /// summarise (design 0030 T4b). The wording, spacing and omission rules are
+  /// unchanged from the version that walked the rows — recipients have
+  /// spreadsheets and scripts reading these lines.
+  Future<String> _contentSummarySql(String where, List<Object?> args) async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n, MIN(timestamp) AS minTs, MAX(timestamp) AS maxTs, '
+      'COUNT(DISTINCT device_id) AS devices, '
+      'SUM(CASE WHEN device_id IS NULL THEN 1 ELSE 0 END) AS unattributed '
+      'FROM ${Db.tableHistory} WHERE $where',
+      args,
+    );
+    final row = r.first;
+    final n = (row['n'] as num?)?.toInt() ?? 0;
+    if (n == 0) return 'rows: 0';
+    String at(Object? ms) =>
+        DateTime.fromMillisecondsSinceEpoch((ms as num).toInt())
             .toIso8601String();
-    final devices =
-        raw.map((m) => m['device_id'] as String?).whereType<String>().toSet();
-    final unattributed = raw.any((m) => m['device_id'] == null);
+    // `COUNT(DISTINCT …)` skips NULLs, which is exactly the old
+    // `whereType<String>().toSet().length`; the NULL rows are reported by the
+    // `(+unattributed)` marker instead, never folded into the device count.
+    final devices = (row['devices'] as num?)?.toInt() ?? 0;
+    final unattributed = ((row['unattributed'] as num?)?.toInt() ?? 0) > 0;
     // Which build(s) RECORDED these rows. Listed because it is routinely
     // different from the exporting build named in the preamble, and
     // a reader who conflates the two draws wrong conclusions from missing data.
-    final builds = raw
-        .map((m) => m['app_build'] as String?)
-        .whereType<String>()
-        .toSet()
-        .toList()
-      ..sort();
-    return 'rows: ${raw.length}  '
-        'range: ${at(raw.last)} .. ${at(raw.first)}  '
-        'devices: ${devices.length}${unattributed ? ' (+unattributed)' : ''}'
+    final buildRows = await _db.rawQuery(
+      'SELECT DISTINCT app_build AS b FROM ${Db.tableHistory} '
+      'WHERE $where AND app_build IS NOT NULL',
+      args,
+    );
+    final builds = buildRows.map((m) => m['b'] as String).toList()..sort();
+    return 'rows: $n  '
+        'range: ${at(row['minTs'])} .. ${at(row['maxTs'])}  '
+        'devices: $devices${unattributed ? ' (+unattributed)' : ''}'
         '${builds.isEmpty ? '' : '  builds: ${builds.join(', ')}'}';
   }
 

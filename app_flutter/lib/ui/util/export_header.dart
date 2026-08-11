@@ -101,6 +101,7 @@ List<String> exportHeaderLines({
   required String home,
   required bool speedDetection,
   required bool gMeter,
+  String? window,
   int? connections,
   bool? rawPacketLog,
   List<ExportDeviceIdentity> devices = const [],
@@ -118,6 +119,23 @@ List<String> exportHeaderLines({
     'exported: ${exportedAt.toIso8601String()}',
     scopeLine.toString(),
     'app: $appBuild  platform: $platform',
+    // FB-60. WHICH TIME RANGE THE USER ASKED FOR — distinct from the
+    // `range: A .. B` the repo computes, and the distinction is the whole
+    // point. `range:` says what the data happens to span; `window:` says what
+    // was requested, so the two together separate "there is nothing older" from
+    // "older rows exist and this file does not contain them". A recipient
+    // holding only `range:` cannot tell those apart, and both readings have
+    // been made in this corpus.
+    //
+    // Machine-stable and NOT localized, for the same reason
+    // [exportScopeLabel] is: the reader of a preamble is whoever receives the
+    // file, months later, not the phone that produced it.
+    //
+    // Optional, because only the two CSV paths have a time range to declare —
+    // the diagnostic log has none, and an unconditional `window: -` there would
+    // be a field with nothing behind it (the rule the rest of this preamble
+    // follows). Both CSV call sites supply it.
+    if (window != null) 'window: $window',
     // FB-32. A capture arrived holding ONE line of content beside a CSV with
     // 366 samples: raw packet logging defaults off, so the packets were never
     // written at all. Nothing in the file said so, and we spent three replies

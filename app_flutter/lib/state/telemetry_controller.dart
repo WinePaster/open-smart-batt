@@ -8,6 +8,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -379,26 +380,28 @@ class TelemetryController extends ChangeNotifier
   Future<int> historyUnattributedCount({DateTime? since}) =>
       _history.countUnattributed(since: since);
 
-  /// CSV export of matching history rows (for share_plus / file write).
+  /// CSV export of matching history rows, streamed into [file] and returning
+  /// how many DATA rows were written.
   ///
   /// [labelFor] renders the human-readable `device` column; the caller supplies
   /// it because the alias/serial lookup lives in the device layer. [header]
   /// carries the `#`-prefixed provenance preamble — which build, which
   /// platform, which scope — so the file can be read years later without
-  /// anyone having to remember where it came from; see [HistoryRepo.exportCsv]
-  /// for why the returned row count — not the text — decides "nothing to
-  /// export".
-  Future<({String text, int rows})> exportHistoryCsv({
+  /// anyone having to remember where it came from; see
+  /// [HistoryRepo.exportCsvToFile] for why the returned row count — not the
+  /// text — decides "nothing to export", and for why there is no row limit to
+  /// pass down (design 0030 T4c / FB-59).
+  Future<int> exportHistoryCsvToFile(
+    File file, {
     DateTime? since,
-    int? limit,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
   }) =>
-      _history.exportCsv(
+      _history.exportCsvToFile(
+        file,
         since: since,
-        limit: limit,
         deviceId: deviceId,
         labelFor: labelFor,
         classFor: classFor,

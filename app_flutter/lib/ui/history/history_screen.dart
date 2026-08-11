@@ -31,6 +31,27 @@ import '../widgets/industrial.dart';
 /// Selectable chart/list time range.
 enum HistoryRange { today, week, all }
 
+/// The export preamble's `window:` value for [r] (FB-60).
+///
+/// Says WHAT WAS ASKED FOR, which the repo-computed `range: A .. B` cannot: a
+/// file whose rows start on Tuesday is a complete "last 7 days" export from a
+/// phone that has only been recording since Tuesday, and an incomplete-looking
+/// one otherwise. Only this line tells the two apart.
+///
+/// Machine-stable slugs, never the localized segmented-control captions — the
+/// reader of a preamble is whoever receives the file, not the phone that made
+/// it (the rule `exportScopeLabel` already follows). [since] is the computed
+/// cut-off, appended so the window is reproducible rather than relative to an
+/// export timestamp the reader has to do arithmetic on; `all` has none.
+String historyWindowLabel(HistoryRange r, DateTime? since) {
+  final slug = switch (r) {
+    HistoryRange.today => 'today',
+    HistoryRange.week => '7d',
+    HistoryRange.all => 'all',
+  };
+  return since == null ? slug : '$slug  since=${since.toIso8601String()}';
+}
+
 /// Row classification derived from a stored [TelemetrySample].
 enum _RowStatus { normal, warning, event }
 
@@ -194,10 +215,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // arrived", which is the ambiguity FB-32 exists to prevent.
     final speedDetection = context.read<SettingsController>().speedDetection;
     final gMeter = context.read<SettingsController>().gMeterEnabled;
+    final since = _sinceFor(_range);
     try {
-      final csv = await _tele.exportHistoryCsv(
-        since: _sinceFor(_range),
-        limit: _rowCap,
+      final filename = exportFileName(
+        base: 'opensmartbatt-history',
+        classSlug: target.classSlug,
+        ident: target.ident,
+        stamp: exportStamp(),
+        extension: 'csv',
+      );
+      final file = await exportTempFile(filename);
+      // Streamed straight into the file (design 0030 T4b) and NOT capped at
+      // `_rowCap` (T4c / FB-59): that cap belongs to the list below, which
+      // pages a screen at a time, and passing it here silently threw away
+      // everything past the newest 1,000 rows of whatever range the user had
+      // chosen.
+      final rows = await _tele.exportHistoryCsvToFile(
+        file,
+        since: since,
         deviceId: target.deviceId,
         labelFor: labelFor,
         classFor: classFor,
@@ -207,6 +242,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           appBuild: services.appBuild,
           platform: services.platform,
           scope: exportScopeLabel(target),
+          window: historyWindowLabel(_range, since),
           layout: layout,
           home: home,
           speedDetection: speedDetection,
@@ -216,22 +252,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // Row count, not text emptiness: every export carries a provenance
       // preamble (app build, platform, scope, timestamp), so the file is never
       // literally empty and testing the text would never fire.
-      if (csv.rows == 0) {
+      if (rows == 0) {
+        // The header-only file is already on disk; delete it rather than leave
+        // a plausible-looking export in the temp directory for a share sheet
+        // (or a file manager) to pick up later.
+        await file.delete().catchError((_) => file);
         messenger.showSnackBar(SnackBar(
           duration: const Duration(milliseconds: 1600),
           content: Text(l10n.commonNoRecordsToExport),
         ));
         return;
       }
-      await shareTextAsFile(
-        content: csv.text,
-        filename: exportFileName(
-          base: 'opensmartbatt-history',
-          classSlug: target.classSlug,
-          ident: target.ident,
-          stamp: exportStamp(),
-          extension: 'csv',
-        ),
+      await shareExportFile(
+        file: file,
+        filename: filename,
         mimeType: 'text/csv',
         subject: l10n.historyExportSubject,
         sharePositionOrigin: origin,
