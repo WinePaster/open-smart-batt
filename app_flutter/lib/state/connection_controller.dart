@@ -12,6 +12,7 @@ library;
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show
@@ -457,7 +458,50 @@ class ConnectionController extends ChangeNotifier {
   Timer? _reconnectTimer;
 
   /// Deadline on an armed autoConnect (FB-53 / [autoConnectWatchdog]).
+  ///
+  /// FB-66: this timer is now only the FOREGROUND half of the deadline. It
+  /// measures event-loop time, which iOS stops when it suspends the isolate, so
+  /// the authority on whether the deadline has passed is [_autoConnectArmedAt]
+  /// against the wall clock — see [_checkAutoConnectDeadline].
   Timer? _autoConnectTimer;
+
+  /// Wall-clock instant the armed autoConnect started, or null when not armed.
+  ///
+  /// FB-66. The watchdog promises the USER 180 seconds; a `Timer` can only
+  /// promise 180 seconds of ISOLATE time, and on a backgrounded iPhone those
+  /// are different quantities by a measured factor of 1.5 to 23. This stamp is
+  /// what makes the promise checkable: every verdict recomputes
+  /// `clock.now() - armedAt` instead of trusting when the callback happened to
+  /// run.
+  ///
+  /// CLOCK SOURCE — `package:clock`'s [clock], i.e. the wall clock, chosen over
+  /// the two alternatives with eyes open:
+  ///
+  ///  * `Stopwatch` is monotonic and therefore immune to the user or NTP moving
+  ///    the clock, but Dart's is backed by the platform's *uptime* counter,
+  ///    which on Darwin does not advance while the device is asleep. That is
+  ///    precisely the interval this fix exists to measure, so a monotonic clock
+  ///    would reintroduce the same undercount in a quieter form. It is also
+  ///    unfakeable, so none of this could be tested.
+  ///  * an injected `DateTime Function()` would work but would have to be wired
+  ///    through every construction site; [clock] is already substituted by
+  ///    `fake_async` AND by `testWidgets`' binding, so the existing suites keep
+  ///    exercising the real code path with no harness change.
+  ///
+  /// The residual risk is a wall-clock JUMP. Backwards: [_checkAutoConnectDeadline]
+  /// re-arms for the remainder rather than firing, so the deadline is only ever
+  /// extended. Forwards: the verdict lands early — the same outcome the user
+  /// would have got by genuinely waiting, i.e. an honest failure plus a
+  /// cancelled pending connect, and one tap undoes it. Both are strictly better
+  /// than the current failure mode, which is no verdict at all.
+  DateTime? _autoConnectArmedAt;
+
+  /// Which device the armed autoConnect is for. The timer used to carry this in
+  /// its closure; the resume checkpoint has no closure to read it from.
+  String? _autoConnectArmedId;
+
+  /// Set while a LATE verdict is being held back — see [autoConnectThawGrace].
+  Timer? _autoConnectGraceTimer;
 
   /// Deadline on the resume liveness probe ([onAppResumed]).
   Timer? _resumeProbeTimer;
@@ -503,7 +547,38 @@ class ConnectionController extends ChangeNotifier {
   /// ladder and still inside what somebody will sit through. Adjustable — no
   /// field capture measures how long a real reappearance takes, because until
   /// this fix no armed autoConnect ever survived long enough to be measured.
+  /// ⚠️ FB-66: 180 s is what this app WAITS, not what a [Timer] delivers. The
+  /// deadline is judged against the wall clock ([_autoConnectArmedAt]) and is
+  /// re-checked at every resume, because a suspended isolate cannot notice its
+  /// own deadline passing. See [_checkAutoConnectDeadline].
   static const Duration autoConnectWatchdog = Duration(seconds: 180);
+
+  /// How long a LATE verdict waits before it acts (FB-66 acceptance criterion ②).
+  ///
+  /// A verdict is late when the isolate was frozen across the deadline, and the
+  /// thing that thawed it is very often the hand-off ITSELF completing. The
+  /// field case this exists to kill is `2026-08-12 10:10:38`: the overdue
+  /// callback ran, dropped the link, and the `connected` it was waiting for
+  /// arrived **4 ms later** — `link: disconnecting` → `link: connected`
+  /// (`sub=502804ms`) → `connection canceled`. The watchdog cancelled the very
+  /// reconnection it was armed to protect, after waiting 502 s to do it.
+  ///
+  /// [_onLinkState] already stands the watchdog down at `connected`, so this
+  /// only covers the window where the platform event is in flight and has not
+  /// reached the isolate yet — a window no in-process check can see. Two
+  /// seconds is far more than the 4 ms observed and far less than the delay
+  /// already incurred (263 s / 503 s / 936 s) — it cannot make a late verdict
+  /// meaningfully later, and it is not applied at all when the verdict is
+  /// punctual ([autoConnectPunctualitySlack]), so the foreground path keeps
+  /// firing at exactly 180 s.
+  static const Duration autoConnectThawGrace = Duration(seconds: 2);
+
+  /// How much lateness still counts as "the event loop was running".
+  ///
+  /// Separates the punctual case (fire now, as documented) from the thawed case
+  /// (hold for [autoConnectThawGrace]). One second is ordinary timer jitter;
+  /// the smallest overshoot ever measured in the field is 83 s.
+  static const Duration autoConnectPunctualitySlack = Duration(seconds: 1);
 
   /// Consecutive connections that reached `connected` and left without ever
   /// reaching `ready`. FB-52, design 0031 §3.1.
@@ -863,6 +938,13 @@ class ConnectionController extends ChangeNotifier {
   void onAppResumed({Duration? window}) {
     _resumeProbeTimer?.cancel();
     _resumeProbeTimer = null;
+    // FB-66: BEFORE the `isOnline` gate, and deliberately so. Everything below
+    // this line is about a link that survived; an armed autoConnect is a link
+    // that has not come back, which `isOnline` reports as "nothing to do here".
+    // That gate is why the app could sleep through its own deadline: resume is
+    // the moment the isolate is guaranteed to run again, and it was the one
+    // moment the watchdog could not use.
+    _checkAutoConnectDeadline('resume');
     if (!isOnline) return;
     unawaited(_ble.pokeKeepAlive().catchError((Object _) {}));
     _resumeProbeTimer =
@@ -1603,9 +1685,12 @@ class ConnectionController extends ChangeNotifier {
     // FB-53: and give it a deadline. See [autoConnectWatchdog] for why an
     // unbounded hand-off only looked safe while the phantom disconnect was
     // silently ending it.
-    _autoConnectTimer?.cancel();
-    _autoConnectTimer =
-        Timer(autoConnectWatchdog, () => _onAutoConnectExpired(id));
+    // FB-66: the timer is the foreground half; the stamp is the deadline. Both
+    // are set here so no path can arm one without the other.
+    _cancelAutoConnectWatchdog();
+    _autoConnectArmedAt = clock.now();
+    _autoConnectArmedId = id;
+    _autoConnectTimer = Timer(autoConnectWatchdog, _onAutoConnectTimerFired);
     unawaited(_ble.connect(id, autoConnect: true)
         .catchError((Object e) => _onArmAutoConnectFailed(id, e)));
   }
@@ -1667,11 +1752,103 @@ class ConnectionController extends ChangeNotifier {
   @visibleForTesting
   void armAutoConnect() => _armAutoConnect();
 
+  /// The 180 s timer came due (FB-53). Whether the DEADLINE has passed is a
+  /// separate question, and [_checkAutoConnectDeadline] is the one that answers
+  /// it (FB-66).
+  void _onAutoConnectTimerFired() {
+    _autoConnectTimer = null;
+    _checkAutoConnectDeadline('timer');
+  }
+
+  /// Is the armed autoConnect out of time? Ask the WALL CLOCK, not the timer.
+  ///
+  /// FB-66 acceptance criterion ①. Called from the two places that can know:
+  /// the timer coming due, and the app returning to the foreground. Both go
+  /// through here, and neither is trusted about the passage of time — the only
+  /// input is `clock.now()` minus [_autoConnectArmedAt].
+  ///
+  /// [trigger] names the caller and is written into the log, because "the
+  /// verdict arrived because the user came back" and "the verdict arrived
+  /// because the OS finally ran our timer" are different events that used to be
+  /// indistinguishable in a capture.
+  void _checkAutoConnectDeadline(String trigger) {
+    final armedAt = _autoConnectArmedAt;
+    final id = _autoConnectArmedId;
+    if (armedAt == null || id == null) return; // not armed / already resolved
+    if (_autoConnectGraceTimer != null) return; // a verdict is already pending
+    final waited = clock.now().difference(armedAt);
+    final remaining = autoConnectWatchdog - waited;
+    if (remaining > Duration.zero) {
+      // Not due. The timer only ever disagrees with the wall clock when the
+      // wall clock moved BACKWARDS under us (NTP, or the user). Re-arm for what
+      // the wall clock says is left rather than firing on the timer's word: a
+      // clock correction must not be able to shorten the user's 180 s.
+      if (trigger == 'timer') {
+        _autoConnectTimer?.cancel();
+        _autoConnectTimer = Timer(remaining, _onAutoConnectTimerFired);
+      }
+      return;
+    }
+    final overshoot = waited - autoConnectWatchdog;
+    // Two ways to know this verdict is being reached at a THAW rather than in a
+    // running foreground: the timer came due far later than it was set for, or
+    // the trigger is a resume, which by definition follows a background window
+    // however short. Both mean platform events may be in flight behind us.
+    final thawed =
+        trigger != 'timer' || overshoot > autoConnectPunctualitySlack;
+    if (thawed) {
+      // We were frozen across the deadline. Do NOT act on the spot — see
+      // [autoConnectThawGrace]. Cancel the timer first: once the grace is
+      // running it is the only thing that may reach a verdict.
+      _autoConnectTimer?.cancel();
+      _autoConnectTimer = null;
+      _event('auto-reconnect: autoConnect watchdog woke ${waited.inSeconds}s '
+          'into a ${autoConnectWatchdog.inSeconds}s deadline (by $trigger) — '
+          'holding ${autoConnectThawGrace.inSeconds}s in case the hand-off is '
+          'landing');
+      _autoConnectGraceTimer = Timer(autoConnectThawGrace, () {
+        _autoConnectGraceTimer = null;
+        _onAutoConnectExpired(id, clock.now().difference(armedAt));
+      });
+      return;
+    }
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer = null;
+    _onAutoConnectExpired(id, waited);
+  }
+
   /// The armed autoConnect ran out of time (FB-53 / [autoConnectWatchdog]).
-  void _onAutoConnectExpired(String id) {
+  ///
+  /// [waited] is the WALL time actually spent waiting, measured, not assumed —
+  /// FB-66 acceptance criterion ③. It is >= [autoConnectWatchdog] and on a
+  /// backgrounded iPhone can be several times it.
+  void _onAutoConnectExpired(String id, Duration waited) {
     // Anything that made this stale answers for itself: the link came up, the
     // user disconnected, or the user pointed at a different unit.
     if (isOnline || _manualDisconnect || _desiredDeviceId != id) return;
+    // FB-66 acceptance criterion ②: `connected` — the hand-off DELIVERED, and
+    // the app has not finished setting the link up yet. [_onLinkState] already
+    // stands the watchdog down at `connected`, so reaching here in that state
+    // means the event landed while this verdict was in flight. Killing the link
+    // now is the 10:10:38 field case, where a 502 s-late watchdog cancelled a
+    // connection that had arrived 4 ms earlier.
+    //
+    // ⚠️ This does NOT re-open FB-52. "Came up and never said anything" is
+    // still bounded, by a different instrument: `_setupFailuresSinceReady` /
+    // [isSetupStalled], which counts connections that reached `connected` and
+    // left without `ready` and stops the ladder at [maxSetupFailures]. Standing
+    // down here hands the episode to that counter, which is exactly what the
+    // `connected` branch of [_onLinkState] already does deliberately. What must
+    // never happen is both instruments owning the same link at once.
+    if (_link == BleLinkState.connected) {
+      _event('auto-reconnect: autoConnect watchdog stood down after '
+          '${waited.inSeconds}s — the hand-off landed while the verdict was in '
+          'flight (link is `connected`; setup is FB-51/FB-52 territory)');
+      _cancelAutoConnectWatchdog();
+      return;
+    }
+    // Nothing beyond this point can be undone, so the arm is spent.
+    _cancelAutoConnectWatchdog();
     // Set BEFORE dropping the link: the drop below emits `disconnected`, and
     // that is the event that starts the backoff ladder. Giving up must not be
     // the thing that starts trying again.
@@ -1685,9 +1862,15 @@ class ConnectionController extends ChangeNotifier {
     // exhausting says the device refused five connects, the watchdog expiring
     // says the device never advertised at all.
     _lastError = 'autoconnect_timeout';
+    // FB-66 acceptance criterion ③: the MEASURED wait, not the constant. This
+    // line used to interpolate `autoConnectWatchdog.inSeconds` and so reported
+    // `gave up after 180s` for a wait of 935 s — the only instrument this
+    // failure has in the field, hard-coded to the answer it was supposed to be
+    // measuring. The nominal value is kept alongside it so a capture states
+    // both the promise and what was actually delivered.
     _event('auto-reconnect: autoConnect gave up after '
-        '${autoConnectWatchdog.inSeconds}s with no `ready` — pending connect '
-        'cancelled');
+        '${waited.inSeconds}s (deadline ${autoConnectWatchdog.inSeconds}s) with '
+        'no `ready` — pending connect cancelled');
     // The first place in this app that actually CANCELS a connect. Everywhere
     // else an abandoned `device.connect()` is simply forgotten: teardown nulls
     // the handle, so the `disconnect()` at the head of the next `connect()`
@@ -1698,9 +1881,21 @@ class ConnectionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Disarm every part of the watchdog at once.
+  ///
+  /// FB-66 turned "the watchdog" from one timer into three pieces of state, and
+  /// they must go together — a stamp left behind would let the next resume
+  /// deliver a verdict on an episode that is over, and a grace timer left
+  /// behind would deliver one after the link came back. Every existing caller
+  /// (`connected`, `ready`, `connect`, `disconnect`, arming failure, `dispose`)
+  /// gets the whole disarm without changing.
   void _cancelAutoConnectWatchdog() {
     _autoConnectTimer?.cancel();
     _autoConnectTimer = null;
+    _autoConnectGraceTimer?.cancel();
+    _autoConnectGraceTimer = null;
+    _autoConnectArmedAt = null;
+    _autoConnectArmedId = null;
   }
 
   void _scheduleReconnect() {

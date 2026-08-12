@@ -1,47 +1,63 @@
-// FB-53 watchdog — a CHARACTERIZATION TEST. Everything it pins is a DEFECT.
+// FB-66 / FB-67 — the autoConnect watchdog when the isolate is not running.
 //
-// ⚠️ READ THIS BEFORE TRUSTING A GREEN RUN. ⚠️
+// ⚠️ THIS FILE CHANGED MEANING ON 2026-08-13. ⚠️
 //
-// This file does not assert that `ConnectionController.autoConnectWatchdog`
-// works. It asserts, in detail, the way it FAILS today, so that the failure
-// cannot be changed by accident and cannot go on hiding behind a fake clock.
-// A green run here means "the defect is still exactly the defect we documented",
-// NOT "the watchdog is correct". When the defect is fixed, most of these tests
-// are SUPPOSED to go red; each one carries its own note saying what it should
-// then be rewritten to say.
+// It began as a characterization test: every assertion pinned the DEFECT, so a
+// green run meant "the bug is still exactly the bug we documented". FB-66 has
+// now been FIXED, and group 甲 has been inverted accordingly — it asserts the
+// remedy. Group 乙 has NOT been fixed (that is FB-67, a separate number, not
+// ruled on) and is still characterization: green there still means "the defect
+// is unchanged".
 //
 // ---------------------------------------------------------------------------
-// The defect
+// 甲 — the event loop is frozen (FB-66, FIXED)
 // ---------------------------------------------------------------------------
 //
 // `_armAutoConnect` hands a dropped healthy link to CoreBluetooth and gives the
 // hand-off a deadline (`connection_controller.dart`, `autoConnectWatchdog` =
-// 180 s). That deadline is a plain `Timer`. A `Timer` is a promise made by the
-// Dart isolate's own event loop, and iOS suspends that event loop the moment
-// the app leaves the foreground — the timer is not "late", it is not running at
-// all, and it resumes only when the process is next scheduled.
+// 180 s). That deadline used to be a plain `Timer` and nothing else. A `Timer`
+// is a promise made by the Dart isolate's own event loop, and iOS suspends that
+// event loop the moment the app leaves the foreground — the timer was not
+// "late", it was not running at all, and it resumed only when the process was
+// next scheduled. Field measurements put the overshoot at 1.5× to 23× the
+// nominal 180 s, the worst being a process that was demonstrably alive,
+// backgrounded for 68.8 minutes, and had still not fired at 4,132 s.
 //
-// So the one situation the watchdog exists for — a peripheral that never comes
-// back while the user is not looking at the screen — is precisely the situation
-// in which it cannot fire. Field measurements put the overshoot at 1.5× to 23×
-// the nominal 180 s, with the worst observation being a process that was
-// demonstrably alive, backgrounded for 68.8 minutes, and had still not fired at
-// 4,132 s.
+// The fix keeps the timer for the foreground case and adds three things, and
+// this group tests all three (they are FB-66's three acceptance criteria):
 //
-// Two ways the deadline is lost, and this file covers both:
+//   ①  a wall-clock stamp (`clock.now()` at arm time) that every verdict
+//      recomputes against, plus a check at `onAppResumed` — the one moment the
+//      isolate is guaranteed to run again, and previously the one moment the
+//      watchdog was blind to, because `onAppResumed` opened with
+//      `if (!isOnline) return;`.
+//   ②  a short grace on any verdict reached at a thaw, so a `connected` that is
+//      in flight from the platform when the overdue callback runs is not
+//      cancelled by it. `2026-08-12 10:10:38` is the case: the late verdict
+//      dropped a link that arrived 4 ms later.
+//   ③  the give-up line reports the MEASURED wait. It used to interpolate the
+//      constant and print `gave up after 180s` for a 935 s wait.
 //
-//   甲  the event loop is FROZEN. The wall clock runs, the isolate does not.
-//       Modelled with `package:fake_async`'s `elapseBlocking`, which is the
-//       only primitive available that advances time without running anything.
-//
-//   乙  the process is RECLAIMED. iOS kills a suspended app under memory
-//       pressure; the next launch is a cold start. There is no state anywhere —
-//       not in memory, not on disk, not read back from the diagnostic log —
-//       from which a fresh `ConnectionController` could learn that an
-//       autoConnect was ever armed, so the deadline is not late, it is gone.
+// The freeze itself is modelled with `package:fake_async`'s `elapseBlocking`,
+// the only primitive available that advances the clock without running
+// anything. It is also why `clock.now()` was the clock chosen in `lib/`:
+// `fake_async` substitutes `package:clock`'s clock, so the fix is observable
+// here at all. See `_autoConnectArmedAt`'s doc comment for why a monotonic
+// `Stopwatch` was rejected.
 //
 // ---------------------------------------------------------------------------
-// Why the existing tests cannot see any of this
+// 乙 — the process is reclaimed (FB-67, NOT fixed)
+// ---------------------------------------------------------------------------
+//
+// iOS kills a suspended app under memory pressure; the next launch is a cold
+// start. There is no state anywhere — not in memory, not on disk, not read back
+// from the diagnostic log — from which a fresh `ConnectionController` could
+// learn that an autoConnect was ever armed, so the deadline is not late, it is
+// gone. FB-66's remedy is of no help whatsoever: there is no process to wake up
+// and compare a stamp. These three tests are unchanged and still pin a defect.
+//
+// ---------------------------------------------------------------------------
+// Why the existing tests could not see any of this
 // ---------------------------------------------------------------------------
 //
 // `test/phantom_disconnect_test.dart` §R4 has nine tests on this same watchdog
@@ -53,22 +69,9 @@
 // `elapseBlocking` did not appear anywhere in `test/`.
 //
 // That is the real finding. The R4 tests are not wrong — the reducer logic they
-// pin is fine — they are simply blind to the axis the bug lives on, and their
-// green has been read as coverage of a deadline that has never once been
-// observed firing on a backgrounded iPhone.
-//
-// ---------------------------------------------------------------------------
-// Scope
-// ---------------------------------------------------------------------------
-//
-// No fix is attempted here; `lib/` is untouched. Which of the available
-// remedies to take (a wall-clock check on resume, `BGProcessingTask`, an
-// `onAppResumed` sweep, or accepting the behaviour and changing what the app
-// SAYS) is an owner decision that has not been made. Tests only.
-//
-// TODO(unassigned): no FB number is claimed for the background-timer defect —
-// it has not been triaged. References below are to `FB-53 watchdog`, the
-// feature these tests characterise, not to a bug number.
+// pin is fine, and all nine still pass against the fix — they are simply blind
+// to the axis the bug lives on, and their green had been read as coverage of a
+// deadline that had never once been observed firing on a backgrounded iPhone.
 //
 // CLEAN-ROOM: every expectation derives from this project's own source and its
 // own field captures.
@@ -230,31 +233,39 @@ class _Harness {
 }
 
 /// The worst overshoot on record: process demonstrably alive, backgrounded
-/// 68.8 minutes, watchdog still had not fired. 4,132 s is 22.96 × the 180 s the
-/// log line will nevertheless claim.
+/// 68.8 minutes, watchdog still had not fired. 4,132 s is 22.96 × the 180 s
+/// that was nominally promised — and, before FB-66, 22.96 × the figure the log
+/// line reported.
 const _fieldFreeze = Duration(seconds: 4132);
+
+/// The `2026.08.12/003` freeze whose give-up was written as `gave up after
+/// 180s`. Used by the criterion ③ test precisely because it is the capture that
+/// proves the instrument was lying: 935.6 s of waiting, reported as 180.
+const _fieldFreeze936 = Duration(seconds: 936);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // -------------------------------------------------------------------------
-  group('甲 — the event loop is frozen (DEFECT: the deadline does not exist)',
-      () {
+  group('甲 — the event loop is frozen (FB-66: the deadline is judged on the '
+      'wall clock)', () {
     test(
-        'DEFECT: 4,132 s of wall clock pass with the isolate suspended and the '
-        '180 s watchdog does not fire', () {
-      // WHAT THIS PINS: `Timer` measures event-loop time, not wall time, so a
-      // suspended isolate suspends the deadline with it. The user is looking at
-      // a screen that says "connecting…" to a peripheral that went away over an
-      // hour ago, and the code whose entire job is to notice that has not run.
+        '① a freeze that spans the deadline is settled at the RESUME, by the '
+        'wall clock, without waiting for the timer', () {
+      // WHAT THIS PINS: acceptance criterion ①, at its strongest point. The
+      // isolate is frozen for 4,132 s — twenty-two whole watchdog periods —
+      // and the only thing that happens next is the app coming back to the
+      // foreground. `onAppResumed()` is an ordinary synchronous call from the
+      // lifecycle observer; no timer has run and none needs to, because the
+      // verdict is `clock.now() - armedAt >= 180 s` and that is answerable
+      // immediately.
       //
-      // AFTER THE FIX: this test must be INVERTED. Whatever the remedy —
-      // comparing `clock.now()` against an armed-at stamp on resume, an OS
-      // background task, a sweep in `onAppResumed` — the assertion becomes
-      // "once 180 s of WALL time have passed, the give-up is reported at the
-      // first opportunity", and the `isNull` expectations below become the
-      // opposite. Do not merely delete it: the freeze is the scenario, and it
-      // is the one no other test in the suite constructs.
+      // Before the fix this test read the other way round: nothing was
+      // reported, because `onAppResumed` began with `if (!isOnline) return;`
+      // and an armed hand-off is by definition not online. The frozen half is
+      // unchanged and still asserted — nothing CAN run while the isolate is
+      // suspended, and no remedy in Dart can change that. What changed is that
+      // the first instant of running time now settles it.
       fakeAsync((async) {
         final h = _Harness();
         h.armAfterHealthyDrop(async);
@@ -270,43 +281,60 @@ void main() {
         async.elapseBlocking(_fieldFreeze);
 
         expect(async.elapsed, _fieldFreeze);
-        expect(async.elapsed, greaterThan(ConnectionController.autoConnectWatchdog * 22),
+        expect(
+            async.elapsed,
+            greaterThan(ConnectionController.autoConnectWatchdog * 22),
             reason: 'twenty-two whole watchdog periods have gone by');
-        expect(h.conn.lastError, isNull,
-            reason: 'DEFECT: nothing has been reported. `autoconnect_timeout` '
-                'is the only signal the UI has that the hand-off died, and it '
-                'is not set');
-        expect(h.ble.disconnectCalls, 0,
-            reason: 'DEFECT: the pending connect is still registered with '
-                'CoreBluetooth. Cancelling it is the watchdog\'s other job');
         expect(h.gaveUpLines, isEmpty,
-            reason: 'DEFECT: and the always-on log has no trace either, so a '
-                'field capture of this cannot be distinguished from a capture '
-                'where the watchdog was never armed at all');
+            reason: 'still nothing, and that is not the defect: a suspended '
+                'isolate runs no code at all. The question is what happens at '
+                'the first instant it runs again');
+
+        // The user opens the app. This is the checkpoint FB-66 added; it runs
+        // to completion before any timer gets a turn.
+        h.conn.onAppResumed();
+
+        expect(h.logs.notes.last, contains('woke 4132s into a 180s deadline'),
+            reason: '① the deadline was judged by comparing the wall clock '
+                'against the arm stamp — synchronously, inside the resume '
+                'call, with the overdue timer still sitting unrun');
+        expect(h.logs.notes.last, contains('(by resume)'),
+            reason: 'and the log says WHICH checkpoint reached the verdict, so '
+                'a capture can tell "the user came back" from "the OS finally '
+                'ran our timer"');
+        expect(h.ble.disconnectCalls, 0,
+            reason: '② a verdict reached at a thaw is held briefly first — see '
+                'the 10:10:38 test below for why');
+
+        async.elapse(ConnectionController.autoConnectThawGrace);
+
+        expect(h.conn.lastError, 'autoconnect_timeout',
+            reason: 'and then it converges: the UI gets the one signal it has '
+                'that the hand-off died');
+        expect(h.ble.disconnectCalls, 1,
+            reason: 'and the pending connect is cancelled');
+        expect(h.gaveUpLines, hasLength(1));
 
         h.dispose();
       });
     });
 
     test(
-        'DEFECT: thawing the isolate fires it once, 22.96× late, and it still '
-        'reports "180s"', () {
-      // WHAT THIS PINS: the give-up is not lost forever, it is deferred to
-      // whenever the OS next runs the isolate — and the message it then writes
-      // is `gave up after 180s`, because the string interpolates the CONSTANT
-      // and nothing measures the elapsed wall time.
+        '① the timer thawing late reaches the same verdict, once, and ③ it '
+        'reports the wait it actually measured', () {
+      // WHAT THIS PINS: the other thaw path. Sometimes nothing calls
+      // `onAppResumed` — the OS simply schedules the isolate again (delivering
+      // the pending connect is itself such a moment) and the overdue timer runs.
+      // That callback no longer trusts its own lateness: it recomputes against
+      // the stamp, sees 4,132 s where 180 were promised, and takes the thaw
+      // path rather than acting on the spot.
       //
-      // That second half is the part worth being angry about: the log line is
-      // the only instrument there is for measuring this defect in the field,
-      // and it is hard-coded to report the nominal value. Every capture of a
-      // backgrounded timeout says 180 s no matter whether the true figure was
-      // 270 s or 4,132 s. The 1.5×–23× range had to be reconstructed from
-      // SURROUNDING timestamps.
+      // "Exactly one" is kept from the characterization version and matters
+      // more now than it did then: there are two checkpoints in the code where
+      // there was one, and a resume sweep that double-reports would be a new
+      // bug. The grace timer is what serialises them.
       //
-      // AFTER THE FIX: keep the "exactly one" assertion — a resume sweep that
-      // double-reports would be a new bug — and change the two below to assert
-      // that the give-up lands promptly on resume and that the line states the
-      // OBSERVED interval (a wall-clock delta) rather than the constant.
+      // ③ is asserted here in its strongest form: the line must NOT say 180.
       fakeAsync((async) {
         final h = _Harness();
         Duration? firedAt;
@@ -324,26 +352,31 @@ void main() {
         // `elapse(Duration.zero)` runs everything already overdue, which is
         // what the first turn of the event loop after a resume does.
         async.elapse(Duration.zero);
+        expect(firedAt, isNull, reason: 'held for the grace, not dropped');
+        async.elapse(ConnectionController.autoConnectThawGrace);
 
-        expect(firedAt, _fieldFreeze,
-            reason: 'DEFECT: the 180 s deadline was honoured at t=4132 s. '
-                'A deadline that fires when the OS gets round to it is a '
-                'notification, not a deadline');
-        expect(firedAt!.inSeconds ~/ 180, 22,
-            reason: 'twenty-two full watchdog periods late — the worst '
-                'overshoot on record, and nothing in the code caps it');
+        expect(firedAt, _fieldFreeze + ConnectionController.autoConnectThawGrace,
+            reason: 'settled at the first opportunity plus the grace — the '
+                '4,132 s before it were not the app deciding to wait, they '
+                'were the app not existing');
         expect(h.conn.lastError, 'autoconnect_timeout');
         expect(h.ble.disconnectCalls, 1,
             reason: 'the pending connect is cancelled — an hour after the '
-                'moment that decision was supposed to be made');
+                'moment that decision was supposed to be made, which is the '
+                'part no in-process remedy can fix');
         expect(h.gaveUpLines, hasLength(1),
-            reason: 'exactly one episode is reported, late. A thaw must not '
+            reason: 'exactly one episode is reported. Two checkpoints must not '
                 'turn one missed deadline into several');
-        expect(h.gaveUpLines.single, contains('gave up after 180s'),
-            reason: 'DEFECT: the line interpolates '
-                '`autoConnectWatchdog.inSeconds`, so it reports the constant, '
-                'not the 4,132 s that actually elapsed. This is why no field '
-                'capture can measure the overshoot directly');
+        expect(h.gaveUpLines.single, contains('gave up after 4134s'),
+            reason: '③ the MEASURED wall wait. Before the fix this line '
+                'interpolated `autoConnectWatchdog.inSeconds` and said '
+                '`gave up after 180s` no matter what actually happened');
+        expect(h.gaveUpLines.single, isNot(contains('after 180s')),
+            reason: 'the nominal value may still appear as the deadline, but '
+                'never as the answer to "how long did it wait"');
+        expect(h.gaveUpLines.single, contains('deadline 180s'),
+            reason: 'both numbers, so one line states the promise and what was '
+                'actually delivered');
 
         h.dispose();
       });
@@ -449,9 +482,13 @@ void main() {
       // link that the OS re-established over an hour ago is still, as far as
       // the app is concerned, disconnected.
       //
-      // AFTER THE FIX: keep this. Any remedy that reports on resume must
-      // consult the live link state first, and this is the case that catches a
-      // remedy which reports before draining the events it arrived with.
+      // KEPT AFTER THE FIX, unchanged, for exactly the reason above: a remedy
+      // that reports on resume must not report before draining the events it
+      // arrived with, and this is the case that catches one that does. The
+      // ordering `fake_async` cannot express — overdue verdict first, platform
+      // `connected` second — is the field's 10:10:38 case, and it is covered by
+      // the test immediately below with the grace window instead of the
+      // microtask queue doing the work.
       fakeAsync((async) {
         final h = _Harness();
         h.armAfterHealthyDrop(async);
@@ -475,6 +512,114 @@ void main() {
         expect(h.ble.disconnectCalls, 0,
             reason: 'the recovered link is not dropped');
         expect(h.conn.lastError, isNull);
+
+        h.dispose();
+      });
+    });
+
+    test(
+        '② the 10:10:38 case: a late verdict does NOT cancel a `connected` that '
+        'lands 4 ms behind it', () {
+      // WHAT THIS PINS: acceptance criterion ②, against the exact field
+      // sequence that motivated it. `2026-08-12 10:10:38`, and it is the one
+      // concrete HARM in FB-66 — the rest is a user waiting longer than the
+      // screen implies:
+      //
+      //     link: disconnecting             ← the 502 s-late watchdog acting
+      //     link: connected (sub=502804ms)  ← 4 ms later, the hand-off landing
+      //     connection canceled
+      //
+      // The thing that thawed the isolate WAS the hand-off completing. So the
+      // watchdog cancelled the reconnection it was armed to protect, and it
+      // took 502 s to do it. `_onLinkState` cancelling the watchdog at
+      // `connected` cannot help here: at the instant the verdict runs, that
+      // event has not reached the isolate yet.
+      //
+      // The remedy is `autoConnectThawGrace` — a verdict reached at a thaw is
+      // held for two seconds and then re-asked. Two seconds is 500× the
+      // observed 4 ms gap and a rounding error against the 502 s already lost.
+      //
+      // Note the ordering here is the reverse of the test above: there the
+      // `connected` was already queued and won on the microtask rule, which
+      // proves nothing about a platform event that has not arrived yet. Here it
+      // is emitted AFTER the overdue callback has already run.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.armAfterHealthyDrop(async);
+
+        async.elapseBlocking(const Duration(milliseconds: 502801));
+
+        // Thaw. The overdue callback runs, finds itself 502 s late, and holds.
+        async.elapse(Duration.zero);
+        expect(h.ble.disconnectCalls, 0,
+            reason: 'this is the whole fix: the late verdict has NOT acted yet. '
+                'Before FB-66 the `_ble.disconnect()` happened right here, and '
+                'that is the `link: disconnecting` in the capture');
+        expect(h.conn.lastError, isNull);
+
+        // 4 ms later, the OS delivers the connection it has been holding.
+        h.ble.emitLink(BleLinkState.connected);
+        async.elapse(const Duration(milliseconds: 4));
+        expect(h.conn.linkState, BleLinkState.connected);
+
+        // Well past the point the held verdict would have acted.
+        async.elapse(ConnectionController.autoConnectThawGrace * 2);
+
+        expect(h.ble.disconnectCalls, 0,
+            reason: '② the recovered link is NOT dropped. `connection canceled` '
+                'must not appear in this sequence again');
+        expect(h.gaveUpLines, isEmpty,
+            reason: 'and no timeout is reported for a hand-off that succeeded');
+        expect(h.conn.lastError, isNull,
+            reason: 'nor does the UI show a failure over a live link');
+        expect(h.conn.linkState, BleLinkState.connected,
+            reason: 'the link survives — what happens to a `connected` that '
+                'never reaches `ready` is FB-51/FB-52 territory, bounded by '
+                '`isSetupStalled`, and deliberately not this watchdog\'s job');
+
+        h.dispose();
+      });
+    });
+
+    test(
+        '③ the give-up line reports the wait that was measured — the 935.6 s '
+        'capture that said "180s"', () {
+      // WHAT THIS PINS: acceptance criterion ③ on its own, on the capture that
+      // made FB-66 so hard to find. The only instrument this failure has in the
+      // field is that one log line, and it was hard-coded to the answer it was
+      // supposed to be measuring: `autoConnectWatchdog.inSeconds`. Every
+      // backgrounded timeout in every capture said 180 s — 270 s, 502 s and
+      // 935 s waits all reported identically — so the 1.5×–23× range had to be
+      // reconstructed from SURROUNDING timestamps, and the defect was invisible
+      // to anyone grepping for it.
+      //
+      // A number that is always the same is not a measurement. This asserts the
+      // line carries a real one, and that the real one is not silently the
+      // constant.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.armAfterHealthyDrop(async);
+
+        async.elapseBlocking(_fieldFreeze936);
+        h.conn.onAppResumed();
+        async.elapse(ConnectionController.autoConnectThawGrace);
+
+        expect(h.gaveUpLines, hasLength(1));
+        final line = h.gaveUpLines.single;
+        expect(line, contains('gave up after 938s'),
+            reason: '936 s frozen plus the 2 s grace, and every second of it '
+                'was real waiting');
+        expect(line, isNot(contains('after 180s')),
+            reason: 'the exact string a capture of this used to contain');
+        expect(
+            RegExp(r'gave up after (\d+)s')
+                .firstMatch(line)!
+                .group(1),
+            (_fieldFreeze936 + ConnectionController.autoConnectThawGrace)
+                .inSeconds
+                .toString(),
+            reason: 'and it is the wall-clock delta, not a rounding of the '
+                'constant — parsed the way a field triage would parse it');
 
         h.dispose();
       });
@@ -608,27 +753,42 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  group('the gap this file exists to close', () {
+  group('what the watchdog now promises', () {
     test(
-        'the watchdog is a wall-clock promise implemented with an event-loop '
-        'timer, and 180 s is only its lower bound', () {
+        'the deadline is 180 s of WALL time, and the bound on the verdict is '
+        '"the first moment the app runs, plus the thaw grace"', () {
       // A summary assertion, so the point survives even if someone reads only
       // one test. `autoConnectWatchdog`'s doc comment argues 180 s is
       // "one comfortable order above the ladder and still inside what somebody
-      // will sit through" — a claim about the USER'S wait. The implementation
-      // can only bound the ISOLATE'S running time. On a foregrounded phone the
-      // two coincide, which is why this went unnoticed; on a backgrounded one
-      // they do not, and the observed ratio ranges from 1.5× to 22.96×.
+      // will sit through" — a claim about the USER'S wait. A `Timer` alone
+      // could only bound the ISOLATE'S running time, and on a backgrounded
+      // iPhone those diverged by a measured 1.5× to 22.96×.
       //
-      // AFTER THE FIX: replace with the real bound the remedy provides.
+      // ⚠️ WHAT FB-66 DID AND DID NOT BUY. The DEADLINE is now honest: 180 s of
+      // wall clock, recomputed from a stamp, so no amount of suspension can
+      // stretch it. The VERDICT still cannot be delivered while the app is not
+      // running — no in-process remedy can change that, and a give-up that
+      // nobody is there to read is worth nothing anyway. What is bounded is the
+      // delay from the app running again to the verdict landing: the resume
+      // checkpoint plus `autoConnectThawGrace`. Anything that wants the verdict
+      // to arrive DURING the suspension needs the OS (a background task, or
+      // CoreBluetooth state restoration — see FB-67), and neither is
+      // implemented.
       expect(ConnectionController.autoConnectWatchdog,
           const Duration(seconds: 180));
+      expect(ConnectionController.autoConnectThawGrace,
+          lessThan(ConnectionController.autoConnectWatchdog * 0.05),
+          reason: 'the grace is a rounding error against the deadline, so it '
+              'can protect a landing hand-off without changing what 180 s '
+              'means');
+      expect(ConnectionController.autoConnectPunctualitySlack,
+          lessThan(ConnectionController.autoConnectThawGrace),
+          reason: 'ordinary timer jitter must not be mistaken for a thaw, and '
+              'a thaw must not be mistaken for jitter');
       const worstObserved = _fieldFreeze;
-      expect(worstObserved.inSeconds / 180, closeTo(22.96, 0.01));
-      expect(worstObserved, greaterThan(ConnectionController.autoConnectWatchdog),
-          reason: 'the constant names a minimum, and the code offers no '
-              'maximum. Any user-facing copy or doc line that presents 180 s '
-              'as "how long the app waits" is wrong for the background case');
+      expect(worstObserved.inSeconds / 180, closeTo(22.96, 0.01),
+          reason: 'the worst overshoot the field ever recorded, kept as the '
+              'yardstick the fix is measured against');
     });
   });
 }

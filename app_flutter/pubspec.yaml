@@ -44,6 +44,14 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # A substitutable wall clock (FB-66). `connection_controller` measures the
+  # autoConnect deadline against `clock.now()` instead of a `Timer`, because a
+  # Timer measures event-loop time and iOS suspends the event loop. Declared
+  # directly (it was already here transitively via flutter_test) because `lib/`
+  # imports it: `fake_async` and `testWidgets`' binding both substitute this
+  # clock, which is what makes a frozen isolate expressible in a test.
+  clock: ^1.1.1
+
   # BLE transport
   flutter_blue_plus: ^1.32.0
   # Local storage (history, saved devices, settings, diagnostic log)
