@@ -165,7 +165,38 @@ class Db {
   /// today. Copying the saved columns across would look free and would not be —
   /// it would assert that facts were observed under ids we never observed them
   /// under, and on iOS those ids may since have been rebound.
-  static const int schemaVersion = 15;
+  /// v16: the new table `autoconnect_arm` (design 0060 / FB-67) — the ONE
+  /// armed iOS autoConnect hand-off, written so it outlives the process that
+  /// armed it. Everything the watchdog knows about an armed hand-off lives in
+  /// `ConnectionController`'s memory (`_autoConnectArmedAt` /
+  /// `_autoConnectArmedId`), and iOS reclaims a suspended app without warning:
+  /// the deadline is not deferred, it is gone, and the next launch has no input
+  /// from which it could learn that a hand-off was ever in flight. FB-67
+  /// measured 29 such cold returns on one phone in eight days.
+  ///
+  /// A SEPARATE table rather than columns on `settings`, and the reasoning is
+  /// design 0060 §4: `settings` holds what the USER chose, this holds what the
+  /// LAST RUN was doing, and `SettingsRepo.resetToDefaults()` would wipe the
+  /// second along with the first. Not on `saved_devices` either — armed is a
+  /// whole-app singular state (there is one `_desiredDeviceId`), so a per-device
+  /// row would make "two units armed at once" representable, and an armed unit
+  /// need not be saved at all.
+  ///
+  ///   autoconnect_arm.id          INTEGER PRIMARY KEY CHECK (id = 1) — the
+  ///     same fixed-single-row shape as `settings`, so the invalid state above
+  ///     cannot be written even by mistake.
+  ///   autoconnect_arm.device_id   TEXT NOT NULL — which unit was being waited
+  ///     for. A row cannot exist without one; that is the whole content.
+  ///   autoconnect_arm.armed_at    INTEGER NOT NULL — `clock.now()` at arm
+  ///     time, the SAME clock the FB-66 watchdog judges its deadline against.
+  ///   autoconnect_arm.app_build   TEXT, nullable — which build armed it, so an
+  ///     upgrade performed while armed is legible rather than silently dropped.
+  ///   autoconnect_arm.session_id  INTEGER, nullable — ties the reconciliation
+  ///     line back to the log section of the connection it belonged to.
+  ///
+  /// The table holds 0 or 1 rows and is deleted from on every ordinary
+  /// convergence, so it never grows.
+  static const int schemaVersion = 16;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -180,8 +211,18 @@ class Db {
   /// to it: this table serves the READ-BACK of past records only.
   static const String tableDeviceFacts = 'device_facts';
 
+  /// design 0060 (FB-67). The armed iOS autoConnect hand-off, persisted so it
+  /// survives the process being reclaimed. Written by
+  /// `ConnectionController._armAutoConnect` and deleted by
+  /// `_cancelAutoConnectWatchdog` — those two and nothing else.
+  static const String tableAutoConnectArm = 'autoconnect_arm';
+
   /// Fixed single-row id for the settings table.
   static const int settingsRowId = 1;
+
+  /// Fixed single-row id for [tableAutoConnectArm] — "armed" is one state for
+  /// the whole app, not one per device. See [schemaVersion] v16.
+  static const int autoConnectArmRowId = 1;
 }
 
 /// Thrown when the stored schema is NEWER than this build understands — i.e.
@@ -535,7 +576,37 @@ class AppDatabase {
         await db.execute(stmt);
       }
     }
+    if (from < 16) {
+      // design 0060 (FB-67): somewhere for an armed autoConnect to survive the
+      // process being reclaimed. A NEW table, so the upgrade adds capability
+      // and touches no existing column, row or query.
+      //
+      // Deliberately EMPTY afterwards, and here that is not even a discipline
+      // question: an arm is a statement about a hand-off in flight RIGHT NOW,
+      // and the process that could have been holding one is the one being
+      // upgraded away. There is nothing to backfill it from and nothing it
+      // could truthfully say.
+      for (final stmt in _autoConnectArmStatements) {
+        await db.execute(stmt);
+      }
+    }
   }
+
+  /// design 0060's table, written ONCE and used by both [_createStatements] and
+  /// the v16 branch of [_onUpgrade] — see the note on [_deviceFactsStatements]
+  /// for why a second copy of a `CREATE TABLE` is how two installs end up with
+  /// schemas that quietly differ.
+  static const List<String> _autoConnectArmStatements = <String>[
+    '''
+    CREATE TABLE ${Db.tableAutoConnectArm} (
+      id INTEGER PRIMARY KEY CHECK (id = ${Db.autoConnectArmRowId}),
+      device_id TEXT NOT NULL,
+      armed_at INTEGER NOT NULL,
+      app_build TEXT,
+      session_id INTEGER
+    )
+    ''',
+  ];
 
   /// design 0057's table, written ONCE and used by both [_createStatements] and
   /// the v15 branch of [_onUpgrade]. Two copies of a `CREATE TABLE` is how a
@@ -647,5 +718,6 @@ class AppDatabase {
     'CREATE INDEX idx_diag_log_ts ON ${Db.tableDiagLog} (timestamp)',
     'CREATE INDEX idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
     ..._deviceFactsStatements,
+    ..._autoConnectArmStatements,
   ];
 }

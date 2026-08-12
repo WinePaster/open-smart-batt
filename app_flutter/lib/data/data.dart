@@ -20,6 +20,7 @@ library;
 
 export 'ack_marker.dart';
 export 'app_database.dart';
+export 'auto_connect_arm_repo.dart';
 export 'pending_writes.dart';
 export 'history_repo.dart';
 export 'device_repo.dart';

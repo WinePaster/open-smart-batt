@@ -554,8 +554,13 @@ void main() {
       // `device_facts` TABLE (design 0057) — the first new table since the
       // original schema, and a pure addition: no existing column moves, so
       // everything asserted above still reads back identically.
+      // v16 added the `autoconnect_arm` TABLE (design 0060 / FB-67) — the same
+      // shape of change as v15 and for the same kind of reason: a new fact that
+      // has to survive, added without touching anything that already exists, so
+      // every assertion above is unaffected. Its own migration is checked in
+      // `autoconnect_arm_persistence_test.dart`, fresh schema against upgraded.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 15);
+      expect(Db.schemaVersion, 16);
     });
   });
 }
