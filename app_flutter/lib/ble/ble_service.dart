@@ -63,9 +63,16 @@ import 'notify_keepalive_pacer.dart';
 ///   * [keepAliveFailures] / [keepAliveWriteFailed] — "this link's writes are
 ///     not getting out". Shared, one unit's silence is reported as another's.
 ///
-/// Deliberately private and deliberately not concurrent: today [BleService]
-/// creates at most one of these at a time. This is the shape multi-device needs,
-/// not multi-device itself.
+/// Deliberately private. This is the shape multi-device needs, not multi-device
+/// itself.
+///
+/// ⚠️ It used to say "and deliberately not concurrent: today [BleService]
+/// creates at most one of these at a time". That is not true, and the exception
+/// is not theoretical — see the note on [BleService] and
+/// `test/double_gatt_setup_test.dart`. Two of these can be live on ONE link at
+/// once, each with its own [reassembler], [decoder], keep-alive schedule and
+/// write histogram, which is exactly the doubling the per-link fields were
+/// introduced to prevent between DIFFERENT units.
 class _LinkState {
   _LinkState({
     required this.deviceId,
@@ -178,11 +185,44 @@ enum LinkAction {
 /// previous link down. Not safe to share across isolates.
 ///
 /// Per-link state lives in [_LinkState], keyed by device id, and [_links] holds
-/// **0 or 1** entry — `connect()` still awaits `disconnect()` first, and no
-/// caller can ask for a second concurrent link. The keying is structural
-/// groundwork, not a capability: it is what stops the singleton assumptions
-/// listed on [_LinkState] from having to be found again later, one silent
-/// regression at a time.
+/// **0 or 1** entry. The keying is structural groundwork, not a capability: it
+/// is what stops the singleton assumptions listed on [_LinkState] from having
+/// to be found again later, one silent regression at a time.
+///
+/// ⚠️ THE MAP HOLDING ONE ENTRY IS NOT THE SAME AS ONE LINK BEING LIVE, and
+/// this doc used to conflate them: it said "`connect()` still awaits
+/// `disconnect()` first, and no caller can ask for a second concurrent link".
+/// The first clause is true and the second does not follow from it. What
+/// actually holds, and what does not:
+///
+///   * ✅ Two `connected` events on ONE link cannot start two setups.
+///     [_setupConnection] writes [_LinkState.settingUp] before its first
+///     `await`, and refuses again once `_state` is [BleLinkState.ready].
+///   * ✅ A `connect()` awaited to completion before the next one really does
+///     leave one link: the second call's `disconnect()` tears the first down,
+///     cancelling its subscriptions.
+///   * ❌ Two `connect()` calls for the same id, where the second arrives
+///     while the first is still inside its opening `await disconnect()`, leave
+///     TWO live links. Both get past `disconnect()` — which only ever looks at
+///     [_current], and only clears the handle AFTER the platform answers — and
+///     the later `_links.clear()` then drops the earlier entry without
+///     cancelling the `connectionState` and notify subscriptions it owns. The
+///     orphan keeps its own reassembler, decoder, keep-alive timer, tick
+///     counter and write histogram.
+///
+/// The window for the third case is as long as a platform disconnect takes,
+/// not a scheduling hair: a field capture (batch 2026.08.13/001) holds two
+/// connect requests 1.9 s apart followed by eighteen minutes in which one
+/// connection ran two GATT setups, wrote every inbound chunk to the log twice,
+/// fed two decoders into one telemetry stream (CSV `samples` 2.48x that unit's
+/// own baseline) and closed with two keep-alive write histograms carrying
+/// different totals. Nothing above the transport could see it, because every
+/// single-connection getter here reports the one link in [_links].
+///
+/// `test/double_gatt_setup_test.dart` pins all of this down, including the
+/// reproduction. It is deliberately a characterization test and not a fix —
+/// what `connect()` should do when it is called twice is a decision, not a
+/// detail.
 class BleService {
   BleService({
     CommandBuilder commands = const CommandBuilder(),
@@ -207,6 +247,12 @@ class BleService {
   /// to be able to invalidate a setup that is mid-await even after the plugin
   /// handle was cleared — precisely the window the FB-39 guard exists for. The
   /// entry is dropped by the next `connect()` or by `dispose()`.
+  ///
+  /// ⚠️ "Dropped" and "torn down" are different things, and the difference is
+  /// the fault documented on the class: `_links.clear()` in [connect] removes
+  /// the entry without cancelling anything the [_LinkState] owns, so a link
+  /// that is dropped while still holding live subscriptions keeps running with
+  /// nothing pointing at it.
   final Map<String, _LinkState> _links = <String, _LinkState>{};
 
   /// The link the single-connection getters report on. Survives teardown for
