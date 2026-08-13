@@ -586,6 +586,35 @@ class BleService {
   Stream<BluetoothAdapterState> get adapterState =>
       FlutterBluePlus.adapterState;
 
+  /// Opt into CoreBluetooth state restoration (design 0060 §3.8 / FB-67).
+  ///
+  /// 🔴 CALL SITE IS LOAD-BEARING, and there is exactly one that works:
+  /// `bootstrap()`, after `WidgetsFlutterBinding.ensureInitialized()` and
+  /// BEFORE `AppServices.create`. The plugin passes
+  /// `CBCentralManagerOptionRestoreIdentifierKey` only at the moment it
+  /// CONSTRUCTS the `CBCentralManager`, behind a one-shot
+  /// `if (self.centralManager == nil)` guard, and it constructs it lazily on the
+  /// first platform call that is not `setLogLevel`/`setOptions`. Ours is
+  /// `ConnectionController`'s constructor subscribing to [adapterState], which
+  /// makes `getAdapterState` — so anything after that point is silently a no-op.
+  /// It is also why this must NOT move into `AppServices.create`: 37 test suites
+  /// build one, and none of them have a platform to answer.
+  ///
+  /// That laziness is also what makes restoration work at all after a background
+  /// wake: `willRestoreState:` cannot be delivered until the manager exists, and
+  /// the plugin hooks nothing into app launch — so Dart must touch FBP on every
+  /// launch. It already does, on the same line as above.
+  ///
+  /// BOTH named arguments are passed explicitly. They both default, so passing
+  /// one resets the other; `showPowerAlert: true` is the plugin's own default
+  /// and is written out so "we did not change that one" is visible in source
+  /// rather than inferred from an absence.
+  ///
+  /// Android is unaffected — the plugin documents the option as iOS/macOS only —
+  /// so there is deliberately no platform branch to keep in step.
+  static Future<void> enableStateRestoration() =>
+      FlutterBluePlus.setOptions(showPowerAlert: true, restoreState: true);
+
   /// Current link state (latest value of [linkState]).
   BleLinkState get currentState => _state;
 
