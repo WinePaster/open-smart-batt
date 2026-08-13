@@ -1,5 +1,17 @@
 // Two GATT setups on one link — the invariant `BleService` claims, tested.
 //
+// ⚠️ THIS FILE CHANGED MEANING ON 2026-08-14. ⚠️
+//
+// It began (2026-08-13) as a characterization test. G2's assertions pinned the
+// DEFECT: a green run there meant "two concurrent `connect()` calls still leave
+// two live links, exactly as documented". The defect has now been FIXED, and
+// **G2 has been inverted** — it asserts the remedy, one former symptom at a
+// time, so each field observation below has a test that says it can no longer
+// happen. G1 is untouched: those guards always held, and they still do.
+//
+// The original description is kept verbatim below, because a test that pins a
+// remedy is unreadable without the thing it remedies.
+//
 // WHAT THIS IS ABOUT. A field capture (batch 2026.08.13/001) holds eighteen
 // minutes in which ONE connection to ONE unit behaved as if it were two:
 //
@@ -18,23 +30,42 @@
 // `ble_service.dart` said this could not happen: "`_links` holds 0 or 1 entry —
 // `connect()` still awaits `disconnect()` first, and no caller can ask for a
 // second concurrent link". The map really does hold one entry. The claim that
-// does not follow is the behavioural one, and this file is where it is decided
+// did not follow is the behavioural one, and this file is where it was decided
 // rather than argued.
 //
-// WHAT IS PINNED HERE.
+// THE DEFECT, as G2 pinned it on 2026-08-13: two `connect()` calls for the same
+// id, issued before either had created its link, left TWO live `_LinkState`s.
+// `connect()` opened with a bare `_links.clear()`, which dropped the first
+// entry without cancelling anything it owned — `connectionState` subscription,
+// notify subscription, keep-alive timer, reassembler, decoder, tick counter,
+// write histogram — and `disconnect()` only ever tore down `_current`, which at
+// the moment the second call ran was still null. Every one of the five field
+// symptoms above followed from that one orphan.
 //
-//   G1  the guards that DO hold: a second `connected` on a link already
+// THE FIX (owner's ruling, option B): a link leaves `_links` only through
+// `_dropAllLinks`, which tears down what it removes; `_installLink` is the only
+// way in, and it goes through `_dropAllLinks` first. The invariant is
+// **dropped ⇒ torn down**, which holds however many `connect()` calls race and
+// whatever device each of them wants. The alternative that was rejected —
+// making a second in-flight `connect()` a no-op — would have been wrong for the
+// case where the second call names a DIFFERENT unit.
+//
+// WHAT IS PINNED HERE NOW.
+//
+//   G1  the guards that always held: a second `connected` on a link already
 //       setting up, and a second `connected` after `ready`, both start nothing.
 //       A sequential second `connect()` really does tear the first link down.
-//   G2  the hole: two `connect()` calls for the same id, issued before either
-//       has created its link, leave TWO live `_LinkState`s. `_links.clear()`
-//       drops the first entry without cancelling anything it owns, and
-//       `disconnect()` only ever tears down `_current`. Every one of the five
-//       field symptoms above follows, and is asserted here one by one.
+//       UNCHANGED — these were green before the fix and are green after it.
+//   G2  the hole, closed. Two concurrent `connect()` calls leave ONE live link:
+//       one GATT setup, one decision per radio event, one log row per inbound
+//       chunk, one keep-alive schedule, one write histogram. Each test names
+//       the field symptom it now denies.
 //
-// ⚠️ These are CHARACTERIZATION tests for G2: green means the defect is still
-// present. They are deliberately not a fix — the repair belongs to whoever owns
-// the decision about what `connect()` should do when it is called twice.
+// ⚠️ INVERTED TESTS ROT INTO TAUTOLOGIES if they only count downwards, so every
+// G2 test asserts BOTH halves: exactly one of the thing that used to be two,
+// AND that the surviving link actually works (reaches `ready`, logs the chunk,
+// writes its tick, reports its histogram). "Nothing happened at all" fails here
+// just as loudly as "it happened twice".
 //
 // HOW IT IS DRIVEN. `BleService` talks to flutter_blue_plus, so the fake goes
 // in one layer lower: `FlutterBluePlusPlatform.instance` is settable, and every
@@ -98,6 +129,15 @@ final class _FakeRadio extends FlutterBluePlusPlatform {
 
   int discoverCalls = 0;
   int notifyEnables = 0;
+
+  /// How many times the app asked the PLATFORM to drop a connection.
+  ///
+  /// The instrument for the trap in the fix: the displaced link and the link
+  /// replacing it are usually the same physical connection, so a teardown that
+  /// reached for the radio would drop the connection the new link is being
+  /// built on. Counting the calls is the only way to assert that it does not.
+  int disconnectCalls = 0;
+
   final List<List<int>> writes = <List<int>>[];
 
   void reset() {
@@ -105,6 +145,7 @@ final class _FakeRadio extends FlutterBluePlusPlatform {
     disconnectGate = null;
     discoverCalls = 0;
     notifyEnables = 0;
+    disconnectCalls = 0;
     writes.clear();
   }
 
@@ -151,6 +192,7 @@ final class _FakeRadio extends FlutterBluePlusPlatform {
 
   @override
   Future<bool> disconnect(BmDisconnectRequest request) async {
+    disconnectCalls++;
     await disconnectGate?.future;
     return false;
   }
@@ -321,9 +363,16 @@ class _Rig {
   Future<void> settle() => pumpEventQueue(times: 60);
 
   /// Ends every test the same way: the peripheral goes away, which is what
-  /// tears down whatever links are still live (including any the service has
-  /// lost track of) and returns the plugin's static connection-state cache to
-  /// `disconnected` for the next test.
+  /// tears down whatever links are still live and returns the plugin's static
+  /// connection-state cache to `disconnected` for the next test.
+  ///
+  /// It used to say "including any the service has lost track of", and that
+  /// clause was doing real work while the defect was live: a dropped-but-live
+  /// link had no owner, and only a radio event could still reach it. There are
+  /// no such links now, which is the point of the fix — but the shutdown is
+  /// still driven from the radio rather than from `dispose()` alone, because a
+  /// teardown reached only through the service's own bookkeeping cannot show
+  /// that there is nothing outside it.
   Future<void> shutdown() async {
     radio.reportDisconnected(deviceId);
     await settle();
@@ -351,6 +400,19 @@ void main() {
   });
 
   setUp(radio.reset);
+
+  // Put the plugin's STATIC connection-state cache back to `disconnected`.
+  //
+  // `_Rig.shutdown` already does this on the happy path, but a test that fails
+  // before it gets there leaves `connected` in `FlutterBluePlus`'s cache — and
+  // the next test's first `connectionState` value is READ from that cache and
+  // replayed into the brand-new subscription. One failure would then show up in
+  // an unrelated test as an extra `decision=setup`, which is exactly the shape
+  // of evidence these tests count. A red run has to stay readable.
+  tearDown(() async {
+    radio.reportDisconnected(_Rig.deviceId);
+    await pumpEventQueue(times: 10);
+  });
 
   // -------------------------------------------------------------------------
   group('G1 — the guards that do hold', () {
@@ -424,18 +486,22 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  group('G2 — two concurrent connect() calls leave two live links', () {
+  group('G2 — two concurrent connect() calls now leave ONE live link', () {
     /// Both calls issued in the same turn, before either has created its link.
     ///
-    /// The two are then in lockstep across the identical prelude
-    /// (`_invalidateAllLinks(); await disconnect(); await stopScan();`,
-    /// ble_service.dart:772-774), so call 1 creates its `_LinkState` and
-    /// subscribes to `connectionState` — and only THEN does call 2 reach
-    /// `_links.clear()` (:780). That line drops the entry; it cancels nothing.
-    /// `disconnect()` (:1162-1164) would have, but it only ever looks at
-    /// `_current`, and at the moment call 2 ran it there was no link at all.
+    /// This is the reproduction, unchanged. The two calls run in lockstep
+    /// across the identical prelude (`_invalidateAllLinks(); await
+    /// disconnect(); await stopScan();`), so call 1 creates its `_LinkState`
+    /// and subscribes to `connectionState` — and only THEN does call 2 reach
+    /// the point where it takes the map over. `disconnect()` cannot help: it
+    /// only ever looks at `_current`, and at the moment call 2 ran there was no
+    /// link at all.
     ///
-    /// The result is one `_links` entry, as advertised, and two live links.
+    /// What changed is that last step. Call 2 now displaces call 1's link
+    /// through `_installLink`/`_dropAllLinks`, which TEARS IT DOWN — cancelling
+    /// its `connectionState` and notify subscriptions, stopping its keep-alive
+    /// — instead of merely dropping it from the map. One `_links` entry, as
+    /// always, and now one live link to go with it.
     Future<_Rig> twoInFlightConnects() async {
       final rig = _Rig(radio);
       final first = rig.ble.connect(_Rig.deviceId);
@@ -446,67 +512,75 @@ void main() {
       return rig;
     }
 
-    test('symptom 1 — the GATT setup runs twice on one connection', () async {
+    test('symptom 1 — the GATT setup runs ONCE on one connection', () async {
       final rig = await twoInFlightConnects();
-      // The capture: `GATT dump: 1 service(s)` at 18:04:35.974 and again at
-      // .976, one connection, 2 ms apart — the only such pair in 28 dumps.
-      expect(radio.discoverCalls, 2);
-      expect(radio.notifyEnables, 2,
-          reason: 'each setup enables notifications for itself');
-      expect(rig.countNotes('GATT dump:'), 2);
+      // Denies: `GATT dump: 1 service(s)` at 18:04:35.974 and again at .976,
+      // one connection, 2 ms apart — the only such pair in 28 dumps.
+      expect(radio.discoverCalls, 1);
+      expect(radio.notifyEnables, 1,
+          reason: 'one setup, so notifications are enabled once');
+      expect(rig.countNotes('GATT dump:'), 1);
+      // …and that one setup is a REAL one. Without this line a `connect()`
+      // that quietly did nothing at all would satisfy every count above.
+      expect(rig.ble.currentState, BleLinkState.ready);
       await rig.shutdown();
     });
 
-    test('symptom 2 — one connection-state event is decided on twice',
-        () async {
+    test('symptom 2 — one connection-state event is decided on ONCE', () async {
       final rig = await twoInFlightConnects();
-      // The capture: two `conn-state: connected reason=null sub=129ms
+      // Denies: two `conn-state: connected reason=null sub=129ms
       // decision=setup` lines at the same millisecond, with the SAME
       // subscription age — two subscriptions created in the same millisecond,
-      // both handed the same radio event.
+      // both handed the same radio event. The displaced link's subscription is
+      // cancelled as it leaves the map, so there is only one left to hand
+      // anything to.
       final setups = rig.diagnostics
           .where((d) => d.startsWith('conn-state: connected'))
           .where((d) => d.endsWith('decision=setup'))
           .length;
-      expect(setups, 2);
+      expect(setups, 1, reason: 'one surviving subscription, one decision');
       await rig.shutdown();
     });
 
-    test('symptom 3 — every inbound chunk is processed twice', () async {
+    test('symptom 3 — each inbound chunk is processed exactly ONCE', () async {
       final rig = await twoInFlightConnects();
       final before = rig.rxEvents;
       radio.notify(_Rig.deviceId, const [0xB8, 0x01, 0x02, 0x03]);
       await rig.settle();
-      // The capture: 17,030 consecutive RX pairs, byte for byte identical,
-      // across 19 minute buckets.
-      expect(rig.rxEvents - before, 2,
-          reason: 'two notify subscriptions, two _onNotify calls, two log '
-              'rows for one chunk on the wire');
+      // Denies: 17,030 consecutive RX pairs, byte for byte identical, across
+      // 19 minute buckets. Exactly one, not "at most one" — cancelling the
+      // SURVIVING link's notify subscription by mistake would otherwise read
+      // as a fix here.
+      expect(rig.rxEvents - before, 1,
+          reason: 'one notify subscription, one _onNotify call, one log row '
+              'for one chunk on the wire');
       await rig.shutdown();
     });
 
-    test('symptom 4 — two keep-alive loops write to the same unit', () async {
+    test('symptom 4 — ONE keep-alive schedule writes to the unit', () async {
       final rig = await twoInFlightConnects();
       // `_startKeepAlive` ticks immediately before arming its Timer, so the
-      // tick-1 `!#` is observable without waiting out a real second.
+      // tick-1 `!#` is observable without waiting out a real second. Two live
+      // links meant two tick counters, each starting at 1, hence two `!#`.
       const extendedPoll = [0x21, 0x23];
       final firstTicks =
           radio.writes.where((w) => _sameBytes(w, extendedPoll)).length;
-      expect(firstTicks, 2,
-          reason: 'two independent tick counters, each starting at 1');
-      expect(rig.txEvents, greaterThanOrEqualTo(2));
+      expect(firstTicks, 1, reason: 'one tick counter, one tick-1 poll');
+      expect(rig.txEvents, 1,
+          reason: 'and the survivor really is polling — a link whose '
+              'keep-alive never armed would also show no duplicate');
       await rig.shutdown();
     });
 
-    test('symptom 5 — teardown reports two independent write histograms',
-        () async {
+    test('symptom 5 — teardown reports ONE write histogram', () async {
       // THE DECISIVE ONE. From the capture, at a single timestamp:
       //   keep-alive write ms: n=1075 avg=87  max=222
       //   keep-alive write ms: n=1078 avg=110 max=609
       // Two totals that had each been accumulating for eighteen minutes. A
       // single link cannot produce that line twice with two different counts:
-      // `_emitWriteStats` short-circuits on `writeOkCount == writeStatsReported`
-      // (ble_service.dart:1195-1198), so a second call on ONE link is silent.
+      // `_emitWriteStats` short-circuits on `writeOkCount == writeStatsReported`,
+      // so a second call on ONE link is silent. That makes the count of these
+      // lines a direct census of live links — and the census is now one.
       final rig = await twoInFlightConnects();
       final before = rig.countNotes('keep-alive write ms:');
       expect(before, 0, reason: 'nothing has torn down yet');
@@ -514,16 +588,39 @@ void main() {
       radio.reportDisconnected(_Rig.deviceId);
       await rig.settle();
 
-      expect(rig.countNotes('keep-alive write ms:'), 2,
-          reason: 'one histogram per live link — this is the field evidence '
-              'that no amount of map-cardinality reasoning explains away');
-      // …and the same doubling on the way out, which the capture also shows.
+      expect(rig.countNotes('keep-alive write ms:'), 1,
+          reason: 'one live link, one write counter, one histogram — and it '
+              'is emitted at all, so the survivor had really been writing');
+      // …and one decision on the way out, where the capture showed two.
       expect(
           rig.diagnostics
               .where((d) => d.startsWith('conn-state: disconnected'))
               .where((d) => d.endsWith('decision=teardown'))
               .length,
-          2);
+          1);
+      await rig.shutdown();
+    });
+
+    test('displacing a link never touches the radio', () async {
+      // THE TRAP IN THE FIX, pinned on its own because it is the one way this
+      // repair could have made things worse. The displaced link and the link
+      // replacing it are THE SAME PHYSICAL CONNECTION here — that is what "two
+      // `connect()` calls for one id" means. So the teardown that closes the
+      // hole has to be purely local: cancel this app's subscriptions and
+      // timers, ask the platform for nothing. A `disconnect` on that path
+      // would drop the connection the new link is being built on, trading
+      // doubled data for a link that dies whenever the user taps twice.
+      final rig = await twoInFlightConnects();
+      expect(radio.disconnectCalls, 0,
+          reason: 'nothing on the displacement path may reach the radio');
+
+      // …and the connection is genuinely still usable, which a call count of
+      // zero cannot show on its own.
+      expect(rig.ble.currentState, BleLinkState.ready);
+      final before = rig.rxEvents;
+      radio.notify(_Rig.deviceId, const [0xB8, 0x07]);
+      await rig.settle();
+      expect(rig.rxEvents - before, 1, reason: 'the survivor still receives');
       await rig.shutdown();
     });
 
@@ -542,12 +639,15 @@ void main() {
       // arrives, reads the SAME `_current` — whose handle call 1 has not
       // cleared yet, because `_teardown` runs only after the await returns —
       // and parks behind it on the plugin's `"disconnect"` mutex. When the
-      // platform finally answers, the two resume nose to tail, and call 2's
-      // `_links.clear()` lands after call 1 has already built its link.
+      // platform finally answers, the two resume nose to tail, and call 2
+      // takes the map over after call 1 has already built its link.
       //
       // So the precondition is not "two taps in the same millisecond". It is
       // "a second connect arrives while the first is still tearing the old
-      // link down" — anywhere in a window as long as the platform takes.
+      // link down" — anywhere in a window as long as the platform takes. This
+      // test is kept separate from the same-turn one because THIS is the shape
+      // the field capture had: a fix that only closed the tidy case would have
+      // shipped the bug.
       final rig = _Rig(radio);
       await rig.ble.connect(_Rig.deviceId);
       radio.reportConnected(_Rig.deviceId);
@@ -566,29 +666,56 @@ void main() {
       radio.reportConnected(_Rig.deviceId);
       await rig.settle();
 
+      // ONE setup completes on the new connection, where it used to be two.
+      //
+      // ⚠️ `discoverCalls` is deliberately NOT the measure here, and the reason
+      // is worth writing down. In this scenario the platform still considers
+      // itself connected (the old link never reported a drop), so the value
+      // flutter_blue_plus replays into each brand-new `connectionState`
+      // subscription is `connected` — and that replay starts a GATT setup
+      // BEFORE the losing link is displaced. Its `discoverServices` call is
+      // therefore already on the wire and cannot be recalled; what the fix
+      // guarantees is that the loser abandons at the epoch checkpoint that
+      // follows discovery, so it never dumps the table, never enables
+      // notifications, never subscribes and never arms a keep-alive. The three
+      // counts below are the three places that abandonment is visible.
       expect(radio.discoverCalls, 3,
-          reason: 'the old link once, then two setups on the new connection');
+          reason: 'the old link, plus one discovery per link on the new '
+              'connection — the loser had already asked before it was '
+              'displaced, and the epoch check is what discards the answer');
+      expect(rig.countNotes('GATT dump:'), 2,
+          reason: 'the old link once, then ONE completed setup — this was the '
+              'field symptom, and it is the assertion that was 3 before');
+      expect(radio.notifyEnables, 2,
+          reason: 'the abandoned setup never reaches its CCCD write');
+      expect(rig.ble.currentState, BleLinkState.ready);
       final before = rig.rxEvents;
       radio.notify(_Rig.deviceId, const [0xB8, 0x09]);
       await rig.settle();
-      expect(rig.rxEvents - before, 2);
+      expect(rig.rxEvents - before, 1);
 
+      // Delta, not total: the OLD link flushed its own histogram when it was
+      // torn down inside the first connect(), and that one is legitimate. What
+      // this teardown may add is exactly one more.
+      final histogramsBefore = rig.countNotes('keep-alive write ms:');
       radio.reportDisconnected(_Rig.deviceId);
       await rig.settle();
-      expect(rig.countNotes('keep-alive write ms:'), greaterThanOrEqualTo(2),
-          reason: 'two live links on the new connection, each with its own '
-              'write counter');
+      expect(rig.countNotes('keep-alive write ms:') - histogramsBefore, 1,
+          reason: 'one live link on the new connection, so one write counter '
+              'is flushed here — it was two');
       await rig.shutdown();
     });
 
-    test('the map really does hold one entry — that was never the question',
+    test('the map holds one entry — and NOW that means one live link',
         () async {
       // Stated so the finding is not mistaken for "the class doc lied about
-      // `_links`". It did not. `connectedDeviceId` reports the single current
-      // link throughout, and the second link is invisible to every
-      // single-connection getter the service exposes. That invisibility is
-      // precisely why eighteen minutes of doubled data reached the CSV before
-      // anybody noticed.
+      // `_links`". It did not, and it still does not. What it used to get
+      // wrong was the inference from it: `connectedDeviceId` reported the
+      // single current link throughout, and the second link was invisible to
+      // every single-connection getter the service exposes. That invisibility
+      // is precisely why eighteen minutes of doubled data reached the CSV
+      // before anybody noticed — and it is why map cardinality is asserted
+      // here only alongside the live-link evidence above, never on its own.
       final rig = await twoInFlightConnects();
       expect(rig.ble.connectedDeviceId, _Rig.deviceId);
       expect(rig.ble.currentState, BleLinkState.ready);

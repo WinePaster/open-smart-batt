@@ -67,12 +67,18 @@ import 'notify_keepalive_pacer.dart';
 /// itself.
 ///
 /// ⚠️ It used to say "and deliberately not concurrent: today [BleService]
-/// creates at most one of these at a time". That is not true, and the exception
-/// is not theoretical — see the note on [BleService] and
-/// `test/double_gatt_setup_test.dart`. Two of these can be live on ONE link at
-/// once, each with its own [reassembler], [decoder], keep-alive schedule and
-/// write histogram, which is exactly the doubling the per-link fields were
-/// introduced to prevent between DIFFERENT units.
+/// creates at most one of these at a time", and that was not true: two of these
+/// could be live on ONE physical link at once, each with its own [reassembler],
+/// [decoder], keep-alive schedule and write histogram — exactly the doubling
+/// the per-link fields were introduced to prevent between DIFFERENT units. The
+/// route in was a `_LinkState` that had been dropped from [BleService._links]
+/// without being torn down; it kept its subscriptions and kept running with
+/// nothing pointing at it.
+///
+/// That route is closed (2026-08-14): a link now leaves the map only through
+/// [BleService._dropAllLinks], which tears it down in the same breath. What is
+/// still true, and is why every field below is per-link rather than shared, is
+/// everything above this paragraph.
 class _LinkState {
   _LinkState({
     required this.deviceId,
@@ -192,37 +198,42 @@ enum LinkAction {
 /// ⚠️ THE MAP HOLDING ONE ENTRY IS NOT THE SAME AS ONE LINK BEING LIVE, and
 /// this doc used to conflate them: it said "`connect()` still awaits
 /// `disconnect()` first, and no caller can ask for a second concurrent link".
-/// The first clause is true and the second does not follow from it. What
-/// actually holds, and what does not:
+/// The first clause is true and the second never followed from it. What holds:
 ///
 ///   * ✅ Two `connected` events on ONE link cannot start two setups.
 ///     [_setupConnection] writes [_LinkState.settingUp] before its first
 ///     `await`, and refuses again once `_state` is [BleLinkState.ready].
-///   * ✅ A `connect()` awaited to completion before the next one really does
-///     leave one link: the second call's `disconnect()` tears the first down,
-///     cancelling its subscriptions.
-///   * ❌ Two `connect()` calls for the same id, where the second arrives
-///     while the first is still inside its opening `await disconnect()`, leave
-///     TWO live links. Both get past `disconnect()` — which only ever looks at
-///     [_current], and only clears the handle AFTER the platform answers — and
-///     the later `_links.clear()` then drops the earlier entry without
-///     cancelling the `connectionState` and notify subscriptions it owns. The
-///     orphan keeps its own reassembler, decoder, keep-alive timer, tick
-///     counter and write histogram.
+///   * ✅ A `connect()` awaited to completion before the next one leaves one
+///     link: the second call's `disconnect()` tears the first down.
+///   * ✅ Two `connect()` calls for the same id, the second arriving while the
+///     first is still inside its opening `await disconnect()`, ALSO leave one
+///     live link — since 2026-08-14. They still both get past `disconnect()`
+///     (which only ever looks at [_current], and only clears the handle AFTER
+///     the platform answers); what changed is what happens to the link the
+///     later call displaces. See [_dropAllLinks] and [_installLink].
 ///
-/// The window for the third case is as long as a platform disconnect takes,
-/// not a scheduling hair: a field capture (batch 2026.08.13/001) holds two
-/// connect requests 1.9 s apart followed by eighteen minutes in which one
-/// connection ran two GATT setups, wrote every inbound chunk to the log twice,
-/// fed two decoders into one telemetry stream (CSV `samples` 2.48x that unit's
-/// own baseline) and closed with two keep-alive write histograms carrying
-/// different totals. Nothing above the transport could see it, because every
-/// single-connection getter here reports the one link in [_links].
+/// THE DEFECT THAT FIXED, kept because the shape of it is the reason the map
+/// is written in exactly one place now. The third case used to leave TWO live
+/// links: `connect()` opened with a bare `_links.clear()`, and that line
+/// dropped the earlier entry without cancelling the `connectionState` and
+/// notify subscriptions it owned. The orphan kept its own reassembler,
+/// decoder, keep-alive timer, tick counter and write histogram, and nothing
+/// above the transport could see it, because every single-connection getter
+/// here reports the one link in [_links].
 ///
-/// `test/double_gatt_setup_test.dart` pins all of this down, including the
-/// reproduction. It is deliberately a characterization test and not a fix —
-/// what `connect()` should do when it is called twice is a decision, not a
-/// detail.
+/// The window was as long as a platform disconnect takes, not a scheduling
+/// hair: a field capture (batch 2026.08.13/001) holds two connect requests
+/// 1.9 s apart followed by eighteen minutes in which one connection ran two
+/// GATT setups, wrote every inbound chunk to the log twice, fed two decoders
+/// into one telemetry stream (CSV `samples` 2.48x that unit's own baseline)
+/// and closed with two keep-alive write histograms carrying different totals.
+///
+/// The invariant that replaces the claim, and the one to hold this class to:
+/// **a link that is not in [_links] has been torn down.** It is stated as one
+/// rule rather than a fix to one line because the line was never the point —
+/// any other way out of the map would have had the same consequence.
+/// `test/double_gatt_setup_test.dart` pins both halves: the guards that always
+/// held, and the reproduction, which now asserts the remedy.
 class BleService {
   BleService({
     CommandBuilder commands = const CommandBuilder(),
@@ -248,11 +259,15 @@ class BleService {
   /// handle was cleared — precisely the window the FB-39 guard exists for. The
   /// entry is dropped by the next `connect()` or by `dispose()`.
   ///
-  /// ⚠️ "Dropped" and "torn down" are different things, and the difference is
-  /// the fault documented on the class: `_links.clear()` in [connect] removes
-  /// the entry without cancelling anything the [_LinkState] owns, so a link
-  /// that is dropped while still holding live subscriptions keeps running with
-  /// nothing pointing at it.
+  /// ⚠️ "Torn down" and "dropped" are different things, and the implication
+  /// runs ONE way: torn down but still in the map is the normal resting state
+  /// (previous paragraph), while **dropped without being torn down is the fault
+  /// this class was carrying** — a `_LinkState` still holding live
+  /// subscriptions, a keep-alive timer and its own decoder, with nothing left
+  /// pointing at it. So this map is written in exactly two places, and one of
+  /// them calls the other: [_dropAllLinks] (removal, tears down what it
+  /// removes) and [_installLink] (insertion, via [_dropAllLinks]). Anything
+  /// that reaches for `_links.clear()` or `_links[x] = y` again re-opens it.
   final Map<String, _LinkState> _links = <String, _LinkState>{};
 
   /// The link the single-connection getters report on. Survives teardown for
@@ -819,16 +834,26 @@ class BleService {
     await disconnect();
     await stopScan();
 
+    final device = BluetoothDevice.fromId(deviceId);
+    final link = _LinkState(
+        deviceId: deviceId, device: device, parser: _parser);
+
     // A fresh connect starts from a clean slate. Dropping the entries is what
     // the old `_reassembler.reset(); _decoder.reset(); _settingUp = false;`
     // did — a new [_LinkState] simply cannot carry the previous unit's buffer,
     // accumulated sample or half-finished setup into this one.
-    _links.clear();
-
-    final device = BluetoothDevice.fromId(deviceId);
-    final link = _LinkState(
-        deviceId: deviceId, device: device, parser: _parser);
-    _links[deviceId] = link;
+    //
+    // This line used to read `_links.clear()`, and the `await disconnect()`
+    // above was trusted to have already torn down whatever it dropped. It had
+    // not, whenever a second `connect()` overtook the first inside that await:
+    // the entry vanished and its owner kept streaming. [_installLink] makes
+    // the two inseparable.
+    //
+    // ⚠️ NOTHING BETWEEN HERE AND THE `listen()` BELOW MAY `await`. The
+    // displacement and this link's own subscription have to land in one
+    // synchronous frame, or a concurrent `connect()` fits between them and we
+    // are back to a live link nobody can reach. See [_dropAllLinks].
+    _installLink(link);
     _current = link;
     _setState(BleLinkState.connecting);
 
@@ -900,6 +925,70 @@ class BleService {
     for (final link in _links.values) {
       link.epoch.begin();
     }
+  }
+
+  /// Take every entry out of [_links], tearing each one down on the way out.
+  ///
+  /// **The only removal path**, and the reason it exists is the invariant on
+  /// [_links]: a link that leaves the map still owns its `connectionState` and
+  /// notify subscriptions, its keep-alive timer, its reassembler, decoder, tick
+  /// counter and write histogram — and nothing above the transport can reach it
+  /// any more, so if the removal does not tear it down, nothing ever will.
+  /// Removal and teardown are one statement here so they cannot drift apart
+  /// again the way `_links.clear()` had drifted from `await disconnect()`.
+  ///
+  /// `emitDisconnected: false` because a displaced link is not a link-state
+  /// transition anyone should see: [connect] publishes `connecting` in the same
+  /// frame, and [dispose] is closing the stream. A drop is bookkeeping; the
+  /// user-visible drop is [disconnect]'s.
+  ///
+  /// ⚠️ SYNCHRONOUS WHERE IT MATTERS. Everything that has to happen before the
+  /// caller yields — the map write, and both `cancel()` calls inside
+  /// [_teardown] — has happened by the time this returns; only *waiting* for
+  /// the cancels to complete is deferred into the returned future. That is why
+  /// [_installLink] can leave the future alone while [dispose], which is about
+  /// to close the streams [_teardown] writes to, awaits it.
+  Future<void> _dropAllLinks() {
+    final dropped = _links.values.toList(growable: false);
+    _links.clear();
+    return Future.wait<void>(<Future<void>>[
+      for (final link in dropped)
+        // Teardown must not be able to abort the loop or surface as an
+        // unhandled async error on the fire-and-forget path; a cancel that
+        // fails still leaves the link out of the map and the timer stopped.
+        _teardown(link, emitDisconnected: false).catchError(
+            (Object e) => _emitEvent('link teardown failed: $e', link: link)),
+    ]);
+  }
+
+  /// Make [link] the only entry of [_links], tearing down whatever it displaces.
+  ///
+  /// **The only insertion path**, so that "a link entered the map" and "the
+  /// links it replaced were torn down" are the same event.
+  ///
+  /// ⚠️ THE TRAP, and the reason this does NOT ask the platform to disconnect
+  /// what it displaces: the displaced link and the new one are typically THE
+  /// SAME PHYSICAL CONNECTION to the same unit — that is how a doubled GATT
+  /// setup arises at all, two `connect()` calls for one id. A `disconnect` on
+  /// the way out would therefore drop the connection the new link is being
+  /// built on, turning a data-doubling bug into a connectivity one.
+  /// [_teardown] is safe to reuse here precisely because it touches nothing
+  /// below Dart: it cancels THIS app's subscriptions and timers and forgets the
+  /// handle. It also does not disable notifications on the peripheral, and must
+  /// not — the new link wants them left on.
+  ///
+  /// What that leaves open is stated rather than hidden: if the displaced link
+  /// belonged to a DIFFERENT unit and its `device.connect()` was still in
+  /// flight, nothing here releases that peripheral. Releasing it is
+  /// [disconnect]'s job, which [connect] awaits before it gets here; the race
+  /// that can slip a link past it is the same one this method closes on the
+  /// Dart side, and closing the Dart side is what the ruling asked for.
+  void _installLink(_LinkState link) {
+    // Deliberately not awaited: this method must not yield (see the ⚠️ in
+    // [connect]), and everything order-sensitive in [_dropAllLinks] has already
+    // run by the time it returns.
+    unawaited(_dropAllLinks());
+    _links[link.deviceId] = link;
   }
 
   Future<void> _onConnectionState(
@@ -1260,6 +1349,21 @@ class BleService {
 
   Future<void> _teardown(_LinkState link,
       {required bool emitDisconnected}) async {
+    // Any GATT setup still in flight for this link abandons at its next
+    // checkpoint (FB-39's epoch, see [_setupConnection]). Cancelling
+    // subscriptions is not sufficient on its own, because a setup that has not
+    // reached them yet will simply create them again: it resumes with a
+    // `services` list fetched before the link died, subscribes notify, starts
+    // the keep-alive and publishes `ready` — a link that was torn down, back
+    // on its feet with nothing pointing at it. That is the second half of the
+    // 2026-08-13 double-setup fault; the drop path closes the map side of it
+    // (see [_dropAllLinks]) and this line closes the time side.
+    //
+    // Every other caller wanted this too and only got it by accident: a real
+    // disconnect arriving mid-setup used to let that setup finish and re-arm a
+    // dead handle, and `disconnect()` had to bump the epoch itself beforehand
+    // to prevent the same thing.
+    link.epoch.begin();
     // Flush the histogram before the link goes quiet: a session shorter than
     // writeStatsEvery would otherwise report nothing at all, and short sessions
     // are exactly the ones a slow unit produces.
@@ -1275,10 +1379,19 @@ class BleService {
     // `bg-keepalive:` summary next to the teardown lines that explain it. The
     // controller re-arms on the next `ready` if the app is still backgrounded.
     setNotifyDrivenKeepAlive(false);
-    await link.notifySub?.cancel();
+    // BOTH cancels are STARTED here, in this method's synchronous prefix, and
+    // awaited together at the bottom. Cancelling a subscription stops delivery
+    // to it at the moment `cancel()` is called, not when its future completes,
+    // so starting both before the first yield is what lets [_dropAllLinks] be
+    // safe to call without awaiting: a link removed from `_links` is deaf
+    // before the caller's frame ends. `await`-ing the first cancel here — as
+    // this method used to — would have pushed the connectionState cancel one
+    // microtask past the removal, which is one microtask of a link that is
+    // dropped and still listening.
+    final notifyCancelled = link.notifySub?.cancel();
     link.notifySub = null;
     link.keepAliveWriteFailed = false;
-    await link.connSub?.cancel();
+    final connCancelled = link.connSub?.cancel();
     link.connSub = null;
     link.writeChar = null;
     link.notifyChar = null;
@@ -1288,6 +1401,8 @@ class BleService {
     link.device = null;
     link.settingUp = false;
     link.reassembler.reset();
+    await notifyCancelled;
+    await connCancelled;
     if (emitDisconnected) {
       _setState(BleLinkState.disconnected);
     }
@@ -1507,10 +1622,9 @@ class BleService {
 
   /// Release all resources. The service is unusable afterwards.
   Future<void> dispose() async {
-    for (final link in _links.values.toList()) {
-      await _teardown(link, emitDisconnected: false);
-    }
-    _links.clear();
+    // Awaited, unlike the [connect] path: the cancels have to be complete
+    // before the controllers [_teardown] writes to are closed below.
+    await _dropAllLinks();
     _current = null;
     await _scanSub?.cancel();
     _scanSub = null;
