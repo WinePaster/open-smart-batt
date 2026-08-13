@@ -13,6 +13,9 @@
 > 🔑 **Read the naming-collision box below before anything else in this file.**
 > The TWF *register* and one TWF *value* are both written `0x20`, and
 > conflating them has already cost this project one retracted finding.
+> ⚠️ **The same trap now exists for `0x21`** (added 2026-08-13): in this file
+> `0x21` is a TWF **value**; elsewhere in the spec `0x21` is the **temperature
+> selector**. They are unrelated.
 
 ---
 
@@ -22,25 +25,66 @@ The reference app tests individual bit positions of `b4` to set protection
 booleans and a status message. **The exact bit→meaning mapping is unverified** —
 see §10.
 
-**Values observed on the wire** (baseline: whole-corpus re-walk 2026-07-30):
+**Values observed on the wire** (baseline: whole-corpus re-walk 2026-07-30;
+the `0x21` row was added 2026-08-13):
 
 | `b4` | Seen on | Context |
 |---|---|---|
 | `0x00` | most units, most sessions | the normal/idle value |
 | `0x01` | a unit at PVLT 9.84 V with a 1.75 V cell imbalance; also a unit at a wholly normal PVLT 13.25 V; and ~10 % of power-bank samples while discharging | see below |
 | `0x20` | **power banks only** (`0x10 = 0x22`) — 2,769 frames; **0 frames across 14,857 battery/capacitor samples** (13,574 corpus + 1,283 added by a 2026-07-30 two-device capture) | **charging.** PVLT ≈3.8–4.2 V is the SINGLE-CELL voltage, SVLT ≈9.0 V is the PD charging INPUT — not a 12 V pack in trouble |
+| **`0x21`** | one power bank, **exactly 1 frame** (2026-08-13) | bit 0 **and** bit 5 set together. The frame sits on the `0x20` → `0x01` boundary, at the poll where a charge terminated at a full pack. It is complete inside a single RX line and its XOR checks, so it is not a re-sync artefact |
 
 ⚠️ **A further 84 `0x20` frames sit in sessions with no `0x10` attribution.**
 Walked frame by frame, all 84 are power banks (PVLT ≈ 4 V, SVLT ≈ 9 V). They are
 listed separately rather than folded in, because "unattributed" is exactly the
 condition that produced the misreading described below.
 
-Only **two** of the eight bits have ever been non-zero — bit 0 and bit 5 (the
-observed values are `0x00`, `0x01` and `0x20`). Most of the field is untested.
+Only **two** of the eight bits have ever been non-zero — bit 0 and bit 5 — but
+**all four combinations of those two bits have now been observed**: `0x00`,
+`0x01`, `0x20` and `0x21`. The other six bits are still untested.
+
+> 🔴 **Value list corrected 2026-08-13 — `0x21` is the fourth value.** The
+> paragraph above previously read:
+>
+> > Only **two** of the eight bits have ever been non-zero — bit 0 and bit 5 (the
+> > observed values are `0x00`, `0x01` and `0x20`). Most of the field is untested.
+>
+> That was a statement about the corpus, and the corpus grew: a power-bank
+> capture taken across charge → charge-terminates-at-full carries one frame with
+> `b4` = `0x21`, between the last `0x20` frame and the first `0x01` frame.
+> **This corrects the list of values seen. It does not change what any bit
+> means** — the bit-semantics text in this section is untouched, and the counts
+> in the direction tables below, which were computed before this capture, still
+> stand as written.
+
+> ⚠️ 🔲 **Hypothesis, ONE physical unit — bit 5 = charging, bit 0 = pack full.**
+> Four captures on the **same** power bank, same day, same build, with the port
+> state annotated by the reporter, put a value in each cell of a 2×2 table: idle
+> below full → `0x00`; idle at full → `0x01`; charging below full → `0x20`;
+> charging at full → `0x21`. Two of the four close the same boundary from
+> opposite directions, and were analysed independently of one another:
+>
+> * from the **discharge** side, the capture's only `0x01` → `0x00` transition
+>   lands **1 ms** from the SOC field's 100 → 99 step — same poll burst, adjacent
+>   frame. Pairing the two fields frame by frame agrees on **5,010 of 5,011**
+>   samples; the single disagreement is that 1 ms boundary itself.
+> * from the **charge** side, the sequence `0x20` → `0x21` → `0x01` at the moment
+>   charging stopped on a full pack. The existence of a `0x21` frame was written
+>   down as a prediction *before* this capture was examined.
+>
+> **It is still one unit, so this is not a finding.** Under this project's
+> landing rule a bit meaning needs several independent units or vendor-side
+> corroboration; nothing in this box amends the bit semantics stated above, and
+> no client should act on it. Bit 0 in particular already has counterexamples on
+> other classes (see the coverage gaps below) — if this reading is right at all,
+> it is class-dependent.
 
 > ⚠️ **A TWF value is not constant for a session.** An earlier revision of this
-> section said it was. It is not: a power bank moves between `0x00`, `0x01` and
-> `0x20` within a single connection as its charge state changes. A 2026-07-28 capture is the strongest single data point available: two
+> section said it was. It is not: a power bank moves between ~~`0x00`, `0x01` and
+> `0x20`~~ **`0x00`, `0x01`, `0x20` and `0x21`** (🔴 fourth value added
+> 2026-08-13, see the table above) within a single connection as its charge state
+> changes. A 2026-07-28 capture is the strongest single data point available: two
 units on one phone within the same minute — a faulty one (PVLT 9.84 V, far below
 its class's 12.0 V UV threshold) reported `0x01` for all 557 frames, while a
 healthy reference unit (PVLT 13.28 V) reported `0x00` for all 42. That is

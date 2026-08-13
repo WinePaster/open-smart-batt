@@ -742,6 +742,30 @@ class ConnectionController extends ChangeNotifier {
   /// [maxReconnectAttempts].
   int get reconnectAttempts => _reconnectAttempts;
 
+  /// True while an armed iOS autoConnect hand-off is still outstanding.
+  ///
+  /// This is the gap [isBusy] and [isRetrying] BOTH miss, and it is the widest
+  /// one on this screen. The hand-off is the OS's, not ours: the link really is
+  /// `disconnected` (so `isBusy` is false) and no retry timer of ours is
+  /// pending (so `isRetrying` is false), for the whole of
+  /// [autoConnectWatchdog]. The copy therefore fell through to the idle
+  /// branch — "No device connected", the same words shown when nothing is
+  /// happening at all. That is the exact complaint FB-53 fixed for the backoff
+  /// ladder; this is the same hole, one path over.
+  ///
+  /// Field evidence (`2026.08.13/006`, FB-20's 2026-08-13 re-report): the link
+  /// dropped at 21:42:54, the arm expired on time at 21:45:55, and the user
+  /// exported a diagnostic capture 11 s later — three minutes of a screen that
+  /// said nothing was going on, ending just before the failure card would have
+  /// appeared.
+  ///
+  /// ⚠️ Deliberately a BOOL, not an elapsed count. Nothing calls
+  /// `notifyListeners` during the wait, so a live counter would need a 1 s
+  /// ticker and would sit there frozen without one — a wrong number is worse
+  /// than none. The copy states the DEADLINE ([autoConnectWatchdog]) instead,
+  /// which is the part the user is actually missing.
+  bool get isAutoConnectArmed => _autoConnectArmedAt != null;
+
   /// Deduped, RSSI-sorted scan results (vendor-service filtered).
   List<DiscoveredDevice> get scanResults => _scanResults;
 

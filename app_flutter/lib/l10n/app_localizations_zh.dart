@@ -324,6 +324,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disconnectedRetryingBody => '裝置沒有回應，正在等待下一次嘗試。剛斷線時這是正常的。';
 
   @override
+  String get disconnectedAutoConnecting => '等待裝置回來…';
+
+  @override
+  String disconnectedAutoConnectingBody(int minutes) {
+    return '連線中斷了，iOS 正在等這台裝置出現，一進入範圍就會自動連上。最多需要 $minutes 分鐘。你可以繼續等，也可以直接用下面的掃描自己找它。';
+  }
+
+  @override
   String get disconnectedStalledTitle => '已連上，但這台裝置沒有回應';
 
   @override
