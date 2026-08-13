@@ -220,6 +220,15 @@
     }
   },
   "disconnectedRetryingBody": "The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.",
+  "disconnectedAutoConnecting": "Waiting for the device to come back…",
+  "disconnectedAutoConnectingBody": "The link dropped, so iOS is watching for this device and will connect the moment it is in range. This can take up to {minutes} minutes. You can keep waiting, or scan for it yourself below.",
+  "@disconnectedAutoConnectingBody": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "disconnectedStalledTitle": "Connected, but the device is not answering",
   "disconnectedStalledBody": "Bluetooth linked up, but no data came back. Tried {attempts} times.",
   "@disconnectedStalledBody": {

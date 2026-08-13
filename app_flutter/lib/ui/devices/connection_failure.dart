@@ -115,6 +115,7 @@ ConnectionFailureCopy connectionFailureCopy({
   required bool working,
   required bool isBusy,
   required bool isRetrying,
+  required bool autoConnectArmed,
   required bool setupStalled,
   required int setupFailures,
   required int reconnectAttempts,
@@ -192,6 +193,22 @@ ConnectionFailureCopy connectionFailureCopy({
     return ConnectionFailureCopy(
       title: l10n.disconnectedConnecting,
       body: l10n.disconnectedBody,
+    );
+  }
+  // FB-20 (2026-08-13 re-report): an armed iOS autoConnect, which is neither
+  // `isBusy` nor `isRetrying` — see [ConnectionController.isAutoConnectArmed].
+  // Ranked BELOW `isBusy` on purpose: a manual tap during the wait puts the
+  // link into `connecting`, and "Connecting…" is then the truer sentence — the
+  // user's own attempt outranks the OS's standing offer. It outranks only the
+  // idle fallback, which is the state it was being mistaken for.
+  if (autoConnectArmed) {
+    return ConnectionFailureCopy(
+      title: l10n.disconnectedAutoConnecting,
+      // The deadline, not an elapsed count — the controller's getter says why.
+      // Minutes, not seconds: 180 s is a promise about the OS's behaviour, and
+      // "up to 3 minutes" is the part a person waiting can act on.
+      body: l10n.disconnectedAutoConnectingBody(
+          ConnectionController.autoConnectWatchdog.inMinutes),
     );
   }
   return ConnectionFailureCopy(

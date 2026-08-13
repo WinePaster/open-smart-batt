@@ -614,6 +614,18 @@ abstract class AppLocalizations {
   /// **'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.'**
   String get disconnectedRetryingBody;
 
+  /// No description provided for @disconnectedAutoConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the device to come back…'**
+  String get disconnectedAutoConnecting;
+
+  /// No description provided for @disconnectedAutoConnectingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The link dropped, so iOS is watching for this device and will connect the moment it is in range. This can take up to {minutes} minutes. You can keep waiting, or scan for it yourself below.'**
+  String disconnectedAutoConnectingBody(int minutes);
+
   /// No description provided for @disconnectedStalledTitle.
   ///
   /// In en, this message translates to:

@@ -336,6 +336,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'The device did not answer. Waiting before the next attempt — this is normal on a link that has just dropped.';
 
   @override
+  String get disconnectedAutoConnecting =>
+      'Waiting for the device to come back…';
+
+  @override
+  String disconnectedAutoConnectingBody(int minutes) {
+    return 'The link dropped, so iOS is watching for this device and will connect the moment it is in range. This can take up to $minutes minutes. You can keep waiting, or scan for it yourself below.';
+  }
+
+  @override
   String get disconnectedStalledTitle =>
       'Connected, but the device is not answering';
 

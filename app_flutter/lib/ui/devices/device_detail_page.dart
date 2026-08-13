@@ -404,6 +404,7 @@ class _OfflineBody extends StatelessWidget {
       working: mine && working,
       isBusy: mine && conn.isBusy,
       isRetrying: mine && retrying,
+      autoConnectArmed: mine && conn.isAutoConnectArmed,
       setupStalled: mine && conn.isSetupStalled,
       setupFailures: conn.setupFailures,
       reconnectAttempts: conn.reconnectAttempts,

@@ -86,6 +86,8 @@
   "disconnectedConnecting": "連線中…",
   "disconnectedRetrying": "重新連線中…（第 {attempt} 次，共 {max} 次）",
   "disconnectedRetryingBody": "裝置沒有回應，正在等待下一次嘗試。剛斷線時這是正常的。",
+  "disconnectedAutoConnecting": "等待裝置回來…",
+  "disconnectedAutoConnectingBody": "連線中斷了，iOS 正在等這台裝置出現，一進入範圍就會自動連上。最多需要 {minutes} 分鐘。你可以繼續等，也可以直接用下面的掃描自己找它。",
   "disconnectedStalledTitle": "已連上，但這台裝置沒有回應",
   "disconnectedStalledBody": "藍牙確實連上了，但讀不到資料。已經試過 {attempts} 次。",
   "disconnectedStalledHint": "請把 App 完全關掉再重新打開 —— 目前唯一實測有效的做法就是這個。乾等沒有用：同樣的狀況曾經持續 40 分鐘都沒自己好。",

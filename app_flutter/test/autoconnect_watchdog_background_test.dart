@@ -419,15 +419,32 @@ void main() {
         });
         h.armAfterHealthyDrop(async);
 
+        // FB-20 (2026-08-13): the wait has to be VISIBLE to the UI layer for
+        // the whole of it, not just describable afterwards in the log. Neither
+        // `isBusy` nor `isRetrying` is true here — that pair is exactly why the
+        // screen used to show the idle copy — so this getter is the only thing
+        // a widget can ask.
+        expect(h.conn.isAutoConnectArmed, isTrue,
+            reason: 'armed, and the UI has to be able to see it');
+        expect(h.conn.isBusy || h.conn.isRetrying, isFalse,
+            reason: 'and neither existing flag covers it — the hole this fills');
+
         async.elapse(ConnectionController.autoConnectWatchdog -
             const Duration(seconds: 1));
         expect(firedAt, isNull, reason: 'not a second early');
+        expect(h.conn.isAutoConnectArmed, isTrue,
+            reason: 'still waiting one second before the deadline');
 
         async.elapse(const Duration(seconds: 1));
         expect(firedAt, ConnectionController.autoConnectWatchdog,
             reason: 'and not a second late — while the app is in front of the '
                 'user, this works exactly as documented');
         expect(h.gaveUpLines, hasLength(1));
+        // Once it has given up, the failure card owns the screen; leaving this
+        // true would stack "waiting for it to come back" on top of "could not
+        // connect", which are opposite claims.
+        expect(h.conn.isAutoConnectArmed, isFalse,
+            reason: 'and the wait is over the moment the verdict lands');
 
         h.dispose();
       });
