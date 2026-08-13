@@ -70,6 +70,26 @@ Future<void> bootstrap({
     return;
   }
 
+  // design 0060 §3.5 (FB-67): one line per launch, written as soon as there is
+  // a database to write it to.
+  //
+  // 🔑 The value is not only the arm. "This launch was a cold start" was, until
+  // this line, recorded nowhere at all — FB-67 had to infer it from four
+  // lifecycle lines being ABSENT, which is a reconstruction rather than a fact,
+  // and it is the single number design 0060's open questions (Q3–Q5) need from
+  // the field. `armed=none` is therefore just as much the point as `armed=…`.
+  //
+  // In `bootstrap()` and not in [AppServices.create]: no test calls
+  // `bootstrap()`, so this cannot alter what any of the 37 suites built on
+  // `create()` see in their diagnostic log (design 0060 §6 R4).
+  services.logRepo
+      .insertLog(LogEntry.event(formatColdStartLine(
+        appBuild: services.appBuild,
+        arm: services.restoredArm,
+        now: DateTime.now(),
+      )))
+      .ignore();
+
   // Capture runtime errors into the diagnostic log so users can export them
   // from the phone alone (Settings → 診斷 → 匯出診斷日誌), no PC needed.
   FlutterError.onError = (details) {

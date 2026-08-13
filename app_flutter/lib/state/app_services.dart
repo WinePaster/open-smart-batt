@@ -34,6 +34,8 @@ class AppServices {
     required this.deviceFactsRepo,
     required this.settingsRepo,
     required this.logRepo,
+    required this.autoConnectArmRepo,
+    required this.restoredArm,
     required this.settings,
     required this.devices,
     required this.facts,
@@ -54,6 +56,19 @@ class AppServices {
   final DeviceFactsRepo deviceFactsRepo;
   final SettingsRepo settingsRepo;
   final LogRepo logRepo;
+
+  /// design 0060 (FB-67): the armed iOS autoConnect hand-off, persisted so it
+  /// outlives a process iOS reclaims.
+  final AutoConnectArmRepo autoConnectArmRepo;
+
+  /// What the PREVIOUS run was waiting for when it stopped existing, or null.
+  ///
+  /// Read once here — before any controller can write to the table — and kept
+  /// so `bootstrap()` can put it in the `cold-start:` line (design 0060 §3.5).
+  /// [connection] has already been handed the same value and owns the actual
+  /// reconciliation; this field is the instrument's copy, not a second
+  /// authority.
+  final AutoConnectArm? restoredArm;
 
   final SettingsController settings;
   final DeviceController devices;
@@ -117,6 +132,11 @@ class AppServices {
     final deviceFactsRepo = DeviceFactsRepo(db.db);
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
+    final autoConnectArmRepo = AutoConnectArmRepo(db.db);
+    // design 0060 §3.3: read BEFORE the controller exists, so the value handed
+    // to it cannot have been written by it. Same shape as `lastSessionId()`
+    // below — a single read the composition root already does at this point.
+    final restoredArm = await autoConnectArmRepo.read();
 
     final settings = SettingsController(settingsRepo, history: historyRepo);
     final devices = DeviceController(deviceRepo);
@@ -139,7 +159,12 @@ class AppServices {
       appBuild: env.build,
       monitor: monitorService,
       pending: pending,
+      autoConnectArm: autoConnectArmRepo,
     );
+    // design 0060 §3.3 — immediately after construction, so no link event can
+    // reach the controller before it knows there is an episode to close. A null
+    // arm (the ordinary launch) returns without touching anything.
+    connection.restoreArm(restoredArm);
     final telemetry = TelemetryController(
       bleService,
       settings: settings,
@@ -198,6 +223,8 @@ class AppServices {
       deviceFactsRepo: deviceFactsRepo,
       settingsRepo: settingsRepo,
       logRepo: logRepo,
+      autoConnectArmRepo: autoConnectArmRepo,
+      restoredArm: restoredArm,
       settings: settings,
       devices: devices,
       facts: facts,
@@ -221,8 +248,17 @@ class AppServices {
   /// ChangeNotifier is a "used after being disposed" error. That is why the
   /// controllers come AFTER the drain, not before it (found 2026-08-04; the
   /// old order was controllers-first, which was safe only while no test or
-  /// runtime path had a write in flight at teardown). No controller's own
-  /// `dispose()` queues a write, so nothing is enqueued past the drain.
+  /// runtime path had a write in flight at teardown).
+  ///
+  /// 🔴 "No controller's own `dispose()` queues a write" stopped being true on
+  /// 2026-08-13. Design 0060 hangs the deletion of the `autoconnect_arm` row on
+  /// `_cancelAutoConnectWatchdog`, which `ConnectionController.dispose()` calls
+  /// — and that is deliberate, because a `dispose` that runs is precisely the
+  /// evidence that this shutdown was orderly (ruling (c) of 2026-08-13). So
+  /// there is now a SECOND drain, after the controllers and before the close.
+  /// Without it that delete would resume against a closed database and raise
+  /// the exact `DatabaseException(error database_closed)` [PendingWrites] was
+  /// built to end.
   ///
   /// 🔴 Closing before the drain is what produced the intermittent
   /// `DatabaseException(error database_closed)` — a two-step `insertLog`
@@ -246,6 +282,9 @@ class AppServices {
     // those writes without awaiting them.
     facts.dispose();
     settings.dispose();
+    // The second drain (see above): `connection.dispose()` deletes the
+    // `autoconnect_arm` row, and that write is registered, not awaited.
+    await pending.drain();
     await appDb.close();
   }
 }

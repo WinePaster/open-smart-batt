@@ -44,6 +44,14 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # A substitutable wall clock (FB-66). `connection_controller` measures the
+  # autoConnect deadline against `clock.now()` instead of a `Timer`, because a
+  # Timer measures event-loop time and iOS suspends the event loop. Declared
+  # directly (it was already here transitively via flutter_test) because `lib/`
+  # imports it: `fake_async` and `testWidgets`' binding both substitute this
+  # clock, which is what makes a frozen isolate expressible in a test.
+  clock: ^1.1.1
+
   # BLE transport
   flutter_blue_plus: ^1.32.0
   # Local storage (history, saved devices, settings, diagnostic log)
@@ -95,6 +103,15 @@ dev_dependencies:
 
   # In-memory / headless sqflite for unit-testing the data layer.
   sqflite_common_ffi: ^2.3.0
+
+  # Explicit control over the fake clock. `testWidgets` already runs inside a
+  # FakeAsync, but `tester.pump(d)` advances the clock AND runs everything that
+  # came due — so a timer can never be observed being late. `elapseBlocking`
+  # advances the clock WITHOUT running anything, which is the only way to model
+  # an isolate the OS has suspended (see
+  # test/autoconnect_watchdog_background_test.dart). Already present
+  # transitively via flutter_test; listed here because a test imports it.
+  fake_async: ^1.3.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
