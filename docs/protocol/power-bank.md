@@ -178,12 +178,60 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
-| **bit 5** | **PD output** | 184/184, no counterexample. Same bit at port voltages from 9.05 V to 13.30 V ⇒ it tracks the protocol, not the voltage rail | — |
+| **bit 5** | **PD output** | 184/184, no counterexample. Set across **two different contract voltages** — ≈9.2 V and ≈12.2 V — ⇒ it tracks the protocol, not one voltage rail; and a **matched-power A/B within a single capture** (2026-08-13) rules out a power threshold. 🔴 **Revised 2026-08-13** — the former wording, ~~"same bit at port voltages from 9.05 V to **13.30 V**"~~, overstated the span at both ends: **13.30 V is a discrete misread, not a contract voltage**. See "On bit 5: the 13.30 V upper bound was a misread" below | — |
 | **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands. 🔑 **But the counterexamples are now accounted for (2026-08-05): all 62 of them set bit 4 instead.** No ≥8 V charge in the corpus leaves both bits clear (0 of 2,042). See the bit-4 section |
 | **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, ~~every~~ **128 of 133** `b7 = 0x00` frames have the port voltage at cell potential (count and exceptions revised 2026-08-05 — see the `b7 = 0x00` section below) | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
 | **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
 | **bit 4** | **unknown**, but **structurally paired with bit 3** | Appears only as `0x12` (bit1+bit4), **62** frames (was "16" — corpus has grown), on **one** unit. ⚠️ **The "firmware variant" reading is dead** — see below | 🚫 Not decoded. But bit 3 and bit 4 are **mutually exclusive** (0 co-occurrences in 42,142 paired bursts), and **every** ≥8 V charge sets exactly one of them |
 | **bit 0** | 🚫 **unknown — and specifically NOT "Type-A active"** | Set with **both ports physically empty**, 7/7, 19–22 mA, in a capture where the operator had pulled the Type-A cable 34 s earlier | ⚠️ See the refutation below. Do **not** drive a "Type-A device attached" indicator from it |
+
+**On bit 5: the "13.30 V" upper bound was a misread — the reading survives it**
+(2026-08-13).
+
+The row above used to rest on *"the same bit at port voltages from 9.05 V to
+13.30 V"*. A corpus-wide rescan of **every burst with bit 5 set**, pairing each
+one with its own `0x49` mV field (1 mV/LSB), shows that 13.30 V is not a contract
+voltage at all. The 2,845 readings fall into six clusters with **hard gaps
+between them — not one sample lands in any gap**:
+
+| cluster | n | empty gap before it |
+|---|---|---|
+| 8,192 – 8,296 mV | 44 | — |
+| **9,108 – 9,408 mV** | **1,101** | 812 mV |
+| 10,200 – 10,232 mV | 39 | 792 mV |
+| 11,264 – 11,384 mV | 37 | 1,032 mV |
+| **12,064 – 12,452 mV** | **1,555** | 680 mV |
+| 13,192 – **13,300 mV** | 69 | 740 mV |
+
+Two clusters hold **93 %** of the population and are the real contracts (≈9.2 V
+and ≈12.2 V). **Each of the other four sits ±1,024 mV (2¹⁰) from one of them** —
+8.2 = 9.2 − 1.024, 10.2 = 9.2 + 1.024, 11.3 = 12.3 − 1.024,
+13.30 = 12.276 + 1.024. A continuous ripple cannot produce gaps; one flipped bit
+in a millivolt register produces exactly this pattern. The same structure appears
+independently in `0x37` (10 mV/LSB, 2,630 paired bursts: 8.19–8.41 /
+**9.07–9.36** / 10.17–10.23 / 11.26–11.33 / **12.02–12.42** / 13.19–**13.30** V),
+so the fault is upstream of both registers rather than in either one's transport.
+
+⇒ 🔲 **13.30 V is the top of a satellite: a ≈12.28 V contract read 1.024 V high.**
+The span that survives is **≈9.1 V to ≈12.4 V**. ⚠️ The bottom end has the same
+problem in reverse: the lowest bit-5 reading in the corpus, **8,244 mV**, is
+9,268 − 1,024 — another satellite, not a contract.
+
+**The conclusion does not change**, for two reasons that do not depend on the
+discarded value. First, ≈9.2 V and ≈12.2 V are still two clearly different
+contract voltages, so the bit is not naming one rail level. Second, a
+**matched-power A/B inside a single capture** (2026-08-13) removes "bit 5 tracks
+power" outright: the same unit, same port, same cable and same load, run first on
+USB-default 5 V and then on a 12 V PD contract. bit 5 was clear on all **4**
+non-PD bursts and set on all **166** PD bursts, while their cell-side power
+ranges **overlap completely and share the same maximum** — 2.28 – **6.76 W**
+non-PD against 1.47 – **6.76 W** on PD. A burst at the same power with the bit
+clear is what kills a power threshold, and there are four of them.
+
+**Practical note for clients.** The misread runs at roughly **6 %** of samples, so
+a port voltage rendered straight from `0x37` flickers to ≈11.3 V or ≈13.3 V about
+every 14th update during a 12 V PD output. A median or rate limit on that readout
+is worth having; the flag byte itself is unaffected.
 
 **On bit 3: the A/B that removes "power" and "voltage" as explanations**
 (2026-08-04).
@@ -335,12 +383,45 @@ question**; what is refuted is treating a lone `0x00` as proof of it.
 two hours** as a one-frame flicker. A client that renders "standby / output off"
 from `b7 == 0x00` alone will flicker with it. The fix that does not cost latency
 is **same-burst corroboration**: require the burst's own current to be idle as
-well. A genuine rail-off always is: with the rail down and both ports empty a
-unit reports `0x49` at **36–39 mA** and `0x4A` at 0, so a signed
-`discharge − charge` lands at **≈ −0.039 A** — inside any sane dead-band. All
-five exceptions above are **68 mA or more**, two orders of magnitude out. This
-app does exactly that, and deliberately claims *neither* standby *nor* a port
-when the two disagree: at `b7 = 0x00` bit 1 is clear, so the
+well.
+
+> 🔴 **Superseded 2026-08-13 — the corroboration holds, the threshold in it does
+> not.** Kept struck through: the measurements are still correct for the one unit
+> they were taken on, and the sentence was published. What is refuted is treating
+> that unit's residual as the class's residual, and a ±0.05 A noise band as
+> sufficient on its own. The app's own source has said so since 2026-08-07
+> (`app_flutter/lib/ui/dashboard/power_flow.dart`, the `kPowerFlowDeadbandA`
+> comment); this paragraph is the doc catching up with the code.
+>
+> ~~A genuine rail-off always is: with the rail down and both ports empty a unit
+> reports `0x49` at **36–39 mA** and `0x4A` at 0, so a signed
+> `discharge − charge` lands at **≈ −0.039 A** — inside any sane dead-band. All
+> five exceptions above are **68 mA or more**, two orders of magnitude out.~~
+
+A genuine rail-off is idle, but its reported current is **not** reliably inside a
+noise dead-band. With the rail down and both ports empty a unit still reports a
+charge-side `0x49` residual with `0x4A` at 0, and that residual varies **by unit
+and, on the same unit, by session**: **26–69 mA** across the units measured, and
+on one unit **42 / 46 / 57 / 60 mA** on four separate days, tracking neither its
+state of charge nor its cell voltage. A ±0.05 A band therefore covers *some*
+units on *some* days and not others, and it cannot simply be widened to cover
+them all — genuine charge and discharge onsets begin not far above it, so a wider
+band would trade a per-unit standby bug for misreading real low-rate flow as idle
+on every unit.
+
+The corroboration that does hold is **sign-aware and much wider than the noise
+band**: a *charging*-signed current below **0.3 A** in a burst whose own `b7`
+reads `0x00` is read as idle, and nothing else is vetoed. That line clears both
+populations it has to separate — it is above every rail-off residual observed so
+far (highest: 69 mA), and well below the two **charge-side** entries in the exception
+table above (667 mA and 2,712 mA); the other three exceptions carry the
+*discharge* sign, which this rule never touches. The veto is one-way: it can only
+downgrade a charging verdict to idle, never invent a direction. In this app the
+two constants are `kPowerFlowDeadbandA = 0.05` and `kRailOffChargeVetoA = 0.3`
+in `app_flutter/lib/ui/dashboard/power_flow.dart`.
+
+The app applies exactly this rule, and deliberately claims *neither* standby *nor*
+a port when the two disagree: at `b7 = 0x00` bit 1 is clear, so the
 Type-A-by-elimination rule below would otherwise print a confident "Type-A" for
 a frame that was in fact marked Type-C by the operator.
 
