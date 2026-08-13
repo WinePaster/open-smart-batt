@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../dashboard/watchfaces.dart';
 import 'export_header.dart';
 import 'export_naming.dart';
 
@@ -28,7 +29,31 @@ enum ExportScope {
   currentSession,
 }
 
-/// A resolved export scope: the DB filters plus the filename fragments.
+/// A resolved export scope: the DB filters, the filename fragments, and the
+/// layout line — **all of it resolved ONCE**, at the instant the user asked for
+/// the export.
+///
+/// ## 🔑 Why this object carries `layout` (FB-68)
+///
+/// An export is not atomic and never was: the user taps export, a scope sheet
+/// opens, a file is streamed, and it is shared. Each of those steps used to
+/// re-derive what the file says about the unit — the ident here, the layout at
+/// the call site, seconds apart — and the link can drop in between. It did, in
+/// the field, TWICE on the same unit across two releases (batches 2026.08.03-002
+/// on 0.6.14 and 2026.08.13-001 on 0.7.15): the history CSV and the diagnostic
+/// log of one sitting, 14 s and 17 s apart, named the SAME device with two
+/// different identity strings — a 15-digit serial in one file and the sanitized
+/// alias in the other — in both `# scope:` and the filename. The 08.13 pair also
+/// disagreed on `layout:` (`face=fixed modules=…` against `face=- modules=-`),
+/// from the same teardown, because `currentExportLayoutValue` is gated on
+/// `conn.isOnline`.
+///
+/// Persistent fallbacks alone (see [exportDeviceIdent]) make the two answers
+/// USUALLY agree; they cannot make them agree BY CONSTRUCTION, because two
+/// lookups at two instants are still two lookups. This value is the guarantee:
+/// every field a file stamps about the unit is resolved in one place
+/// ([chooseExportScope]) and then carried, immutable, to every writer. If the
+/// link dies mid-export the files fall back TOGETHER, to the same string.
 class ExportTarget {
   const ExportTarget({
     required this.scope,
@@ -36,9 +61,15 @@ class ExportTarget {
     this.sessionId,
     this.classSlug,
     this.ident,
+    this.layout = kExportLayoutNone,
   });
 
   /// Everything, no filename fragments — the pre-0006 behaviour.
+  ///
+  /// ⚠️ Carries the "no layout was in force" default. [chooseExportScope] does
+  /// NOT return this constant; it stamps the snapshot's layout onto an
+  /// all-devices target of its own, because an all-devices export taken from a
+  /// connected phone still has a dashboard to describe.
   static const ExportTarget all = ExportTarget(scope: ExportScope.allDevices);
 
   final ExportScope scope;
@@ -50,35 +81,117 @@ class ExportTarget {
   /// Filename fragments: locale-independent class slug + human identity.
   final String? classSlug;
   final String? ident;
+
+  /// The `layout:` preamble line for this export — [exportLayoutValue]'s
+  /// output, snapshotted with [ident] rather than read again at write time.
+  ///
+  /// Not nullable and not omitted: `exportHeaderLines` requires the line, and
+  /// [kExportLayoutNone] is the honest value for "no unit's layout was in
+  /// force", which is what an offline export means.
+  final String layout;
+
+  /// The same identity, re-scoped to the current connection (diagnostic log
+  /// only).
+  ///
+  /// The point is what it does NOT do: it copies [ident], [classSlug] and
+  /// [layout] instead of resolving them a second time, so the two entries the
+  /// scope sheet offers cannot describe the unit differently.
+  ExportTarget asSession(int? sessionId) => ExportTarget(
+        scope: ExportScope.currentSession,
+        deviceId: deviceId,
+        sessionId: sessionId,
+        classSlug: classSlug,
+        ident: ident,
+        layout: layout,
+      );
+}
+
+/// The human identity fragment for one unit — serial, else alias, else hash.
+///
+/// 🔴 The serial has THREE sources and they are consulted in this order:
+/// the saved record, then the `device_facts` cache, then the live link. That is
+/// deliberately the same ladder [exportDeviceIdentities] has used since design
+/// 0057 for the `# devices:` block, and the divergence between the two is what
+/// FB-68 was: the header list already survived a disconnect, while THIS chain
+/// began at `tele.fullSerial` — a value the telemetry controller wipes the
+/// moment the link drops (`_sample = TelemetrySample.empty()`), so a teardown
+/// mid-export silently demoted the whole file to the alias rung.
+///
+/// Stored before live is not a statement about trust — both come off the wire,
+/// `_persistIdentity` writes exactly `fullSerial` onto the record — it is about
+/// having ONE answer, and it is the order [deviceClassFor] and
+/// [exportDeviceIdentities] already use. It also means `# scope:` and the
+/// `serial=` in `# devices:` name the unit identically, which they could not be
+/// relied on to do before.
+///
+/// [liveSerial] stays as the last serial rung rather than being dropped: it is
+/// the only source for a unit that is neither saved nor yet cached, and it is
+/// where the pre-FB-68 behaviour lived. Passing `tele.fullSerial ?? tele.serial`
+/// keeps the partial 0x26 tail usable mid-burst exactly as before.
+///
+/// Takes the controllers rather than a [BuildContext] for [deviceLabelFor]'s
+/// reason — nothing here may depend on the screen still existing.
+String? exportDeviceIdent(
+  DeviceController devices,
+  String deviceId, {
+  DeviceFactsController? facts,
+  String? liveSerial,
+}) {
+  final saved = devices.deviceFor(deviceId);
+  final serials = <String?>[
+    saved?.serial,
+    facts?.factFor(deviceId)?.serial,
+    liveSerial,
+  ];
+  return deviceIdentFragment(
+    serial: serials.firstWhere(
+      (s) => s != null && s.isNotEmpty,
+      orElse: () => null,
+    ),
+    alias: saved?.alias,
+    deviceId: deviceId,
+  );
 }
 
 /// Builds the [ExportTarget] for the connected unit, or null when offline.
 ///
-/// The identity prefers the live serial (only available once the connect burst
-/// lands), then the user's alias, then a short hash of the device id.
+/// One resolution of everything a file will say about the unit: class slug,
+/// identity ([exportDeviceIdent]) and the [layout] the caller has already
+/// snapshotted. Called EXACTLY ONCE per export — the session variant is derived
+/// with [ExportTarget.asSession] rather than by calling this again.
 ExportTarget? currentDeviceTarget(
   BuildContext context, {
-  bool sessionOnly = false,
+  required String layout,
 }) {
   final tele = context.read<TelemetryController>();
   final deviceId = tele.recordingDeviceId;
   if (deviceId == null) return null;
   final devices = context.read<DeviceController>();
-  final saved = devices.deviceFor(deviceId);
+  // Looked up as a nullable type (design 0057): provider yields null where
+  // nobody supplied a cache, and this then behaves as it did before it existed.
+  final facts = context.read<DeviceFactsController?>();
   final conn = context.read<ConnectionController>();
-  final cls = saved?.productClass ?? ProductClass.unknown;
   return ExportTarget(
-    scope: sessionOnly ? ExportScope.currentSession : ExportScope.currentDevice,
+    scope: ExportScope.currentDevice,
     deviceId: deviceId,
-    sessionId: sessionOnly ? tele.recordingSessionId : null,
-    classSlug: productClassSlug(
-      cls == ProductClass.unknown ? conn.resolvedClass : cls,
+    // Same three-rung ladder as the identity above, and the cached middle rung
+    // is here for the identical FB-68 reason: without it a unit that was never
+    // named reported its real class while the link was up and `unknown` a few
+    // seconds later, in the FILENAME.
+    classSlug: productClassSlug(deviceClassFor(
+      devices,
+      deviceId,
+      facts: facts,
+      liveDeviceId: deviceId,
+      liveClass: conn.resolvedClass,
+    )),
+    ident: exportDeviceIdent(
+      devices,
+      deviceId,
+      facts: facts,
+      liveSerial: tele.fullSerial ?? tele.serial,
     ),
-    ident: deviceIdentFragment(
-      serial: tele.fullSerial ?? tele.serial,
-      alias: saved?.alias,
-      deviceId: deviceId,
-    ),
+    layout: layout,
   );
 }
 
@@ -278,17 +391,37 @@ String exportScopeDeviceLabel({String? name, String? ident}) {
 
 /// Ask the user what the export should cover.
 ///
-/// Returns [ExportTarget.all] straight away when nothing is connected — there
-/// is no meaningful choice to make then, and a one-option sheet is just a tap
-/// in the way. Returns null if the user dismisses the sheet.
+/// Returns an all-devices target straight away when nothing is connected —
+/// there is no meaningful choice to make then, and a one-option sheet is just a
+/// tap in the way. Returns null if the user dismisses the sheet.
+///
+/// 🔑 **This is the snapshot point (FB-68).** All three export handlers reach
+/// their first `await` here, so this is the one instant every export shares —
+/// the moment the user asked for it. Identity and layout are resolved here,
+/// ONCE, and travel inside the returned [ExportTarget]; a handler that reached
+/// for `currentExportLayoutValue` again after the sheet closed would be taking a
+/// second reading of a value that can have changed, which is the defect.
+///
+/// ⚠️ The layout is read BEFORE the sheet, alongside the identity, not after the
+/// user taps. A few seconds of "which instant is the export stamped from" is
+/// worth trading for two files that agree — and the sheet is the user's decision
+/// point, not work, so the export it describes starts here.
 Future<ExportTarget?> chooseExportScope(
   BuildContext context, {
   required bool offerSession,
 }) async {
-  final current = currentDeviceTarget(context);
-  if (current == null) return ExportTarget.all;
-  final sessionTarget =
-      offerSession ? currentDeviceTarget(context, sessionOnly: true) : null;
+  // The two halves of the snapshot, taken together. `layout` first because
+  // `currentDeviceTarget` takes it: there is no code path that builds a target
+  // and then goes looking for a layout.
+  final layout = currentExportLayoutValue(context);
+  final current = currentDeviceTarget(context, layout: layout);
+  if (current == null) {
+    return ExportTarget(scope: ExportScope.allDevices, layout: layout);
+  }
+  // Derived from `current`, never resolved again — see [ExportTarget.asSession].
+  final sessionTarget = offerSession
+      ? current.asSession(context.read<TelemetryController>().recordingSessionId)
+      : null;
   final l10n = AppLocalizations.of(context);
   final label = exportScopeDeviceLabel(
     // Looked up as a nullable type on purpose (design 0057): provider returns
@@ -329,7 +462,12 @@ Future<ExportTarget?> chooseExportScope(
           ListTile(
             leading: const Icon(Icons.all_inclusive_outlined),
             title: Text(l10n.exportScopeAllDevices),
-            onTap: () => Navigator.of(sheetContext).pop(ExportTarget.all),
+            onTap: () => Navigator.of(sheetContext).pop(
+              // Carries the snapshot's layout: an all-devices export taken from
+              // a connected phone still has a dashboard to describe, and it is
+              // the same dashboard the device-scoped option would have named.
+              ExportTarget(scope: ExportScope.allDevices, layout: layout),
+            ),
           ),
           const SizedBox(height: 8),
         ],

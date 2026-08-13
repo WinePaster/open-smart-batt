@@ -486,6 +486,13 @@ Watchface effectiveWatchface(ProductClass cls, Watchface stored) =>
 /// one design 0034 §8 started from: the preamble records the configuration, the
 /// switch lines record what the configuration was allowed to do, and reading
 /// them together is how a screenshot becomes evidence.
+/// What [exportLayoutValue] emits when no unit's layout was in force.
+///
+/// Named rather than inlined because `ExportTarget.layout` needs it as a
+/// compile-time default (FB-68), and a wire literal that exists in two files is
+/// a literal that drifts in one of them.
+const String kExportLayoutNone = 'face=- modules=-';
+
 String exportLayoutValue({
   required ProductClass? cls,
   required DisplayLayout? layout,
@@ -494,7 +501,7 @@ String exportLayoutValue({
   // phone-wide one to fall back on (Q3 bound the setting to the device). Say
   // so with the same `-` this project already uses for an absent ident in
   // `exportScopeLabel`, rather than printing a default nobody chose.
-  if (cls == null || layout == null) return 'face=- modules=-';
+  if (cls == null || layout == null) return kExportLayoutNone;
   final face = effectiveWatchface(cls, layout.watchface);
   final modules = watchfaceModules(cls, face).map((m) => m.name).join(',');
   return 'face=${face.slug} modules=$modules';

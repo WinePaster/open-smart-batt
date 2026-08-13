@@ -223,12 +223,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
         );
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
-    // Captured with the rest, and for the same reason (design 0034 §8): the
-    // dashboard layout in force at the MOMENT OF EXPORT, which for a
-    // device-scoped or all-devices export alike is this phone's — the setting
-    // is bound to the connected unit, so an offline export honestly reports
-    // that no layout was in force.
-    final layout = currentExportLayoutValue(context);
+    // The dashboard layout in force at the MOMENT OF EXPORT (design 0034 §8),
+    // which for a device-scoped or all-devices export alike is this phone's —
+    // the setting is bound to the connected unit, so an offline export honestly
+    // reports that no layout was in force.
+    //
+    // 🔴 FB-68: "the moment of export" is now ONE instant, fixed inside the
+    // target by `chooseExportScope`, and this is the file the field pairs were
+    // half of — the history CSV. Re-reading it here would let this file and the
+    // diagnostic log the same reporter sends seconds later disagree about the
+    // same phone.
+    final layout = target.layout;
+    // Phone-wide, no link to lose, so it is not part of the snapshot.
     final home = currentExportHomeValue(context);
     // design 0042 §3.9: unconditional, `off` included — otherwise an empty
     // `speed` column means both "the feature was off" and "the signal never
