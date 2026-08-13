@@ -779,13 +779,27 @@ class _Header extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            l10n.devicesSheetTitle,
-            style: TextStyle(
-              fontSize: 16,
-              letterSpacing: 0.5,
-              fontWeight: FontWeight.w700,
-              color: context.colors.text,
+          // Flexible, not a bare Text: the title and the rescan pill are the
+          // only two children of a `spaceBetween` Row, so a title that does not
+          // fit has nowhere to go and the Row overflows. That overflow draws
+          // the debug stripes ONLY in a debug build — in release it is a silent
+          // clip, which is how it survived to 2026-08-14 unnoticed (measured at
+          // 37 px on a 320 pt surface). Widths here are not hypothetical:
+          // `main.dart` multiplies the system text scale by
+          // `AppTheme.baseTextScale = 1.15` and does NOT cap it, so a user at
+          // 2.0 renders this at 2.3×, and `Select device` / `Rescan` are wider
+          // than the Chinese strings.
+          Flexible(
+            child: Text(
+              l10n.devicesSheetTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 16,
+                letterSpacing: 0.5,
+                fontWeight: FontWeight.w700,
+                color: context.colors.text,
+              ),
             ),
           ),
           // rescan pill (mockup `.rescan`).
@@ -1244,13 +1258,27 @@ class _StatusBadge extends StatelessWidget {
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9.5,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w700,
-                color: color,
+            // Flexible + ellipsis, matching the `meta` line one row up in the
+            // same Column — that one already had `maxLines: 1` and this one did
+            // not, which is what an omission looks like rather than a choice.
+            // `mainAxisSize.min` asks for the intrinsic width but cannot create
+            // it: this pill sits in the row's middle column, squeezed between
+            // the signal bars and the connect button, and a long status word
+            // overflowed by 80 px on a 320 pt surface (2026-08-14). Truncating
+            // to `Reconnec…` is the honest failure — the untruncated version
+            // silently clipped the chevron too, so the control stopped looking
+            // like something you could tap.
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
             const SizedBox(width: 3),

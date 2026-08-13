@@ -1103,17 +1103,17 @@ void main() {
       await pumpPage(tester, s);
       await settle(tester);
 
-      // ⚠️ FOUND WHILE WRITING THIS, NOT CAUSED BY IT: at 320 pt the page
-      // already throws two RenderFlex overflows, both in code this change does
-      // not touch —
-      //   * `_Header`'s title/rescan row (devices_page.dart:779), 37 px;
-      //   * `_StatusBadge` (devices_page.dart:1238), 80 px, squeezed by the
-      //     row's narrow middle column.
-      // They are consumed rather than asserted away: fixing them is a separate
-      // decision, and letting them fail this test would only mean deleting it.
-      // What IS asserted below is the geometry of the two controls this change
-      // adds — nothing clipped, nothing touching.
-      while (tester.takeException() != null) {}
+      // 🔴 This used to be `while (tester.takeException() != null) {}`, added
+      // 2026-08-14 to swallow two pre-existing RenderFlex overflows found while
+      // writing this test: `_Header`'s title/rescan row (37 px) and
+      // `_StatusBadge` squeezed by the row's narrow middle column (80 px).
+      // Both were fixed the same day (Flexible + ellipsis on each), so the
+      // swallow is now an assertion — and it has to be, because a blanket
+      // `takeException` loop would also eat the THIRD overflow nobody has
+      // written yet. In release builds a RenderFlex overflow paints no stripes;
+      // it is a silent clip. This line is the only thing that would say so.
+      expect(tester.takeException(), isNull,
+          reason: 'no RenderFlex overflow at 320 pt');
 
       final rename = rowAction('Rename');
       final remove = rowAction('Remove');
