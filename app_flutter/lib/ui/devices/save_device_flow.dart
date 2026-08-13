@@ -120,6 +120,41 @@ Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
   return true;
 }
 
+/// Ask for a NEW alias and apply it to an already-saved device.
+///
+/// 🔴 Here, and not inline in either caller, for exactly the reason
+/// [promptAndSaveDevice] is (ruled 2026-08-13): renaming just grew a second
+/// entrance. It had one — the pencil on the saved row — and a community report
+/// on 2026-08-13 showed that entrance was not being found at all
+/// (「目前如果要更改名稱，刪除再重新設定！請問是否可以直接更改名稱？」), so the
+/// device's own page got one too. Two copies of a four-line flow is how two
+/// screens start disagreeing about what "cancel" means.
+///
+/// Returns true only when a new alias was written.
+///
+/// 🔴 Cancel and empty are DIFFERENT ANSWERS, and this must not collapse them:
+/// [showAliasDialog] pops null for 取消 and `''` for a cleared field, and an
+/// empty alias is a supported value the list renders as 未命名裝置. Treating ''
+/// as a cancel here would rebuild the bug fixed in `alias_dialog.dart` on
+/// 2026-08-11, one layer up.
+///
+/// 🔴 Not gated on `context.mounted` after the await — same as
+/// [promptAndSaveDevice]: the controller is captured BEFORE the dialog, nothing
+/// below touches [context], and a mounted check would throw away the name the
+/// user just typed on any caller the rename itself rebuilds away.
+Future<bool> promptAndRenameDevice(
+  BuildContext context, {
+  required String deviceId,
+  required String currentAlias,
+}) async {
+  final devices = context.read<DeviceController>();
+  final alias =
+      await showAliasDialog(context, initial: currentAlias, isRename: true);
+  if (alias == null) return false;
+  await devices.rename(deviceId, alias);
+  return true;
+}
+
 /// What to call an unsaved device on screen (design 0055 §4.2).
 ///
 /// 🔴 Ruled 2026-08-11: **"未命名裝置" is not an acceptable title.** It is what

@@ -701,7 +701,11 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.delete_outline));
     await settle(tester);
-    await tester.tap(find.text('Remove'));
+    // 🔴 Scoped to the confirmation dialog's [TextButton] (2026-08-13): the row
+    // control was a bare glyph and is now a LABELLED button, so the word
+    // "Remove" is on screen twice while the dialog is up. An unscoped
+    // `find.text('Remove')` matches both.
+    await tester.tap(find.widgetWithText(TextButton, 'Remove'));
     await settle(tester);
 
     expect(s.devices.isSaved('DEV-A'), isFalse);
@@ -1028,5 +1032,251 @@ void main() {
     await settle(tester);
     expect(ble.startScans, greaterThan(beforeBack),
         reason: 'and it comes back when the page does');
+  });
+
+  // ---------------------------------------------------------------------------
+  // RENAMING — reported 2026-08-13 by a community member:「主面板已加入RCE產品，
+  // 目前如果要更改名稱，刪除再重新設定！請問是否可以直接更改名稱？」
+  //
+  // 🔑 The feature was NEVER missing. `DeviceRepo.updateAlias`,
+  // `DeviceController.rename`, `showAliasDialog(isRename: true)` and both
+  // locales' strings have all shipped for months, and `data_test.dart` pins the
+  // repo layer. What was missing was any test that went through the UI — and
+  // the UI was a 14 px `Icons.edit_outlined` in an unpadded `InkWell` (a 14×14
+  // dp target, no tooltip, no label) with the DELETE key 7 px to its right. So
+  // the reporter deleted the device and set it up again, and nothing in this
+  // suite could have noticed, because nothing in this suite ever pressed it.
+  //
+  // That is the second time: `home_page.dart`'s `onEdit` records 2026-08-07's
+  // 「沒有這個功能呢」about an 18 px grey `Icons.tune`. These tests exist so the
+  // third time cannot be silent — they assert the WORD and the TARGET SIZE, not
+  // just that a callback is wired, because "wired but unfindable" is precisely
+  // the defect.
+  // ---------------------------------------------------------------------------
+  group('rename: a control that can be found', () {
+    /// The saved row's rename button. Anchored on its [Tooltip] because the
+    /// whole card is an [InkWell] too, so an ancestor-InkWell finder is
+    /// ambiguous by construction.
+    Finder rowAction(String label) => find.ancestor(
+          of: find.text(label),
+          matching: find.byType(Tooltip),
+        );
+
+    testWidgets('the saved row carries the WORD 重新命名, on a hittable target',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      final rename = rowAction('Rename');
+      expect(rename, findsOneWidget,
+          reason: 'a control nobody finds is a control that does not exist — '
+              'the word is the fix, not a louder glyph');
+      expect(tester.widget<Tooltip>(rename).message, 'Rename');
+
+      final size = tester.getSize(rename);
+      expect(size.height, greaterThanOrEqualTo(40),
+          reason: 'it was 14×14 dp. Material asks for 48, HIG for 44; 40 is '
+              'the floor this row can carry');
+      expect(size.width, greaterThanOrEqualTo(40));
+
+      // …and it is nowhere near the destructive one any more. 7 px is what the
+      // reporter most likely mis-tapped.
+      final gap = tester.getRect(rowAction('Remove')).left -
+          tester.getRect(rename).right;
+      expect(gap, greaterThan(40),
+          reason: 'rename and delete sit at opposite ends of the row');
+    });
+
+    testWidgets('…and both words still fit a 320 pt phone', (tester) async {
+      // The row was restructured to carry two labels where it used to carry two
+      // glyphs, so the 320 pt case is the one that has to be checked — see
+      // `toolbar_narrow_screen_test.dart` for the last time a control was
+      // silently clipped there and shipped.
+      tester.view.physicalSize = const Size(320 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      // ⚠️ FOUND WHILE WRITING THIS, NOT CAUSED BY IT: at 320 pt the page
+      // already throws two RenderFlex overflows, both in code this change does
+      // not touch —
+      //   * `_Header`'s title/rescan row (devices_page.dart:779), 37 px;
+      //   * `_StatusBadge` (devices_page.dart:1238), 80 px, squeezed by the
+      //     row's narrow middle column.
+      // They are consumed rather than asserted away: fixing them is a separate
+      // decision, and letting them fail this test would only mean deleting it.
+      // What IS asserted below is the geometry of the two controls this change
+      // adds — nothing clipped, nothing touching.
+      while (tester.takeException() != null) {}
+
+      final rename = rowAction('Rename');
+      final remove = rowAction('Remove');
+      expect(rename, findsOneWidget);
+      expect(remove, findsOneWidget);
+      // Not clipped: both boxes lie inside the surface, and they do not touch.
+      expect(tester.getRect(rename).left, greaterThanOrEqualTo(0));
+      expect(tester.getRect(remove).right, lessThanOrEqualTo(320));
+      expect(tester.getRect(remove).left,
+          greaterThan(tester.getRect(rename).right));
+    });
+
+    testWidgets('tapping it renames the device, in place', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      expect(find.text('Cap #1'), findsOneWidget);
+
+      await tester.tap(rowAction('Rename'));
+      await settle(tester);
+
+      // The RENAME copy, pre-filled with the alias it is replacing — not the
+      // "save a new device" copy.
+      expect(find.text('Set a new alias for this device.'), findsOneWidget);
+      final field = find.byType(TextField);
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).controller?.text, 'Cap #1');
+
+      await tester.enterText(field, 'Cap #1 rear');
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      expect(s.devices.deviceFor('DEV-A')?.alias, 'Cap #1 rear',
+          reason: 'the rename must reach `updateAlias`');
+      expect(find.text('Cap #1 rear'), findsOneWidget,
+          reason: '…and the list must say so without a reload');
+      expect(find.text('Cap #1'), findsNothing);
+      // R22's rule holds for this control too: nothing navigates.
+      expect(find.byType(DevicesPage), findsOneWidget);
+      expect(find.byType(DeviceDetailPage), findsNothing);
+    });
+
+    testWidgets('cancelling changes nothing', (tester) async {
+      // The other half — and the one that matters, because the flow now runs
+      // through `promptAndRenameDevice`, which must keep cancel (null) and an
+      // emptied field ('') different answers.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      await tester.tap(rowAction('Rename'));
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), 'discarded');
+      await tester.pump();
+      await tester.tap(find.text('Cancel'));
+      await settle(tester);
+
+      expect(s.devices.deviceFor('DEV-A')?.alias, 'Cap #1');
+      expect(find.text('Cap #1'), findsOneWidget);
+    });
+
+    testWidgets('an EMPTIED name is saved as empty, not read as a cancel',
+        (tester) async {
+      // `alias_dialog.dart`'s 2026-08-11 rule, one layer up: '' is an answer
+      // and the list renders it as 未命名裝置. A `if (alias.isEmpty) return`
+      // anywhere in the rename path would rebuild that bug.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      await tester.tap(rowAction('Rename'));
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      expect(s.devices.deviceFor('DEV-A')?.alias, '');
+      expect(find.text('Unnamed device'), findsOneWidget);
+    });
+
+    // -------------------------------------------------------------------------
+    // The device's OWN page. Every home tile lands there
+    // (`home_tiles.dart`), and until 2026-08-13 it had no route to a rename at
+    // all — so a user who never opens the 裝置 tab had none either.
+    // -------------------------------------------------------------------------
+    Future<void> openDetail(WidgetTester tester, String rowLabel) async {
+      await tester.tap(find.text(rowLabel));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // route transition
+      await settle(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+    }
+
+    testWidgets('the device page has one too, and it is a WORD not an icon',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await openDetail(tester, 'Cap #1');
+
+      // 🔴 A [TextButton] carrying the word. The page's own discipline
+      // (`device_detail_page.dart`: "A SENTENCE with a button, not an AppBar
+      // icon") bars a bare glyph here, and this test is what holds the line:
+      // swap it for an `IconButton` and this fails.
+      final entry = find.descendant(
+        of: find.byType(DeviceDetailPage),
+        matching: find.widgetWithText(TextButton, 'Rename'),
+      );
+      expect(entry, findsOneWidget);
+
+      await tester.tap(entry);
+      await settle(tester);
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Cap #1 front');
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      expect(s.devices.deviceFor('DEV-A')?.alias, 'Cap #1 front');
+      // The page titles itself from the alias, so the new name lands here.
+      expect(
+        find.descendant(
+          of: find.byType(DeviceDetailPage),
+          matching: find.text('Cap #1 front'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an UNSAVED unit\'s page offers 儲存, not 重新命名',
+        (tester) async {
+      // There is no alias to change on a unit with no record, and that state
+      // already has its own sentence-with-a-button (`_UnsavedNotice`). Two
+      // entrances to two different things would be worse than one.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          const DiscoveredDevice(
+              id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await openScanTab(tester);
+      await openDetail(tester, 'RCE-CarBatt');
+
+      expect(
+        find.descendant(
+          of: find.byType(DeviceDetailPage),
+          matching: find.widgetWithText(TextButton, 'Rename'),
+        ),
+        findsNothing,
+      );
+    });
   });
 }

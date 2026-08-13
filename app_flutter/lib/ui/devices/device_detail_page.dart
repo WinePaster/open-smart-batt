@@ -208,13 +208,55 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             ),
           ],
         ),
-        // 🔴 NO ACTIONS. The 錶盤 button that design 0046 R20 put here was
+        // 🔴 NO ICON ACTIONS. The 錶盤 button that design 0046 R20 put here was
         // removed on 2026-08-09 (design 0051, 「同意拿掉入口」) together with
         // `watchface_sheet.dart` and the Settings signpost. There is one
         // dashboard layout now, so there is nothing on this page to configure —
         // and an app bar action that opened a picker with one option would have
         // been worse than none. The evidence for "one option" is the corpus:
         // 11/11 usable captures carried `face=standard`.
+        //
+        // ⚠️ AMENDED 2026-08-13 — the rule above was written as "NO ACTIONS",
+        // and one action is back. The amendment is deliberate and narrow:
+        //
+        //   * The rule's own reasons were (a) design 0046 §4.7, which bars
+        //     "controls that only explain themselves after the fact", and
+        //     (b) "there is nothing on this page to configure". A TEXT button
+        //     is not (a) — it says what it does before you press it, which is
+        //     the same distinction `_UnsavedNotice` below is built on ("A
+        //     SENTENCE with a button, not an AppBar icon"). And (b) stopped
+        //     being true: the page's TITLE is the thing this edits.
+        //   * The report that forced it (2026-08-13):「目前如果要更改名稱，刪除
+        //     再重新設定！請問是否可以直接更改名稱？」— a user who reached for
+        //     DELETE-AND-RE-ADD because renaming looked impossible. Every home
+        //     tile lands here (`home_tiles.dart`), and until today this page had
+        //     no route to a rename at all.
+        //   * The alternative considered and rejected: a `_UnsavedNotice`-shaped
+        //     banner. It would be honest, but for a SAVED unit it is permanent —
+        //     a strip of chrome above the dashboard for the whole life of the
+        //     device, to host something used twice a year. A word in the bar
+        //     costs no vertical space.
+        //
+        // Guarded on `saved != null`: there is no alias to change on a unit with
+        // no record, and that case already has its own sentence-with-a-button.
+        actions: [
+          if (saved != null)
+            TextButton(
+              onPressed: () => unawaited(promptAndRenameDevice(
+                context,
+                deviceId: deviceId,
+                currentAlias: saved.alias,
+              )),
+              child: Text(
+                l10n.devicesAliasRenameTitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.muted,
+                ),
+              ),
+            ),
+        ],
       ),
       body: live
           ? (saved == null

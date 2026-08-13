@@ -73,7 +73,6 @@ import '../../ble/ble.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import 'alias_dialog.dart';
 import 'connection_failure.dart';
 import 'device_detail_page.dart';
 import 'save_device_flow.dart';
@@ -290,14 +289,10 @@ class _DevicesPageState extends State<DevicesPage>
     );
   }
 
-  Future<void> _rename(SavedDevice d) async {
-    final devices = context.read<DeviceController>();
-    final alias =
-        await showAliasDialog(context, initial: d.alias, isRename: true);
-    if (alias != null && mounted) {
-      await devices.rename(d.id, alias);
-    }
-  }
+  /// Delegated to `save_device_flow.dart` (2026-08-13) now that the device's
+  /// own page carries the same entrance. See [promptAndRenameDevice].
+  Future<void> _rename(SavedDevice d) =>
+      promptAndRenameDevice(context, deviceId: d.id, currentAlias: d.alias);
 
   /// Drop the live link — and, again, stay on this page (R22).
   Future<void> _disconnect() async {
@@ -960,110 +955,241 @@ class _DeviceRow extends StatelessWidget {
             (isConnected || isConnecting ? null : onConnect),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // icon tile (mockup `.dico`).
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: context.colors.bg,
-                  border: Border.all(color: context.colors.line),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                ),
-                child: const Icon(Icons.battery_full,
-                    size: 19, color: AppColors.amber),
-              ),
-              const SizedBox(width: 12),
-              // alias + meta + badge (mockup `.dmain`).
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
+              Row(
+                children: [
+                  // icon tile (mockup `.dico`).
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: context.colors.bg,
+                      border: Border.all(color: context.colors.line),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: const Icon(Icons.battery_full,
+                        size: 19, color: AppColors.amber),
+                  ),
+                  const SizedBox(width: 12),
+                  // alias + meta + badge (mockup `.dmain`).
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(
-                          child: Text(
-                            alias,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: aliasMuted
-                                  ? FontWeight.w600
-                                  : FontWeight.w700,
-                              color: aliasMuted
-                                  ? context.colors.muted
-                                  : context.colors.text,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                alias,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: aliasMuted
+                                      ? FontWeight.w600
+                                      : FontWeight.w700,
+                                  color: aliasMuted
+                                      ? context.colors.muted
+                                      : context.colors.text,
+                                ),
+                              ),
                             ),
+                            if (isVendor) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppColors.amber,
+                                  borderRadius:
+                                      BorderRadius.circular(AppTheme.radiusSm),
+                                ),
+                                child: const Text('RCE',
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.onAmber)),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.mono(context).copyWith(
+                            fontSize: 10.5,
+                            color: context.colors.muted,
                           ),
                         ),
-                        if (isVendor) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: AppColors.amber,
-                              borderRadius:
-                                  BorderRadius.circular(AppTheme.radiusSm),
-                            ),
-                            child: const Text('RCE',
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.onAmber)),
-                          ),
-                        ],
-                        if (onEdit != null) ...[
-                          const SizedBox(width: 7),
-                          InkWell(
-                            onTap: onEdit,
-                            child: Icon(Icons.edit_outlined,
-                                size: 14, color: context.colors.muted),
-                          ),
-                        ],
-                        if (onDelete != null) ...[
-                          const SizedBox(width: 7),
-                          InkWell(
-                            onTap: onDelete,
-                            child: Icon(Icons.delete_outline,
-                                size: 15, color: context.colors.muted),
+                        if (badge != null) ...[
+                          const SizedBox(height: 5),
+                          _StatusBadge(
+                            badge: badge!,
+                            label: connectionBadgeLabel(l10n, badge!),
+                            onTap: onOpenDetail,
                           ),
                         ],
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.mono(context).copyWith(
-                        fontSize: 10.5,
-                        color: context.colors.muted,
+                  ),
+                  const SizedBox(width: 10),
+                  if (signalLevel > 0) ...[
+                    SignalBars(level: signalLevel),
+                    const SizedBox(width: 10),
+                  ],
+                  _ConnectButton(
+                    connected: isConnected,
+                    connecting: isConnecting,
+                    onTap:
+                        isConnected ? (onDisconnect ?? onConnect) : onConnect,
+                  ),
+                ],
+              ),
+              // 🔴 A ROW OF LABELLED BUTTONS, on its own line (ruled
+              // 2026-08-13). This used to be two bare glyphs wedged in beside
+              // the alias: a 14 px `Icons.edit_outlined` in `muted`, wrapped in
+              // an `InkWell` with NO padding and NO constraints — a 14×14 dp
+              // target, no tooltip, no label — and 7 px later the DELETE key.
+              //
+              // A community report on 2026-08-13 asked whether renaming was
+              // possible at all: 「目前如果要更改名稱，刪除再重新設定！請問是否
+              // 可以直接更改名稱？」. It always was — `DeviceRepo.updateAlias`,
+              // `DeviceController.rename` and the rename dialog have all
+              // shipped for months. What the reporter could not find was the
+              // pencil, and the thing they found instead was the bin 7 px to
+              // its right.
+              //
+              // This is the SECOND time the same failure mode has shipped; see
+              // `home_page.dart`'s `onEdit` for 2026-08-07's ("沒有這個功能呢",
+              // about an 18 px grey `Icons.tune`). The conclusion recorded
+              // there is the one applied here: A CONTROL NOBODY FINDS IS A
+              // CONTROL THAT DOES NOT EXIST, and the honest fix is to give it a
+              // word, not a louder glyph.
+              //
+              // Why its own line rather than beside the alias: on a 320 pt
+              // phone the alias row's free width is ~107 dp once the icon tile,
+              // the signal bars and the connect pill have taken theirs — enough
+              // for two 14 px glyphs and nothing else. That measurement is what
+              // produced the glyphs in the first place. The full card width is
+              // ~264 dp, which fits both words with room between them.
+              //
+              // And they sit at OPPOSITE ENDS (`spaceBetween`) instead of 7 px
+              // apart, because one of them is destructive and the report we are
+              // answering is most likely a mis-tap of exactly that one.
+              //
+              // [Flexible] rather than a [Spacer]: `main.dart` MULTIPLIES the
+              // system text scale by `AppTheme.baseTextScale` and never clamps
+              // it, so at a large accessibility font these two words can want
+              // more than the card is wide. Loose flex caps each at half the
+              // row and lets `_RowAction` ellipsise inside that, which is a
+              // shortened word instead of an overflow stripe.
+              if (onEdit != null || onDelete != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (onEdit != null)
+                      Flexible(
+                        child: _RowAction(
+                          icon: Icons.edit_outlined,
+                          label: l10n.devicesAliasRenameTitle,
+                          onTap: onEdit!,
+                        ),
                       ),
-                    ),
-                    if (badge != null) ...[
-                      const SizedBox(height: 5),
-                      _StatusBadge(
-                        badge: badge!,
-                        label: connectionBadgeLabel(l10n, badge!),
-                        onTap: onOpenDetail,
+                    if (onDelete != null)
+                      Flexible(
+                        child: _RowAction(
+                          icon: Icons.delete_outline,
+                          label: l10n.devicesRemove,
+                          danger: true,
+                          onTap: onDelete!,
+                        ),
                       ),
-                    ],
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              if (signalLevel > 0) ...[
-                SignalBars(level: signalLevel),
-                const SizedBox(width: 10),
               ],
-              _ConnectButton(
-                connected: isConnected,
-                connecting: isConnecting,
-                onTap: isConnected ? (onDisconnect ?? onConnect) : onConnect,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A per-row action: a word, an icon, and a target you can actually hit.
+///
+/// 🔴 The minimum height is 40 dp on purpose — both platforms' accessibility
+/// guidance puts the floor there (Material 48, HIG 44), and what this replaces
+/// was an unpadded [InkWell] around a 14 px [Icon], i.e. 14×14 dp. See the
+/// comment at its call site for the report that produced it.
+///
+/// The [label] is the accessible name too: it is real [Text], so a screen
+/// reader announces "重新命名" rather than the icon's nothing, and the [Tooltip]
+/// carries the same word for a long-press. Nobody has to press it to find out.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// Draws in [AppColors.danger]. Set on removal — the word alone is not much
+  /// of a warning next to a button that only renames something.
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? AppColors.danger : context.colors.muted;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        child: Container(
+          // 🔴 No `alignment:` — a [Container] with one wraps its child in an
+          // [Align], which EXPANDS to the incoming constraints. Under the
+          // caller's loose [Flexible] that made this button exactly half the
+          // card wide, so the two ended up edge to edge with a zero gap: the
+          // 7 px crowding this whole change is about, rebuilt at 372 px.
+          constraints: const BoxConstraints(minHeight: 40, minWidth: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: danger
+                  ? AppColors.danger.withValues(alpha: 0.45)
+                  : context.colors.line,
+            ),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
+              // Flexible + ellipsis: the caller caps this at half the card, and
+              // an enlarged accessibility font can exceed that. A shortened
+              // word still says more than the glyph this replaces.
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
               ),
             ],
           ),
