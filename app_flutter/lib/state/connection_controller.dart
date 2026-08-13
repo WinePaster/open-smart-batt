@@ -2067,6 +2067,56 @@ class ConnectionController extends ChangeNotifier {
     }
     _restoredArm = arm;
     _coldReconcileTimer = Timer(coldReconcileGrace, _onColdReconcileExpired);
+    _adoptRestoredArm(arm);
+  }
+
+  /// Take over the hand-off the reclaimed process registered (design 0060
+  /// §3.7 #1) — the ONE exception to "a cold start does not connect on its own",
+  /// and the thing that makes state restoration usable at all.
+  ///
+  /// 🔴 THE FAILURE THIS EXISTS TO PREVENT. Our `connectionState` subscription
+  /// is created inside `BleService.connect()` and nowhere else
+  /// (`ble_service.dart`, `device.connectionState.listen(...)` beside the
+  /// `_LinkState` it belongs to). A link CoreBluetooth restores never goes
+  /// through that call, so it would arrive with no subscriber: `_current` null,
+  /// `linkState` never moving off `disconnected`, GATT setup never run — a
+  /// connection that exists on the radio and carries no data, which is a worse
+  /// outcome than not reconnecting at all. Re-issuing our own connect is what
+  /// builds the subscription the restored link needs.
+  ///
+  /// It is an ADOPTION, not a new attempt: the OS has already been asked to
+  /// reconnect this unit and may already have done it. `autoConnect: true` is
+  /// therefore the right form — no timeout, no ladder, no MTU — and it is also
+  /// the form that is harmless if the peripheral is nowhere near.
+  ///
+  /// ⚠️ Idempotency is ASSUMED, not verified. The plugin's `willRestoreState:`
+  /// re-issues `connectPeripheral` for a restored-but-disconnected peripheral
+  /// and replays `didConnect` for one already up; what a second `connect()` from
+  /// us does on top of either is not answerable from the source, and no host
+  /// test can raise the event. Design 0060 Q2 / Phase 3 R1 is the device check —
+  /// look for duplicate `link: connected` or an odd `sub=` in `conn-state:`.
+  ///
+  /// No watchdog is armed here, deliberately. This is not a fresh 180 s promise;
+  /// it is the tail of one made by a process that no longer exists, and
+  /// [_coldReconcileTimer] is already the deadline on what THIS launch does
+  /// about it.
+  void _adoptRestoredArm(AutoConnectArm arm) {
+    final id = arm.deviceId;
+    // The target, so the ordinary machinery treats this as the unit we want:
+    // without it a drop after a SUCCESSFUL adoption would find
+    // `_desiredDeviceId == null` and re-arm nothing, quietly re-opening FB-67
+    // for the very link restoration just gave back. It does not start a ladder
+    // — that path additionally requires `reachedConnected` or an attempt count,
+    // both zero here.
+    _desiredDeviceId = id;
+    _event('restore: adopting ${shortDeviceHash(id)} — re-registering the '
+        'pending connect the previous process left behind');
+    unawaited(_ble.connect(id, autoConnect: true).catchError((Object e) {
+      // Nothing to escalate to. The reconciliation window is still running and
+      // will report the episode unresolved on its own; a failure here only
+      // means the OS would not take the hand-off back.
+      _event('restore: adopting ${shortDeviceHash(id)} failed: $e');
+    }));
   }
 
   /// Defences (b) + (c): this launch reached the very unit the last one was

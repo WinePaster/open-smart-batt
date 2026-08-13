@@ -44,6 +44,16 @@ Future<void> bootstrap({
   WidgetBuilder? deviceInfoPanelBuilder,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
+  // restoration HERE, and nowhere else. See [BleService.enableStateRestoration]
+  // for why this is the only line in the app where the option can still take
+  // effect — the next thing to touch flutter_blue_plus is
+  // `ConnectionController`'s constructor, inside `AppServices.create` below,
+  // and that is what builds the CBCentralManager the option is read by.
+  //
+  // The outcome is held rather than logged: the log lives in a database that is
+  // not open yet. It is written a few lines further down, beside `cold-start:`.
+  final restoreLine = await configureBleStateRestoration();
   // Portrait-locked (mockup: 直式鎖定).
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
@@ -89,6 +99,11 @@ Future<void> bootstrap({
         now: DateTime.now(),
       )))
       .ignore();
+  // …and what state restoration did, from the call made before the DB existed.
+  // These two lines together are the ONLY evidence design 0060 Q3 has for
+  // "does restoration actually happen in the field, and how often": count
+  // `restore:` against `armed=` across a fortnight of captures.
+  services.logRepo.insertLog(LogEntry.event(restoreLine)).ignore();
 
   // Capture runtime errors into the diagnostic log so users can export them
   // from the phone alone (Settings → 診斷 → 匯出診斷日誌), no PC needed.
@@ -107,6 +122,31 @@ Future<void> bootstrap({
     services: services,
     deviceInfoPanelBuilder: deviceInfoPanelBuilder,
   ));
+}
+
+/// Turn on CoreBluetooth state restoration and say what happened, without ever
+/// being able to stop the app from starting (design 0060 §3.8 / §6).
+///
+/// 🔴 The `try` is the point. `main.dart:59-71` reserves `StartupFailureApp` for
+/// the database failing to open — the one failure that takes the diagnostic log
+/// down with it — and a BLE OPTION not being settable is nothing of the kind: on
+/// a desktop host, in a test, or on any platform without the plugin, the call
+/// simply has nobody to answer it. An app that refuses to launch because an
+/// iOS-only optimisation could not be enabled would be a worse bug than the one
+/// design 0060 is fixing.
+///
+/// Returns the line to write once there is a log to write it to. [setOptions] is
+/// injectable so both branches are testable; the default is the real call.
+@visibleForTesting
+Future<String> configureBleStateRestoration({
+  Future<void> Function()? setOptions,
+}) async {
+  try {
+    await (setOptions ?? BleService.enableStateRestoration)();
+    return 'restore: setOptions(restoreState: true) ok';
+  } catch (e) {
+    return 'restore: setOptions(restoreState: true) failed=$e';
+  }
 }
 
 /// Root app. Provides the state controllers via [MultiProvider] and owns the

@@ -123,6 +123,10 @@ class _FakeBle extends BleService {
   /// we merely asked for — defence (c) has to be about a link that exists.
   String? held;
 
+  /// Make the next `connect` throw — the model of CoreBluetooth declining to
+  /// take the hand-off back.
+  bool failConnect = false;
+
   @override
   String? get connectedDeviceId => held;
 
@@ -153,6 +157,7 @@ class _FakeBle extends BleService {
       {Duration? timeout, bool autoConnect = false}) async {
     connectCalls++;
     if (autoConnect) autoConnectCalls++;
+    if (failConnect) throw StateError('no such peripheral');
   }
 
   @override
@@ -688,7 +693,9 @@ void main() {
         unawaited(h.conn.connect('AA'));
         async.flushMicrotasks();
 
-        expect(h.ble.connectCalls, 1);
+        expect(h.ble.connectCalls, 2,
+            reason: 'the adoption (Phase 2) and then the user\'s own connect. '
+                'The point is that neither one interferes with the other');
         expect(h.ble.disconnectCalls, 0);
         expect(h.conn.lastError, isNull);
 
@@ -697,6 +704,146 @@ void main() {
             reason: 'a `connect` cancels the watchdog, which deletes the row — '
                 'but the ACCOUNT of the previous episode is still owed');
         expect(h.ble.disconnectCalls, 0, reason: 'nothing is dropped');
+        h.dispose();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 2 (design 0060 §3.7 #1) — the adoption path.
+  //
+  // ⚠️ WHAT THESE TESTS CANNOT REACH. Restoration itself is a CoreBluetooth
+  // event (`willRestoreState:`) that no host can raise, and "iOS reclaimed the
+  // process" cannot be simulated. What is testable is everything on OUR side of
+  // that seam: that a surviving row causes us to re-register the pending
+  // connect, that the re-registration is the `autoConnect` form, that it is not
+  // a fresh 180 s promise, and that it does not fire when there is no row.
+  // Whether a second `connect()` on an already-restored peripheral is idempotent
+  // is design 0060 Q2 and needs a device (Phase 3 R1).
+  // -------------------------------------------------------------------------
+  group('adoption (§3.7 #1) — a restored link needs a subscriber', () {
+    Iterable<String> restoreLines(_Harness h) =>
+        h.logs.notes.where((n) => n.startsWith('restore:'));
+
+    test('a surviving row re-registers the pending connect, once, as autoConnect',
+        () {
+      // 🔴 The whole reason this path exists: `BleService.connect()` is the only
+      // place a `connectionState` subscription is ever created, so a link
+      // CoreBluetooth hands back without going through it arrives with nobody
+      // listening — connected on the radio, invisible to the app, no GATT setup,
+      // no telemetry. Re-issuing our own connect is what builds that subscriber.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.conn.restoreArm(_armedAgo(const Duration(seconds: 300)));
+        async.flushMicrotasks();
+
+        expect(h.ble.connectCalls, 1);
+        expect(h.ble.autoConnectCalls, 1,
+            reason: 'the autoConnect form — no timeout, no ladder. The OS has '
+                'already been asked to reconnect this unit; this is taking that '
+                'over, not starting something new');
+        expect(restoreLines(h).single, contains('adopting'));
+        expect(h.conn.connectedDeviceId, 'AA',
+            reason: 'the adopted unit becomes the target, so a drop AFTER a '
+                'successful adoption re-arms instead of silently re-opening '
+                'FB-67 for the link restoration just gave back');
+
+        h.dispose();
+      });
+    });
+
+    test('adopting does NOT arm a fresh watchdog', () {
+      // Ruling (a) of 2026-08-13 in its sharpest form. The 180 s deadline
+      // belongs to a promise made by a process that no longer exists; minting a
+      // new one here would put a second instrument on the same link and would
+      // give up on a restoration that is still perfectly likely to land.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.conn.restoreArm(_armedAgo(const Duration(seconds: 300)));
+        async.flushMicrotasks();
+
+        // Far past the watchdog, and past the reconciliation window with it.
+        async.elapse(ConnectionController.autoConnectWatchdog * 2);
+
+        expect(
+            h.logs.notes.where((n) => n.contains('autoConnect gave up')), isEmpty,
+            reason: 'no give-up, because nothing was armed to give up');
+        expect(h.conn.lastError, isNull);
+        expect(h.ble.disconnectCalls, 0,
+            reason: 'and nothing cancels the pending connect the OS is holding '
+                '— that cancellation is exactly what FB-67 must stop doing');
+        expect(h.arms.writes, 0, reason: 'adopting writes no row of its own');
+        h.dispose();
+      });
+    });
+
+    test('no row ⇒ no adoption: the app does not connect to anything on launch',
+        () {
+      fakeAsync((async) {
+        final h = _Harness();
+        h.conn.restoreArm(null);
+        async.elapse(ConnectionController.coldReconcileGrace * 2);
+        expect(h.ble.connectCalls, 0);
+        expect(restoreLines(h), isEmpty);
+        expect(h.conn.connectedDeviceId, isNull);
+        h.dispose();
+      });
+    });
+
+    test('an arm older than 24 h is not adopted either', () {
+      // The stale branch returns before the window and before the adoption, so
+      // a phone that spent two days in a drawer does not wake up chasing a unit
+      // it lost contact with on Tuesday.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.conn.restoreArm(_armedAgo(
+            ConnectionController.coldReconcileMaxAge +
+                const Duration(minutes: 1)));
+        async.flushMicrotasks();
+        expect(h.ble.connectCalls, 0);
+        expect(restoreLines(h), isEmpty);
+        h.dispose();
+      });
+    });
+
+    test('an adoption the OS refuses is logged and changes nothing else', () {
+      fakeAsync((async) {
+        final h = _Harness();
+        h.ble.failConnect = true;
+        h.conn.restoreArm(_armedAgo(const Duration(seconds: 300)));
+        async.flushMicrotasks();
+
+        expect(restoreLines(h).last, contains('failed:'));
+        expect(h.conn.lastError, isNull,
+            reason: 'still no UI — a failed adoption is reported to the log and '
+                'to nobody else');
+
+        // And the window still closes with the account it owed.
+        async.elapse(ConnectionController.coldReconcileGrace);
+        expect(h.coldLines.single, contains('did not converge'));
+        h.dispose();
+      });
+    });
+
+    test('an adoption that lands is absorbed silently — B working must not '
+        'make A cry wolf', () {
+      // Defence (b) and Phase 2 meeting: this is the sequence a SUCCESSFUL
+      // restoration produces, and the one design 0060 §3.3 says would otherwise
+      // be misreported every single time.
+      fakeAsync((async) {
+        final h = _Harness();
+        h.conn.restoreArm(_armedAgo(const Duration(seconds: 300)));
+        async.flushMicrotasks();
+
+        // The OS delivers the connection it was holding, 1.4 s in — inside the
+        // 0.1–2.7 s band FB-67 measured for cold-return reconnections.
+        async.elapse(const Duration(milliseconds: 1400));
+        h.bringUp(async, 'AA');
+
+        expect(h.coldLines.single, contains('converged'));
+        async.elapse(ConnectionController.coldReconcileGrace * 2);
+        expect(h.coldLines.where((l) => l.contains('did not converge')),
+            isEmpty);
         h.dispose();
       });
     });
