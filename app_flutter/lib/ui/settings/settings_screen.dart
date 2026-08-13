@@ -490,13 +490,18 @@ class _DataCardState extends State<_DataCard> {
         );
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
-    // The dashboard layout in force right now (design 0034 §8). Captured here
-    // with the other context reads — by the time the CSV is built this screen
-    // may be gone.
-    final layout = currentExportLayoutValue(context);
-    // design 0046 Step 10. Same capture rule as `layout` above: read before the
-    // first await, because by the time the file is written the screen may be
-    // gone.
+    // The dashboard layout in force when this export STARTED (design 0034 §8).
+    //
+    // 🔴 FB-68: taken from the target, not re-read here. `chooseExportScope`
+    // resolved it in the same breath as the unit's identity, before the sheet;
+    // reading it again now would be a second sample of a value the scope sheet
+    // gave the link time to change — and it did, in the field, in the 17 s
+    // between one sitting's two files (batch 2026.08.13-001).
+    final layout = target.layout;
+    // design 0046 Step 10. Read before the first await, because by the time the
+    // file is written the screen may be gone. NOT part of the FB-68 snapshot:
+    // the home grid is a phone-wide setting with no link to lose, so it cannot
+    // flip when the connection drops.
     final home = currentExportHomeValue(context);
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
@@ -702,10 +707,15 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final rawLog = context.read<SettingsController>().rawPacketLog;
     final speedOn = context.read<SettingsController>().speedDetection;
     final gMeterOn = context.read<SettingsController>().gMeterEnabled;
-    // The dashboard layout in force right now (design 0034 §8), captured with
-    // the other context reads for the same reason. The home grid likewise
-    // (design 0046 Step 10).
-    final layout = currentExportLayoutValue(context);
+    // 🔴 FB-68: the layout comes from the target, resolved with the identity at
+    // the moment the export was asked for. This handler is the one that proved
+    // it matters — the diagnostic log of batch 2026.08.13-001 carried
+    // `layout: face=- modules=-` beside a CSV from 17 s earlier that said
+    // `face=fixed`, because a teardown landed between the two and this line used
+    // to be gated on `conn.isOnline`.
+    final layout = target.layout;
+    // The home grid (design 0046 Step 10) is still read here: it is a
+    // phone-wide setting, so no link state can flip it mid-export.
     final home = currentExportHomeValue(context);
     String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
     // iPad popover anchor (D.7): capture before any await invalidates context.
