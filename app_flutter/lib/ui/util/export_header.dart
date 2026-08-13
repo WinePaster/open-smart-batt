@@ -244,10 +244,20 @@ List<String> exportHeaderLines({
     // Empty `g_long`/`g_lat` columns have THREE readings and this line settles
     // the first: `off` means the feature was off. `on` narrows the remaining
     // two to "on but never calibrated" and "on, calibrated, but the card was
-    // not on screen that minute" — which the `layout:` line below helps with,
-    // since a face that never lists `gForce` cannot have shown one. Those two
+    // not on screen that minute" — which the `home: tiles=` line below settles,
+    // since a grid that does not list `gForce` cannot have shown one. Those two
     // call for different replies to a reporter; neither is "your data is
     // missing".
+    //
+    // 🔴 Corrected 2026-08-13. This used to point at `layout:` instead, and
+    // that line has had ZERO discriminating power here since design 0051
+    // ruling A: `speed` and `gForce` are on NO face (see `watchfaces.dart`), so
+    // "a face that never lists `gForce`" is true of EVERY face. The home grid
+    // is the only surface those two cards have left, so `home: tiles=` is the
+    // line that answers the question. A real export made it concrete:
+    // `g meter: on`, `layout: face=- modules=-`, a `home: tiles=` value with no
+    // `gForce` entry, and every `g_long`/`g_lat` cell in the CSV null — the
+    // third reading, and only `home:` could have told us that.
     //
     // 🔴 It reports the SWITCH, not availability. Availability moves during a
     // session — the still-window check can withdraw a calibration mid-ride —
