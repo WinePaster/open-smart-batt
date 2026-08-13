@@ -46,14 +46,30 @@
 // `Stopwatch` was rejected.
 //
 // ---------------------------------------------------------------------------
-// 乙 — the process is reclaimed (FB-67, NOT fixed)
+// 乙 — the process is reclaimed (FB-67 — FIXED by design 0060; these tests now
+//      pin the NO-PERSISTENCE boundary, not the product)
 // ---------------------------------------------------------------------------
 //
-// iOS kills a suspended app under memory pressure; the next launch is a cold
-// start. There is no state anywhere — not in memory, not on disk, not read back
-// from the diagnostic log — from which a fresh `ConnectionController` could
-// learn that an autoConnect was ever armed, so the deadline is not late, it is
-// gone. FB-66's remedy is of no help whatsoever: there is no process to wake up
+// ⚠️ READ THIS BEFORE BELIEVING THE `DEFECT:` LABELS BELOW. They were written
+// on 2026-08-13 while FB-67 was still open, and they are still green — but NOT
+// because the product still behaves this way. `ConnectionController` now takes
+// an optional `autoConnectArm` repo (design 0060 Phase 0); the harness in THIS
+// file does not wire one, and a controller without that repo is exactly the
+// pre-0060 controller. So what these three tests pin today is the BOUNDARY
+// CASE — "with no persistence layer, an armed hand-off dies with the process"
+// — which is worth keeping precisely because it is the thing the repo has to
+// defeat.
+//
+// 🔑 The product path — arm row written, cold start reconciled, adoption,
+// silence when the hand-off converged — is covered in
+// `autoconnect_arm_persistence_test.dart`. If you are here to ask "is FB-67
+// fixed?", that file is the answer, not this group.
+//
+// The original defect, for context: iOS kills a suspended app under memory
+// pressure; the next launch is a cold start. There was no state anywhere — not
+// in memory, not on disk, not read back from the diagnostic log — from which a
+// fresh `ConnectionController` could learn that an autoConnect was ever armed,
+// so the deadline was not late, it was gone. FB-66's remedy is of no help whatsoever: there is no process to wake up
 // and compare a stamp. These three tests are unchanged and still pin a defect.
 //
 // ---------------------------------------------------------------------------
@@ -627,8 +643,9 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  group('乙 — the process is reclaimed (DEFECT: the deadline is not deferred, '
-      'it is gone)', () {
+  group('乙 — the process is reclaimed, with NO arm repo wired (the pre-0060 '
+      'boundary; FB-67 itself is fixed — see autoconnect_arm_persistence_test)',
+      () {
     test(
         'DEFECT: disposing mid-flight cancels the deadline and the give-up is '
         'never reported, ever', () {
