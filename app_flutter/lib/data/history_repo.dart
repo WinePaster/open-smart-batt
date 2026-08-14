@@ -461,9 +461,19 @@ class HistoryRepo {
           gLatMs2: w.gLatMs2,
           bucketS: w.bucketS);
       // The same key [insertSample] merges on — exact timestamp plus device.
-      // ` ` cannot occur in a device id, so the two halves cannot run
+      // NUL cannot occur in a device id, so the two halves cannot run
       // together into a colliding key.
-      final key = '${w.deviceId ?? ''} ${row['timestamp']}';
+      //
+      // 🔴 Spelled as the six-character ESCAPE below, never as a literal NUL
+      // byte. A raw NUL here compiles, passes every test, and `git diff` still
+      // renders the file — but `grep` classifies the WHOLE FILE as binary and
+      // skips it. This project's standing rule is "grep -rn for every landing
+      // point before you change anything" (`docs/feedback-triage/discipline.md`,
+      // 2026-08-14), so a source file invisible to grep is one whose next change
+      // gets made with a call site unseen. Found exactly that way on 2026-08-14:
+      // a repo-wide grep for `bucketExpr` came back empty while the symbol was
+      // sitting a few hundred lines below this one.
+      final key = '${w.deviceId ?? ''}\u0000${row['timestamp']}';
       final prev = merged[key];
       if (prev == null) {
         merged[key] = row;
