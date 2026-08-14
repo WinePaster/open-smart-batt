@@ -139,6 +139,29 @@ void main() {
     await tester.pump();
   }
 
+  /// The round `2026.08.14/001` holds three times inside five seconds, and
+  /// `2026.08.13/007` four times: the link is up and still doing GATT setup
+  /// when the user taps connect again, and [BleService.connect]'s opening
+  /// `await disconnect()` tears it down. On the wire `connect →` and
+  /// `link: disconnecting` land inside 1 ms of each other and the drop arrives
+  /// as `reason=23789258` — "connection canceled", i.e. by us.
+  Future<void> setupCutShortByOurOwnConnect(
+      WidgetTester tester, AppServices s) async {
+    await tester.runAsync(() async {
+      ble.emitLink(BleLinkState.connecting);
+      await Future<void>.delayed(Duration.zero);
+      ble.emitLink(BleLinkState.connected);
+      await Future<void>.delayed(Duration.zero);
+      // The user taps connect again on the SAME unit, mid-setup.
+      await s.connection.connect('AA');
+      ble.emitLink(BleLinkState.disconnecting);
+      await Future<void>.delayed(Duration.zero);
+      ble.emitLink(BleLinkState.disconnected);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pump();
+  }
+
   /// A round that comes all the way up.
   Future<void> goodSetup(WidgetTester tester, AppServices s) async {
     await tester.runAsync(() async {
@@ -300,6 +323,130 @@ void main() {
 
       expect(s.connection.setupFailures, 0);
       expect(s.connection.isSetupStalled, isFalse);
+    });
+  });
+
+  group('FB-72 — a drop WE asked for is not a stalled setup', () {
+    // `2026.08.13/007` §2.3 and `2026.08.14/001` §1.1 N1-b, independently.
+    // The counter asked only "did it reach `connected` without reaching
+    // `ready`" and never "who ended it" — so three quick taps on the connect
+    // button reached `maxSetupFailures` by themselves, and the give-up card
+    // appeared for hardware that was fine. In `2026.08.13/007` the very next
+    // session came up `ready`.
+    testWidgets('three taps mid-setup do not fabricate a stall',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await setupCutShortByOurOwnConnect(tester, s);
+      await setupCutShortByOurOwnConnect(tester, s);
+      await setupCutShortByOurOwnConnect(tester, s);
+
+      expect(s.connection.setupFailures, 0,
+          reason: 'an attempt we cut short never got to say nothing');
+      expect(s.connection.isSetupStalled, isFalse);
+      expect(s.connection.lastError, isNot('gatt_setup_stalled'));
+    });
+
+    testWidgets('nor does the user pressing disconnect mid-setup',
+        (tester) async {
+      // Same marker, different caller: `disconnect()` is the other route into
+      // `BleService.disconnect`, and it is the user opting out rather than the
+      // unit going silent.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      for (var i = 0; i < 3; i++) {
+        await tester.runAsync(() async {
+          ble.emitLink(BleLinkState.connecting);
+          await Future<void>.delayed(Duration.zero);
+          ble.emitLink(BleLinkState.connected);
+          await Future<void>.delayed(Duration.zero);
+          await s.connection.disconnect();
+          ble.emitLink(BleLinkState.disconnecting);
+          await Future<void>.delayed(Duration.zero);
+          ble.emitLink(BleLinkState.disconnected);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        });
+        await tester.pump();
+        await tester.runAsync(() => s.connection.connect('AA'));
+      }
+
+      expect(s.connection.setupFailures, 0);
+      expect(s.connection.isSetupStalled, isFalse);
+    });
+
+    testWidgets('a REAL stall still trips it after those taps', (tester) async {
+      // The FB-51/FB-52 exit is the reason this path exists at all: a link that
+      // keeps coming up silent must still produce an honest failure inside the
+      // first minute. Excluding our own teardowns must not disarm that, so the
+      // same session goes on to fail three times for real.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await setupCutShortByOurOwnConnect(tester, s);
+      await setupCutShortByOurOwnConnect(tester, s);
+      await setupCutShortByOurOwnConnect(tester, s);
+      expect(s.connection.setupFailures, 0);
+
+      // `GATT setup timed out` — discovery burns its 8 s and the teardown
+      // emits a bare `disconnected`, with no `disconnecting` before it because
+      // nothing in this app asked for the drop.
+      await failedSetup(tester, s);
+      await failedSetup(tester, s);
+      await failedSetup(tester, s);
+
+      expect(s.connection.setupFailures, 3);
+      expect(s.connection.isSetupStalled, isTrue);
+      expect(s.connection.lastError, 'gatt_setup_stalled');
+      expect(s.connection.isRetrying, isFalse);
+    });
+
+    testWidgets('a tap in the middle of a run neither counts nor clears it',
+        (tester) async {
+      // The other half of the rule. design 0031 G3 says a manual reconnect to
+      // the same unit must not wash the count out, and that stands: the tap is
+      // simply not evidence either way. Two genuine failures, a tap, one more
+      // genuine failure — and the card arrives on the third real one.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await failedSetup(tester, s);
+      await failedSetup(tester, s);
+      expect(s.connection.setupFailures, 2);
+
+      await setupCutShortByOurOwnConnect(tester, s);
+      expect(s.connection.setupFailures, 2,
+          reason: 'the run belongs to the unit; our own teardown says nothing '
+              'about it, in either direction');
+
+      await failedSetup(tester, s);
+      expect(s.connection.setupFailures, 3);
+      expect(s.connection.isSetupStalled, isTrue);
+    });
+
+    testWidgets('the excuse does not leak into the next attempt',
+        (tester) async {
+      // `_selfInitiatedDrop` is scoped to one attempt. If it survived into the
+      // next one, a single tap would silence every stall that followed it —
+      // which is the FB-52 exit removed, not fixed.
+      final s = await makeServices(tester);
+      addTearDown(() => tester.runAsync(s.dispose));
+      await pumpUnder(tester, s, const DisconnectedState());
+      await tester.runAsync(() => s.connection.connect('AA'));
+
+      await setupCutShortByOurOwnConnect(tester, s);
+      await failedSetup(tester, s);
+      expect(s.connection.setupFailures, 1,
+          reason: 'the very next genuine failure is counted');
     });
   });
 

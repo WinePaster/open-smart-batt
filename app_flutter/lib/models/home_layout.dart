@@ -462,8 +462,15 @@ class HomeLayout {
     // bank's single-cell 3.79 V drawn under「PVLT 主電壓」on a gauge that pins
     // it to the bottom of the sweep. Every number was real; the screen was
     // false. So the home surface waits rather than guessing — the class is
-    // written back to `saved_devices` on the first connect that reads `0x10`
-    // (`connection_controller.dart`), and the tiles appear then.
+    // written back to `saved_devices` off every telemetry sample of a
+    // connection that has read `0x10`
+    // (`ConnectionController._persistProductClass`), and the tiles appear then.
+    //
+    // ⚠️ "every sample", not "the first connect": the write used to be attempted
+    // exactly once per class change, which on a first connect happened while
+    // the naming dialog was still up — i.e. onto a record that did not exist —
+    // so a unit the user had just saved stayed invisible here until the SECOND
+    // connect. The retry is what makes this comment true.
     //
     // ⚠️ `known` is the CLASSIFIED ids, not all of them. Both filters below
     // read it, including the empty-fallback path — see the note there.

@@ -706,6 +706,30 @@ class ConnectionController extends ChangeNotifier {
   /// handled by [maxReconnectAttempts] and must not be counted twice.
   bool _reachedConnected = false;
 
+  /// True when the drop currently in progress is one WE asked the platform for.
+  ///
+  /// FB-72: [_setupFailuresSinceReady] used to count any attempt that reached
+  /// `connected` and left without `ready`, WHOEVER ended it — and the app ends
+  /// a great many of them itself. [BleService.connect] opens with
+  /// `await disconnect()`, so a second tap on the connect button tears the
+  /// first attempt down before it can finish its GATT setup. Three quick taps
+  /// therefore reached [maxSetupFailures] on their own, and the give-up card
+  /// appeared for a unit that was fine: in `2026.08.13/007` the very next
+  /// session came up `ready`, and in `2026.08.14/001` half of a
+  /// `gatt setup stalled: 3`/`4` pair was made of taps rather than of faults.
+  ///
+  /// [BleLinkState.disconnecting] is the marker because it is emitted from
+  /// exactly one place — [BleService.disconnect] — and nothing else in the app
+  /// can produce it. Every drop we did NOT ask for (a discovery that timed out,
+  /// a peripheral that went away, a radio that dropped the link) arrives as a
+  /// bare `disconnected` out of the teardown path, so a real stall still
+  /// counts. That is the FB-51/FB-52 exit, and it is deliberately untouched.
+  ///
+  /// Scoped to one attempt: set at `disconnecting`, read once at
+  /// `disconnected`, and cleared at both — plus at `connecting`, so a new
+  /// attempt can never inherit the previous one's excuse.
+  bool _selfInitiatedDrop = false;
+
   // ---- exposed state ----------------------------------------------------
 
   /// Underlying link lifecycle.
@@ -1054,6 +1078,11 @@ class ConnectionController extends ChangeNotifier {
   void setPackLabelOverride(ProductClass? label) {
     _packResolver.setOverride(label);
     _recomputePackLabel();
+    // The choice persists exactly as it did when the write still lived inside
+    // [_recomputePackLabel] — moving that write out must not quietly drop the
+    // one caller that was not a telemetry sample.
+    final id = _ble.connectedDeviceId;
+    if (id != null) _persistProductClass(id);
   }
 
   // ---- permissions / adapter -------------------------------------------
@@ -1577,6 +1606,14 @@ class ConnectionController extends ChangeNotifier {
       _classResolveLogged = false;
       _readyAt = null;
       _reachedConnected = false;
+      // FB-72: a fresh attempt owns none of the previous one's teardown.
+      _selfInitiatedDrop = false;
+    }
+    // FB-72: only [BleService.disconnect] emits this, so it is the app saying
+    // "I am ending this link" — whether the user pressed disconnect or a new
+    // `connect()` superseded the attempt in flight. See [_selfInitiatedDrop].
+    if (s == BleLinkState.disconnecting) {
+      _selfInitiatedDrop = true;
     }
     if (s == BleLinkState.connected) {
       _reachedConnected = true;
@@ -1674,6 +1711,10 @@ class ConnectionController extends ChangeNotifier {
       // FB-52 counter and the FB-53 backoff policy have to see what this
       // attempt actually achieved.
       final reachedConnected = _reachedConnected;
+      // FB-72: and WHO ended it, read and spent in the same breath — the flag
+      // describes this drop only, and leaving it set would excuse the next one.
+      final selfInitiated = _selfInitiatedDrop;
+      _selfInitiatedDrop = false;
       // Close out last-seen at the moment the unit stopped being reachable.
       // Without this the stored value would be the moment we CONNECTED, so a
       // device monitored for six hours would report "last seen 6 hours ago"
@@ -1697,7 +1738,21 @@ class ConnectionController extends ChangeNotifier {
       // FB-52: count a connection that came up and said nothing. Read `_readyAt`
       // BEFORE the line below clears it — that field is the only record that
       // this particular attempt ever reached `ready`.
-      if (reachedConnected && _readyAt == null) {
+      //
+      // FB-72: "said nothing" means the link went quiet on its own. An attempt
+      // WE cut short never got to say anything, which is not the same fact and
+      // must not be filed as one — see [_selfInitiatedDrop].
+      if (reachedConnected && _readyAt == null && selfInitiated) {
+        // Greppable for the same reason the stall line below is: this branch
+        // decides that a failure did NOT happen, and a corpus that cannot see
+        // it cannot tell a fixed misdiagnosis from a fault that stopped.
+        //
+        // The run is not cleared either — only `ready` does that. A tap that
+        // interrupts round two leaves the count at two, so the unit still owes
+        // one genuine silent connection before the card appears.
+        _event('setup failure not counted: this drop was ours '
+            '(count stays $_setupFailuresSinceReady)');
+      } else if (reachedConnected && _readyAt == null) {
         _setupFailuresSinceReady++;
         if (isSetupStalled) {
           // Cancel the retry the PREVIOUS failure already armed. Refusing to
@@ -2253,6 +2308,7 @@ class ConnectionController extends ChangeNotifier {
       _touchLastSeen(id, value: s.pvlt);
       _persistIdentity(id, s);
       _persistFacts(id, s);
+      _persistProductClass(id);
     }
   }
 
@@ -2268,6 +2324,36 @@ class ConnectionController extends ChangeNotifier {
   /// exports them — the export path hashes the MAC (design 0027 §3.1).
   void _persistIdentity(String id, TelemetrySample s) {
     final write = _devices?.setIdentity(id, mac: s.mac, serial: s.fullSerial);
+    if (write != null) _pending.add(write);
+  }
+
+  /// Persist the resolved product class onto the unit's saved record, so the
+  /// next connect can route before its device-type byte has had time to arrive.
+  /// This write is also the SELF-HEAL: a unit stored as the wrong class back
+  /// when the fingerprint was guessing gets corrected the moment its wire byte
+  /// arrives — the user does not have to fix it by hand, and neither does a
+  /// record already saved as `unknown` by the defect described below.
+  ///
+  /// The sibling of [_persistIdentity], and called for the same reason:
+  /// [DeviceController.setProductClass] already no-ops when the value is
+  /// unchanged or the device is not saved, so this can run on every telemetry
+  /// sample without spamming the DB. It used to live behind
+  /// [_recomputePackLabel]'s change gate, and that is what made a freshly saved
+  /// unit invisible on the home surface: the naming dialog opens at `connected`
+  /// and the class resolves ~3 s later at `ready`, so the one write this
+  /// controller ever attempted landed on a record that did not exist yet, and
+  /// the gate suppressed every retry for the rest of the connection.
+  ///
+  /// 🔴 [PackClassResolver.label] ONLY — the wire byte, else the user's
+  /// explicit choice for a byte we do not recognise. NEVER `_packLabel`, which
+  /// falls back to the saved-record seed: that seed came out of this very
+  /// record, so writing it back is a pointless round-trip, and on a REBOUND iOS
+  /// id it would be worse than pointless — it would stamp one device's class
+  /// onto another's row (FB-25's failure mode, from the other direction).
+  void _persistProductClass(String id) {
+    final next = _packResolver.label;
+    if (next == ProductClass.unknown) return;
+    final write = _devices?.setProductClass(id, next);
     if (write != null) _pending.add(write);
   }
 
@@ -2419,35 +2505,24 @@ class ConnectionController extends ChangeNotifier {
     if (touch != null) _pending.add(touch);
   }
 
-  /// Recompute the cosmetic pack label; notify + persist only on a real change
-  /// (the settling window and fingerprint each flip at most once per session).
+  /// Recompute the cosmetic pack label and notify only on a real change (the
+  /// settling window and the user's choice each flip at most once per session).
+  ///
+  /// The early return is a NOTIFICATION throttle and nothing else. Persisting
+  /// the class used to hang off it too, and that gate is wrong for a write: on
+  /// a first connect the class resolves while the naming dialog is still up, so
+  /// [DeviceController.setProductClass] no-opped on a record that did not exist
+  /// yet — and the gate then guaranteed no later sample would try again, which
+  /// left the unit stored as `unknown` until the NEXT connect. The write lives
+  /// in [_persistProductClass] now, called per sample like its two neighbours.
   void _recomputePackLabel() {
     // Wire byte, else the user's choice, else the saved-record seed. The seed
     // ranks LAST here on purpose: an explicit choice the user just made about
     // the unit in front of them beats a class we restored from storage.
     var next = _packResolver.label;
-    final fromResolver = next != ProductClass.unknown;
-    if (!fromResolver) next = _seedClass;
+    if (next == ProductClass.unknown) next = _seedClass;
     if (next == _packLabel) return;
     _packLabel = next;
-    // Persist the class onto the saved record, so the next connect to this unit
-    // can route before its device-type byte has had time to arrive. This write
-    // is also the SELF-HEAL: a unit stored as the wrong class back when the
-    // fingerprint was guessing gets corrected the moment its wire byte arrives
-    // — the user does not have to fix it by hand.
-    //
-    // Guarded on [fromResolver]: a label that came from the seed came out of
-    // this very record, so writing it back is a pointless round-trip, and on a
-    // REBOUND iOS id it would be worse than pointless — it would stamp one
-    // device's class onto another's row (FB-25's failure mode, from the other
-    // direction).
-    if (fromResolver && next != ProductClass.unknown) {
-      final id = _ble.connectedDeviceId;
-      if (id != null) {
-        final write = _devices?.setProductClass(id, next);
-        if (write != null) _pending.add(write);
-      }
-    }
     notifyListeners();
   }
 
