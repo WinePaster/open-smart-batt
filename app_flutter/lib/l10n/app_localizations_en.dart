@@ -863,6 +863,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyLegendTemperature => 'Temperature';
 
   @override
+  String get historyLegendRange => 'Range (min–max)';
+
+  @override
   String get historyStatMin => 'MIN';
 
   @override

@@ -748,6 +748,23 @@ class HistoryRepo {
   /// the offset's provenance and for why the same data buckets differently in
   /// another time zone on purpose. [tzOffsetMs] is a parameter only so a test
   /// can pin it.
+  ///
+  /// 🔴 **FB-74: the means here are `samples`-WEIGHTED, and the extremes are
+  /// not decoration.** This query used to spell both averages as a bare
+  /// `AVG(col)` — the exact construction [_wavg] exists to forbid, and the one
+  /// the corpus has measured wrong four times (a stored minute is several rows
+  /// with wildly different `samples` counts, see [_wavg]). The list had already
+  /// been fixed by design 0061 T3a; leaving the chart unweighted meant the line
+  /// and the row under it could report different numbers for the same minute,
+  /// with nothing on screen to say which was right.
+  ///
+  /// [HistoryBucket.minPvlt]/[HistoryBucket.maxPvlt] and their temperature
+  /// twins are what makes an INSTANT survive the read path. A second at 15.5 V
+  /// inside a one-hour bucket moves the mean by about four millivolts; the mean
+  /// is the right thing to DRAW as a trend and the wrong thing to look at when
+  /// asking "did this unit ever go over voltage". The chart is required to put
+  /// the extremes on screen — axis window and min–max band both (FB-74) — and
+  /// `history_chart_aggregation_test.dart` pins it.
   Future<List<HistoryBucket>> queryBuckets({
     DateTime? since,
     required int bucketMs,
@@ -768,9 +785,13 @@ class HistoryRepo {
       // (`(timestamp / b) * b` against `timestamp / b`); they agreed, but only
       // by arithmetic, and a divergence would have grouped by one key while
       // reporting another with no error anywhere.
+      // ⚠️ `${_wavg(...)}`, never a bare `AVG` — see the doc comment above and
+      // [_wavg] itself. MIN/MAX stay unweighted on purpose: an extreme is a
+      // reading that HAPPENED, and weighting it by how many snapshots the row
+      // folded would be meaningless.
       'SELECT $bucket AS bucket, '
-      'AVG(pvlt) AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
-      'AVG(temperature) AS avgTemp, MIN(temperature) AS minTemp, '
+      '${_wavg('pvlt')} AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
+      '${_wavg('temperature')} AS avgTemp, MIN(temperature) AS minTemp, '
       'MAX(temperature) AS maxTemp, COUNT(*) AS n '
       'FROM ${Db.tableHistory} $where '
       'GROUP BY $bucket ORDER BY bucket ASC',

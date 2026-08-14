@@ -821,6 +821,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyLegendTemperature => '溫度';
 
   @override
+  String get historyLegendRange => '區間範圍（最小–最大）';
+
+  @override
   String get historyStatMin => '最小';
 
   @override

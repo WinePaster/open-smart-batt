@@ -970,6 +970,12 @@ class _TrendCardState extends State<_TrendCard> {
               _LegendDot(
                   color: AppColors.cyan, label: l10n.historyLegendTemperature),
             ],
+            // FB-74. Unlabelled shading reads as a rendering flourish; this is
+            // the one thing on the chart that says an instantaneous event is
+            // visible at all, so it gets a legend entry rather than a footnote.
+            const SizedBox(width: 16),
+            _LegendBand(
+                color: AppColors.amber, label: l10n.historyLegendRange),
           ],
         ),
         const SizedBox(height: 8),
@@ -1022,9 +1028,18 @@ class _TrendCardState extends State<_TrendCard> {
       bool hasTemp) {
     final fmt = DateFormat(widget.multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
+    // FB-74: the temperature half of this line used to be the mean alone, while
+    // the voltage half already carried its (min–max). A bucket whose hottest
+    // second is the reason the user tapped it would answer with an average.
+    String t(double c) =>
+        _toDisplayTemp(c, widget.tempUnit).toStringAsFixed(0);
+    final u = _tempUnitLabel(widget.tempUnit);
+    final tLo = b.minTemp, tHi = b.maxTemp;
     final tempStr = b.avgTemp == null
         ? null
-        : '${_toDisplayTemp(b.avgTemp!, widget.tempUnit).toStringAsFixed(0)}${_tempUnitLabel(widget.tempUnit)}';
+        : (tLo == null || tHi == null)
+            ? '${t(b.avgTemp!)}$u'
+            : '${t(b.avgTemp!)}$u (${t(tLo)}–${t(tHi)}$u)';
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -1094,6 +1109,34 @@ class _LegendDot extends StatelessWidget {
             width: 9,
             height: 9,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 5),
+        Text(label,
+            style: TextStyle(fontSize: 10.5, color: context.colors.muted)),
+      ],
+    );
+  }
+}
+
+/// Legend swatch for the min–max band — a translucent slab, drawn with the same
+/// alpha the painter fills the band with so the key and the chart match.
+class _LegendBand extends StatelessWidget {
+  const _LegendBand({required this.color, required this.label});
+  final Color color;
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 9,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+        ),
         const SizedBox(width: 5),
         Text(label,
             style: TextStyle(fontSize: 10.5, color: context.colors.muted)),
@@ -1174,6 +1217,102 @@ class _StatsStrip extends StatelessWidget {
   }
 }
 
+/// The chart's left-axis window, in volts — FB-74.
+///
+/// 🔴 **Computed over the buckets' EXTREMES, never over their means alone.**
+/// This is the chart-side half of the defect design 0061 §6.0 pinned for the
+/// list: one second at 15.5 V inside a one-hour bucket moves `avgPvlt` by about
+/// four millivolts, so an axis scaled from the means tops out just above the
+/// ordinary running voltage — and the min–max band drawn below would then be
+/// clipped off the top of the plot, silently. The stats strip immediately under
+/// the chart reports the range-wide `MAX` from raw rows, so an averaged axis
+/// also puts a number on screen (15.5 V) that the picture above it flatly
+/// contradicts and gives the reader no way to locate in time.
+///
+/// PUBLIC-ish (used by `history_chart_aggregation_test.dart`) for the same
+/// reason [historyWindowIsFlagged] is: the rule is worth pinning without
+/// pumping a screen.
+({double lo, double hi}) historyChartVoltageRange(List<HistoryBucket> buckets) {
+  double? lo, hi;
+  void see(double? v) {
+    if (v == null) return;
+    if (lo == null || v < lo!) lo = v;
+    if (hi == null || v > hi!) hi = v;
+  }
+
+  for (final b in buckets) {
+    see(b.avgPvlt);
+    see(b.minPvlt);
+    see(b.maxPvlt);
+  }
+  var vlo = (lo ?? 0) - 0.2, vhi = (hi ?? 1) + 0.2;
+  if (vhi - vlo < 0.5) {
+    final m = (vlo + vhi) / 2;
+    vlo = m - 0.25;
+    vhi = m + 0.25;
+  }
+  return (lo: vlo, hi: vhi);
+}
+
+/// The chart's right-axis window, in DISPLAY temperature units — FB-74.
+///
+/// Same rule and same reason as [historyChartVoltageRange]: a bucket's hottest
+/// second is the one worth seeing, and it is not in the mean.
+({double lo, double hi}) historyChartTempRange(
+    List<HistoryBucket> buckets, TempUnit unit) {
+  double? lo, hi;
+  void see(double? c) {
+    if (c == null) return;
+    final d = _toDisplayTemp(c, unit);
+    if (lo == null || d < lo!) lo = d;
+    if (hi == null || d > hi!) hi = d;
+  }
+
+  for (final b in buckets) {
+    see(b.avgTemp);
+    see(b.minTemp);
+    see(b.maxTemp);
+  }
+  // No temperature anywhere in range: the same placeholder window the axis has
+  // always fallen back to, kept identical so a chart with no temperature draws
+  // exactly as it did before.
+  var tlo = (lo ?? 0) - 1, thi = (hi ?? 1) + 1;
+  if (thi - tlo < 2) {
+    final m = (tlo + thi) / 2;
+    tlo = m - 1;
+    thi = m + 1;
+  }
+  return (lo: tlo, hi: thi);
+}
+
+/// Build the chart's painter outside the screen, for `history_chart_aggregation_test.dart`.
+///
+/// The test drives [CustomPainter.paint] against a recording canvas and asserts
+/// that the min–max band is actually on the canvas and actually reaches above
+/// the mean line. Reaching that through a pumped History screen would mean
+/// standing up a controller, a database and a device picker to assert one thing
+/// about one `drawPath`.
+CustomPainter historyTrendPainterForTest({
+  required List<HistoryBucket> buckets,
+  TempUnit tempUnit = TempUnit.celsius,
+  bool hasTemp = false,
+  bool multiDay = false,
+  int bucketMs = 60000,
+  int? selected,
+}) =>
+    _TrendPainter(
+      buckets: buckets,
+      tempUnit: tempUnit,
+      hasTemp: hasTemp,
+      multiDay: multiDay,
+      bucketMs: bucketMs,
+      selected: selected,
+      vColor: AppColors.amber,
+      tColor: AppColors.cyan,
+      grid: const Color(0xFF333333),
+      text: const Color(0xFF888888),
+    );
+
 class _TrendPainter extends CustomPainter {
   _TrendPainter({
     required this.buckets,
@@ -1203,44 +1342,13 @@ class _TrendPainter extends CustomPainter {
     final plotH = size.height - top - bottom;
     final n = buckets.length;
 
-    // Voltage range (left axis).
-    double? vmin, vmax;
-    for (final b in buckets) {
-      final a = b.avgPvlt;
-      if (a == null) continue;
-      vmin = vmin == null ? a : (a < vmin ? a : vmin);
-      vmax = vmax == null ? a : (a > vmax ? a : vmax);
-    }
-    vmin ??= 0;
-    vmax ??= 1;
-    var vlo = vmin - 0.2, vhi = vmax + 0.2;
-    if (vhi - vlo < 0.5) {
-      final m = (vlo + vhi) / 2;
-      vlo = m - 0.25;
-      vhi = m + 0.25;
-    }
-
-    // Temperature range (right axis, display units).
-    double? tmin, tmax;
-    if (hasTemp) {
-      for (final b in buckets) {
-        final a = b.avgTemp;
-        if (a == null) continue;
-        final d = _toDisplayTemp(a, tempUnit);
-        tmin = tmin == null ? d : (d < tmin ? d : tmin);
-        tmax = tmax == null ? d : (d > tmax ? d : tmax);
-      }
-    }
-    if (tmin == null || tmax == null) {
-      tmin = 0;
-      tmax = 1;
-    }
-    var tlo = tmin - 1, thi = tmax + 1;
-    if (thi - tlo < 2) {
-      final m = (tlo + thi) / 2;
-      tlo = m - 1;
-      thi = m + 1;
-    }
+    // Axis windows. FB-74: both are scaled to include the buckets' MIN/MAX, not
+    // just their means — see [historyChartVoltageRange] for why an averaged
+    // axis would clip the very thing the band below exists to show.
+    final vr = historyChartVoltageRange(buckets);
+    final vlo = vr.lo, vhi = vr.hi;
+    final tr = historyChartTempRange(hasTemp ? buckets : const [], tempUnit);
+    final tlo = tr.lo, thi = tr.hi;
 
     double xAt(int i) => left + (n == 1 ? plotW / 2 : plotW * (i / (n - 1)));
     double yV(double v) => top + plotH * (1 - (v - vlo) / (vhi - vlo));
@@ -1325,6 +1433,66 @@ class _TrendPainter extends CustomPainter {
       }
       if (path != null) canvas.drawPath(path, paint);
     }
+
+    /// The MIN–MAX band for one series, filled under its mean line — FB-74.
+    ///
+    /// 🔴 This is the only thing on the chart that can show an INSTANT. The
+    /// line is the bucket's mean, and a bucket is 1 minute to 24 hours wide: a
+    /// single second at 15.5 V inside an hour moves the mean by about four
+    /// millivolts and is, on the line alone, indistinguishable from nothing
+    /// having happened. The user paid 60× the storage for that second (design
+    /// 0061); averaging it back out at read time is the same defect §6.0
+    /// pinned for the list, wearing different clothes.
+    ///
+    /// Bands break across nulls exactly where the line does, so a gap in the
+    /// data cannot be filled in by a shape that spans it. A run of ONE bucket
+    /// has no width, so it is stroked as a vertical whisker instead of filled —
+    /// otherwise an isolated bucket (a single minute after a long gap) would
+    /// produce a degenerate zero-area path and its spike would be the one thing
+    /// on the chart nobody could see.
+    void drawBand(double? Function(HistoryBucket) loSel,
+        double? Function(HistoryBucket) hiSel, double Function(double) y,
+        Color color) {
+      final fill = Paint()
+        ..color = color.withValues(alpha: 0.22)
+        ..style = PaintingStyle.fill;
+      final whisker = Paint()
+        ..color = color.withValues(alpha: 0.45)
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke;
+      bool has(int i) => loSel(buckets[i]) != null && hiSel(buckets[i]) != null;
+      var i = 0;
+      while (i < n) {
+        if (!has(i)) {
+          i++;
+          continue;
+        }
+        var j = i;
+        while (j + 1 < n && has(j + 1)) {
+          j++;
+        }
+        if (i == j) {
+          canvas.drawLine(Offset(xAt(i), y(hiSel(buckets[i])!)),
+              Offset(xAt(i), y(loSel(buckets[i])!)), whisker);
+        } else {
+          final path = Path()..moveTo(xAt(i), y(hiSel(buckets[i])!));
+          for (var k = i + 1; k <= j; k++) {
+            path.lineTo(xAt(k), y(hiSel(buckets[k])!));
+          }
+          for (var k = j; k >= i; k--) {
+            path.lineTo(xAt(k), y(loSel(buckets[k])!));
+          }
+          canvas.drawPath(path..close(), fill);
+        }
+        i = j + 1;
+      }
+    }
+
+    if (hasTemp) {
+      double? t(double? c) => c == null ? null : _toDisplayTemp(c, tempUnit);
+      drawBand((b) => t(b.minTemp), (b) => t(b.maxTemp), yT, tColor);
+    }
+    drawBand((b) => b.minPvlt, (b) => b.maxPvlt, yV, vColor);
 
     if (hasTemp) {
       drawLine((b) => b.avgTemp == null
