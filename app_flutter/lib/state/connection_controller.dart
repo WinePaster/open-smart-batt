@@ -1460,9 +1460,19 @@ class ConnectionController extends ChangeNotifier {
   /// 0x00 normal / 0x01 anti-theft / 0x02 cut-off, so returning to normal means
   /// writing normal.
   ///
-  /// ⚠️ 0x00 is **not yet proven** to work — no capture holds a successful
-  /// write. The evidence is elimination plus the vendor's own numbering, which
-  /// is why callers must not report success on a write returning. They poll the
+  /// ✅ **0x00 is proven to work (2026-08-14).** This comment used to say the
+  /// opposite — "not yet proven, no capture holds a successful write, the
+  /// evidence is elimination plus the vendor's own numbering". Three
+  /// independent packs have now been released with it, 5 successes in 5
+  /// attempts, `0x23` moving 2–89 ms after the write, all within one session.
+  /// One release was from anti-theft (0x01) rather than cut-off (0x02).
+  ///
+  /// ⚠️ **Nothing below changes.** Callers must still not report success on a
+  /// write returning — if anything the case is stronger now that we can measure
+  /// it: one of six writes drew no response at all and only landed because the
+  /// retry loop resent it 3.12 s later (61 ms on the second attempt). A caller
+  /// that trusted the returning write would have reported success on a pack
+  /// that was still cut off. They poll the
   /// device's own reported mode (0x23, which streams at roughly 1 Hz) for a few
   /// seconds afterwards and say what actually happened: changed → report the
   /// state the device now claims; unchanged → say the command went out and the

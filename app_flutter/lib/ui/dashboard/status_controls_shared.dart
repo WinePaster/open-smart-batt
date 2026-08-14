@@ -342,11 +342,22 @@ Future<void> releaseCutOff(
 /// public app deliberately only ever moves a pack toward normal.
 ///
 /// SAFETY: this is the app's only outbound command that can immobilise a
-/// vehicle, and the release path that would undo it is **not proven to work** —
-/// no capture in hand shows any pack responding to a mode write. Two gates
-/// stand in front of it: an explicit risk confirmation naming that specific
-/// consequence, then the same per-device auth dialog anti-theft uses. A caller
-/// that adds a button must additionally gate it on [cutOffActionEnabled].
+/// vehicle. Two gates stand in front of it: an explicit risk confirmation
+/// naming that specific consequence, then the same per-device auth dialog
+/// anti-theft uses. A caller that adds a button must additionally gate it on
+/// [cutOffActionEnabled].
+///
+/// The release path that would undo it used to be described here as "not proven
+/// to work — no capture in hand shows any pack responding to a mode write".
+/// That is **no longer true** (corrected 2026-08-14): three independent packs
+/// released 5 times out of 5 attempts, `0x23` following the write within
+/// 2–89 ms. See `releaseCutOff` in ConnectionController.
+///
+/// ⚠️ The gates stay exactly as they are, and this correction is **not** a
+/// reason to relax them. Release works but is not reliable on the first try —
+/// one of six writes drew no response and needed the automatic retry — so a
+/// build that wires up a cut-off button is still committing a user to a path
+/// whose undo can take several seconds and, in principle, may not land at all.
 Future<void> cutOff(BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
