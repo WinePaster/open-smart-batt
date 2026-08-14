@@ -476,5 +476,7 @@
   "devicesUnsavedBody": "儲存後才會出現在主頁，並記住它的歷史。",
   "devicesSave": "儲存",
   "devicesNoAdvertisedName": "無廣播名",
-  "devicesLinkedNoAdvert": "連線中 · 連線時不廣播，所以掃不到"
+  "devicesLinkedNoAdvert": "連線中 · 連線時不廣播，所以掃不到",
+  "fullscreenEnter": "全螢幕",
+  "fullscreenExit": "離開全螢幕"
 }

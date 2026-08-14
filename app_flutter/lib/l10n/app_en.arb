@@ -1178,5 +1178,7 @@
   "devicesUnsavedBody": "Save it to put it on the home page and keep its history.",
   "devicesSave": "Save",
   "devicesNoAdvertisedName": "No advertised name",
-  "devicesLinkedNoAdvert": "Linked · not advertising, so no scan finds it"
+  "devicesLinkedNoAdvert": "Linked · not advertising, so no scan finds it",
+  "fullscreenEnter": "Full screen",
+  "fullscreenExit": "Exit full screen"
 }

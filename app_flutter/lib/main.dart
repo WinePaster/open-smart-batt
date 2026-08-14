@@ -25,7 +25,6 @@ import 'ui/util/update_check.dart';
 /// Public project page (shown in the community disclaimer + Settings → About).
 const String kProjectUrl = 'https://github.com/WinePaster/open-smart-batt';
 
-
 /// Open-build entry point: boots with the default no-op metadata seam.
 Future<void> main() => bootstrap();
 
@@ -70,13 +69,15 @@ Future<void> bootstrap({
   try {
     services = await AppServices.create(parser: parser);
   } catch (e) {
-    runApp(StartupFailureApp(
-      error: e,
-      onRetry: () => bootstrap(
-        parser: parser,
-        deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+    runApp(
+      StartupFailureApp(
+        error: e,
+        onRetry: () => bootstrap(
+          parser: parser,
+          deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+        ),
       ),
-    ));
+    );
     return;
   }
 
@@ -93,11 +94,15 @@ Future<void> bootstrap({
   // `bootstrap()`, so this cannot alter what any of the 37 suites built on
   // `create()` see in their diagnostic log (design 0060 §6 R4).
   services.logRepo
-      .insertLog(LogEntry.event(formatColdStartLine(
-        appBuild: services.appBuild,
-        arm: services.restoredArm,
-        now: DateTime.now(),
-      )))
+      .insertLog(
+        LogEntry.event(
+          formatColdStartLine(
+            appBuild: services.appBuild,
+            arm: services.restoredArm,
+            now: DateTime.now(),
+          ),
+        ),
+      )
       .ignore();
   // …and what state restoration did, from the call made before the DB existed.
   // These two lines together are the ONLY evidence design 0060 Q3 has for
@@ -110,7 +115,9 @@ Future<void> bootstrap({
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     services.logRepo
-        .insertLog(LogEntry.event('FlutterError: ${details.exceptionAsString()}'))
+        .insertLog(
+          LogEntry.event('FlutterError: ${details.exceptionAsString()}'),
+        )
         .ignore();
   };
   WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
@@ -118,10 +125,12 @@ Future<void> bootstrap({
     return true;
   };
 
-  runApp(OpenSmartBattApp(
-    services: services,
-    deviceInfoPanelBuilder: deviceInfoPanelBuilder,
-  ));
+  runApp(
+    OpenSmartBattApp(
+      services: services,
+      deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+    ),
+  );
 }
 
 /// Turn on CoreBluetooth state restoration and say what happened, without ever
@@ -185,10 +194,12 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   void initState() {
     super.initState();
-    _speedLifecycle =
-        SpeedLifecycleGate(setAppResumed: widget.services.speed.setAppResumed);
+    _speedLifecycle = SpeedLifecycleGate(
+      setAppResumed: widget.services.speed.setAppResumed,
+    );
     _gForceLifecycle = SpeedLifecycleGate(
-        setAppResumed: widget.services.gforce.setAppResumed);
+      setAppResumed: widget.services.gforce.setAppResumed,
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -325,18 +336,18 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
 
   /// Maps the persisted [AppThemeMode] to Flutter's [ThemeMode].
   static ThemeMode _themeModeOf(AppThemeMode m) => switch (m) {
-        AppThemeMode.light => ThemeMode.light,
-        AppThemeMode.dark => ThemeMode.dark,
-        AppThemeMode.auto => ThemeMode.system,
-      };
+    AppThemeMode.light => ThemeMode.light,
+    AppThemeMode.dark => ThemeMode.dark,
+    AppThemeMode.auto => ThemeMode.system,
+  };
 
   /// Maps the persisted [AppLang] to a [Locale]. `null` => follow the device
   /// locale (resolved against [AppLocalizations.supportedLocales]).
   static Locale? _localeOf(AppLang lang) => switch (lang) {
-        AppLang.system => null,
-        AppLang.zhHant => const Locale('zh'), // zh-Hant (only Chinese shipped)
-        AppLang.en => const Locale('en'),
-      };
+    AppLang.system => null,
+    AppLang.zhHant => const Locale('zh'), // zh-Hant (only Chinese shipped)
+    AppLang.en => const Locale('en'),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +389,17 @@ class _RootShellState extends State<RootShell> {
   _Tab _tab = _Tab.home;
   int _historyEpoch = 0; // bumped on each switch to 歷史 to force a reload
 
+  /// Full-screen mode: hide THIS APP's AppBar and NavigationBar (design 0062,
+  /// FB-76). Not the system status bar — the reporter's "headbar / menubar"
+  /// was clarified by the owner to mean our own chrome, which is why nothing
+  /// here touches [SystemChrome]. Android and iOS therefore behave identically.
+  ///
+  /// 🔴 Deliberately NOT persisted (design 0062 Q2, ruled 不存). It lives in
+  /// this State and nowhere else, so a user who cannot find the way out always
+  /// has a fourth exit: kill the app and reopen it. That is also why no DB
+  /// migration and no export-header field belong to this feature (Q3 moot).
+  bool _immersive = false;
+
   @override
   void initState() {
     super.initState();
@@ -412,13 +434,13 @@ class _RootShellState extends State<RootShell> {
     _syncDashboardVisible();
     final l10n = AppLocalizations.of(context);
     context.read<ConnectionController>().setNotificationStrings(
-          title: l10n.monitorNotificationTitle,
-          titleConnecting: l10n.monitorNotificationTitleConnecting,
-          titleStalled: l10n.monitorNotificationTitleStalled,
-          stopLabel: l10n.monitorNotificationStop,
-          channelName: l10n.monitorChannelName,
-          channelDescription: l10n.monitorChannelDescription,
-        );
+      title: l10n.monitorNotificationTitle,
+      titleConnecting: l10n.monitorNotificationTitleConnecting,
+      titleStalled: l10n.monitorNotificationTitleStalled,
+      stopLabel: l10n.monitorNotificationStop,
+      channelName: l10n.monitorChannelName,
+      channelDescription: l10n.monitorChannelDescription,
+    );
   }
 
   /// The ONLY way `_tab` may be written after construction.
@@ -440,6 +462,12 @@ class _RootShellState extends State<RootShell> {
   void _setTab(_Tab next) {
     setState(() {
       _tab = next;
+      // Full screen is a HOME-tab state (design 0062 §7.1-7). Leaving the tab
+      // leaves the mode: the only reason to hide the nav bar is to see more of
+      // the grid, and every other tab needs its own chrome to be usable.
+      // Placed here rather than beside each caller for the same reason `_tab`
+      // itself is written in one place — see the doc comment above.
+      _immersive = false;
       // Re-keyed on each switch to 歷史 so it reloads the latest records.
       if (next == _Tab.history) _historyEpoch++;
     });
@@ -456,9 +484,9 @@ class _RootShellState extends State<RootShell> {
   /// Two entry points, one route: the app-bar action and the row at the foot of
   /// the grid. The row exists because the action alone was not findable —
   /// see [HomePage.onEdit].
-  void _openHomeEditor() => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const HomeEditorPage()),
-      );
+  void _openHomeEditor() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const HomeEditorPage()));
 
   /// One unit's page, pushed from the shell (home tile, or the pill below).
   ///
@@ -522,6 +550,54 @@ class _RootShellState extends State<RootShell> {
     _openDetail(id, fallbackName: conn.connectedDeviceName);
   }
 
+  /// Enter / leave full screen (design 0062).
+  ///
+  /// Does NOT touch [_syncDashboardVisible]: gate condition 3 reads `_tab`, and
+  /// full screen never changes the tab. The GNSS receiver and the G-force
+  /// stream therefore behave exactly as they do in the normal state — which is
+  /// the point, since this mode exists FOR the riding readouts.
+  void _setImmersive(bool value) {
+    if (_immersive == value) return;
+    setState(() => _immersive = value);
+  }
+
+  void _leaveImmersive() => _setImmersive(false);
+
+  /// The three exit routes (design 0062 Q1, ruled 「三者都做」).
+  ///
+  /// 🔴 They are three NECESSARY conditions, not three backups for one another.
+  /// Hiding the NavigationBar takes away the user's only way to change tabs, and
+  /// this project has already shipped two controls nobody could find — the home
+  /// editor button (see [HomePage.onEdit]) and FB-70's 14×14 dp rename pencil.
+  /// A third would be the same mistake with a bigger blast radius, so:
+  ///
+  ///   1. the Android back button / gesture ([PopScope], below);
+  ///   2. a PERSISTENT floating button ([_FullscreenExitButton]) — iOS has no
+  ///      back button, so this is the primary exit there. It must not fade out
+  ///      after a few seconds: that is exactly how a control becomes invisible;
+  ///   3. a double tap anywhere.
+  ///
+  /// The wrapper is a no-op in the normal state. The double-tap recognizer is
+  /// only attached while immersive, so it never sits in the gesture arena above
+  /// the grid's own taps when there is nothing to exit from.
+  Widget _wrapExits(Widget child) {
+    if (!_immersive) return child;
+    return PopScope(
+      // Route 1. `canPop: false` so the pop is intercepted rather than taking
+      // the whole shell off the navigator — there is nothing under it.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leaveImmersive();
+      },
+      child: GestureDetector(
+        // Route 3. Translucent so the grid underneath still receives taps.
+        behavior: HitTestBehavior.translucent,
+        onDoubleTap: _leaveImmersive,
+        child: child,
+      ),
+    );
+  }
+
   void _syncDashboardVisible() {
     final home = _tab == _Tab.home;
     context.read<GpsSpeedController>().setDashboardVisible(home);
@@ -544,91 +620,176 @@ class _RootShellState extends State<RootShell> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: _BrandAppBar(
-        onOpenConnection: _openConnectionTarget,
-        // Only on 主頁, and only there: an "edit" action on top of History or
-        // Settings would be an action with no object.
-        onEditHome: _tab == _Tab.home ? _openHomeEditor : null,
-      ),
-      // The AppBar already insets the top (status bar / notch / Dynamic Island)
-      // and the NavigationBar insets the bottom (home indicator); guard the
-      // body's horizontal edges too (top: false / bottom: false avoid double
-      // padding). No-op on Android, where these insets are 0.
+      appBar: _immersive
+          ? null
+          : _BrandAppBar(
+              onOpenConnection: _openConnectionTarget,
+              // Only on 主頁, and only there: an "edit" action on top of History
+              // or Settings would be an action with no object.
+              onEditHome: _tab == _Tab.home ? _openHomeEditor : null,
+              // Same rule, same reason (design 0062 §7.1-5): full screen only
+              // means anything on the grid.
+              onEnterFullscreen: _tab == _Tab.home
+                  ? () => _setImmersive(true)
+                  : null,
+            ),
+      // 🔴 `top` / `bottom` FOLLOW `_immersive`, and that is the whole point of
+      // this pair (design 0062 §3.2).
+      //
+      // In the normal state the AppBar already insets the top (status bar /
+      // notch / Dynamic Island) and the NavigationBar insets the bottom (home
+      // indicator), so guarding them here too would double-pad — hence `false`.
+      // Take those two away and the premise is gone: the grid would run under
+      // the notch and under the home indicator.
+      //
+      // ⚠️ That bug is INVISIBLE on Android, where both insets are 0. It only
+      // shows on a notched iPhone, which is why `fullscreen_mode_test.dart` F3
+      // asserts these two flags directly rather than trusting a screenshot.
       body: SafeArea(
-        top: false,
-        bottom: false,
-        child: IndexedStack(
-          index: _tab.index,
-          children: [
-            HomePage(
-              onOpenDevices: () => _setTab(_Tab.devices),
-              onEdit: _openHomeEditor,
-              onOpenDetail: _openDetail,
-            ),
-            // The dashboard's stale-telemetry banner links to Settings, and the
-            // dashboard now lives inside a route this page pushes — so the
-            // callback is threaded down rather than re-derived there. Every tab
-            // change in this file goes through `_setTab`, which is the only
-            // thing keeping gate condition 3 in step with what is on screen.
-            DevicesPage(
-              active: _tab == _Tab.devices,
-              onOpenSettings: () => _setTab(_Tab.settings),
-            ),
-            // Re-keyed on each switch to 歷史 so it reloads the latest records.
-            HistoryScreen(key: ValueKey(_historyEpoch)),
-            SettingsScreen(
-              deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
-            ),
-          ],
+        top: _immersive,
+        bottom: _immersive,
+        child: _wrapExits(
+          Stack(
+            children: [
+              IndexedStack(
+                index: _tab.index,
+                children: [
+                  HomePage(
+                    onOpenDevices: () => _setTab(_Tab.devices),
+                    onEdit: _openHomeEditor,
+                    onOpenDetail: _openDetail,
+                  ),
+                  // The dashboard's stale-telemetry banner links to Settings,
+                  // and the dashboard now lives inside a route this page pushes
+                  // — so the callback is threaded down rather than re-derived
+                  // there. Every tab change in this file goes through `_setTab`,
+                  // which is the only thing keeping gate condition 3 in step
+                  // with what is on screen.
+                  DevicesPage(
+                    active: _tab == _Tab.devices,
+                    onOpenSettings: () => _setTab(_Tab.settings),
+                  ),
+                  // Re-keyed on each switch to 歷史 so it reloads the latest
+                  // records.
+                  HistoryScreen(key: ValueKey(_historyEpoch)),
+                  SettingsScreen(
+                    deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+                  ),
+                ],
+              ),
+              // Exit route 2 of 3 (design 0062 Q1). Inside the Stack, not the
+              // ListView: a button that scrolls away is a button that is not
+              // there when the user panics.
+              if (_immersive) _FullscreenExitButton(onPressed: _leaveImmersive),
+            ],
+          ),
         ),
       ),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          backgroundColor: context.colors.panel,
-          indicatorColor: AppColors.amber.withValues(alpha: 0.16),
-          labelTextStyle: WidgetStateProperty.resolveWith(
-            (states) => TextStyle(
-              fontSize: 10,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w600,
-              color: states.contains(WidgetState.selected)
-                  ? AppColors.amber
-                  : context.colors.muted,
+      bottomNavigationBar: _immersive
+          ? null
+          : NavigationBarTheme(
+              data: NavigationBarThemeData(
+                backgroundColor: context.colors.panel,
+                indicatorColor: AppColors.amber.withValues(alpha: 0.16),
+                labelTextStyle: WidgetStateProperty.resolveWith(
+                  (states) => TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 1,
+                    fontWeight: FontWeight.w600,
+                    color: states.contains(WidgetState.selected)
+                        ? AppColors.amber
+                        : context.colors.muted,
+                  ),
+                ),
+                iconTheme: WidgetStateProperty.resolveWith(
+                  (states) => IconThemeData(
+                    color: states.contains(WidgetState.selected)
+                        ? AppColors.amber
+                        : context.colors.muted,
+                  ),
+                ),
+              ),
+              child: NavigationBar(
+                selectedIndex: _tab.index,
+                onDestinationSelected: (i) => _setTab(_Tab.values[i]),
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.dashboard_outlined),
+                    selectedIcon: const Icon(Icons.dashboard),
+                    label: l10n.navHome,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.list_alt_outlined),
+                    selectedIcon: const Icon(Icons.list_alt),
+                    label: l10n.navDevices,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.history_outlined),
+                    selectedIcon: const Icon(Icons.history),
+                    label: l10n.navHistory,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.settings_outlined),
+                    selectedIcon: const Icon(Icons.settings),
+                    label: l10n.navSettings,
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// Exit route 2 of 3 for full-screen mode (design 0062 Q1).
+///
+/// 🔴 Three properties of this button are requirements, not styling:
+///
+///   * **it never fades out.** A control that disappears after N seconds is the
+///     same failure this project shipped twice already (home editor button,
+///     FB-70's rename pencil), except here it is the ONLY exit an iPhone user
+///     has — iOS has no back button;
+///   * **its tap target is at least 40×40 dp.** FB-70 was a fully working
+///     rename feature behind a 14×14 dp hit box, and users deleted and re-added
+///     devices instead of finding it. `fullscreen_mode_test.dart` F5 measures
+///     this rather than merely asserting the widget exists;
+///   * **it carries a tooltip and a semantics label**, so the icon alone does
+///     not have to explain itself.
+class _FullscreenExitButton extends StatelessWidget {
+  const _FullscreenExitButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  /// Minimum tap target. Named so the test can assert against the same number
+  /// the widget is built from, instead of a literal copied into both places.
+  static const double kMinTapTarget = 40;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).fullscreenExit;
+    return Positioned(
+      top: 8,
+      right: 8,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          // Translucent rather than opaque: it sits on top of the grid, and the
+          // card under it should stay readable.
+          color: context.colors.panel.withValues(alpha: 0.72),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: Tooltip(
+            message: label,
+            child: InkWell(
+              onTap: onPressed,
+              customBorder: const CircleBorder(),
+              child: const SizedBox(
+                width: kMinTapTarget,
+                height: kMinTapTarget,
+                child: Icon(Icons.fullscreen_exit, size: 22),
+              ),
             ),
           ),
-          iconTheme: WidgetStateProperty.resolveWith(
-            (states) => IconThemeData(
-              color: states.contains(WidgetState.selected)
-                  ? AppColors.amber
-                  : context.colors.muted,
-            ),
-          ),
-        ),
-        child: NavigationBar(
-          selectedIndex: _tab.index,
-          onDestinationSelected: (i) => _setTab(_Tab.values[i]),
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(Icons.dashboard_outlined),
-              selectedIcon: const Icon(Icons.dashboard),
-              label: l10n.navHome,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.list_alt_outlined),
-              selectedIcon: const Icon(Icons.list_alt),
-              label: l10n.navDevices,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.history_outlined),
-              selectedIcon: const Icon(Icons.history),
-              label: l10n.navHistory,
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.settings_outlined),
-              selectedIcon: const Icon(Icons.settings),
-              label: l10n.navSettings,
-            ),
-          ],
         ),
       ),
     );
@@ -639,7 +800,11 @@ class _RootShellState extends State<RootShell> {
 /// `.appbar` / `.conn`). The pill surfaces the current link state; where a tap
 /// on it goes is the shell's decision ([_RootShellState._openConnectionTarget]).
 class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _BrandAppBar({required this.onOpenConnection, this.onEditHome});
+  const _BrandAppBar({
+    required this.onOpenConnection,
+    this.onEditHome,
+    this.onEnterFullscreen,
+  });
 
   /// Where the connection pill goes — see [_RootShellState._openConnectionTarget]
   /// for the rule and why design 0046 R2 survives it.
@@ -647,6 +812,11 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// Open the home editor (design 0046 P3). Null on every tab but 主頁.
   final VoidCallback? onEditHome;
+
+  /// Enter full screen (design 0062). Null on every tab but 主頁, and this is
+  /// the ONLY way in — design 0062 Q1 rules out a gesture for entering, so an
+  /// accidental double tap can never remove the chrome the user is using.
+  final VoidCallback? onEnterFullscreen;
 
   @override
   Size get preferredSize => const Size.fromHeight(58);
@@ -688,6 +858,14 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        if (onEnterFullscreen != null)
+          IconButton(
+            onPressed: onEnterFullscreen,
+            iconSize: 18,
+            icon: const Icon(Icons.fullscreen),
+            color: context.colors.muted,
+            tooltip: AppLocalizations.of(context).fullscreenEnter,
+          ),
         if (onEditHome != null)
           IconButton(
             onPressed: onEditHome,
@@ -717,8 +895,7 @@ class _ConnectionPill extends StatelessWidget {
     final (Color color, String label) = switch (conn.linkState) {
       BleLinkState.ready => (AppColors.good, 'CONNECTED'),
       BleLinkState.connecting ||
-      BleLinkState.connected =>
-        (AppColors.amber, 'CONNECTING'),
+      BleLinkState.connected => (AppColors.amber, 'CONNECTING'),
       BleLinkState.disconnecting => (AppColors.amber, 'CLOSING'),
       BleLinkState.disconnected => (AppColors.danger, 'OFFLINE'),
     };
@@ -900,8 +1077,11 @@ class _DoNotRelockWarning extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              size: 15, color: AppColors.amber),
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 15,
+            color: AppColors.amber,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

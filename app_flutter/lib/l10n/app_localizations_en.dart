@@ -1745,4 +1745,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get devicesLinkedNoAdvert =>
       'Linked · not advertising, so no scan finds it';
+
+  @override
+  String get fullscreenEnter => 'Full screen';
+
+  @override
+  String get fullscreenExit => 'Exit full screen';
 }

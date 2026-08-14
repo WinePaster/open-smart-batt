@@ -2959,6 +2959,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Linked · not advertising, so no scan finds it'**
   String get devicesLinkedNoAdvert;
+
+  /// No description provided for @fullscreenEnter.
+  ///
+  /// In en, this message translates to:
+  /// **'Full screen'**
+  String get fullscreenEnter;
+
+  /// No description provided for @fullscreenExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit full screen'**
+  String get fullscreenExit;
 }
 
 class _AppLocalizationsDelegate
