@@ -415,6 +415,9 @@ class TelemetryController extends ChangeNotifier
   /// [HistoryRepo.exportCsvToFile] for why the returned row count — not the
   /// text — decides "nothing to export", and for why there is no row limit to
   /// pass down (design 0030 T4c / FB-59).
+  /// [granularity] chooses what a row of the file is (design 0061 T4d) —
+  /// per-minute averages (the default, and what every export produced before
+  /// FB-71) or the stored rows themselves.
   Future<int> exportHistoryCsvToFile(
     File file, {
     DateTime? since,
@@ -422,6 +425,7 @@ class TelemetryController extends ChangeNotifier
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
   }) =>
       _history.exportCsvToFile(
         file,
@@ -430,7 +434,24 @@ class TelemetryController extends ChangeNotifier
         labelFor: labelFor,
         classFor: classFor,
         header: header,
+        granularity: granularity,
       );
+
+  /// How many rows an export of this scope would write — the export sheet's
+  /// size estimate (design 0061 T4c).
+  Future<int> countExportRows({
+    DateTime? since,
+    String? deviceId,
+    required HistoryGranularity granularity,
+  }) =>
+      _history.countExportRows(
+          since: since, deviceId: deviceId, granularity: granularity);
+
+  /// The stored granularities an export of this scope would touch, for the
+  /// preamble's `resolution: contains=` line. Empty means "no rows at all",
+  /// which the caller must NOT collapse into a default (design 0061 §3.2.3).
+  Future<List<int>> historyBucketWidths({DateTime? since, String? deviceId}) =>
+      _history.distinctBucketWidths(since: since, deviceId: deviceId);
 
   /// Clear all history.
   Future<void> clearHistory() => _history.clearHistory();

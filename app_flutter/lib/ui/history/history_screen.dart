@@ -229,9 +229,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _exportCsv() async {
     if (_exporting) return;
-    // The picker chooses WHICH device to export; it does not replace the time
-    // range already chosen on this screen — the two intersect.
-    final target = await chooseExportScope(context, offerSession: false);
+    // The picker chooses WHICH device to export and HOW MUCH DETAIL; it does
+    // not replace the time range already chosen on this screen — the two
+    // intersect, and the range is what the sheet's size estimate is scoped by.
+    final target = await chooseExportScope(
+      context,
+      offerSession: false,
+      offerGranularity: true,
+      since: _sinceFor(_range),
+    );
     if (target == null || !mounted) return;
     setState(() => _exporting = true);
     final l10n = AppLocalizations.of(context);
@@ -288,6 +294,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
         extension: 'csv',
       );
       final file = await exportTempFile(filename);
+      // design 0061 T4a. What the scope ACTUALLY holds, asked of the database
+      // over the same window the export walks — never assumed. An empty list
+      // means "no rows", which `ExportResolution.forCsv` renders as `n/a`
+      // rather than inventing a granularity for a file with nothing in it.
+      final resolution = ExportResolution.forCsv(
+        target.granularity,
+        await _tele.historyBucketWidths(
+            since: since, deviceId: target.deviceId),
+      );
       // Streamed straight into the file (design 0030 T4b) and NOT capped at
       // `_rowCap` (T4c / FB-59): that cap belongs to the list below, which
       // pages a screen at a time, and passing it here silently threw away
@@ -297,6 +312,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         file,
         since: since,
         deviceId: target.deviceId,
+        granularity: target.granularity,
         labelFor: labelFor,
         classFor: classFor,
         header: exportHeaderLines(
@@ -306,6 +322,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           platform: services.platform,
           scope: exportScopeLabel(target),
           window: historyWindowLabel(_range, since),
+          resolution: resolution,
           // design 0056 follow-up: this file HAS an `ampere` column, so it
           // states what that column's sign means. See `export_header.dart`.
           ampereColumn: true,

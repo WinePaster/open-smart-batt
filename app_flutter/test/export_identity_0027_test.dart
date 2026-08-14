@@ -343,6 +343,7 @@ void main() {
           layout: 'default',
           home: 'tiles=auto',
           speedDetection: false, gMeter: false,
+          resolution: ExportResolution.none,
           devices: const [
             ExportDeviceIdentity(
               deviceId: deviceId,
@@ -407,6 +408,7 @@ void main() {
         layout: 'default',
         home: 'tiles=auto',
         speedDetection: false, gMeter: false,
+        resolution: ExportResolution.none,
       );
       expect(lines.any((l) => l.startsWith('devices:')), isFalse);
     });

@@ -33,6 +33,30 @@ class HistoryBucket {
   final int count;
 }
 
+/// How much detail an export asks for — design 0061 T4 (FB-71).
+///
+/// Storage granularity and EXPORT granularity are deliberately decoupled: the
+/// table holds one row per second, and this decides what a file made out of it
+/// looks like. That decoupling is the whole architectural point — a 7-day
+/// export stays around 12 MB and can still be sent over LINE, while the seconds
+/// remain on the phone for whoever needs them.
+enum HistoryGranularity {
+  /// One row per (unit, minute), values averaged — **the default**, and byte
+  /// for byte what every export produced before FB-71.
+  minute,
+
+  /// Stored rows exactly as they are. Second rows come out as seconds; rows
+  /// recorded before FB-71 come out as the minute averages they are, unchanged
+  /// and unexpanded (design 0061 §3.2.3 E1). Skipping them would be silent data
+  /// loss and expanding one into 60 identical seconds would be inventing
+  /// measurements; the `bucket_s` column says which is which, per row.
+  second;
+
+  /// The machine-stable slug for the export preamble. ASCII, not localized —
+  /// the reader is whoever receives the file.
+  String get slug => this == HistoryGranularity.minute ? '1min' : '1s';
+}
+
 /// One display bucket of the history LIST — design 0061 T3a/T3b.
 ///
 /// The list stopped showing stored rows when storage went to one row per
@@ -183,6 +207,22 @@ class HistoryRepo {
     // `app_build`, exactly as `speed detection:` settles the two above.
     'g_long',
     'g_lat',
+    // design 0061 T4d (FB-71), appended under the standing rule above. HOW WIDE
+    // THE WINDOW THIS ROW SUMMARISES IS, in seconds: 60 for every row recorded
+    // before FB-71 and for any row a per-minute export aggregated, 1 for a
+    // stored second exported as itself.
+    //
+    // 🔴 It is the row's GRANULARITY, never its duration and never its
+    // confidence. A minute cut into segments by a disconnect can hold as few as
+    // 3 samples and is still `bucket_s = 60`; `samples` is the only column that
+    // says how much data is behind the row.
+    //
+    // Per row rather than per file because ONE FILE HOLDS BOTH. An export asked
+    // for at second resolution over a range reaching back before FB-71 contains
+    // stored seconds and legacy minute averages side by side, and the
+    // preamble's `resolution: contains=` says so — but only this column says
+    // WHICH ROWS.
+    'bucket_s',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
@@ -803,6 +843,11 @@ class HistoryRepo {
   /// The event loop is yielded between pages, so BLE notifications keep being
   /// delivered and the keep-alive write cannot time out mid-export (FB-40's
   /// neighbourhood).
+  /// [granularity] decides what a ROW of this file is (design 0061 T4d):
+  /// [HistoryGranularity.minute] aggregates stored rows into one row per
+  /// (unit, minute) — which is byte for byte what every export produced before
+  /// FB-71 — while [HistoryGranularity.second] emits stored rows untouched.
+  /// Either way every row states its own `bucket_s`.
   Future<int> exportCsvToFile(
     File file, {
     DateTime? since,
@@ -810,11 +855,13 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
     void Function(int written, int total)? onProgress,
   }) async {
     final sink = file.openWrite();
     try {
       return await _exportCsvStream(
+        granularity: granularity,
         // Flushing per page is what keeps the streaming honest: an unawaited
         // `IOSink.write` only queues, so without this the whole export would
         // pile up in the sink's buffer and we would have moved the peak rather
@@ -847,9 +894,11 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
   }) async {
     final buf = StringBuffer();
     final rows = await _exportCsvStream(
+      granularity: granularity,
       emit: (chunk) async => buf.write(chunk),
       since: since,
       deviceId: deviceId,
@@ -886,6 +935,12 @@ class HistoryRepo {
   /// started, by id — every later row sorts above the pin and is simply not
   /// part of this file. `rows:` then equals the number of rows written, by
   /// construction rather than by luck.
+  ///
+  /// 📐 **Two shapes of page** (design 0061 T4d). At
+  /// [HistoryGranularity.second] a page is stored rows, exactly as before. At
+  /// [HistoryGranularity.minute] a page is `GROUP BY (device, minute)`, and the
+  /// paging, the pin and the count all apply to GROUPS — `rows:` still equals
+  /// the rows written, but they are windows now.
   Future<int> _exportCsvStream({
     required Future<void> Function(String chunk) emit,
     DateTime? since,
@@ -893,6 +948,8 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
+    int? tzOffsetMs,
     void Function(int written, int total)? onProgress,
   }) async {
     // No `attributedOnly` here, and there must never be one: since design 0043
@@ -906,8 +963,18 @@ class HistoryRepo {
     final where =
         scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
     final args = <Object?>[...?scopeArgs, pin];
+    final byMinute = granularity == HistoryGranularity.minute;
+    // Aligned to the viewer's local minute, the same expression the list and
+    // the chart group by — see [bucketExpr]. A whole-hour offset cannot move a
+    // minute boundary, but there are zones offset by 30 and 45 minutes, and
+    // having the export cut its minutes somewhere the screen does not is
+    // exactly the "the file and the screen say different things" failure this
+    // whole change is trying not to commit.
+    final bucket = bucketExpr(60000, tzOffsetMs ?? currentTzOffsetMs());
+    final groupBy = 'device_id, $bucket';
 
-    final total = await _countWhere(where, args);
+    final total =
+        byMinute ? await _countGroups(where, args, groupBy) : await _countWhere(where, args);
     // A per-device export cannot state its own completeness from the result set
     // — the rows it excluded are, by definition, not in it. So count them
     // separately. `_contentSummary` can say "(+unattributed)" only for an
@@ -924,7 +991,8 @@ class HistoryRepo {
 
     final preamble = <String>[
       for (final h in header) '# $h',
-      if (header.isNotEmpty) '# ${await _contentSummarySql(where, args)}',
+      if (header.isNotEmpty)
+        '# ${await _contentSummarySql(where, args, rows: total, bucket: byMinute ? bucket : null)}',
       // Omitted entirely at zero: an empty field reads as a missing feature
       // (export_header.dart's rule).
       if (header.isNotEmpty && excluded > 0)
@@ -942,14 +1010,24 @@ class HistoryRepo {
 
     var written = 0;
     while (written < total) {
-      final page = await _db.query(
-        Db.tableHistory,
-        where: where,
-        whereArgs: args,
-        orderBy: 'timestamp DESC, id DESC',
-        limit: _exportPageSize,
-        offset: written,
-      );
+      final page = byMinute
+          ? await _db.rawQuery(
+              'SELECT $bucket AS timestamp, device_id AS device_id, '
+              '${_minuteExportColumns()} '
+              'FROM ${Db.tableHistory} WHERE $where '
+              'GROUP BY $groupBy '
+              'ORDER BY timestamp DESC, device_id DESC '
+              'LIMIT $_exportPageSize OFFSET $written',
+              args,
+            )
+          : await _db.query(
+              Db.tableHistory,
+              where: where,
+              whereArgs: args,
+              orderBy: 'timestamp DESC, id DESC',
+              limit: _exportPageSize,
+              offset: written,
+            );
       if (page.isEmpty) break; // rows deleted under us; stop rather than spin
       final rows = <List<Object?>>[];
       for (final m in page) {
@@ -982,6 +1060,117 @@ class HistoryRepo {
       await Future<void>.delayed(Duration.zero);
     }
     return written;
+  }
+
+  /// The aggregate `SELECT` list for a per-minute export page — design 0061
+  /// T4d. Every CSV column except `timestamp` and `device_id`, which the caller
+  /// supplies as the group keys.
+  ///
+  /// 🔑 **The means are weighted by `samples`, exactly as the History list is**
+  /// (see [_wavg] for the measured reason, and for why a bare `AVG` over
+  /// segmented minute rows can come out with the wrong SIGN). Screen and file
+  /// agreeing about the same minute is not a nicety here: the reporter reads
+  /// one and we read the other.
+  ///
+  /// ⚠️ **The non-mean columns report the LARGEST value in the window, not the
+  /// last one.** [_mergeRows] — the app's one rule for combining rows of the
+  /// same minute — calls them last-value-wins, and a `GROUP BY` on the SQLite
+  /// this app is allowed to assume cannot express "last" (window functions need
+  /// 3.25+, and on Android sqflite runs against the system library on a minSdk
+  /// 24 device). The choice is therefore between the largest and an arbitrary
+  /// one; the largest at least reproduces, and for the two that matter it fails
+  /// in the safe direction — `mode` keeps a cut-off rather than a normal, and
+  /// `twf` keeps a fault word rather than a zero. `soh` is the exception and
+  /// takes MIN, matching the list: a window that dipped is a window that
+  /// dipped.
+  static String _minuteExportColumns() {
+    const means = <String>[
+      'pvlt',
+      'svlt',
+      'ampere',
+      'dvol1',
+      'dvol2',
+      'dvol3',
+      'dvol4',
+      'speed',
+      'accel',
+      'g_long',
+      'g_lat',
+    ];
+    // Stored INTEGER, so the weighted mean is rounded back — same treatment
+    // `_mergeRows` gives them.
+    const meanInts = <String>['temperature', 'soc'];
+    return <String>[
+      for (final c in means) '${_wavg(c)} AS $c',
+      for (final c in meanInts) 'CAST(ROUND(${_wavg(c)}) AS INTEGER) AS $c',
+      'MIN(soh) AS soh',
+      'MAX(mode) AS mode',
+      'MAX(twf) AS twf',
+      'MAX(serial) AS serial',
+      'MAX(app_build) AS app_build',
+      'SUM(samples) AS samples',
+      // 🔴 A literal, and correct by construction: this row IS a minute window,
+      // whatever the rows underneath it were. A minute window built out of
+      // stored seconds is `60` for the same reason one built out of a legacy
+      // minute average is — `bucket_s` describes the row in the file, not its
+      // ancestry.
+      '60 AS bucket_s',
+    ].join(', ');
+  }
+
+  /// Rows a per-minute export of this scope would write — i.e. how many
+  /// (unit, minute) windows it holds.
+  Future<int> _countGroups(
+      String where, List<Object?> args, String groupBy) async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM '
+      '(SELECT 1 FROM ${Db.tableHistory} WHERE $where GROUP BY $groupBy)',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// How many rows an export of this scope at [granularity] would write.
+  ///
+  /// Used by the export sheet's size estimate (design 0061 T4c / Q4), where it
+  /// must run OFF the UI thread's critical path — at second resolution this
+  /// counts a table 60× the size of the one that used to be here.
+  Future<int> countExportRows({
+    DateTime? since,
+    String? deviceId,
+    required HistoryGranularity granularity,
+    int? tzOffsetMs,
+  }) async {
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause ?? '1';
+    final args = <Object?>[...?scopeArgs];
+    if (granularity == HistoryGranularity.second) {
+      return _countWhere(where, args);
+    }
+    final bucket = bucketExpr(60000, tzOffsetMs ?? currentTzOffsetMs());
+    return _countGroups(where, args, 'device_id, $bucket');
+  }
+
+  /// The distinct stored granularities in this scope, ascending — the raw
+  /// material for the preamble's `resolution: contains=` line (design 0061
+  /// §3.2.3). Empty when the scope holds no rows at all, which is a DIFFERENT
+  /// statement from "one granularity" and is why the caller must not default
+  /// it.
+  Future<List<int>> distinctBucketWidths({
+    DateTime? since,
+    String? deviceId,
+  }) async {
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final rows = await _db.rawQuery(
+      'SELECT DISTINCT bucket_s AS b FROM ${Db.tableHistory} $where '
+      'ORDER BY b ASC',
+      <Object?>[...?scopeArgs],
+    );
+    return rows
+        .map((r) => (r['b'] as num?)?.toInt())
+        .whereType<int>()
+        .toList(growable: false);
   }
 
   /// Highest `id` currently in the table, used to pin an export's scope. Zero on
@@ -1070,16 +1259,29 @@ class HistoryRepo {
   /// summarise (design 0030 T4b). The wording, spacing and omission rules are
   /// unchanged from the version that walked the rows — recipients have
   /// spreadsheets and scripts reading these lines.
-  Future<String> _contentSummarySql(String where, List<Object?> args) async {
+  ///
+  /// [rows] is passed in rather than counted here, because at per-minute
+  /// granularity the file's rows are WINDOWS and `COUNT(*)` over the table
+  /// would describe something the reader is not holding. [bucket] is the same
+  /// aggregation's bucket expression, non-null in that case only, so `range:`
+  /// names the first and last row IN THE FILE instead of landing up to 59
+  /// seconds away from them.
+  Future<String> _contentSummarySql(
+    String where,
+    List<Object?> args, {
+    required int rows,
+    String? bucket,
+  }) async {
+    final ts = bucket ?? 'timestamp';
     final r = await _db.rawQuery(
-      'SELECT COUNT(*) AS n, MIN(timestamp) AS minTs, MAX(timestamp) AS maxTs, '
+      'SELECT MIN($ts) AS minTs, MAX($ts) AS maxTs, '
       'COUNT(DISTINCT device_id) AS devices, '
       'SUM(CASE WHEN device_id IS NULL THEN 1 ELSE 0 END) AS unattributed '
       'FROM ${Db.tableHistory} WHERE $where',
       args,
     );
     final row = r.first;
-    final n = (row['n'] as num?)?.toInt() ?? 0;
+    final n = rows;
     if (n == 0) return 'rows: 0';
     String at(Object? ms) =>
         DateTime.fromMillisecondsSinceEpoch((ms as num).toInt())

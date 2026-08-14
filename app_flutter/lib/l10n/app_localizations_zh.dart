@@ -1336,6 +1336,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get startupResetBody => '這會刪除全部歷史紀錄、已儲存裝置與設定，且無法復原。';
 
   @override
+  String get exportResolutionTitle => '匯出的詳細程度';
+
+  @override
+  String get exportResolutionMinute => '每分鐘一筆（平均）';
+
+  @override
+  String get exportResolutionMinuteSub => '檔案較小，適合用 LINE 或 email 傳給別人。';
+
+  @override
+  String get exportResolutionSecond => '每秒一筆（完整）';
+
+  @override
+  String get exportResolutionSecondSub => '看得到啟動、電推那種一瞬間的變化；檔案會大很多。';
+
+  @override
+  String exportResolutionApproxSize(String size) {
+    return '大約 $size。';
+  }
+
+  @override
   String get exportScopeTitle => '匯出範圍';
 
   @override

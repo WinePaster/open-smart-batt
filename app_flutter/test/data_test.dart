@@ -140,7 +140,11 @@ void main() {
         ),
       );
 
-      final csv = (await repo.exportCsv()).text;
+      // Second granularity, so the row comes out as it went in — the exact
+      // instant is what this test is about, and a per-minute export stamps the
+      // MINUTE (see the aggregating case below).
+      final csv =
+          (await repo.exportCsv(granularity: HistoryGranularity.second)).text;
       final lines = csv.split('\r\n');
       // Header row matches the documented column order.
       expect(lines.first, HistoryRepo.csvColumns.join(','));
@@ -149,6 +153,15 @@ void main() {
       expect(lines[1], contains('12.36'));
       expect(lines[1], contains('0001234'));
       expect(lines[1], isNot(contains('${at.millisecondsSinceEpoch}')));
+      // 🔴 The ISO-8601 FORMAT is unchanged on both paths, and deliberately so
+      // — `tools/fbparse.py` reads it. What the per-minute path changes is the
+      // VALUE: it stamps the window, not one reading inside it, because that is
+      // what the row is (design 0061 T4d).
+      final byMinute = (await repo.exportCsv()).text.split('\r\n');
+      expect(byMinute[1],
+          contains(DateTime(2026, 6, 29, 13, 9).toIso8601String()));
+      expect(byMinute[1].split(',').last, '60',
+          reason: 'an aggregated row is a minute, and says so');
     });
 
     test('exportCsv on empty history is header-only', () async {

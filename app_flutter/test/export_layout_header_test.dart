@@ -45,6 +45,7 @@ void main() {
         home: home,
         speedDetection: speedDetection,
         gMeter: gMeter,
+        resolution: ExportResolution.none,
       );
 
   group('T10 constraint 1+6: last, and exactly one line', () {

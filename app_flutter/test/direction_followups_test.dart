@@ -408,6 +408,8 @@ void main() {
           home: 'grid',
           speedDetection: false,
           gMeter: false,
+          resolution: ExportResolution.forCsv(
+              HistoryGranularity.minute, const [60]),
         );
 
     test('X1 the CSV header states BOTH conventions and the blank case', () {
@@ -440,10 +442,17 @@ void main() {
     test('X4 they sit in the optional middle; layout: is still last', () {
       final lines = header(ampereColumn: true, window: 'all');
       expect(lines.last, startsWith('layout: '));
-      // Directly after `window:`, which is where a reader looks for facts about
-      // the file's own columns.
+      // Directly after the `resolution:` pair, which is itself directly after
+      // `window:` — that stretch of the middle is where a reader looks for
+      // facts about the file's own columns and rows. (The pair arrived with
+      // design 0061 T4a on 2026-08-14 and pushed this down by two; the
+      // adjacency is asserted rather than loosened, so the next insertion has
+      // to be written down here too.)
+      final windowAt = lines.indexWhere((l) => l.startsWith('window: '));
+      expect(lines[windowAt + 1], startsWith('resolution: requested='));
+      expect(lines[windowAt + 2], startsWith('resolution: contains='));
       expect(lines.indexOf(lines.firstWhere((l) => l.startsWith('ampere'))),
-          lines.indexWhere((l) => l.startsWith('window: ')) + 1);
+          windowAt + 3);
     });
 
     test('X5 both CSV call sites ask for them, and only those two', () {

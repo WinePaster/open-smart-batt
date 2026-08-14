@@ -460,7 +460,14 @@ class _DataCardState extends State<_DataCard> {
     if (_busy) return;
     // Pick the unit BEFORE showing the spinner — the sheet is the user's
     // decision point, not work.
-    final target = await chooseExportScope(context, offerSession: false);
+    // design 0061 T4c: this button HAS a history CSV to describe, so it offers
+    // the detail choice. No `since` — "export all data" means all of it, and
+    // the size estimate is scoped the same way the file is.
+    final target = await chooseExportScope(
+      context,
+      offerSession: false,
+      offerGranularity: true,
+    );
     if (target == null || !mounted) return;
     setState(() => _busy = true);
     final tele = context.read<TelemetryController>();
@@ -516,6 +523,11 @@ class _DataCardState extends State<_DataCard> {
         extension: 'csv',
       );
       final file = await exportTempFile(filename);
+      // design 0061 T4a — asked of the database over this export's own scope.
+      final resolution = ExportResolution.forCsv(
+        target.granularity,
+        await tele.historyBucketWidths(deviceId: target.deviceId),
+      );
       // "Export all data" means all of it, and it always did — this path never
       // carried a row cap. What it DID carry was the whole table in memory
       // three times over, which is the same defect as the History screen's cap
@@ -524,6 +536,7 @@ class _DataCardState extends State<_DataCard> {
       final rows = await tele.exportHistoryCsvToFile(
         file,
         deviceId: target.deviceId,
+        granularity: target.granularity,
         labelFor: labelFor,
         classFor: classFor,
         header: exportHeaderLines(
@@ -536,6 +549,7 @@ class _DataCardState extends State<_DataCard> {
           // range picker, so the file has to say so rather than leave the
           // recipient to infer it from a missing line.
           window: 'all',
+          resolution: resolution,
           // Same column, same rule as the History screen's export — the two
           // paths write the same CSV shape and must describe it identically.
           ampereColumn: true,
@@ -882,6 +896,11 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       home: home,
       speedDetection: speedDetection,
       gMeter: gMeter,
+      // design 0061 §3.4.3: this file has no history rows at all, so it says
+      // so out loud rather than omitting the line. A line that appears only
+      // when there is something to say makes its absence mean both "nothing"
+      // and "an older build wrote this" — FB-32's rule.
+      resolution: ExportResolution.none,
       connections: sessions,
       rawPacketLog: rawPacketLog,
       devices: devices,

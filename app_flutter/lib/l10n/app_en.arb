@@ -1004,6 +1004,29 @@
   "startupResetDb": "Reset database (deletes all records)",
   "startupResetTitle": "Reset the database?",
   "startupResetBody": "This permanently deletes all history, saved devices and settings.",
+  "exportResolutionTitle": "Level of detail",
+  "@exportResolutionTitle": {
+    "description": "Heading of the export sheet's granularity picker (design 0061 T4c). Storage is per second; this decides what a row of the FILE is."
+  },
+  "exportResolutionMinute": "One row per minute (averaged)",
+  "exportResolutionMinuteSub": "Smaller file — easy to send by LINE or email.",
+  "@exportResolutionMinuteSub": {
+    "description": "The default. The judgement behind it is design 0030 Q4b's: can the reporter actually send the file. Seven days is about 12 MB this way and about 77 MB per second."
+  },
+  "exportResolutionSecond": "One row per second (full detail)",
+  "exportResolutionSecondSub": "Shows moment-to-moment changes such as a start-up surge. Much larger file.",
+  "@exportResolutionSecondSub": {
+    "description": "Stands on its own as the qualitative fallback: when the size estimate cannot be computed, this sentence is all the user gets, and it must still be enough to decide on (design 0061 Q4 condition 3 — never show a fabricated 0 MB)."
+  },
+  "exportResolutionApproxSize": "About {size}.",
+  "@exportResolutionApproxSize": {
+    "description": "Appended to a granularity option once its size has been counted. Approximate by construction — rows x a measured bytes-per-row figure — hence 'about'.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "exportScopeTitle": "Export scope",
   "exportScopeThisDevice": "This device only ({label})",
   "@exportScopeThisDevice": {

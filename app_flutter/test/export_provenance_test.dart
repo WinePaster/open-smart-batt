@@ -75,6 +75,7 @@ void main() {
         layout: layout,
         home: 'tiles=auto',
         speedDetection: false, gMeter: false,
+        resolution: ExportResolution.none,
       );
       expect(lines.first, 'OpenSmartBatt history export');
       expect(lines, contains('exported: ${at.toIso8601String()}'));
@@ -93,6 +94,7 @@ void main() {
         layout: layout,
         home: 'tiles=auto',
         speedDetection: false, gMeter: false,
+        resolution: ExportResolution.none,
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
     });
@@ -123,6 +125,13 @@ void main() {
       // down. The two switch lines sit together because they answer the same
       // shape of question about two independent features (Q2), and a reader
       // scanning the middle should find them in one place.
+      //
+      // Design 0061 T4a (FB-71) adds `resolution:`, and here it is the SINGLE
+      // `requested=n/a (no history rows)` form: the diagnostic log has no
+      // history rows for a granularity to be about, and it says so rather than
+      // omitting the line — a line that appears only when there is something to
+      // say makes its absence mean both "nothing" and "an older build wrote
+      // this" (FB-32). The equality caught it; it is written down.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt diagnostic log',
         exportedAt: at,
@@ -132,6 +141,7 @@ void main() {
         layout: layout,
         home: 'tiles=auto',
         speedDetection: false, gMeter: false,
+        resolution: ExportResolution.none,
         connections: 2,
       );
       expect(lines, <String>[
@@ -139,6 +149,7 @@ void main() {
         'exported: ${at.toIso8601String()}',
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
+        'resolution: requested=n/a (no history rows)',
         'speed detection: off',
         'g meter: off',
         'home: tiles=auto',
@@ -155,6 +166,13 @@ void main() {
       //
       // Same discipline as the log: whole-list equality, not `containsAll`, so
       // the NEXT line added to a CSV export has to be written here as well.
+      //
+      // Design 0061 T4a (FB-71) adds the `resolution:` PAIR, right after
+      // `window:` because it answers the same shape of question: `requested=`
+      // is what was asked for, `contains=` is what the file actually holds.
+      // One line could not separate "I asked for seconds and got seconds
+      // throughout" from "I asked for seconds and part of this only ever
+      // existed as minute averages", and after FB-71 both are ordinary files.
       final lines = exportHeaderLines(
         title: 'OpenSmartBatt history export',
         exportedAt: at,
@@ -167,6 +185,8 @@ void main() {
         home: 'tiles=auto',
         speedDetection: false,
         gMeter: false,
+        resolution:
+            ExportResolution.forCsv(HistoryGranularity.second, const [1, 60]),
       );
       expect(lines, <String>[
         'OpenSmartBatt history export',
@@ -174,6 +194,8 @@ void main() {
         'scope: device=battery/7809',
         'app: 0.6.8+26072812  platform: android 15',
         'window: all',
+        'resolution: requested=1s',
+        'resolution: contains=1s,60s',
         'ampere sign: battery negative=discharge positive=charge; '
             'power bank positive=discharge (0x4A-0x49)',
         'ampere sign: capacitor rows are blank - that unit cannot measure '

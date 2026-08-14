@@ -112,8 +112,15 @@ void main() {
       await seed(n, from: DateTime(2026, 8, 1));
 
       final file = File('${tmp.path}/over-cap.csv');
+      // 🔴 At SECOND granularity, deliberately. `seed` steps one second at a
+      // time, so a per-minute export of this fixture writes 25 rows — and that
+      // is design 0061 T4d working, not the truncation this test exists to
+      // forbid. The guarantee here is "the export has no row CAP", which is a
+      // statement about the raw path; the aggregating path's honesty is pinned
+      // separately below.
       final rows = await repo.exportCsvToFile(
         file,
+        granularity: HistoryGranularity.second,
         header: const ['title', 'scope: all devices'],
       );
 
@@ -154,7 +161,10 @@ void main() {
       const n = 10001;
       await seed(n, from: DateTime(2026, 8, 1));
       final file = File('${tmp.path}/pages.csv');
-      final rows = await repo.exportCsvToFile(file, header: const ['t']);
+      // Second granularity: paging is a property of the raw path, and 10,001
+      // one-second rows are 168 minutes — far too few to cross a page boundary.
+      final rows = await repo.exportCsvToFile(file,
+          granularity: HistoryGranularity.second, header: const ['t']);
       expect(rows, n);
 
       final seen = <String>{};
@@ -240,6 +250,8 @@ void main() {
           home: 'grid',
           speedDetection: false,
           gMeter: false,
+          resolution: ExportResolution.forCsv(
+              HistoryGranularity.minute, const [60]),
         );
 
     test('the window line is emitted when the caller supplies one', () {
@@ -298,6 +310,8 @@ void main() {
       final ran = Stopwatch()..start();
       final rows = await repo.exportCsvToFile(
         file,
+        // The whole week AS RECORDED — see the note on the 1,500-row test.
+        granularity: HistoryGranularity.second,
         labelFor: (id) => 'super-cap',
         // The super-capacitor rule (FB-21's neighbour): 0x2E is pinned at 0.0 A
         // on a unit that cannot measure current, so the column is left EMPTY

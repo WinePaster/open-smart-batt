@@ -2384,6 +2384,42 @@ abstract class AppLocalizations {
   /// **'This permanently deletes all history, saved devices and settings.'**
   String get startupResetBody;
 
+  /// Heading of the export sheet's granularity picker (design 0061 T4c). Storage is per second; this decides what a row of the FILE is.
+  ///
+  /// In en, this message translates to:
+  /// **'Level of detail'**
+  String get exportResolutionTitle;
+
+  /// No description provided for @exportResolutionMinute.
+  ///
+  /// In en, this message translates to:
+  /// **'One row per minute (averaged)'**
+  String get exportResolutionMinute;
+
+  /// The default. The judgement behind it is design 0030 Q4b's: can the reporter actually send the file. Seven days is about 12 MB this way and about 77 MB per second.
+  ///
+  /// In en, this message translates to:
+  /// **'Smaller file — easy to send by LINE or email.'**
+  String get exportResolutionMinuteSub;
+
+  /// No description provided for @exportResolutionSecond.
+  ///
+  /// In en, this message translates to:
+  /// **'One row per second (full detail)'**
+  String get exportResolutionSecond;
+
+  /// Stands on its own as the qualitative fallback: when the size estimate cannot be computed, this sentence is all the user gets, and it must still be enough to decide on (design 0061 Q4 condition 3 — never show a fabricated 0 MB).
+  ///
+  /// In en, this message translates to:
+  /// **'Shows moment-to-moment changes such as a start-up surge. Much larger file.'**
+  String get exportResolutionSecondSub;
+
+  /// Appended to a granularity option once its size has been counted. Approximate by construction — rows x a measured bytes-per-row figure — hence 'about'.
+  ///
+  /// In en, this message translates to:
+  /// **'About {size}.'**
+  String exportResolutionApproxSize(String size);
+
   /// No description provided for @exportScopeTitle.
   ///
   /// In en, this message translates to:

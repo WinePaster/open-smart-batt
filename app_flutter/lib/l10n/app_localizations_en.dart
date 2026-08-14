@@ -1416,6 +1416,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'This permanently deletes all history, saved devices and settings.';
 
   @override
+  String get exportResolutionTitle => 'Level of detail';
+
+  @override
+  String get exportResolutionMinute => 'One row per minute (averaged)';
+
+  @override
+  String get exportResolutionMinuteSub =>
+      'Smaller file — easy to send by LINE or email.';
+
+  @override
+  String get exportResolutionSecond => 'One row per second (full detail)';
+
+  @override
+  String get exportResolutionSecondSub =>
+      'Shows moment-to-moment changes such as a start-up surge. Much larger file.';
+
+  @override
+  String exportResolutionApproxSize(String size) {
+    return 'About $size.';
+  }
+
+  @override
   String get exportScopeTitle => 'Export scope';
 
   @override

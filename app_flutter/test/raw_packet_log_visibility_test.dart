@@ -32,6 +32,7 @@ void main() {
         layout: kLayout,
         home: 'tiles=auto',
         speedDetection: false, gMeter: false,
+        resolution: ExportResolution.none,
         connections: 1,
         rawPacketLog: rawPacketLog,
       );
@@ -169,10 +170,20 @@ void main() {
       expect(h[3], startsWith('app: '));
     });
 
-    test('the raw-log line follows the head immediately, and layout closes',
-        () {
+    test('the raw-log line opens the middle, and layout closes', () {
+      // 🔴 Position 4 became position 5 on 2026-08-14: design 0061 T4a puts
+      // `resolution:` first in the optional middle, because it answers the same
+      // "asked for / actually holds" question `window:` does and the two read
+      // together on the CSV path. The log has no history rows, so its value is
+      // the single `n/a` form.
+      //
+      // The pin is kept as an INDEX rather than relaxed to a `contains`: the
+      // point of this test is that the middle's shape cannot drift without
+      // somebody writing the drift down, and eleven collected batches are
+      // parsed against it.
       final h = header(rawPacketLog: false);
-      expect(h[4], 'raw packet log: off');
+      expect(h[4], 'resolution: requested=n/a (no history rows)');
+      expect(h[5], 'raw packet log: off');
       expect(h.last, 'layout: $kLayout');
     });
 
@@ -182,7 +193,8 @@ void main() {
       expect(h[1], startsWith('exported: '));
       expect(h[2], startsWith('scope: '));
       expect(h[3], startsWith('app: '));
-      expect(h[4], 'raw packet log: on');
+      expect(h[4], 'resolution: requested=n/a (no history rows)');
+      expect(h[5], 'raw packet log: on');
       expect(h.last, 'layout: $kLayout');
     });
 
