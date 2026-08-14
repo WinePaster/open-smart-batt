@@ -1306,6 +1306,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get retentionForever => 'Forever';
 
   @override
+  String get settingsHistorySizeLabel => 'History storage used';
+
+  @override
+  String settingsHistorySizeSub(String used, String perYear) {
+    return 'Currently $used; grows by roughly $perYear a year at this rate. The retention setting above controls this.';
+  }
+
+  @override
+  String settingsHistorySizeSubShort(String used) {
+    return 'Currently $used. The retention setting above controls this.';
+  }
+
+  @override
   String get settingsExportAllLabel => 'Export all data (CSV)';
 
   @override

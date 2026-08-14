@@ -961,6 +961,31 @@
   "retention90Days": "90 days",
   "retention365Days": "1 year",
   "retentionForever": "Forever",
+  "settingsHistorySizeLabel": "History storage used",
+  "@settingsHistorySizeLabel": {
+    "description": "design 0061 T8c. Per-second storage costs roughly 360 MB a unit a year against 6 MB before, and existing phones keep 'forever', so the retention control above this needs a number beside it to be a real choice."
+  },
+  "settingsHistorySizeSub": "Currently {used}; grows by roughly {perYear} a year at this rate. The retention setting above controls this.",
+  "@settingsHistorySizeSub": {
+    "description": "Both figures are estimates from this phone's own data - rows so far, and the rate they arrived at. Never shown as 0.",
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "perYear": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHistorySizeSubShort": "Currently {used}. The retention setting above controls this.",
+  "@settingsHistorySizeSubShort": {
+    "description": "Used when there is under a day of history, which is too short a span to extrapolate a yearly rate from honestly.",
+    "placeholders": {
+      "used": {
+        "type": "String"
+      }
+    }
+  },
   "settingsExportAllLabel": "Export all data (CSV)",
   "settingsClearHistoryLabel": "Clear history",
   "settingsExportSubjectAllData": "OpenSmartBatt all data",

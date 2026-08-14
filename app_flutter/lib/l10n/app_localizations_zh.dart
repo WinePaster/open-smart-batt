@@ -1232,6 +1232,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get retentionForever => '永久';
 
   @override
+  String get settingsHistorySizeLabel => '歷史紀錄佔用';
+
+  @override
+  String settingsHistorySizeSub(String used, String perYear) {
+    return '目前 $used，照這個速度大約每年增加 $perYear。上面的保留期限可以控制它。';
+  }
+
+  @override
+  String settingsHistorySizeSubShort(String used) {
+    return '目前 $used。上面的保留期限可以控制它。';
+  }
+
+  @override
   String get settingsExportAllLabel => '匯出全部資料 (CSV)';
 
   @override

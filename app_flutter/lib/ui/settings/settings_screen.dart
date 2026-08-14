@@ -456,6 +456,56 @@ class _DataCard extends StatefulWidget {
 class _DataCardState extends State<_DataCard> {
   bool _busy = false;
 
+  /// What history is costing, and how fast — design 0061 T8c.
+  ///
+  /// 🔴 It is on this screen because the retention control above it stopped
+  /// being cheap. Per-minute storage was about 6 MB a year, small enough that
+  /// the setting was a preference; per-second storage is roughly 360 MB a year
+  /// per unit, and every existing phone keeps `forever` (design 0061 T8a — an
+  /// upgrade may not re-decide for anybody). The user therefore has to be able
+  /// to SEE the number the setting controls, or the choice they were left with
+  /// is one they cannot evaluate.
+  ///
+  /// Null until counted, and null again if it cannot be counted — the copy
+  /// falls back rather than showing a fabricated figure.
+  ({String used, String? perYear})? _size;
+
+  @override
+  void initState() {
+    super.initState();
+    _measure();
+  }
+
+  Future<void> _measure() async {
+    // Off the build path: at 60× the row count this is a real query.
+    try {
+      final stats = await context.read<TelemetryController>().historyStats();
+      if (!mounted) return;
+      if (stats.count == 0) {
+        setState(() => _size = null);
+        return;
+      }
+      final used = formatApproxBytes(stats.count * kApproxCsvRowBytes);
+      // Extrapolated from THIS phone's own rate, not from a brochure figure:
+      // rows so far over the span they cover. A span under a day is too short
+      // to extrapolate honestly, so it says nothing rather than guessing.
+      final first = stats.firstAt;
+      final spanDays = first == null
+          ? 0.0
+          : DateTime.now().difference(first).inMinutes / (60 * 24);
+      final perYear = spanDays >= 1
+          ? formatApproxBytes(
+              (stats.count / spanDays * 365).round() * kApproxCsvRowBytes)
+          : null;
+      setState(() => _size = (used: used, perYear: perYear));
+    } catch (_) {
+      // ⛔ No number at all rather than a wrong one — the same rule the export
+      // sheet's estimate follows (FB-32 applied to a figure).
+      if (!mounted) return;
+      setState(() => _size = null);
+    }
+  }
+
   Future<void> _exportAll() async {
     if (_busy) return;
     // Pick the unit BEFORE showing the spinner — the sheet is the user's
@@ -597,6 +647,7 @@ class _DataCardState extends State<_DataCard> {
     );
     if (!ok) return;
     await tele.clearHistory();
+    if (mounted) await _measure();
     messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.settingsHistoryCleared)));
   }
 
@@ -623,6 +674,18 @@ class _DataCardState extends State<_DataCard> {
               ],
             ),
           ),
+          // design 0061 T8c. Directly under the control it describes.
+          if (_size != null)
+            SettingsRow(
+              label: l10n.settingsHistorySizeLabel,
+              sub: _size!.perYear == null
+                  ? l10n.settingsHistorySizeSubShort(_size!.used)
+                  : l10n.settingsHistorySizeSub(
+                      _size!.used, _size!.perYear!),
+              // Nothing to operate — the row is a statement, and the control it
+              // describes is the one above it.
+              trailing: const SizedBox.shrink(),
+            ),
           SettingsLinkRow(
             icon: Icons.file_download_outlined,
             label: l10n.settingsExportAllLabel,

@@ -2186,6 +2186,24 @@ abstract class AppLocalizations {
   /// **'Forever'**
   String get retentionForever;
 
+  /// design 0061 T8c. Per-second storage costs roughly 360 MB a unit a year against 6 MB before, and existing phones keep 'forever', so the retention control above this needs a number beside it to be a real choice.
+  ///
+  /// In en, this message translates to:
+  /// **'History storage used'**
+  String get settingsHistorySizeLabel;
+
+  /// Both figures are estimates from this phone's own data - rows so far, and the rate they arrived at. Never shown as 0.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently {used}; grows by roughly {perYear} a year at this rate. The retention setting above controls this.'**
+  String settingsHistorySizeSub(String used, String perYear);
+
+  /// Used when there is under a day of history, which is too short a span to extrapolate a yearly rate from honestly.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently {used}. The retention setting above controls this.'**
+  String settingsHistorySizeSubShort(String used);
+
   /// No description provided for @settingsExportAllLabel.
   ///
   /// In en, this message translates to:
