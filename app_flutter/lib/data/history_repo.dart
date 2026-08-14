@@ -33,6 +33,60 @@ class HistoryBucket {
   final int count;
 }
 
+/// One display bucket of the history LIST — design 0061 T3a/T3b.
+///
+/// The list stopped showing stored rows when storage went to one row per
+/// second (design 0061 Phase 4): 60× the rows would have turned "the last
+/// 1,000 records" from 16 hours into 16 minutes. It shows one entry per
+/// display window instead, and this is that entry.
+///
+/// 🔴 **Why the extremes are carried and not just the mean.** A window is
+/// classified normal / warning / event by the History screen, and the
+/// thresholds are crossed by INSTANTS, not by averages: one second of
+/// over-voltage inside a minute raises `maxPvlt` and leaves `avgPvlt` looking
+/// perfectly ordinary. A list that classified on the mean would drop that
+/// minute out of the "warnings only" filter — i.e. the 60× storage the user
+/// paid for would buy a spike that the read path then averaged back out of
+/// existence, with SQL that looks completely normal. So the screen judges on
+/// [minPvlt] / [maxPvlt] / [maxTemp] and never on the means (design 0061
+/// §3.3.2), and the means exist only to be DISPLAYED.
+///
+/// [sample] therefore carries the window's means for display; it is not a
+/// reading anything ever reported, and its `timestamp` is the window's START.
+class HistoryListRow {
+  const HistoryListRow({
+    required this.sample,
+    required this.deviceId,
+    required this.bucketMs,
+    this.minPvlt,
+    this.maxPvlt,
+    this.minTemp,
+    this.maxTemp,
+    required this.rows,
+    this.samples,
+  });
+
+  /// Window means for display, stamped with the window's start.
+  final TelemetrySample sample;
+  final String? deviceId;
+
+  /// How wide the display window is. Not the stored `bucket_s` — one display
+  /// window folds rows of any granularity.
+  final int bucketMs;
+
+  /// Extremes across the window. **The classification reads these.**
+  final double? minPvlt, maxPvlt;
+  final int? minTemp, maxTemp;
+
+  /// Stored rows folded into this window (1 for a minute window over legacy
+  /// data). Diagnostic; never shown as a sample count.
+  final int rows;
+
+  /// `SUM(samples)` — telemetry snapshots behind the window, null when no
+  /// folded row counted any.
+  final int? samples;
+}
+
 /// Range-wide min/max/avg over RAW rows (not bucket-averaged), for the stats
 /// strip. Nulls when the range has no data for that metric.
 class HistoryStats {
@@ -409,6 +463,138 @@ class HistoryRepo {
     return (clauses.join(' AND '), args);
   }
 
+  /// The bucket-start expression, in SQL, for [bucketMs]-wide windows aligned
+  /// to LOCAL midnight — design 0061 T13 (Q6, ruled 2026-08-14).
+  ///
+  /// `timestamp` is a UTC epoch, so the previous `(timestamp / b) * b` cut its
+  /// buckets on UTC boundaries: at UTC+8 a 24-hour bucket ran 08:00 to 08:00
+  /// and the chart labelled it `MM/dd` — so 08/01 08:00 .. 08/02 08:00 was
+  /// drawn as "08/01". Shifting by the offset before dividing and back after
+  /// puts the boundary on the viewer's own midnight.
+  ///
+  /// 🔴 **The offset is the VIEWER's, taken when the query runs**
+  /// ([DateTime.now].timeZoneOffset), not the writer's, not a setting, not the
+  /// unit's RTC. The chart answers "which day did I, here, now, see this on",
+  /// and that is a question about the person looking.
+  ///
+  /// 🔴 **The same data viewed from two time zones therefore buckets
+  /// DIFFERENTLY, and that is the intended behaviour, not a defect.** Written
+  /// down because the obvious "fixes" — pinning a zone, or storing the
+  /// recording zone — each invert the paragraph above. Whoever comes to
+  /// "correct" this should have to argue with this comment first.
+  ///
+  /// ⚠️ Callers must use the SAME string in `SELECT` and in `GROUP BY`.
+  /// Two expressions that merely agree mathematically are one edit away from
+  /// grouping by one key and reporting another — and SQLite would not complain;
+  /// the chart would simply draw its points in the wrong places.
+  static String bucketExpr(int bucketMs, int tzOffsetMs) =>
+      '(((timestamp + ($tzOffsetMs)) / $bucketMs) * $bucketMs - ($tzOffsetMs))';
+
+  /// Local-zone offset at the moment of the query — see [bucketExpr].
+  static int currentTzOffsetMs() =>
+      DateTime.now().timeZoneOffset.inMilliseconds;
+
+  /// SQL for the `samples`-WEIGHTED mean of [col].
+  ///
+  /// 🔴 A bare `AVG(col)` is wrong here and the corpus has measured how wrong.
+  /// One stored minute can be several rows (design 0048 G2 leaves old segments
+  /// alone), and those segments hold wildly different sample counts —
+  /// `conventions.md` records a 19:26 minute stored as 405 / 69 / 3 / 56, where
+  /// the unweighted mean of the four `ampere` values comes out with THE WRONG
+  /// SIGN, and a 20:09 minute off by 69 %. The standing corpus rule is
+  /// "per-minute statistics are always weighted by `samples`", and a new
+  /// aggregation that ignored it would re-introduce, in the app, the exact
+  /// defect four separate log batches have re-discovered.
+  ///
+  /// Rows with a NULL [col] contribute no weight, so a segment that never read
+  /// the register cannot dilute one that did — the same rule [_mergeRows]
+  /// follows. A NULL or non-positive `samples` still weighs 1, or a segment
+  /// that forgot to count would erase one that did.
+  static String _wavg(String col) =>
+      'SUM(CASE WHEN $col IS NULL THEN 0.0 '
+      'ELSE $col * 1.0 * (CASE WHEN COALESCE(samples, 0) > 0 THEN samples ELSE 1 END) END) / '
+      'NULLIF(SUM(CASE WHEN $col IS NULL THEN 0 '
+      'ELSE (CASE WHEN COALESCE(samples, 0) > 0 THEN samples ELSE 1 END) END), 0)';
+
+  /// The History LIST, aggregated into [bucketMs]-wide display windows,
+  /// newest-first — design 0061 T3a.
+  ///
+  /// Grouped by (device, window), never by window alone: the screen scopes
+  /// itself to one unit today, but a query that would silently average a 3.7 V
+  /// power bank into a 14 V capacitor if it ever stopped doing so is not one to
+  /// leave lying around (FB-38's shape).
+  ///
+  /// [limit] caps WINDOWS, not stored rows — and it no longer saves any I/O
+  /// (see [HistoryListRow] and the History screen's `_rowCap`): SQLite must
+  /// scan and group every row matching the scope before it can know which
+  /// windows are the newest. That is what makes `idx_history_device_ts`
+  /// (schema v17) load-bearing rather than a nicety.
+  ///
+  /// [tzOffsetMs] defaults to the viewer's current offset; it is a parameter so
+  /// a test can pin it. See [bucketExpr] for why it exists at all.
+  Future<List<HistoryListRow>> queryListBuckets({
+    DateTime? since,
+    required int bucketMs,
+    int? limit,
+    String? deviceId,
+    bool attributedOnly = false,
+    int? tzOffsetMs,
+  }) async {
+    final b = bucketMs < 1000 ? 1000 : bucketMs;
+    final off = tzOffsetMs ?? currentTzOffsetMs();
+    final bucket = bucketExpr(b, off);
+    final (clause, scopeArgs) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final rows = await _db.rawQuery(
+      // ⚠️ `$bucket` appears in SELECT and in GROUP BY as the SAME string —
+      // see [bucketExpr].
+      'SELECT $bucket AS bucket, device_id AS device_id, '
+      '${_wavg('pvlt')} AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
+      '${_wavg('svlt')} AS avgSvlt, '
+      '${_wavg('ampere')} AS avgAmpere, '
+      '${_wavg('temperature')} AS avgTemp, '
+      'MIN(temperature) AS minTemp, MAX(temperature) AS maxTemp, '
+      // Discrete, so "did it happen in this window", never an average. MAX over
+      // the ReportedStatus space orders it the way the screen reads it:
+      // cut-off (2) outranks anti-theft (1) outranks normal (0), which is the
+      // same precedence `_classify` applies to a single row.
+      'MAX(mode) AS mode, '
+      // The WORST health bucket seen, for the same reason the thresholds use
+      // extremes: a window that dipped is a window that dipped.
+      'MIN(soh) AS soh, '
+      'SUM(samples) AS samples, COUNT(*) AS n '
+      'FROM ${Db.tableHistory} $where '
+      'GROUP BY device_id, $bucket '
+      'ORDER BY bucket DESC${limit == null ? '' : ' LIMIT $limit'}',
+      <Object?>[...?scopeArgs],
+    );
+    double? d(Object? v) => (v as num?)?.toDouble();
+    int? i(Object? v) => (v as num?)?.toInt();
+    return rows
+        .map((r) => HistoryListRow(
+              sample: TelemetrySample(
+                timestamp: DateTime.fromMillisecondsSinceEpoch(
+                    (r['bucket'] as num).toInt()),
+                pvlt: d(r['avgPvlt']),
+                svlt: d(r['avgSvlt']),
+                current: d(r['avgAmpere']),
+                temperatureC: d(r['avgTemp'])?.round(),
+                mode: i(r['mode']),
+                sohBucket: i(r['soh']),
+              ),
+              deviceId: r['device_id'] as String?,
+              bucketMs: b,
+              minPvlt: d(r['minPvlt']),
+              maxPvlt: d(r['maxPvlt']),
+              minTemp: i(r['minTemp']),
+              maxTemp: i(r['maxTemp']),
+              rows: i(r['n']) ?? 0,
+              samples: i(r['samples']),
+            ))
+        .toList(growable: false);
+  }
+
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
   /// returns avg/min/max of pvlt + temperature per bucket (ascending by time).
   /// [bucketMs] >= 60000 (one minute, the storage granularity).
@@ -417,24 +603,37 @@ class HistoryRepo {
   /// which is exactly how the device dimension came to exist on the list and
   /// not on the chart — so the History screen drew one unit's 3.7 V beside
   /// another's 14 V and called it a voltage anomaly.
+  ///
+  /// Buckets are aligned to the VIEWER's local midnight — see [bucketExpr] for
+  /// the offset's provenance and for why the same data buckets differently in
+  /// another time zone on purpose. [tzOffsetMs] is a parameter only so a test
+  /// can pin it.
   Future<List<HistoryBucket>> queryBuckets({
     DateTime? since,
     required int bucketMs,
     String? deviceId,
     bool attributedOnly = false,
+    int? tzOffsetMs,
   }) async {
     final b = bucketMs < 60000 ? 60000 : bucketMs;
+    final off = tzOffsetMs ?? currentTzOffsetMs();
+    final bucket = bucketExpr(b, off);
     final (clause, scopeArgs) =
         _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final rows = await _db.rawQuery(
-      'SELECT (timestamp / $b) * $b AS bucket, '
+      // ⚠️ `$bucket` is the same string in SELECT and GROUP BY, deliberately —
+      // see [bucketExpr]. The two used to be spelled differently here
+      // (`(timestamp / b) * b` against `timestamp / b`); they agreed, but only
+      // by arithmetic, and a divergence would have grouped by one key while
+      // reporting another with no error anywhere.
+      'SELECT $bucket AS bucket, '
       'AVG(pvlt) AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
       'AVG(temperature) AS avgTemp, MIN(temperature) AS minTemp, '
       'MAX(temperature) AS maxTemp, COUNT(*) AS n '
       'FROM ${Db.tableHistory} $where '
-      'GROUP BY timestamp / $b ORDER BY bucket ASC',
+      'GROUP BY $bucket ORDER BY bucket ASC',
       args,
     );
     double? d(Object? v) => (v as num?)?.toDouble();

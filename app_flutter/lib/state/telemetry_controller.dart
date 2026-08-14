@@ -316,10 +316,17 @@ class TelemetryController extends ChangeNotifier
   }) =>
       _history.querySamples(since: since, limit: limit, deviceId: deviceId);
 
-  /// History rows paired with the unit each was recorded against, so the UI can
-  /// resolve a row's product class (see [HistoryRepo.querySamplesWithDevice]).
+  /// History rows paired with the unit each was recorded against, so a caller
+  /// can resolve a row's product class (see
+  /// [HistoryRepo.querySamplesWithDevice]).
   ///
-  /// Attributed rows only — see [historyStats] for why the three History screen
+  /// ⚠️ **The History screen no longer reads this** — since design 0061 T3a its
+  /// list is [historyListBuckets], one entry per minute rather than one per
+  /// stored row. This returns RAW STORED ROWS, which at second resolution is a
+  /// different and much larger thing; anything rendering it as "the records"
+  /// would be back to the 16-minute list T3a exists to prevent.
+  ///
+  /// Attributed rows only — see [historyStats] for why the History screen
   /// queries all fix this.
   Future<List<({TelemetrySample sample, String? deviceId})>> historyWithDevice({
     DateTime? since,
@@ -328,6 +335,23 @@ class TelemetryController extends ChangeNotifier
   }) =>
       _history.querySamplesWithDevice(
           since: since, limit: limit, deviceId: deviceId, attributedOnly: true);
+
+  /// The History LIST, aggregated into [bucketMs]-wide display windows
+  /// (design 0061 T3a). [limit] caps WINDOWS, not stored rows.
+  ///
+  /// Attributed rows only, for [historyStats]' reason.
+  Future<List<HistoryListRow>> historyListBuckets({
+    DateTime? since,
+    required int bucketMs,
+    int? limit,
+    String? deviceId,
+  }) =>
+      _history.queryListBuckets(
+          since: since,
+          bucketMs: bucketMs,
+          limit: limit,
+          deviceId: deviceId,
+          attributedOnly: true);
 
   /// Stored sample count, unattributed rows included. [historyAttributedCount]
   /// is the one the History screen reports.

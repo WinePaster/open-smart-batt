@@ -1520,11 +1520,11 @@ abstract class AppLocalizations {
   /// **'No records today.\nThey start accumulating once a device is connected.'**
   String get historyEmptyToday;
 
-  /// No description provided for @historyEmptyWarning.
+  /// Empty state for the 'warnings only' filter. The count is how many rows were ACTUALLY LOADED, never the row cap: the filter runs in Dart after the SQL LIMIT, so the screen can only speak for the newest N windows it fetched. Claiming 'no warnings' full stop was an assertion about data it had not looked at (design 0061 T12).
   ///
   /// In en, this message translates to:
-  /// **'No warning or event records.'**
-  String get historyEmptyWarning;
+  /// **'{count, plural, =0{No records loaded, so there are no warnings to show.} =1{No warnings or events in the most recent record.} other{No warnings or events in the most recent {count} records.}}'**
+  String historyEmptyWarning(int count);
 
   /// No description provided for @historyEmptyAll.
   ///
@@ -1543,6 +1543,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No records for this device in the selected range.'**
   String get historyEmptyDeviceRange;
+
+  /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading.
+  ///
+  /// In en, this message translates to:
+  /// **'The list shows one row per minute. Full per-second data is available when you export.'**
+  String get historyListMinuteNote;
+
+  /// The chart's bucket width is dynamic (1 minute to 24 hours) and appeared nowhere on screen before design 0061 T10.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Each point on the chart averages 1 minute} other{Each point on the chart averages {count} minutes}}'**
+  String historyChartBucketMinutes(int count);
+
+  /// Hours form of historyChartBucketMinutes; 'averages 1440 minutes' is a number nobody converts.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Each point on the chart averages 1 hour} other{Each point on the chart averages {count} hours}}'**
+  String historyChartBucketHours(int count);
 
   /// No description provided for @historyFooter.
   ///

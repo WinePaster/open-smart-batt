@@ -848,7 +848,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyEmptyToday => '今天還沒有紀錄。\n連線裝置後就會開始累積。';
 
   @override
-  String get historyEmptyWarning => '沒有警告或事件紀錄。';
+  String historyEmptyWarning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '最近 $count 筆紀錄中沒有警告或事件。',
+      zero: '沒有載入任何紀錄，所以沒有警告可以顯示。',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get historyEmptyAll => '尚無歷史紀錄。\n連線裝置後就會開始累積。';
@@ -858,6 +866,29 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get historyEmptyDeviceRange => '這台裝置在此範圍內沒有紀錄。';
+
+  @override
+  String get historyListMinuteNote => '清單以每分鐘一列顯示；完整的每秒資料可以在匯出時選。';
+
+  @override
+  String historyChartBucketMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '圖上每一點是 $count 分鐘的平均',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historyChartBucketHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '圖上每一點是 $count 小時的平均',
+    );
+    return '$_temp0';
+  }
 
   @override
   String historyFooter(int count) {
