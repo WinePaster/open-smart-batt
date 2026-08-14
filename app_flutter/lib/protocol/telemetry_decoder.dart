@@ -275,9 +275,13 @@ class TelemetryDecoder {
       // b6..b7 as two millivolt words — the §8.2 pair formula. The v2 half is
       // now positively refuted rather than merely unverified: on device-type
       // 0x17 the last payload byte mirrors the 0x21 temperature in °C (seven
-      // units, 85.9-100% against the nearest-in-time 0x21, every miss off by
+      // units, 85.9-99.4% against the nearest-in-time 0x21, every miss off by
       // exactly one degree), and a byte carrying degrees cannot be half of a
-      // millivolt word. On 0x18 units it is 0% and constant while 0x21 moves,
+      // millivolt word. Every rate in that range is a per-capture slice, not a
+      // unit's lifetime rate: the 100% upper bound this comment used to quote
+      // was one capture's subset of one unit, whose longer capture reads 97.9%
+      // (corrected 2026-08-14 alongside the public docs).
+      // On 0x18 units it is 0% and constant while 0x21 moves,
       // so that generation uses a different layout again. See PROTOCOL.md §10.1.
       //
       // Nothing read chargeV1/chargeV2 — no UI, and the CSV/DB `toMap` is a

@@ -115,6 +115,13 @@ class CardHeading extends StatelessWidget {
   /// rule going away must not turn an overlong heading into an overflow bar.
   final bool rule;
 
+  /// How much of the row the fade rule reserves, drawn or not.
+  ///
+  /// A FIXED width, and that is the whole point — see [build]. Held the same
+  /// with and without the rule so that dropping it cannot re-flow the row or
+  /// move [trailing].
+  static const double ruleWidth = 28;
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -131,6 +138,16 @@ class CardHeading extends StatelessWidget {
         // editor preview, which is the first screen that renders these cards
         // at 1x1 with nothing connected; the same shape as the `Flexible` the
         // readout tile's own label has carried since design 0037.
+        //
+        // 🔑 And it is the ONLY flexible child of this row, deliberately. The
+        // rule used to be an `Expanded` beside it, both at flex 1, which capped
+        // the label at HALF the space left over: `RenderFlex` divides the free
+        // space by the flex factors before it lays a flexible child out, and
+        // what a `loose` child leaves unused is not handed back to a `tight`
+        // one. On a 320 dp phone that was ~44 dp of label on a 1x1 tile —
+        // "PER-CELL VOLTAGE DVOL" reduced to about four characters — and it
+        // truncated even on a full-width card. So the label is measured against
+        // everything that is left, and the rule takes a fixed slice instead.
         Flexible(
           child: Text(
             text.toUpperCase(),
@@ -141,9 +158,12 @@ class CardHeading extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 7),
-        // `Expanded` either way, so the heading row is the same width and the
+        // Same width either way, so the heading row is the same width and the
         // trailing slot lands in the same place with or without the rule.
-        Expanded(child: rule ? const _FadeRule() : const SizedBox.shrink()),
+        SizedBox(
+          width: ruleWidth,
+          child: rule ? const _FadeRule() : null,
+        ),
         if (trailing != null) ...[
           const SizedBox(width: 7),
           trailing!,

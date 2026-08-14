@@ -431,8 +431,16 @@ void main() {
     // real; the screen was false.
     //
     // So an unidentified unit waits. The class is written back to
-    // `saved_devices` on the first connect that reads `0x10`, and the tiles
-    // appear then.
+    // `saved_devices` off every telemetry sample of a connection that has read
+    // `0x10` (`ConnectionController._persistProductClass`), and the tiles
+    // appear then — within about a second of the record existing, whichever
+    // came first, the record or the byte.
+    //
+    // ⚠️ That last clause is the FIX, not decoration. This comment used to read
+    // "on the first connect that reads `0x10`", and for a first connect it was
+    // false: the write was attempted exactly once, before the naming dialog had
+    // created the record, so the unit stayed invisible here until the SECOND
+    // connect. See `test/product_class_writeback_test.dart`.
     test('its tiles are dropped — including the device card', () {
       final devices = [
         _dev('KNOWN'),
