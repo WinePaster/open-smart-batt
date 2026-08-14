@@ -196,7 +196,36 @@ class Db {
   ///
   /// The table holds 0 or 1 rows and is deleted from on every ordinary
   /// convergence, so it never grows.
-  static const int schemaVersion = 16;
+  ///
+  /// v17 — design 0061 (FB-71) Phase 1. `history.bucket_s`, plus the composite
+  /// index the aggregating reads need.
+  ///
+  ///   history.bucket_s  INTEGER NOT NULL DEFAULT 60 — **how wide the window
+  ///     this row summarises is, in seconds.** 60 for the per-minute averages
+  ///     every row written before v17 is, 1 once second-resolution writing is
+  ///     switched on (Phase 4).
+  ///
+  /// 🔴 **`bucket_s = 60` means "filed under a minute bucket", NOT "actually
+  /// covers 60 seconds".** A minute cut into segments by a disconnect can hold
+  /// as few as 3 samples (`conventions.md`: the 19:26 minute came in at
+  /// 405/69/3/56) and it is still `bucket_s = 60`. Read it as the row's
+  /// GRANULARITY, never as its duration or its confidence.
+  ///
+  /// Why a column and not an inference — all three cheaper options were tried
+  /// and each is provably wrong (design 0061 §3.2):
+  ///   * from `samples`: segmented minute rows reach down to 3, second rows sit
+  ///     near 5 — **the distributions overlap**, so no threshold separates them;
+  ///   * from a date cut-off: `timestamp` is the instant the row DESCRIBES, not
+  ///     when it was written, and design 0047 back-fills old instants from new
+  ///     builds;
+  ///   * from "does it land on a whole minute": second-resolution data lands on
+  ///     `:00` once every 60 rows. The most tempting one, and the worst.
+  ///
+  /// `NOT NULL DEFAULT 60` does the backfill for us: SQLite writes the default
+  /// into every existing row as part of `ADD COLUMN`, so v16 data describes
+  /// itself correctly the moment the upgrade lands — no UPDATE pass, no window
+  /// where a row exists with no granularity.
+  static const int schemaVersion = 17;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -590,6 +619,33 @@ class AppDatabase {
         await db.execute(stmt);
       }
     }
+    if (from < 17) {
+      // design 0061 (FB-71) Phase 1. Two additive statements, no existing
+      // column, row or query touched — see [Db.schemaVersion] v17 for why the
+      // granularity has to be a stored column and cannot be inferred.
+      //
+      // 🔑 The DEFAULT is the backfill. SQLite materialises it into every
+      // existing row during ADD COLUMN, so the instant this returns, every v16
+      // row correctly describes itself as a per-minute average. There is no
+      // second pass to forget and no window in which a row has no granularity.
+      //
+      // ⚠️ NOT NULL is deliberate and is what makes the column trustworthy: a
+      // nullable one would let a later insert that forgets the field produce a
+      // row whose granularity is unknown, and "unknown" is exactly the state
+      // this whole column exists to abolish. A row that cannot say what it
+      // summarises cannot be exported honestly.
+      await db.execute(
+        'ALTER TABLE ${Db.tableHistory} '
+        'ADD COLUMN bucket_s INTEGER NOT NULL DEFAULT 60',
+      );
+      // Same statement as the fresh-install path above. Two copies of an index
+      // definition is how a migration drifts from a create, so if you change
+      // one, change the other — the schema-parity test compares them.
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_history_device_ts '
+        'ON ${Db.tableHistory} (device_id, timestamp)',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -661,11 +717,24 @@ class AppDatabase {
       speed REAL,
       accel REAL,
       g_long REAL,
-      g_lat REAL
+      g_lat REAL,
+      bucket_s INTEGER NOT NULL DEFAULT 60
     )
     ''',
     'CREATE INDEX idx_history_ts ON ${Db.tableHistory} (timestamp)',
     'CREATE INDEX idx_history_device ON ${Db.tableHistory} (device_id)',
+    // design 0061 T5 / design 0030 K2. Every read this feature adds is scoped
+    // to one device and then to a time range — `WHERE device_id = ? AND
+    // timestamp >= ?` — and neither single-column index above can serve both
+    // halves. It has been a "should" since design 0030; at 60x the row count it
+    // stops being one.
+    //
+    // ⚠️ It does NOT rescue the bucketing itself: `GROUP BY timestamp / ?` is an
+    // expression, and no index on `timestamp` can be used for it. This index
+    // makes the WHERE cheap and leaves the GROUP BY exactly as expensive as it
+    // was — do not read it as a fix for K2.
+    'CREATE INDEX idx_history_device_ts '
+        'ON ${Db.tableHistory} (device_id, timestamp)',
     '''
     CREATE TABLE ${Db.tableSavedDevices} (
       id TEXT PRIMARY KEY,

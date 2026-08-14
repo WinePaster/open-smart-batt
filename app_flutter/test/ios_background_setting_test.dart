@@ -157,7 +157,18 @@ void main() {
         path,
         options: OpenDatabaseOptions(
           version: 12,
-          onCreate: (db, _) async => db.execute(_v12Settings),
+          onCreate: (db, _) async {
+            await db.execute(_v12Settings);
+            // A stub `history`, because from v17 the upgrade chain ALTERs it
+            // (design 0061 / FB-71 adds `bucket_s`) and a fixture without the
+            // table cannot be opened at all. Only the two columns that
+            // migration names — this file is about `settings`, and widening the
+            // stub would invite the next person to assert history facts from a
+            // shape nothing guarantees.
+            await db.execute('CREATE TABLE history ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'timestamp INTEGER NOT NULL, device_id TEXT)');
+          },
         ),
       );
       // An iOS user's real row: the Android column carries the 1 that toMap
@@ -202,7 +213,18 @@ void main() {
         upgradedPath,
         options: OpenDatabaseOptions(
           version: 12,
-          onCreate: (db, _) async => db.execute(_v12Settings),
+          onCreate: (db, _) async {
+            await db.execute(_v12Settings);
+            // A stub `history`, because from v17 the upgrade chain ALTERs it
+            // (design 0061 / FB-71 adds `bucket_s`) and a fixture without the
+            // table cannot be opened at all. Only the two columns that
+            // migration names — this file is about `settings`, and widening the
+            // stub would invite the next person to assert history facts from a
+            // shape nothing guarantees.
+            await db.execute('CREATE TABLE history ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'timestamp INTEGER NOT NULL, device_id TEXT)');
+          },
         ),
       );
       await legacy.close();
