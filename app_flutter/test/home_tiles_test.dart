@@ -30,7 +30,10 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/ui/dashboard/clock_card.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
+import 'package:open_smart_batt/ui/widgets/card_device_scope.dart';
+import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 import 'package:open_smart_batt/ui/widgets/pending_note.dart';
+import 'package:open_smart_batt/ui/home/home_preview.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
@@ -633,6 +636,222 @@ void main() {
           reason: 'with $n device(s): a generated pair can be broken by '
               '`renderedFor`, and nobody chose the result');
     }
+  });
+
+  // ===========================================================================
+  // 🔴 A module card names its unit — owner ruling 2026-08-15, from
+  // `2026.08.14-001.md` §1.3 建議 4 / R1.
+  //
+  // The request was 「[裝置名]分串電壓」 on the home grid, and it could not be
+  // built as asked. The heading row spends a FIXED 55 px before the label gets
+  // a pixel (icon 13, two 7 px gaps, `CardHeading.ruleWidth` 28), so a 1x1 tile
+  // on a 320 dp phone leaves 60 px for a string that needs ~90 — the ellipsis
+  // was ALREADY firing there. A prefix would have been eaten tail-first, i.e.
+  // the request to tell two units apart would have cost the ability to tell two
+  // CARDS apart.
+  //
+  // So it went on two lines, and the ORDER is the whole ruling: the unit takes
+  // the row that pays the 55 px, and the module name goes underneath where
+  // nothing competes for the width. Put them the other way round and the module
+  // name is still in the 60 px row — the feature would look implemented and
+  // change nothing. G1 therefore asserts the geometry, not just the strings.
+  //
+  // `mockups/fb-20260814-001-r1-module-card-device-name.html` renders all five
+  // candidate forms at true device widths.
+  // ===========================================================================
+  group('a module card names its unit', () {
+    // One module tile and nothing else, so the alias on screen can only have
+    // come from the module card — a device card carries its own (`_DeviceTile`).
+    Future<AppServices> bootOneModule(WidgetTester tester,
+        {String alias = 'Cap #1'}) async {
+      final s = await boot(tester, devices: [
+        SavedDevice(
+          id: 'A',
+          productClass: ProductClass.smartBattery,
+          alias: alias,
+          lastValue: 12.64,
+          lastSeen: DateTime.now(),
+        ),
+      ]);
+      await tester.runAsync(() => s.settings.setHomeLayout(
+            const HomeLayout([
+              HomeTile.module(DisplayModule.cells, deviceId: 'A'),
+            ]).encode(),
+          ));
+      return s;
+    }
+
+    testWidgets('G1: the unit sits ABOVE the module, and further left',
+        (tester) async {
+      final s = await bootOneModule(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpHome(tester, s);
+
+      final unit = find.text('Cap #1');
+      final module = find.text('PER-CELL VOLTAGE DVOL');
+      expect(unit, findsOneWidget);
+      expect(module, findsOneWidget,
+          reason: 'two lines, not one string — a concatenated heading would '
+              'also dodge the i18n word-order problem this shape avoids');
+
+      expect(tester.getTopLeft(unit).dy, lessThan(tester.getTopLeft(module).dy),
+          reason: 'the unit takes the row that pays the 55 px so that the '
+              'module name gets the line with nothing on it');
+      expect(
+        tester.getTopLeft(module).dx,
+        lessThan(tester.getTopLeft(unit).dx),
+        reason: 'the module line starts at the card padding, LEFT of the unit '
+            'line, because it carries no icon — that extra width is the whole '
+            'reason this order was chosen over the reverse',
+      );
+    });
+
+    testWidgets('G2: the alias is not shouted back at the user',
+        (tester) async {
+      // `CardHeading` upper-cases its own label. An alias is not its label —
+      // it is a name somebody typed, and FB-61 makes it free-form.
+      final s = await bootOneModule(tester, alias: 'My car battery');
+      addTearDown(() => teardown(tester, s));
+      await pumpHome(tester, s);
+
+      expect(find.text('My car battery'), findsOneWidget);
+      expect(find.text('MY CAR BATTERY'), findsNothing);
+      // …while the module label still is upper-cased, so this is a deliberate
+      // difference rather than the transform having been dropped.
+      expect(find.text('PER-CELL VOLTAGE DVOL'), findsOneWidget);
+    });
+
+    testWidgets('G3: an empty alias falls back instead of drawing a blank line',
+        (tester) async {
+      // FB-61 ruled the empty alias a supported value. A card whose first line
+      // is empty would be 16 px of nothing above the heading.
+      final s = await bootOneModule(tester, alias: '');
+      addTearDown(() => teardown(tester, s));
+      await pumpHome(tester, s);
+
+      expect(find.text('Unnamed device'), findsOneWidget);
+      expect(find.text(''), findsNothing);
+    });
+
+    testWidgets('G4: a phone module names no unit', (tester) async {
+      // The clock belongs to the phone, not to a battery. Naming a unit on it
+      // would be the FB-41 attribution mistake with the arrow reversed.
+      final s = await boot(tester, devices: [
+        SavedDevice(
+          id: 'A',
+          productClass: ProductClass.smartBattery,
+          alias: 'Cap #1',
+          lastValue: 12.64,
+          lastSeen: DateTime.now(),
+        ),
+      ]);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setHomeLayout(
+            const HomeLayout([
+              HomeTile.module(DisplayModule.clock),
+              HomeTile.module(DisplayModule.cells, deviceId: 'A'),
+            ]).encode(),
+          ));
+      await pumpHome(tester, s);
+
+      expect(find.text('CLOCK'), findsOneWidget,
+          reason: 'sanity: the clock tile really is on screen, so the '
+              'assertion below is not vacuous');
+      expect(find.text('Cap #1'), findsOneWidget,
+          reason: 'exactly one card names the unit — the one that is about it');
+    });
+
+    testWidgets('G5: the home EDITOR names no unit', (tester) async {
+      // The ruling was explicit: 「是指已經被擺放到主頁，而不是編輯卡片的時候」.
+      // In `_ModuleTile` that is structural — the scope is placed BELOW the
+      // `preview` early-return, the same return that keeps the editor from
+      // touching a controller (design 0051 §5).
+      final s = await boot(tester, devices: []);
+      addTearDown(() => teardown(tester, s));
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final preview = buildHomePreview(
+        shellClass: ProductClass.smartBattery,
+        live: true,
+        tempUnit: TempUnit.celsius,
+        speedUnit: SpeedUnit.kmh,
+        now: DateTime(2026, 8, 15, 12),
+      );
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<BleService>.value(value: s.ble),
+            ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+            ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+            ChangeNotifierProvider<ConnectionController>.value(
+                value: s.connection),
+            ChangeNotifierProvider<TelemetryController>.value(
+                value: s.telemetry),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: Scaffold(
+              body: HomeTileView(
+                tile: const HomeTile.module(DisplayModule.cells, deviceId: 'A'),
+                preview: preview,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('PER-CELL VOLTAGE DVOL'), findsOneWidget,
+          reason: 'sanity: the card itself did render');
+      expect(find.text(kPreviewAlias), findsNothing,
+          reason: 'the editor draws the card, not the unit it would be bound '
+              'to — and the preview alias is the only name it could show');
+    });
+
+    testWidgets('G6: unscoped cards are unchanged, and nesting cannot repeat',
+        (tester) async {
+      // The dashboard and every screen outside the home grid sit in no scope
+      // at all, which must stay a defined rendering rather than a crash — and
+      // a card inside a card must not say the unit's name twice.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: const Scaffold(
+            body: Column(
+              children: [
+                IndustrialCard(heading: 'alone', child: SizedBox.shrink()),
+                CardDeviceScope(
+                  deviceLabel: 'UNIT-9',
+                  child: IndustrialCard(
+                    heading: 'outer',
+                    child: IndustrialCard(
+                      heading: 'inner',
+                      child: SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('ALONE'), findsOneWidget);
+      expect(find.text('OUTER'), findsOneWidget);
+      expect(find.text('INNER'), findsOneWidget);
+      expect(find.text('UNIT-9'), findsOneWidget,
+          reason: 'consumed by the outermost card and republished as null, so '
+              'the inner one cannot repeat it');
+    });
   });
 }
 

@@ -37,6 +37,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_cards.dart';
+import '../widgets/card_device_scope.dart';
 import '../widgets/industrial_card.dart';
 import '../util/relative_time.dart';
 import 'home_preview.dart';
@@ -537,13 +538,48 @@ class _ModuleTile extends StatelessWidget {
     // design 0042 W4 removed, just on a different surface.
     final live =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
-    if (!live) return HomeWaitingTile(module: module);
-    final shellClass = homeTileShellClass(id, conn);
-    return dashboardCardFor(context, module,
-            shellClass: shellClass,
-            tele: context.watch<TelemetryController>(),
-            view: view) ??
-        HomeWaitingTile(module: module);
+    final Widget card;
+    if (!live) {
+      card = HomeWaitingTile(module: module);
+    } else {
+      final shellClass = homeTileShellClass(id, conn);
+      card = dashboardCardFor(context, module,
+              shellClass: shellClass,
+              tele: context.watch<TelemetryController>(),
+              view: view) ??
+          HomeWaitingTile(module: module);
+    }
+
+    // 🔴 The unit's name, published to the card's heading (owner ruling
+    // 2026-08-15, from `2026.08.14-001.md` §1.3 建議 4 / R1: 「主頁的各裝置卡片…
+    // 要不要改為 [裝置名]分串電壓 這樣的標題」).
+    //
+    // It is a SCOPE rather than an argument threaded through `dashboardCardFor`
+    // — `card_device_scope.dart` carries the full reasoning, of which the part
+    // that matters here is: the ruling was 「已經被擺放到主頁，而不是編輯卡片的
+    // 時候」, and this is the only place a scope is placed, so the dashboard and
+    // the editor preview are excluded by construction rather than by anyone
+    // remembering to leave the argument out.
+    //
+    // 🔑 BELOW the `preview` early-return above, and that is load-bearing twice
+    // over: the editor must not name a unit (the ruling), and it must not touch
+    // a controller at all (design 0051 §5) — `aliasFor` is a `DeviceController`
+    // read. One early return keeps both true.
+    //
+    // Placed around the WAITING tile too. An offline tile keeps the unit's name
+    // for the same reason it keeps the shell: a card that changed shape when
+    // its unit went offline would make the layout unrecognisable exactly when
+    // the user is working out what happened.
+    if (id == null) return card; // a phone module — there is no unit to name
+    final l10n = AppLocalizations.of(context);
+    return CardDeviceScope(
+      // Empty aliases are a supported value (FB-61), so the fallback is the
+      // same string the device list shows rather than a blank line.
+      deviceLabel: context
+          .watch<DeviceController>()
+          .aliasFor(id, fallback: l10n.devicesUnnamed),
+      child: card,
+    );
   }
 }
 

@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'card_device_scope.dart';
 
 /// A bordered panel with corner ticks and an optional heading.
 class IndustrialCard extends StatelessWidget {
@@ -55,6 +56,11 @@ class IndustrialCard extends StatelessWidget {
     // settings screen must not lose its frames because somebody chose `minimal`
     // for their home page. See `card_style.dart`.
     final shell = context.cardShellTokens;
+    // Which unit this card is about, when the surface said so (home grid only —
+    // `card_device_scope.dart`). Read only when there IS a heading: the device
+    // line lives inside the heading block, so a headingless card has nowhere to
+    // put it and must not take a dependency on the scope either.
+    final device = heading == null ? null : context.cardDeviceLabel;
     return Container(
       margin: EdgeInsets.only(bottom: shell.gapBelow),
       child: CustomPaint(
@@ -72,21 +78,27 @@ class IndustrialCard extends StatelessWidget {
                     : null),
           ),
           padding: context.scaleCardPadding(padding),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (heading != null) ...[
-                CardHeading(
-                  text: heading!,
-                  icon: headingIcon,
-                  trailing: headingTrailing,
-                  rule: shell.headingRule,
-                ),
-                SizedBox(height: shell.headingGap),
+          // Consumed ONCE. Republishing null means a card nested inside a card
+          // cannot repeat the unit's name — see `card_device_scope.dart`.
+          child: CardDeviceScope(
+            deviceLabel: null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (heading != null) ...[
+                  CardHeading(
+                    text: heading!,
+                    icon: headingIcon,
+                    trailing: headingTrailing,
+                    rule: shell.headingRule,
+                    device: device,
+                  ),
+                  SizedBox(height: shell.headingGap),
+                ],
+                child,
               ],
-              child,
-            ],
+            ),
           ),
         ),
       ),
@@ -102,10 +114,39 @@ class CardHeading extends StatelessWidget {
     this.icon,
     this.trailing,
     this.rule = true,
+    this.device,
   });
 
   final String text;
   final IconData? icon;
+
+  /// The unit this card is about, drawn ABOVE [text] (owner ruling 2026-08-15).
+  /// Null — every surface but the home grid — keeps the single-row heading.
+  ///
+  /// ## 🔴 Why the device goes on top and the module underneath
+  ///
+  /// It looks arbitrary and it is not; the reverse order does not work. The
+  /// heading row spends a FIXED 55 px before the label gets a pixel — icon 13,
+  /// two 7 px gaps, and [ruleWidth] 28 — so on a 320 dp phone a 1x1 tile leaves
+  /// the label **60 px**. 「分串電壓 DVOL」 needs ~90, which is why [build]'s
+  /// ellipsis was already firing on that tile BEFORE this feature existed.
+  ///
+  /// The second line is a plain [Text]: no icon, no rule, so it takes the whole
+  /// 115 px inner width. Putting the MODULE there is what makes the module name
+  /// fit — for the first time. Putting the device there instead would leave the
+  /// module name in the 60 px row and change nothing.
+  ///
+  /// That is also the answer to 「單行加前綴」, which is what was originally
+  /// asked for: the ellipsis eats the TAIL, so 「1328 分串電壓 DVOL」 truncates to
+  /// 「1328 分串電…」 — the request was to tell two units apart and the cost would
+  /// have been not being able to tell two CARDS apart. `mockups/
+  /// fb-20260814-001-r1-module-card-device-name.html` renders all five forms at
+  /// true device widths and measures each one.
+  ///
+  /// ⚠️ NOT `toUpperCase()`d, unlike [text]. This is a name the user typed
+  /// (FB-61 makes it free-form, empty included); shouting it back is how
+  /// `MY CAR BATTERY` happens to someone who wrote `My car battery`.
+  final String? device;
 
   /// Optional control after the fade rule (see [IndustrialCard.headingTrailing]).
   final Widget? trailing;
@@ -124,6 +165,31 @@ class CardHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = _row(context);
+    final d = device;
+    if (d == null) return row;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        const SizedBox(height: 3),
+        // The module name, with the FULL inner width — see [device]. No
+        // `Flexible` needed: this is the only child of its row, so the ellipsis
+        // fires against everything the card has rather than against what the
+        // icon and the rule left over.
+        Text(
+          text.toUpperCase(),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.cardHeading(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _row(BuildContext context) {
     return Row(
       children: [
         if (icon != null) ...[
@@ -148,13 +214,20 @@ class CardHeading extends StatelessWidget {
         // "PER-CELL VOLTAGE DVOL" reduced to about four characters — and it
         // truncated even on a full-width card. So the label is measured against
         // everything that is left, and the rule takes a fixed slice instead.
+        //
+        // When [device] is set this row carries the UNIT and the module name
+        // moves to the line below — amber, and not upper-cased, because it is a
+        // name somebody typed rather than a label this app chose.
         Flexible(
           child: Text(
-            text.toUpperCase(),
+            device ?? text.toUpperCase(),
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.cardHeading(context),
+            style: device == null
+                ? AppTextStyles.cardHeading(context)
+                : AppTextStyles.cardHeading(context)
+                    .copyWith(color: AppColors.amber),
           ),
         ),
         const SizedBox(width: 7),
