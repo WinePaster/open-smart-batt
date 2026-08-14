@@ -196,6 +196,38 @@ on wire    : mode_frame ++ auth_frame            = 15 bytes, nothing more
 > `#`, 423 `@` and 194 `!#` ASCII keep-alive writes (§4.2). This is a statement
 > about what was ever *commanded*, not about a dead TX path.
 >
+> ---
+>
+> 🔴 **SUPERSEDED IN PART — 2026-08-14. The census above is a snapshot of
+> 2026-07-31 and is kept verbatim; three of its bullets are now false.** This
+> client has since shipped a release button (design 0036), so it now commands
+> things the census says were never commanded. Sources:
+> `feedback-analysis/2026.08.14-003.md` §3 N1–N4 / §4 C4–C6 (3 independent
+> batteries, 12 command TX lines, all XOR-clean).
+>
+> | Bullet above | Status 2026-08-14 |
+> |---|---|
+> | "All 20 mode writes carried mode `0x06`. `0`, `1` and `2` have never been sent" | ❌ **False.** Mode `0x00` has now been sent **15 times** corpus-wide. The recommendation to write `0` no longer rests on elimination alone. |
+> | "a reference client does not need to send that [the read-back poll]" | ❌ **False for this client.** It now sends `B8 23 01 00 <XOR> 26` paired with every mode write, by design — the poll is how it confirms the transition. |
+> | "No write ever moved the readback … a **single constant value for the whole session**" | ❌ **False.** Five sessions each carry **two** `0x23` values, the change landing **2–89 ms** after the write, same session, no reconnect. |
+>
+> ✅ **What is now positively observed**: writing mode `0x00` with the auth frame
+> released cut-off **5 times out of 5 attempts** on **three independent packs**;
+> one of six writes drew no response for 3.12 s and the client's automatic retry
+> carried it (61 ms on the second attempt); one release was from the
+> **anti-theft** state `0x01` rather than cut-off `0x02`.
+>
+> ⚠️ **Deliberately NOT changed here** — these need evidence this corpus does not
+> have, and are tracked elsewhere:
+> * The **release recommendation and its caveats in §6.2 stay exactly as written**
+>   (owner ruling 2026-08-01: obtain engineering-app packets first).
+> * Whether **auth gates a release** is still open. The corpus now reads 0 successes
+>   in 7 bare mode-`0` writes vs 6 in 8 auth-bundled ones, which *looks* decisive but
+>   is confounded: this client always bundles auth, so "bare" and "old client" are the
+>   same set. The `0x06` census sentence above is left standing.
+> * **Locking was never done by this client** — it has no cut-off or anti-theft
+>   button. Every locked pack in the corpus was locked by some other app.
+>
 > ⇒ Read it as the boundary of the evidence. **Every configuration write in this
 > document is decompiled rather than observed.** An implementation may send them,
 > but must not present them as verified — and, per the paragraph above, cannot
@@ -321,6 +353,17 @@ names alone do not convey it.
 > residual draw is the **BLE module and BMS supplying themselves**, which is
 > consistent with cut-off disconnecting the *output* while the electronics stay
 > powered — the pack must keep its radio up to be released again.
+>
+> 🔴 **Predates the 2026-08-11 current-sign correction — 2026-08-14 annotation.**
+> Every figure in this table was computed **before** that correction, which
+> promised to be "annotated in place" and never reached this section. Read the
+> magnitudes as unsigned; **do not read the monotonic rise as a decoded result.**
+> A 2026-08-14 recapture of the same unit 1261 across the same three modes gives
+> **+0.19 / +0.22 / 0.00 A** — the monotonic 0.13 → 0.37 → 0.75 ordering **did not
+> reproduce**, and the 正常 column came out lowest rather than highest
+> (`feedback-analysis/2026.08.14-003.md` §4 C5). Single unit, single sitting, so
+> this neither replaces the table nor refutes the owner's self-supply reading; it
+> means the ordering was never load-controlled on either occasion.
 >
 > ⚠️ Three caveats. (1) 1261's cut-off column comes from the sessions whose mode
 > label was **withdrawn** above, so "this is what cut-off looks like" is not

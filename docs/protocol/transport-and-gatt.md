@@ -122,6 +122,28 @@ times and `!#` **5** times, and the reply sets separate cleanly:
 2,126 against 5 leaves no ambiguity. Two consequences for anyone writing a client
 or reading a capture:
 
+> 🔴 **Scope correction 2026-08-14 — the table above was measured on a *battery*
+> and does not hold on other product classes.** The original text is kept as
+> written; what changes is the claimed reach, not the battery measurement.
+>
+> On a **supercapacitor** (`0x10` = `0x18`, unit 416, 596,994 frames / 25,037 TX
+> writes in one 7-hour capture) five of the second row's selectors —
+> `0x25`, `0x34`, `0x38`, `0x3A`, `0x3B` — answer **every `#`**, at 1.00 frames
+> per write across 24,023 writes, while `!#` was written only 20 times in the
+> whole capture. Calling them "`!#` only" there is wrong by roughly three orders
+> of magnitude (`feedback-analysis/2026.08.14-007.md` §4 C1).
+>
+> This is **not a single-unit observation**: a power bank showed the same shape
+> independently (`2026.08.04-014.md` M1), so two product classes now contradict
+> the row. ⇒ Read the table as **"battery `0x02`, as measured 2026-07-30"**, and
+> **re-measure per class** before assuming a selector needs `!#`. The battery
+> half is untouched and still stands.
+>
+> ⚠️ The second bullet below survives this correction intact — in fact it is the
+> same lesson one level up: *"this device does not support X" is unprovable from a
+> capture that wrote only `#`* becomes *"this **class** answers X only to `!#`" is
+> unprovable from a capture of one class.*
+
 * **`!#` is not just a session opener.** Tick 1 sends it once, so a long session
   gets the extended group *once* — but the **1st** session in this capture received
   no `!#` at all (the first one landed 9 minutes later, already inside session 2)
