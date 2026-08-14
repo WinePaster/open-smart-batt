@@ -624,11 +624,11 @@ class _RootShellState extends State<RootShell> {
           ? null
           : _BrandAppBar(
               onOpenConnection: _openConnectionTarget,
-              // Only on 主頁, and only there: an "edit" action on top of History
-              // or Settings would be an action with no object.
-              onEditHome: _tab == _Tab.home ? _openHomeEditor : null,
-              // Same rule, same reason (design 0062 §7.1-5): full screen only
-              // means anything on the grid.
+              // Only on 主頁, and only there (design 0062 §7.1-5): full screen
+              // only means anything on the grid. The home-editor action that
+              // used to sit beside it under the same rule is gone from this bar
+              // — see [_BrandAppBar.onEnterFullscreen]. `_openHomeEditor` is
+              // still wired, just from the grid's own row instead.
               onEnterFullscreen: _tab == _Tab.home
                   ? () => _setImmersive(true)
                   : null,
@@ -802,7 +802,6 @@ class _FullscreenExitButton extends StatelessWidget {
 class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _BrandAppBar({
     required this.onOpenConnection,
-    this.onEditHome,
     this.onEnterFullscreen,
   });
 
@@ -810,12 +809,24 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// for the rule and why design 0046 R2 survives it.
   final VoidCallback onOpenConnection;
 
-  /// Open the home editor (design 0046 P3). Null on every tab but 主頁.
-  final VoidCallback? onEditHome;
-
   /// Enter full screen (design 0062). Null on every tab but 主頁, and this is
   /// the ONLY way in — design 0062 Q1 rules out a gesture for entering, so an
   /// accidental double tap can never remove the chrome the user is using.
+  ///
+  /// 🔴 It is also the ONLY action icon left in this bar, and that is deliberate
+  /// (owner ruling 2026-08-15, from the field: 「但看不到」). It used to sit to
+  /// the left of an equally grey 18 px `Icons.tune`, so the bar offered two
+  /// muted glyphs of the same weight and neither read as the one you wanted.
+  /// The `tune` twin was the WEAKER of the two to lose: the home editor already
+  /// has a labelled entry at the foot of the grid ([HomePage.onEdit] /
+  /// `_EditLayoutRow`), added 2026-08-07 for this exact reason, whereas full
+  /// screen has no second route in at all. So `tune` is gone from here, and
+  /// what remains is bigger (22 px) and drawn in the body text colour rather
+  /// than `muted`.
+  ///
+  /// ⚠️ NOT amber. Amber is what the connection pill turns while CONNECTING,
+  /// two icons to the right — a permanently amber glyph beside it would read as
+  /// a status light rather than a button.
   final VoidCallback? onEnterFullscreen;
 
   @override
@@ -861,17 +872,10 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
         if (onEnterFullscreen != null)
           IconButton(
             onPressed: onEnterFullscreen,
-            iconSize: 18,
+            iconSize: 22,
             icon: const Icon(Icons.fullscreen),
-            color: context.colors.muted,
+            color: context.colors.text,
             tooltip: AppLocalizations.of(context).fullscreenEnter,
-          ),
-        if (onEditHome != null)
-          IconButton(
-            onPressed: onEditHome,
-            iconSize: 18,
-            icon: const Icon(Icons.tune),
-            color: context.colors.muted,
           ),
         Padding(
           padding: const EdgeInsets.only(right: 14),

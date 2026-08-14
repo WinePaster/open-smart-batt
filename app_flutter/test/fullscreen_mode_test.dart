@@ -331,4 +331,62 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  // ===========================================================================
+  // 🔴 F9 — the entry icon's findability, 2026-08-15, from the field.
+  //
+  // The owner shipped this feature and then could not find the way in:
+  // 「但看不到」. It was there the whole time, as an 18 px `muted` glyph — beside
+  // a SECOND 18 px `muted` glyph (`Icons.tune`, the home editor) of identical
+  // weight. Two grey twins where one was wanted: nothing in the bar said which.
+  //
+  // The ruling was to drop `tune` from the app bar and let the survivor grow.
+  // `tune` was the right one to lose because the home editor already has a
+  // LABELLED entry at the foot of the grid (`_EditLayoutRow`, added 2026-08-07
+  // after the same owner reported that editor as missing for the same reason),
+  // while full screen has no second route in at all — design 0062 Q1 rules out
+  // an entry gesture on purpose.
+  //
+  // ⚠️ This is the project's THIRD control-nobody-could-find (after the home
+  // editor and FB-70's 14×14 dp pencil), so it is measured, not eyeballed:
+  // `tune` must be absent from the bar, and the surviving icon must be bigger
+  // than the 18 px that failed. Assert the icon SIZE, not just that the widget
+  // exists — "it is in the tree" was true every previous time too.
+  // ===========================================================================
+  testWidgets('F9: the entry icon is the only action, and it is not 18 px', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    final appBar = find.byType(AppBar);
+    expect(appBar, findsOneWidget);
+
+    expect(
+      find.descendant(of: appBar, matching: find.byIcon(Icons.tune)),
+      findsNothing,
+      reason:
+          'the home editor is reached from the grid row, not from a grey twin '
+          'of the full-screen icon',
+    );
+
+    final button = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.fullscreen),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(
+      button.iconSize,
+      greaterThan(18.0),
+      reason: '18 px muted is the size the owner could not see',
+    );
+
+    // …and it is still the ONE action, so growing it did not cost the pill.
+    expect(
+      find.descendant(of: appBar, matching: find.byType(IconButton)),
+      findsOneWidget,
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }
