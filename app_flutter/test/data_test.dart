@@ -174,11 +174,81 @@ void main() {
       final repo = HistoryRepo(appDb.db);
       final base = DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000);
       await repo.insertSamples([
-        TelemetrySample(timestamp: base, pvlt: 10),
-        TelemetrySample(timestamp: base.add(const Duration(seconds: 1)), pvlt: 11),
-        TelemetrySample(timestamp: base.add(const Duration(seconds: 2)), pvlt: 12),
+        HistoryWrite(sample: TelemetrySample(timestamp: base, pvlt: 10)),
+        HistoryWrite(
+            sample: TelemetrySample(
+                timestamp: base.add(const Duration(seconds: 1)), pvlt: 11)),
+        HistoryWrite(
+            sample: TelemetrySample(
+                timestamp: base.add(const Duration(seconds: 2)), pvlt: 12)),
       ]);
       expect(await repo.count(), 3);
+    });
+
+    test('insertSamples fills the columns the old one silently nulled',
+        () async {
+      // 🔴 design 0061 T7d. The pre-FB-71 batch path wrote `samples` and
+      // `app_build` as null and carried no GPS/G values at all — and it had
+      // zero callers in `lib/`, so nothing ever noticed. It is the per-second
+      // writer's only route now, and every one of those omissions would be
+      // invisible: `samples` is what the whole corpus weights per-minute
+      // statistics by, `app_build` is how a row is dated to the build that
+      // recorded it, and the four phone columns are designs 0042/0045.
+      final repo = HistoryRepo(appDb.db);
+      final at = DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000);
+      await repo.insertSamples([
+        HistoryWrite(
+          sample: TelemetrySample(timestamp: at, pvlt: 13.2),
+          deviceId: 'AA',
+          samples: 5,
+          appBuild: '0.7.17+26081400',
+          speedMps: 8.5,
+          accelMps2: 0.4,
+          gLongMs2: 1.5,
+          gLatMs2: -0.5,
+        ),
+      ]);
+      final row = (await appDb.db.query(Db.tableHistory)).single;
+      expect(row['samples'], 5);
+      expect(row['app_build'], '0.7.17+26081400');
+      expect(row['device_id'], 'AA');
+      expect(row['speed'], 8.5);
+      expect(row['accel'], 0.4);
+      expect(row['g_long'], 1.5);
+      expect(row['g_lat'], -0.5);
+      // 🔴 Written, never left to the column DEFAULT — which is 60, and would
+      // have this stored second claim to be a minute average.
+      expect(row['bucket_s'], 1);
+    });
+
+    test('segments of one second merge INSIDE the batch, weighted', () async {
+      // design 0061 T7a acceptance 2: the (device, window) guarantee is kept in
+      // memory, without a single DB read. 500 snapshots at 13.0 V and 5 at
+      // 3.0 V is 12.90 V weighted; unweighted it would be 8.0 V, a number
+      // matching no physical unit.
+      final repo = HistoryRepo(appDb.db);
+      final at = DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000);
+      await repo.insertSamples([
+        HistoryWrite(
+            sample: TelemetrySample(timestamp: at, pvlt: 13.0),
+            deviceId: 'AA',
+            samples: 500),
+        HistoryWrite(
+            sample: TelemetrySample(timestamp: at, pvlt: 3.0),
+            deviceId: 'AA',
+            samples: 5),
+        // A different unit in the same second stays its own row.
+        HistoryWrite(
+            sample: TelemetrySample(timestamp: at, pvlt: 3.9),
+            deviceId: 'BB',
+            samples: 5),
+      ]);
+      final rows = await appDb.db.query(Db.tableHistory, orderBy: 'id');
+      expect(rows, hasLength(2));
+      expect(rows.first['samples'], 505);
+      expect(rows.first['pvlt'],
+          closeTo((13.0 * 500 + 3.0 * 5) / 505, 1e-9));
+      expect(rows.last['device_id'], 'BB');
     });
   });
 
@@ -356,7 +426,10 @@ void main() {
       expect(s.themeMode, AppThemeMode.light);
       expect(s.lang, AppLang.zhHant);
       expect(s.tempUnit, TempUnit.celsius);
-      expect(s.retention, RetentionPolicy.forever);
+      // design 0061 T8a: a FRESH INSTALL starts at 90 days. An existing phone's
+      // stored value is read back untouched — `retention_test.dart` pins that
+      // half, which is the half that could cost somebody their history.
+      expect(s.retention, RetentionPolicy.days90);
       // Reference the constant, not a literal: this assertion drifted once
       // already when the budget moved 5 MB -> 20 MB (2026-07-29).
       expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);

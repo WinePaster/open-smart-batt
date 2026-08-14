@@ -522,6 +522,9 @@ class _DataCardState extends State<_DataCard> {
         stamp: exportStamp(),
         extension: 'csv',
       );
+      // design 0061 T7b: the last ~10 seconds live in a write buffer until
+      // something asks for them, and an export is exactly that.
+      await tele.flushHistoryForExport();
       final file = await exportTempFile(filename);
       // design 0061 T4a — asked of the database over this export's own scope.
       final resolution = ExportResolution.forCsv(

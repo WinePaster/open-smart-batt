@@ -293,6 +293,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         stamp: exportStamp(),
         extension: 'csv',
       );
+      // design 0061 T7b — before a single row is read. See
+      // [TelemetryController.flushHistoryForExport].
+      await _tele.flushHistoryForExport();
       final file = await exportTempFile(filename);
       // design 0061 T4a. What the scope ACTUALLY holds, asked of the database
       // over the same window the export walks — never assumed. An empty list

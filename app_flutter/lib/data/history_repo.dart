@@ -57,6 +57,44 @@ enum HistoryGranularity {
   String get slug => this == HistoryGranularity.minute ? '1min' : '1s';
 }
 
+/// One history row on its way to storage — everything [HistoryRepo.insertSample]
+/// takes as arguments, in a form a BATCH can carry.
+///
+/// It exists because the batch path could not otherwise be honest. The old
+/// `insertSamples` took bare [TelemetrySample]s and wrote `samples` and
+/// `app_build` as null for every row — the first is what the whole corpus
+/// weights its per-minute statistics by, the second is how a row is dated to
+/// the build that recorded it — and it carried none of the phone's own
+/// speed / acceleration / G readings either. None of those omissions raises an
+/// error; they just quietly produce rows that cannot be read properly months
+/// later.
+class HistoryWrite {
+  const HistoryWrite({
+    required this.sample,
+    this.deviceId,
+    this.samples,
+    this.appBuild,
+    this.speedMps,
+    this.accelMps2,
+    this.gLongMs2,
+    this.gLatMs2,
+    this.bucketS = 1,
+  });
+
+  final TelemetrySample sample;
+  final String? deviceId;
+
+  /// Telemetry snapshots folded into this row — see [HistoryRepo.insertSample].
+  final int? samples;
+  final String? appBuild;
+  final double? speedMps, accelMps2, gLongMs2, gLatMs2;
+
+  /// The window this row summarises, in seconds. Defaults to 1 because the
+  /// batch path exists for the per-second writer; a caller writing anything
+  /// else has to say so.
+  final int bucketS;
+}
+
 /// One display bucket of the history LIST — design 0061 T3a/T3b.
 ///
 /// The list stopped showing stored rows when storage went to one row per
@@ -280,12 +318,14 @@ class HistoryRepo {
     double? accelMps2,
     double? gLongMs2,
     double? gLatMs2,
+    int bucketS = 60,
   }) {
     final incoming = _row(sample, deviceId, samples, appBuild,
         speedMps: speedMps,
         accelMps2: accelMps2,
         gLongMs2: gLongMs2,
-        gLatMs2: gLatMs2);
+        gLatMs2: gLatMs2,
+        bucketS: bucketS);
 
     return _db.transaction<int>((txn) async {
       // `device_id IS NULL` rather than `= ?`: unattributed rows are their own
@@ -384,14 +424,58 @@ class HistoryRepo {
     return merged;
   }
 
-  /// Batch-insert many samples in a single transaction.
-  Future<void> insertSamples(
-    Iterable<TelemetrySample> samples, {
-    String? deviceId,
-  }) async {
+  /// Write many rows in ONE transaction — design 0061 T7a/T7d, the path the
+  /// per-second recorder uses.
+  ///
+  /// 🔴 **Why this exists at all.** [insertSample] opens a transaction and does
+  /// a read-modify-write per row. At one row per minute per unit that is one
+  /// transaction a minute; at one per SECOND it is sixty, and this project has
+  /// already run one accidental experiment in writing a row per sample — the
+  /// class comment on the controller's bucket records a **900× write
+  /// amplification with no error, no exception and nothing on screen**. Sixty
+  /// platform round-trips a minute is not that, but it is the same direction,
+  /// so writes are accumulated for ~10 seconds and committed together: six
+  /// round-trips a minute against the one we have today.
+  ///
+  /// 🔑 **Segments of the same second are merged HERE, in memory, before the
+  /// batch** — same weighting [_mergeRows] uses, which for a mean is exact. A
+  /// second can still arrive in pieces (a lifecycle flush can land mid-second),
+  /// and design 0048's guarantee is one row per (device, window). Merging in
+  /// Dart keeps that guarantee without a single DB read.
+  ///
+  /// ⚠️ **The guarantee is per BATCH, not absolute.** If two segments of one
+  /// second land in different batches — a flush falling exactly on the boundary
+  /// — they become two rows, exactly as segmented minutes have since design
+  /// 0048 G2. That is why every read path aggregates rather than assuming one
+  /// row per window.
+  Future<void> insertSamples(Iterable<HistoryWrite> writes) async {
+    // Insertion order preserved: rows go in the order they were recorded, so a
+    // reader of `id` sees the sequence that actually happened.
+    final merged = <String, Map<String, Object?>>{};
+    final order = <String>[];
+    for (final w in writes) {
+      final row = _row(w.sample, w.deviceId, w.samples, w.appBuild,
+          speedMps: w.speedMps,
+          accelMps2: w.accelMps2,
+          gLongMs2: w.gLongMs2,
+          gLatMs2: w.gLatMs2,
+          bucketS: w.bucketS);
+      // The same key [insertSample] merges on — exact timestamp plus device.
+      // ` ` cannot occur in a device id, so the two halves cannot run
+      // together into a colliding key.
+      final key = '${w.deviceId ?? ''} ${row['timestamp']}';
+      final prev = merged[key];
+      if (prev == null) {
+        merged[key] = row;
+        order.add(key);
+      } else {
+        merged[key] = _mergeRows(prev, row);
+      }
+    }
+    if (merged.isEmpty) return;
     final batch = _db.batch();
-    for (final s in samples) {
-      batch.insert(Db.tableHistory, _row(s, deviceId, null, null));
+    for (final k in order) {
+      batch.insert(Db.tableHistory, merged[k]!);
     }
     await batch.commit(noResult: true);
   }
@@ -405,6 +489,7 @@ class HistoryRepo {
     double? accelMps2,
     double? gLongMs2,
     double? gLatMs2,
+    int bucketS = 60,
   }) =>
       Map<String, Object?>.from(s.toMap())
         ..['device_id'] = deviceId
@@ -413,7 +498,12 @@ class HistoryRepo {
         ..['speed'] = speedMps
         ..['accel'] = accelMps2
         ..['g_long'] = gLongMs2
-        ..['g_lat'] = gLatMs2;
+        ..['g_lat'] = gLatMs2
+        // 🔴 Written explicitly, never left to the column's DEFAULT. The
+        // default is 60 (it is what back-filled every v16 row on upgrade), so
+        // an insert that omitted this would silently claim a stored second was
+        // a minute average — and nothing downstream could tell.
+        ..['bucket_s'] = bucketS;
 
   /// Query history newest-first.
   ///

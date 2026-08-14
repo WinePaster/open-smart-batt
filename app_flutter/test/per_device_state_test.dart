@@ -138,20 +138,28 @@ void main() {
     TelemetrySample at(DateTime t, double v) =>
         TelemetrySample(timestamp: t, pvlt: v, twfRaw: 0x00);
 
-    test('two units interleaved inside one minute yield TWO rows, not one per '
+    test('two units interleaved inside one SECOND yield TWO rows, not one per '
         'sample', () async {
       final session = services.connection.session;
       final tele = services.telemetry;
-      final minute = DateTime.utc(2026, 8, 3, 12, 30);
+      // 🔴 The window became a second on 2026-08-14 (design 0061 T1), so the
+      // samples moved into one — spread across a minute they would produce one
+      // row each and this test would pass no matter how broken the keying was.
+      // The 900× failure it guards is "the unit changed, so flush", which needs
+      // several samples of two units inside ONE window to have any bite.
+      final second = DateTime.utc(2026, 8, 3, 12, 30, 5);
 
-      // Six samples alternating between two units, all inside one minute — the
-      // round-robin shape multi-device sampling would produce.
+      // Six samples alternating between two units, all inside one second — the
+      // round-robin shape multi-device sampling would produce, at the ~4.8 Hz
+      // telemetry actually arrives at.
       for (var i = 0; i < 3; i++) {
         session.begin('AA');
-        ble.emitTelemetry(at(minute.add(Duration(seconds: i * 2)), 13.0));
+        ble.emitTelemetry(
+            at(second.add(Duration(milliseconds: i * 200)), 13.0));
         await Future<void>.delayed(Duration.zero);
         session.begin('BB');
-        ble.emitTelemetry(at(minute.add(Duration(seconds: i * 2 + 1)), 12.0));
+        ble.emitTelemetry(
+            at(second.add(Duration(milliseconds: i * 200 + 100)), 12.0));
         await Future<void>.delayed(Duration.zero);
       }
 
@@ -160,7 +168,7 @@ void main() {
 
       final rows = await services.historyRepo.querySamplesWithDevice();
       expect(rows.length, 2,
-          reason: 'one row per unit per minute — the shared bucket produced '
+          reason: 'one row per unit per second — the shared bucket produced '
               'six, one per sample');
 
       final byDevice = {for (final r in rows) r.deviceId: r.sample};
@@ -175,14 +183,17 @@ void main() {
       // `samples` is the field that would have reported the degradation: three
       // samples folded per unit must read 3, not 1.
       final session = services.connection.session;
-      final minute = DateTime.utc(2026, 8, 3, 12, 31);
+      // One second, for the reason given on the test above.
+      final second = DateTime.utc(2026, 8, 3, 12, 31, 5);
 
       for (var i = 0; i < 3; i++) {
         session.begin('AA');
-        ble.emitTelemetry(at(minute.add(Duration(seconds: i * 2)), 13.0));
+        ble.emitTelemetry(
+            at(second.add(Duration(milliseconds: i * 200)), 13.0));
         await Future<void>.delayed(Duration.zero);
         session.begin('BB');
-        ble.emitTelemetry(at(minute.add(Duration(seconds: i * 2 + 1)), 12.0));
+        ble.emitTelemetry(
+            at(second.add(Duration(milliseconds: i * 200 + 100)), 12.0));
         await Future<void>.delayed(Duration.zero);
       }
       services.telemetry.flushPendingHistory();
@@ -197,9 +208,10 @@ void main() {
       expect(byDevice['BB'], 3);
     });
 
-    test('a minute rollover still closes that unit\'s bucket, and only it',
+    test('a SECOND rollover still closes that unit\'s bucket, and only it',
         () async {
       final session = services.connection.session;
+      final tele = services.telemetry;
       final t0 = DateTime.utc(2026, 8, 3, 12, 40);
 
       session.begin('AA');
@@ -209,20 +221,28 @@ void main() {
       ble.emitTelemetry(at(t0, 12.0));
       await Future<void>.delayed(Duration.zero);
 
-      // AA crosses into the next minute; BB does not.
+      // AA crosses into the next second; BB does not.
       session.begin('AA');
-      ble.emitTelemetry(at(t0.add(const Duration(minutes: 1)), 13.4));
+      ble.emitTelemetry(at(t0.add(const Duration(seconds: 1)), 13.4));
       await Future<void>.delayed(Duration.zero);
       await services.pending.drain();
 
-      var rows = await services.historyRepo.querySamplesWithDevice();
-      expect(rows.length, 1, reason: "only AA's first minute has closed");
-      expect(rows.single.deviceId, 'AA');
+      // 🔴 A closed bucket is no longer a written row: since design 0061 T7a it
+      // goes into the batch buffer and waits for company (ten rows, ten
+      // seconds, or a flush). So "exactly one bucket closed" is asserted where
+      // it now lives, and the table is asserted to be still empty — which is
+      // the batching working, not data going missing.
+      expect(tele.pendingHistoryRows, 1,
+          reason: "only AA's first second has closed");
+      expect(await services.historyRepo.count(), 0,
+          reason: 'buffered, not yet committed');
 
-      services.telemetry.flushPendingHistory();
+      tele.flushPendingHistory();
       await services.pending.drain();
-      rows = await services.historyRepo.querySamplesWithDevice();
-      expect(rows.length, 3, reason: "AA's second minute and BB's first follow");
+      final rows = await services.historyRepo.querySamplesWithDevice();
+      expect(rows.length, 3,
+          reason: "AA's second second and BB's first follow");
+      expect(rows.where((r) => r.deviceId == 'AA').length, 2);
     });
 
     test('a disconnect flushes every open bucket, not just the current one',

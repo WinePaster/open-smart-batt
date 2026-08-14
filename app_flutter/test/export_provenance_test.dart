@@ -386,12 +386,15 @@ void main() {
       ble.emitLink(BleLinkState.ready);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      // Three snapshots inside one minute, then the app leaves the foreground
-      // without any disconnect — the 2026-07-28 shape exactly.
-      final minute = DateTime(2026, 7, 28, 15, 51);
+      // Three snapshots inside one WINDOW, then the app leaves the foreground
+      // without any disconnect — the 2026-07-28 shape exactly. The window
+      // became a second on 2026-08-14 (design 0061 T1), so the three snapshots
+      // are 200 ms apart rather than 1 s: at ~4.8 Hz that is what "three
+      // snapshots of the same moment" looks like on the wire.
+      final second = DateTime(2026, 7, 28, 15, 51, 30);
       for (var i = 0; i < 3; i++) {
         ble.emitTelemetry(TelemetrySample(
-          timestamp: minute.add(Duration(seconds: i)),
+          timestamp: second.add(Duration(milliseconds: i * 200)),
           pvlt: 12.0 + i,
         ));
       }

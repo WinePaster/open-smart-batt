@@ -271,6 +271,19 @@ class AppServices {
   /// the database we are about to close.
   Future<void> dispose() async {
     await ble.dispose();
+    // 🔴 FLUSH, THEN DRAIN, THEN CLOSE — and the order is the whole point
+    // (design 0061 T7e). History rows are buffered for ~10 seconds before they
+    // are committed, so at this instant up to ten seconds of the user's data
+    // exists only in a Dart list. `drain()` cannot wait for a write that has
+    // not been STARTED — [PendingWrites] tracks futures, it does not schedule
+    // them — so without this line those rows would be dropped by a shutdown
+    // that otherwise looks completely orderly.
+    //
+    // ⚠️ It also raises the stakes on the drain's 5 s budget, which used to be
+    // unreachable (one write a minute) and now has real work behind it. If it
+    // expires we close anyway, on purpose (see below); flushing first is what
+    // makes that the rare case rather than the normal one.
+    telemetry.flushPendingHistory();
     await pending.drain();
     telemetry.dispose();
     connection.dispose();
