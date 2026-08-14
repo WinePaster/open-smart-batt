@@ -24,21 +24,50 @@ enum SpeedUnit { kmh, mph }
 /// [light].
 enum AppThemeMode { light, dark, auto }
 
-/// How long recorded telemetry history is kept. DEFAULT [forever].
+/// How long recorded telemetry history is kept.
+///
+/// 🔴 **The default is [days90] for a NEW INSTALL and [forever] for everyone
+/// who already had this app** (design 0061 T8a, ruled 2026-08-14). Those are
+/// two different mechanisms and both are deliberate: the constructor default
+/// below applies only where no settings row has ever been written, while an
+/// existing phone's stored value is simply read back. Nothing writes over it.
 ///
 /// This REPLACED an "auto-log" on/off switch. That switch's only effect was
 /// whether history rows were written at all, which made it the history
 /// feature's master off button — and the people who turned it off were exactly
-/// the people who later could not produce data when asked for it. A year of
-/// history costs about 6 MB, so the storage argument it existed for never held.
+/// the people who later could not produce data when asked for it.
+///
+/// ~~A year of history costs about 6 MB, so the storage argument it existed for
+/// never held.~~
+/// 🔴 **That sentence stopped being true on 2026-08-14 and is struck rather
+/// than deleted, because it is the recorded reason the auto-log switch went
+/// away.** Design 0061 (FB-71) stores one row per SECOND instead of one per
+/// minute, so a year is about **360 MB per unit**, not 6 MB — sixty times the
+/// number the argument was made on. The conclusion (record unconditionally, let
+/// the user choose how long to KEEP) still stands, but it now stands on a cost
+/// worth showing rather than on one too small to mention, which is why Settings
+/// displays what history is occupying.
+///
 /// The useful control is how long to keep, not whether to record.
 enum RetentionPolicy {
   days30,
+
+  /// The default for a FRESH INSTALL since design 0061 — about 90 MB per unit
+  /// at second resolution, against unbounded growth. It is a new phone's
+  /// starting point, never an upgrade's.
   days90,
   days365,
 
-  /// Never prune. The default: a diagnostic app should not silently discard
-  /// the dealer's history, and nobody should lose data merely by upgrading.
+  /// Never prune. **The default for every phone that already had this app**, and
+  /// it stays that way: a diagnostic app should not silently discard the
+  /// dealer's history, and nobody should lose data merely by upgrading.
+  ///
+  /// 🔴 **The known cost, recorded because it was accepted knowingly** (design
+  /// 0061 §3.8.2): the dealer's phones are both the largest histories and the
+  /// ones this protects, so at 360 MB/unit/year they grow without a ceiling.
+  /// The exits are that they can change it themselves, and that Settings now
+  /// shows what it is costing. This is a trade-off that was made, not one that
+  /// was missed.
   forever;
 
   /// Age beyond which rows are pruned, or null for [forever].
@@ -244,7 +273,11 @@ class AppSettings {
     this.gMeterEnabled = false,
     this.gCalibration,
     this.homeLayout,
-    this.retention = RetentionPolicy.forever,
+    // 🔴 NEW INSTALLS ONLY (design 0061 T8a). A phone that has ever written a
+    // settings row reads its own value back through [fromMap] and never sees
+    // this; `fromMap`'s own fallback is still `forever`, which is what keeps an
+    // upgrade from re-deciding for somebody.
+    this.retention = RetentionPolicy.days90,
     this.rawPacketLog = false,
     this.logMaxBytes = defaultLogMaxBytes,
   });

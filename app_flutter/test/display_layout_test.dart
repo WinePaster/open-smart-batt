@@ -559,8 +559,12 @@ void main() {
       // has to survive, added without touching anything that already exists, so
       // every assertion above is unaffected. Its own migration is checked in
       // `autoconnect_arm_persistence_test.dart`, fresh schema against upgraded.
+      // v17 added `history.bucket_s` (design 0061 / FB-71) — this one DOES touch
+      // an existing table, but only by appending a column with a NOT NULL
+      // DEFAULT, so every column asserted above keeps its name, type and value.
+      // Its own migration is checked in `schema_v17_test.dart`.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 16);
+      expect(Db.schemaVersion, 17);
     });
   });
 }

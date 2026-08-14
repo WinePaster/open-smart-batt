@@ -272,9 +272,14 @@ void main() {
 
         // Appended, in order, after `accel` — the standing rule in
         // `history_repo.dart` is that columns only ever join the END, because
-        // recipients have spreadsheets built on the existing order.
-        expect(HistoryRepo.csvColumns.sublist(HistoryRepo.csvColumns.length - 4),
+        // recipients have spreadsheets built on the existing order. `bucket_s`
+        // (design 0061 T4d) joined the end on 2026-08-14 under that same rule,
+        // which is why this now anchors on the position of `speed` rather than
+        // on being the last four.
+        final speedAt = HistoryRepo.csvColumns.indexOf('speed');
+        expect(HistoryRepo.csvColumns.sublist(speedAt, speedAt + 4),
             ['speed', 'accel', 'g_long', 'g_lat']);
+        expect(HistoryRepo.csvColumns.last, 'bucket_s');
 
         final csv = await HistoryRepo(db.db).exportCsv();
         final lines = csv.text.split(RegExp(r'\r?\n'));

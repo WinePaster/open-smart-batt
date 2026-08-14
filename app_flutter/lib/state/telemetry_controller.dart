@@ -24,20 +24,38 @@ import 'g_force_controller.dart';
 import 'speed_estimator.dart';
 import 'telemetry_health.dart';
 
-/// One minute of samples being accumulated for ONE unit.
+/// One SECOND of samples being accumulated for ONE unit — design 0061 T1
+/// (FB-71).
 ///
-/// Held per device rather than as a single set of fields, because the single
-/// set degrades SILENTLY. The old code closed the bucket whenever the recording
-/// unit changed mid-minute — correct with one link, and correct for the reason
-/// stated there (a row must never mix two units' readings). But the moment
-/// samples from two units interleave, "the unit changed" is true on nearly every
-/// sample, so nearly every sample flushes its own row: one row per minute per
-/// unit becomes one row per SAMPLE. The controller's own note on [_nSamples]
-/// puts a full minute near 900, so that is roughly a 900× write amplification —
-/// with no error, no exception and nothing on screen. The only thing that would
-/// have said so is the `samples` column reading 1 on every row.
-class _MinuteBucket {
-  DateTime? minute;
+/// 🔴 **It was a minute until 2026-08-14, and the reason it is not any more is
+/// a measurement.** A 2026-08-03 field capture holds 75 seconds in which the
+/// current ran from −29 A to +8 A; the 144 samples of that minute folded into
+/// one CSV row reading **−0.31 A**. The electric-assist surge the owner wanted
+/// to see had, in the history, never happened. Averaging is not lossy at the
+/// edges here — it deletes the event outright.
+///
+/// ⚠️ A second is still an AGGREGATE, deliberately. Telemetry arrives at about
+/// 4.7–4.8 Hz, so this folds ~5 snapshots per row rather than storing each one:
+/// per-sample storage was ruled out (design 0061 §5.3) on the strength of the
+/// paragraph below, and because 4.8 Hz is OUR POLLING RATE, not the device's
+/// sampling rate — the 2nd and 3rd reading of a second very likely carry no new
+/// information.
+///
+/// 🔴 **The 900× record, kept verbatim because it is now load-bearing
+/// evidence.** Held per device rather than as a single set of fields, because
+/// the single set degrades SILENTLY. The old code closed the bucket whenever
+/// the recording unit changed mid-window — correct with one link, and correct
+/// for the reason stated there (a row must never mix two units' readings). But
+/// the moment samples from two units interleave, "the unit changed" is true on
+/// nearly every sample, so nearly every sample flushes its own row: one row per
+/// window per unit becomes one row per SAMPLE. The controller's own note on
+/// [nSamples] puts a full minute near 900, so that is roughly a 900× write
+/// amplification — with no error, no exception and nothing on screen. The only
+/// thing that would have said so is the `samples` column reading 1 on every
+/// row.
+class _SecondBucket {
+  /// Start of the second this bucket is accumulating.
+  DateTime? second;
   TelemetrySample? last;
   double sPvlt = 0, sSvlt = 0, sTemp = 0, sCur = 0;
   int nPvlt = 0, nSvlt = 0, nTemp = 0, nCur = 0;
@@ -69,14 +87,23 @@ class _MinuteBucket {
   double sGLong = 0, sGLat = 0;
   int nGLong = 0, nGLat = 0;
 
-  /// How many telemetry snapshots this minute has folded in.
+  /// How many telemetry snapshots this window has folded in.
+  ///
   /// Counted per snapshot, not per field, so it answers one question honestly:
-  /// how much data is behind this row. A full minute lands near 900; a row
-  /// flushed seconds after the bucket opened lands in the tens, and the export
-  /// makes that visible instead of passing both off as "one minute".
+  /// how much data is behind this row.
+  ///
+  /// 🔴 **Its magnitude changed on 2026-08-14 and nothing warns you.** A full
+  /// SECOND lands near 5 (telemetry arrives at ~4.7–4.8 Hz); a full minute used
+  /// to land near 900. Rows recorded before FB-71 still carry the old
+  /// magnitude, and a per-minute export sums the new ones back to ~300 — three
+  /// different scales in one column, told apart only by `bucket_s` and the
+  /// export's `resolution:` lines. Anything that treats this as a per-minute
+  /// count (`docs/feedback-index/conventions.md`, `tools/fb.py`) has to be
+  /// updated in the same release, because a wrong reading here produces no
+  /// error at all.
   int nSamples = 0;
 
-  bool get isOpen => minute != null && last != null;
+  bool get isOpen => second != null && last != null;
 }
 
 /// Telemetry freshness for ONE unit.
@@ -316,10 +343,17 @@ class TelemetryController extends ChangeNotifier
   }) =>
       _history.querySamples(since: since, limit: limit, deviceId: deviceId);
 
-  /// History rows paired with the unit each was recorded against, so the UI can
-  /// resolve a row's product class (see [HistoryRepo.querySamplesWithDevice]).
+  /// History rows paired with the unit each was recorded against, so a caller
+  /// can resolve a row's product class (see
+  /// [HistoryRepo.querySamplesWithDevice]).
   ///
-  /// Attributed rows only — see [historyStats] for why the three History screen
+  /// ⚠️ **The History screen no longer reads this** — since design 0061 T3a its
+  /// list is [historyListBuckets], one entry per minute rather than one per
+  /// stored row. This returns RAW STORED ROWS, which at second resolution is a
+  /// different and much larger thing; anything rendering it as "the records"
+  /// would be back to the 16-minute list T3a exists to prevent.
+  ///
+  /// Attributed rows only — see [historyStats] for why the History screen
   /// queries all fix this.
   Future<List<({TelemetrySample sample, String? deviceId})>> historyWithDevice({
     DateTime? since,
@@ -328,6 +362,23 @@ class TelemetryController extends ChangeNotifier
   }) =>
       _history.querySamplesWithDevice(
           since: since, limit: limit, deviceId: deviceId, attributedOnly: true);
+
+  /// The History LIST, aggregated into [bucketMs]-wide display windows
+  /// (design 0061 T3a). [limit] caps WINDOWS, not stored rows.
+  ///
+  /// Attributed rows only, for [historyStats]' reason.
+  Future<List<HistoryListRow>> historyListBuckets({
+    DateTime? since,
+    required int bucketMs,
+    int? limit,
+    String? deviceId,
+  }) =>
+      _history.queryListBuckets(
+          since: since,
+          bucketMs: bucketMs,
+          limit: limit,
+          deviceId: deviceId,
+          attributedOnly: true);
 
   /// Stored sample count, unattributed rows included. [historyAttributedCount]
   /// is the one the History screen reports.
@@ -391,6 +442,9 @@ class TelemetryController extends ChangeNotifier
   /// [HistoryRepo.exportCsvToFile] for why the returned row count — not the
   /// text — decides "nothing to export", and for why there is no row limit to
   /// pass down (design 0030 T4c / FB-59).
+  /// [granularity] chooses what a row of the file is (design 0061 T4d) —
+  /// per-minute averages (the default, and what every export produced before
+  /// FB-71) or the stored rows themselves.
   Future<int> exportHistoryCsvToFile(
     File file, {
     DateTime? since,
@@ -398,6 +452,7 @@ class TelemetryController extends ChangeNotifier
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
   }) =>
       _history.exportCsvToFile(
         file,
@@ -406,7 +461,39 @@ class TelemetryController extends ChangeNotifier
         labelFor: labelFor,
         classFor: classFor,
         header: header,
+        granularity: granularity,
       );
+
+  /// How many rows an export of this scope would write — the export sheet's
+  /// size estimate (design 0061 T4c).
+  Future<int> countExportRows({
+    DateTime? since,
+    String? deviceId,
+    required HistoryGranularity granularity,
+  }) =>
+      _history.countExportRows(
+          since: since, deviceId: deviceId, granularity: granularity);
+
+  /// The stored granularities an export of this scope would touch, for the
+  /// preamble's `resolution: contains=` line. Empty means "no rows at all",
+  /// which the caller must NOT collapse into a default (design 0061 §3.2.3).
+  Future<List<int>> historyBucketWidths({DateTime? since, String? deviceId}) =>
+      _history.distinctBucketWidths(since: since, deviceId: deviceId);
+
+  /// Land everything still in flight, then wait for it — call this immediately
+  /// before an export reads the table (design 0061 T7b).
+  ///
+  /// 🔴 A NEW obligation, not a tidy-up. Since T7a a recorded second can sit in
+  /// a batch buffer for ~10 seconds, and the moment the user taps "export" is
+  /// precisely the moment they care most about the last ten seconds. Without
+  /// this the file would end just short of whatever they were trying to show
+  /// us, and nothing in it would say so.
+  Future<void> flushHistoryForExport() async {
+    flushPendingHistory();
+    // Bounded by [PendingWrites.defaultTimeout]: an export must not hang
+    // because a write wedged.
+    await _pending.drain();
+  }
 
   /// Clear all history.
   Future<void> clearHistory() => _history.clearHistory();
@@ -528,10 +615,12 @@ class TelemetryController extends ChangeNotifier
     _maybeAutoLog(s);
   }
 
-  // ---- per-minute aggregation -------------------------------------------
-  // History stores ONE averaged row per minute PER UNIT (not every poll):
-  // accumulate each minute's samples, then flush the average on
-  // minute-rollover/disconnect.
+  // ---- per-second aggregation (design 0061 T1) ---------------------------
+  // History stores ONE averaged row per SECOND PER UNIT (not every poll):
+  // accumulate each second's samples, then flush the average on
+  // second-rollover/disconnect. Rows go through a batched writer — see
+  // [_enqueueHistoryWrite] — because sixty transactions a minute is not a
+  // thing this app is allowed to do.
 
   /// Open buckets keyed by the unit that owns them. The key is captured when
   /// the bucket opens, NOT when it flushes: a flush triggered by a disconnect
@@ -548,9 +637,9 @@ class TelemetryController extends ChangeNotifier
   /// rule. It gives the same guarantee — one row never mixes two units'
   /// readings — without the rule's failure mode, which was to close the bucket
   /// on EVERY sample as soon as two units interleaved (see [_MinuteBucket]).
-  final Map<String?, _MinuteBucket> _buckets = <String?, _MinuteBucket>{};
+  final Map<String?, _SecondBucket> _buckets = <String?, _SecondBucket>{};
 
-  /// Fold a sample into the current minute's bucket.
+  /// Fold a sample into the current second's bucket.
   ///
   /// Recording is UNCONDITIONAL. An `autoLog` switch used to gate this, which
   /// meant a user could silently turn off the one thing we would later ask them
@@ -582,14 +671,22 @@ class TelemetryController extends ChangeNotifier
       return;
     }
     final t = s.timestamp;
-    final minute = DateTime(t.year, t.month, t.day, t.hour, t.minute);
-    final b = _buckets.putIfAbsent(deviceId, _MinuteBucket.new);
-    // Only a minute rollover closes a bucket now. The unit cannot change under
+    // 🔑 Truncated to the whole SECOND, and the truncation is what keeps
+    // `insertSample`'s merge key correct: two segments of one second flush the
+    // identical epoch-ms, so `WHERE timestamp = ?` matches and they combine.
+    // Storing each sample's own millisecond instead would make the key a clock
+    // reading, and a background backlog decoding two frames in the same
+    // millisecond would then be merged as if they were one measurement — data
+    // loss whose only trace is the `samples` column (design 0061 §3.12.2).
+    final second =
+        DateTime(t.year, t.month, t.day, t.hour, t.minute, t.second);
+    final b = _buckets.putIfAbsent(deviceId, _SecondBucket.new);
+    // Only a second rollover closes a bucket now. The unit cannot change under
     // it: it IS the key.
-    if (b.minute != null && minute.isAfter(b.minute!)) {
+    if (b.second != null && second.isAfter(b.second!)) {
       _flushBucket(deviceId);
     }
-    b.minute = minute;
+    b.second = second;
     b.last = s;
     b.nSamples++;
     if (s.pvlt != null) {
@@ -641,7 +738,122 @@ class TelemetryController extends ChangeNotifier
   /// Flushes EVERY open bucket: the app is about to lose control of its own
   /// execution, and a unit whose partial minute is left behind because another
   /// unit happened to be current is the loss this exists to prevent.
-  void flushPendingHistory() => _flushAllBuckets();
+  void flushPendingHistory() {
+    _flushAllBuckets();
+    // 🔴 And commit whatever is buffered, or the flush is only half a flush.
+    // Since design 0061 T7a a flushed bucket lands in a batch that normally
+    // waits ~10 seconds for company — which is exactly the 10 seconds the
+    // caller is telling us we may not have. Every caller of this method is
+    // saying "we may be about to lose control of our own execution" or "the
+    // user is looking at this data RIGHT NOW"; neither can wait for a batch to
+    // fill.
+    _commitHistoryBuffer(force: true);
+  }
+
+  // ---- batched history writes (design 0061 T7) ---------------------------
+
+  /// How long a row may wait in the buffer before it is written regardless.
+  ///
+  /// 🔑 The batch is "ten SECONDS", not "ten rows", and this is the half that
+  /// makes that true. With one unit the two coincide; with a unit that streams
+  /// slowly — or that goes quiet without disconnecting — the count alone would
+  /// let rows sit in memory indefinitely, and the exposure window is the whole
+  /// risk being managed here.
+  static const Duration _historyBatchWindow = Duration(seconds: 10);
+
+  /// Rows that trigger an ordinary commit — about ten seconds for one unit.
+  ///
+  /// Design 0030 T3's figure. It takes the platform round-trips from 60 a
+  /// minute (one per second per unit, which is what a per-row write would cost)
+  /// to 6 — five more than the one a minute we have today.
+  static const int _historyBatchRows = 10;
+
+  /// 🔴 The buffer's hard ceiling, and it is REACHABLE. Ten minutes of one
+  /// unit's rows.
+  ///
+  /// It has to exist because nothing else here provides back-pressure:
+  /// [PendingWrites] states plainly that it is "not a queue and not a
+  /// scheduler" — it only remembers futures that have ALREADY STARTED, so it
+  /// cannot slow anything down. Today that is harmless (one write a minute),
+  /// but at 60× the row rate a phone whose storage cannot keep up would pile
+  /// writes up without limit and nothing would say so.
+  static const int _historyBufferCap = 600;
+
+  /// Rows waiting to be written. Never dropped — see [_commitHistoryBuffer].
+  final List<HistoryWrite> _historyBuffer = <HistoryWrite>[];
+
+  /// Whether a batch is in flight. One at a time, deliberately: overlapping
+  /// batch writes are how an unbounded pile-up starts.
+  bool _historyCommitting = false;
+
+  /// Latched so the overflow is reported once per episode rather than 600
+  /// times. Cleared when the buffer drains back below a normal batch.
+  bool _historyOverflowLogged = false;
+
+  /// Fires [_historyBatchWindow] after the buffer stopped being empty.
+  Timer? _historyBatchTimer;
+
+  /// Rows buffered but not yet committed. For tests and diagnostics.
+  int get pendingHistoryRows => _historyBuffer.length;
+
+  void _enqueueHistoryWrite(HistoryWrite w) {
+    _historyBuffer.add(w);
+    _historyBatchTimer ??= Timer(
+        _historyBatchWindow, () => _commitHistoryBuffer(force: true));
+    final over = _historyBuffer.length >= _historyBufferCap;
+    // 🔴 **The overflow policy: commit early, never drop, always say so.**
+    // Which of "commit early / drop the oldest / drop the newest" to pick is a
+    // product decision, and this is the one that loses nothing — it just
+    // shortens the batch window, degrading towards the behaviour we had before
+    // batching existed. What is NOT a choice is doing it silently: the 900×
+    // incident's entire legacy is that its only trace was a column nobody
+    // reads.
+    if (over) _logHistoryBufferOverflow();
+    // While a batch is in flight, ordinary fullness waits for it — that is the
+    // back-pressure. Overflow does not wait.
+    if (_historyCommitting && !over) return;
+    if (over || _historyBuffer.length >= _historyBatchRows) {
+      _commitHistoryBuffer();
+    }
+  }
+
+  /// Hand the buffered rows to one batched transaction.
+  ///
+  /// [force] commits a partial batch — used by [flushPendingHistory], i.e. by
+  /// every path that has a reason not to wait.
+  void _commitHistoryBuffer({bool force = false}) {
+    if (_historyBuffer.isEmpty) return;
+    if (_historyCommitting && !force && _historyBuffer.length < _historyBufferCap) {
+      return;
+    }
+    final batch = List<HistoryWrite>.of(_historyBuffer);
+    _historyBuffer.clear();
+    _historyBatchTimer?.cancel();
+    _historyBatchTimer = null;
+    _historyCommitting = true;
+    _pending.add(_history.insertSamples(batch).whenComplete(() {
+      _historyCommitting = false;
+      if (_historyBuffer.length < _historyBatchRows) {
+        _historyOverflowLogged = false;
+      }
+      // Anything that accumulated while that write was running goes now —
+      // without this the buffer would sit full until the next sample arrived.
+      if (_historyBuffer.length >= _historyBatchRows) _commitHistoryBuffer();
+    }));
+  }
+
+  void _logHistoryBufferOverflow() {
+    if (_historyOverflowLogged) return;
+    _historyOverflowLogged = true;
+    _pending.add(_logs.insertLog(
+      LogEntry.event(
+        'history: write buffer reached ${_historyBuffer.length} rows '
+        '(cap $_historyBufferCap) - committing early; storage is not keeping up',
+        appBuild: _appBuild,
+      ),
+      maxBytes: _settings.logTrimBudget,
+    ));
+  }
 
   void _flushAllBuckets() {
     for (final deviceId in _buckets.keys.toList()) {
@@ -659,26 +871,32 @@ class TelemetryController extends ChangeNotifier
     if (b == null) return;
     if (b.isOpen) {
       final avg = b.last!.copyWith(
-        timestamp: b.minute,
+        // 🔑 The BUCKET's start, not the last sample's own instant — see
+        // [_maybeAutoLog] for why the truncation is what keeps segments of one
+        // second mergeable.
+        timestamp: b.second,
         pvlt: b.nPvlt > 0 ? b.sPvlt / b.nPvlt : null,
         svlt: b.nSvlt > 0 ? b.sSvlt / b.nSvlt : null,
         temperatureC: b.nTemp > 0 ? (b.sTemp / b.nTemp).round() : null,
         current: b.nCur > 0 ? b.sCur / b.nCur : null,
       );
-      _pending.add(_history.insertSample(
-        avg,
+      // Buffered, not written: at one row per second per unit a transaction
+      // each would be sixty a minute. See [_enqueueHistoryWrite].
+      _enqueueHistoryWrite(HistoryWrite(
+        sample: avg,
         deviceId: deviceId,
         samples: b.nSamples,
         appBuild: _appBuild,
-        // Null, not 0.0, when the minute folded no live GPS sample: the phone
+        // Null, not 0.0, when the window folded no live GPS sample: the phone
         // was not measured standing still, it was not measured at all.
         speedMps: b.nSpeed > 0 ? b.sSpeed / b.nSpeed : null,
         accelMps2: b.nAccel > 0 ? b.sAccel / b.nAccel : null,
         gLongMs2: b.nGLong > 0 ? b.sGLong / b.nGLong : null,
         gLatMs2: b.nGLat > 0 ? b.sGLat / b.nGLat : null,
+        bucketS: 1,
       ));
     }
-    b.minute = null;
+    b.second = null;
     b.last = null;
     b.sPvlt = b.sSvlt = b.sTemp = b.sCur = 0;
     b.nPvlt = b.nSvlt = b.nTemp = b.nCur = 0;
@@ -857,8 +1075,11 @@ class TelemetryController extends ChangeNotifier
       // being watched once the last link is gone, so drop the watches rather
       // than leaving them to report an age no link is producing.
       _stalls.clear();
-      // Persist every open partial minute before clearing live state.
-      _flushAllBuckets();
+      // Persist every open partial window before clearing live state — and
+      // COMMIT it (design 0061 T7a). Buffering it would leave the last seconds
+      // of a session waiting for a tenth row that, the link being gone, is
+      // never going to arrive.
+      flushPendingHistory();
       // Same reason as the readouts below, but it has to be unconditional: a
       // trace kept across a disconnect would be redrawn against the NEXT unit's
       // axis, joining two units with a line neither of them produced.
@@ -873,6 +1094,13 @@ class TelemetryController extends ChangeNotifier
 
   @override
   void dispose() {
+    // Buffered rows go NOW rather than with the timer that is about to be
+    // cancelled — see [flushPendingHistory]. `AppServices.dispose` also calls
+    // it before draining, but a controller disposed on its own (tests, and any
+    // future partial teardown) must not silently drop what it was holding.
+    flushPendingHistory();
+    _historyBatchTimer?.cancel();
+    _historyBatchTimer = null;
     _stallTimer?.cancel();
     _speedSub?.cancel();
     _accelSub?.cancel();

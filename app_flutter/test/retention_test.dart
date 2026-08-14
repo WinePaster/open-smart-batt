@@ -34,9 +34,26 @@ void main() {
   TelemetrySample at(DateTime t) => TelemetrySample(timestamp: t, pvlt: 12.5);
 
   group('RetentionPolicy', () {
-    test('defaults to forever, which never prunes', () {
-      expect(AppSettings.defaults.retention, RetentionPolicy.forever);
+    test('a FRESH INSTALL defaults to 90 days (design 0061 T8a)', () {
+      // 🔴 Changed 2026-08-14, and only for phones that have never written a
+      // settings row. Storage went from ~6 MB a year to ~360 MB a unit a year
+      // (one row per second instead of one per minute), so `forever` stopped
+      // being a free promise for somebody starting out.
+      expect(AppSettings.defaults.retention, RetentionPolicy.days90);
       expect(RetentionPolicy.forever.maxAge, isNull);
+    });
+
+    test('🔴 T8b: an existing phone keeps `forever` through the upgrade', () {
+      // The one thing in T8a that could cost somebody their data. `defaults`
+      // must reach nobody who already has a stored value — including the
+      // dealer's phones, which hold the largest histories and are exactly what
+      // `forever` was chosen to protect.
+      final stored = AppSettings.fromMap(const {'retention': 'forever'});
+      expect(stored.retention, RetentionPolicy.forever);
+      // And a row written before the column existed reads as `forever` too,
+      // not as the new default — an upgrade may not re-decide for anybody.
+      expect(AppSettings.fromMap(const <String, Object?>{}).retention,
+          RetentionPolicy.forever);
     });
 
     test('windows match their names', () {
@@ -59,15 +76,43 @@ void main() {
 
     test('forever keeps everything', () async {
       final history = HistoryRepo(appDb.db);
-      final settings = SettingsController(SettingsRepo(appDb.db),
-          history: history);
+      final repo = SettingsRepo(appDb.db);
+      // 🔴 Stored explicitly since 2026-08-14: `load()` on an empty database
+      // now yields the FRESH-INSTALL default of 90 days (design 0061 T8a), so a
+      // test about `forever` has to be a test about a phone that has chosen it
+      // — which is what every existing user is.
+      await repo.saveSettings(
+          AppSettings.defaults.copyWith(retention: RetentionPolicy.forever));
+      final settings = SettingsController(repo, history: history);
       await settings.load();
+      expect(settings.settings.retention, RetentionPolicy.forever);
       final old = DateTime.now().subtract(const Duration(days: 400));
       await history.insertSample(at(old));
       await history.insertSample(at(DateTime.now()));
 
       await settings.pruneHistory();
       expect(await history.count(), 2);
+    });
+
+    test('🔴 T8b end to end: a stored `forever` survives a real load + prune',
+        () async {
+      // The T8b acceptance from the other side: not "the model reads it back"
+      // but "the launch path does not delete this user's data". Rows 400 days
+      // old are what an upgrade would silently take.
+      final history = HistoryRepo(appDb.db);
+      final repo = SettingsRepo(appDb.db);
+      await repo.saveSettings(
+          AppSettings.defaults.copyWith(retention: RetentionPolicy.forever));
+      await history.insertSample(
+          at(DateTime.now().subtract(const Duration(days: 400))));
+
+      final settings = SettingsController(repo, history: history);
+      await settings.load();
+      await settings.pruneHistory();
+
+      expect(await history.count(), 1);
+      expect(settings.settings.retention, RetentionPolicy.forever,
+          reason: 'nothing on the launch path may rewrite a stored choice');
     });
 
     test('a 30-day window drops older rows and keeps the ones inside it',

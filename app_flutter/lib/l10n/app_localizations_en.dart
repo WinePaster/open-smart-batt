@@ -892,7 +892,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'No records today.\nThey start accumulating once a device is connected.';
 
   @override
-  String get historyEmptyWarning => 'No warning or event records.';
+  String historyEmptyWarning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'No warnings or events in the most recent $count records.',
+      one: 'No warnings or events in the most recent record.',
+      zero: 'No records loaded, so there are no warnings to show.',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get historyEmptyAll =>
@@ -905,6 +914,32 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get historyEmptyDeviceRange =>
       'No records for this device in the selected range.';
+
+  @override
+  String get historyListMinuteNote =>
+      'The list shows one row per minute. Full per-second data is available when you export.';
+
+  @override
+  String historyChartBucketMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Each point on the chart averages $count minutes',
+      one: 'Each point on the chart averages 1 minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historyChartBucketHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Each point on the chart averages $count hours',
+      one: 'Each point on the chart averages 1 hour',
+    );
+    return '$_temp0';
+  }
 
   @override
   String historyFooter(int count) {
@@ -1271,6 +1306,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get retentionForever => 'Forever';
 
   @override
+  String get settingsHistorySizeLabel => 'History storage used';
+
+  @override
+  String settingsHistorySizeSub(String used, String perYear) {
+    return 'Currently $used; grows by roughly $perYear a year at this rate. The retention setting above controls this.';
+  }
+
+  @override
+  String settingsHistorySizeSubShort(String used) {
+    return 'Currently $used. The retention setting above controls this.';
+  }
+
+  @override
   String get settingsExportAllLabel => 'Export all data (CSV)';
 
   @override
@@ -1379,6 +1427,28 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get startupResetBody =>
       'This permanently deletes all history, saved devices and settings.';
+
+  @override
+  String get exportResolutionTitle => 'Level of detail';
+
+  @override
+  String get exportResolutionMinute => 'One row per minute (averaged)';
+
+  @override
+  String get exportResolutionMinuteSub =>
+      'Smaller file — easy to send by LINE or email.';
+
+  @override
+  String get exportResolutionSecond => 'One row per second (full detail)';
+
+  @override
+  String get exportResolutionSecondSub =>
+      'Shows moment-to-moment changes such as a start-up surge. Much larger file.';
+
+  @override
+  String exportResolutionApproxSize(String size) {
+    return 'About $size.';
+  }
 
   @override
   String get exportScopeTitle => 'Export scope';

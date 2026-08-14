@@ -105,6 +105,14 @@ void main() {
       ),
     );
     await tester.pump();
+    // 🔴 The Data card measures what history is occupying when it mounts
+    // (design 0061 T8c), and that is a real database query. Started during a
+    // build inside the fake-async zone it can never progress, and the test
+    // would fail on a pending timer that has nothing to do with what it is
+    // testing. Give it the real event loop for a moment.
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
   }
 
   testWidgets('an injected panel is actually rendered', (tester) async {

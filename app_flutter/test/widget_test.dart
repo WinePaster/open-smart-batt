@@ -54,6 +54,13 @@ void main() {
         appDatabase: appDb,
         ble: _FakeBleService(),
       );
+      // 🔴 Startup queues work that must finish on the REAL event loop, or it
+      // is still in flight when the fake-async zone takes over and the test
+      // fails on a pending timer it cannot advance. It became reachable on
+      // 2026-08-14: `pruneHistory()` used to be a no-op because a fresh install
+      // defaulted to `forever`, and design 0061 T8a made a NEW install default
+      // to 90 days — so the retention pass now issues a real DELETE.
+      await services.pending.drain();
     });
 
     await tester.pumpWidget(OpenSmartBattApp(services: services));
@@ -98,6 +105,13 @@ void main() {
         appDatabase: appDb,
         ble: _FakeBleService(),
       );
+      // 🔴 Startup queues work that must finish on the REAL event loop, or it
+      // is still in flight when the fake-async zone takes over and the test
+      // fails on a pending timer it cannot advance. It became reachable on
+      // 2026-08-14: `pruneHistory()` used to be a no-op because a fresh install
+      // defaulted to `forever`, and design 0061 T8a made a NEW install default
+      // to 90 days — so the retention pass now issues a real DELETE.
+      await services.pending.drain();
     });
 
     await tester.pumpWidget(OpenSmartBattApp(services: services));

@@ -299,6 +299,13 @@ void main() {
           onCreate: (db, _) async {
             await db.execute('CREATE TABLE ${Db.tableSettings} ('
                 'id INTEGER PRIMARY KEY CHECK (id = 1))');
+            // Same reason as the settings stub above: from v17 the upgrade
+            // chain ALTERs `history` (design 0061 / FB-71 adds `bucket_s`) and
+            // indexes `(device_id, timestamp)`, so those two columns have to
+            // exist for a v15 fixture to be openable at all.
+            await db.execute('CREATE TABLE ${Db.tableHistory} ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'timestamp INTEGER NOT NULL, device_id TEXT)');
           },
         ),
       );
@@ -314,7 +321,11 @@ void main() {
       expect(upgradedCols.map((c) => c['name']).toList(),
           freshCols.map((c) => c['name']).toList(),
           reason: 'the v16 branch and the CREATE list must not drift apart');
-      expect(Db.schemaVersion, 16);
+      // The schema HEAD, which moved to 17 on 2026-08-14 (design 0061 / FB-71
+      // added `history.bucket_s`). `autoconnect_arm` itself is untouched by
+      // that migration — what this line pins is that nobody REPLACED the v16
+      // branch while adding a later one.
+      expect(Db.schemaVersion, 17);
     });
 
     test('the row is singular by construction, not by convention', () async {

@@ -1520,11 +1520,11 @@ abstract class AppLocalizations {
   /// **'No records today.\nThey start accumulating once a device is connected.'**
   String get historyEmptyToday;
 
-  /// No description provided for @historyEmptyWarning.
+  /// Empty state for the 'warnings only' filter. The count is how many rows were ACTUALLY LOADED, never the row cap: the filter runs in Dart after the SQL LIMIT, so the screen can only speak for the newest N windows it fetched. Claiming 'no warnings' full stop was an assertion about data it had not looked at (design 0061 T12).
   ///
   /// In en, this message translates to:
-  /// **'No warning or event records.'**
-  String get historyEmptyWarning;
+  /// **'{count, plural, =0{No records loaded, so there are no warnings to show.} =1{No warnings or events in the most recent record.} other{No warnings or events in the most recent {count} records.}}'**
+  String historyEmptyWarning(int count);
 
   /// No description provided for @historyEmptyAll.
   ///
@@ -1543,6 +1543,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No records for this device in the selected range.'**
   String get historyEmptyDeviceRange;
+
+  /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading.
+  ///
+  /// In en, this message translates to:
+  /// **'The list shows one row per minute. Full per-second data is available when you export.'**
+  String get historyListMinuteNote;
+
+  /// The chart's bucket width is dynamic (1 minute to 24 hours) and appeared nowhere on screen before design 0061 T10.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Each point on the chart averages 1 minute} other{Each point on the chart averages {count} minutes}}'**
+  String historyChartBucketMinutes(int count);
+
+  /// Hours form of historyChartBucketMinutes; 'averages 1440 minutes' is a number nobody converts.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Each point on the chart averages 1 hour} other{Each point on the chart averages {count} hours}}'**
+  String historyChartBucketHours(int count);
 
   /// No description provided for @historyFooter.
   ///
@@ -2168,6 +2186,24 @@ abstract class AppLocalizations {
   /// **'Forever'**
   String get retentionForever;
 
+  /// design 0061 T8c. Per-second storage costs roughly 360 MB a unit a year against 6 MB before, and existing phones keep 'forever', so the retention control above this needs a number beside it to be a real choice.
+  ///
+  /// In en, this message translates to:
+  /// **'History storage used'**
+  String get settingsHistorySizeLabel;
+
+  /// Both figures are estimates from this phone's own data - rows so far, and the rate they arrived at. Never shown as 0.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently {used}; grows by roughly {perYear} a year at this rate. The retention setting above controls this.'**
+  String settingsHistorySizeSub(String used, String perYear);
+
+  /// Used when there is under a day of history, which is too short a span to extrapolate a yearly rate from honestly.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently {used}. The retention setting above controls this.'**
+  String settingsHistorySizeSubShort(String used);
+
   /// No description provided for @settingsExportAllLabel.
   ///
   /// In en, this message translates to:
@@ -2365,6 +2401,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This permanently deletes all history, saved devices and settings.'**
   String get startupResetBody;
+
+  /// Heading of the export sheet's granularity picker (design 0061 T4c). Storage is per second; this decides what a row of the FILE is.
+  ///
+  /// In en, this message translates to:
+  /// **'Level of detail'**
+  String get exportResolutionTitle;
+
+  /// No description provided for @exportResolutionMinute.
+  ///
+  /// In en, this message translates to:
+  /// **'One row per minute (averaged)'**
+  String get exportResolutionMinute;
+
+  /// The default. The judgement behind it is design 0030 Q4b's: can the reporter actually send the file. Seven days is about 12 MB this way and about 77 MB per second.
+  ///
+  /// In en, this message translates to:
+  /// **'Smaller file — easy to send by LINE or email.'**
+  String get exportResolutionMinuteSub;
+
+  /// No description provided for @exportResolutionSecond.
+  ///
+  /// In en, this message translates to:
+  /// **'One row per second (full detail)'**
+  String get exportResolutionSecond;
+
+  /// Stands on its own as the qualitative fallback: when the size estimate cannot be computed, this sentence is all the user gets, and it must still be enough to decide on (design 0061 Q4 condition 3 — never show a fabricated 0 MB).
+  ///
+  /// In en, this message translates to:
+  /// **'Shows moment-to-moment changes such as a start-up surge. Much larger file.'**
+  String get exportResolutionSecondSub;
+
+  /// Appended to a granularity option once its size has been counted. Approximate by construction — rows x a measured bytes-per-row figure — hence 'about'.
+  ///
+  /// In en, this message translates to:
+  /// **'About {size}.'**
+  String exportResolutionApproxSize(String size);
 
   /// No description provided for @exportScopeTitle.
   ///

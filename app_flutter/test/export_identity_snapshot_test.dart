@@ -306,6 +306,7 @@ void main() {
             home: 'tiles=auto',
             speedDetection: false,
             gMeter: false,
+            resolution: ExportResolution.none,
           );
       final csv = headerFor('OpenSmartBatt history export');
       final log = headerFor('OpenSmartBatt diagnostic log');

@@ -33,6 +33,122 @@ class HistoryBucket {
   final int count;
 }
 
+/// How much detail an export asks for — design 0061 T4 (FB-71).
+///
+/// Storage granularity and EXPORT granularity are deliberately decoupled: the
+/// table holds one row per second, and this decides what a file made out of it
+/// looks like. That decoupling is the whole architectural point — a 7-day
+/// export stays around 12 MB and can still be sent over LINE, while the seconds
+/// remain on the phone for whoever needs them.
+enum HistoryGranularity {
+  /// One row per (unit, minute), values averaged — **the default**, and byte
+  /// for byte what every export produced before FB-71.
+  minute,
+
+  /// Stored rows exactly as they are. Second rows come out as seconds; rows
+  /// recorded before FB-71 come out as the minute averages they are, unchanged
+  /// and unexpanded (design 0061 §3.2.3 E1). Skipping them would be silent data
+  /// loss and expanding one into 60 identical seconds would be inventing
+  /// measurements; the `bucket_s` column says which is which, per row.
+  second;
+
+  /// The machine-stable slug for the export preamble. ASCII, not localized —
+  /// the reader is whoever receives the file.
+  String get slug => this == HistoryGranularity.minute ? '1min' : '1s';
+}
+
+/// One history row on its way to storage — everything [HistoryRepo.insertSample]
+/// takes as arguments, in a form a BATCH can carry.
+///
+/// It exists because the batch path could not otherwise be honest. The old
+/// `insertSamples` took bare [TelemetrySample]s and wrote `samples` and
+/// `app_build` as null for every row — the first is what the whole corpus
+/// weights its per-minute statistics by, the second is how a row is dated to
+/// the build that recorded it — and it carried none of the phone's own
+/// speed / acceleration / G readings either. None of those omissions raises an
+/// error; they just quietly produce rows that cannot be read properly months
+/// later.
+class HistoryWrite {
+  const HistoryWrite({
+    required this.sample,
+    this.deviceId,
+    this.samples,
+    this.appBuild,
+    this.speedMps,
+    this.accelMps2,
+    this.gLongMs2,
+    this.gLatMs2,
+    this.bucketS = 1,
+  });
+
+  final TelemetrySample sample;
+  final String? deviceId;
+
+  /// Telemetry snapshots folded into this row — see [HistoryRepo.insertSample].
+  final int? samples;
+  final String? appBuild;
+  final double? speedMps, accelMps2, gLongMs2, gLatMs2;
+
+  /// The window this row summarises, in seconds. Defaults to 1 because the
+  /// batch path exists for the per-second writer; a caller writing anything
+  /// else has to say so.
+  final int bucketS;
+}
+
+/// One display bucket of the history LIST — design 0061 T3a/T3b.
+///
+/// The list stopped showing stored rows when storage went to one row per
+/// second (design 0061 Phase 4): 60× the rows would have turned "the last
+/// 1,000 records" from 16 hours into 16 minutes. It shows one entry per
+/// display window instead, and this is that entry.
+///
+/// 🔴 **Why the extremes are carried and not just the mean.** A window is
+/// classified normal / warning / event by the History screen, and the
+/// thresholds are crossed by INSTANTS, not by averages: one second of
+/// over-voltage inside a minute raises `maxPvlt` and leaves `avgPvlt` looking
+/// perfectly ordinary. A list that classified on the mean would drop that
+/// minute out of the "warnings only" filter — i.e. the 60× storage the user
+/// paid for would buy a spike that the read path then averaged back out of
+/// existence, with SQL that looks completely normal. So the screen judges on
+/// [minPvlt] / [maxPvlt] / [maxTemp] and never on the means (design 0061
+/// §3.3.2), and the means exist only to be DISPLAYED.
+///
+/// [sample] therefore carries the window's means for display; it is not a
+/// reading anything ever reported, and its `timestamp` is the window's START.
+class HistoryListRow {
+  const HistoryListRow({
+    required this.sample,
+    required this.deviceId,
+    required this.bucketMs,
+    this.minPvlt,
+    this.maxPvlt,
+    this.minTemp,
+    this.maxTemp,
+    required this.rows,
+    this.samples,
+  });
+
+  /// Window means for display, stamped with the window's start.
+  final TelemetrySample sample;
+  final String? deviceId;
+
+  /// How wide the display window is. Not the stored `bucket_s` — one display
+  /// window folds rows of any granularity.
+  final int bucketMs;
+
+  /// Extremes across the window. **The classification reads these.**
+  final double? minPvlt, maxPvlt;
+  final int? minTemp, maxTemp;
+
+  /// Stored rows folded into this window (1 for a minute window over legacy
+  /// data). Diagnostic; never shown as a sample count.
+  final int rows;
+
+  /// `SUM(samples)` — telemetry snapshots behind the window, null when no
+  /// folded row counted any.
+  final int? samples;
+}
+
 /// Range-wide min/max/avg over RAW rows (not bucket-averaged), for the stats
 /// strip. Nulls when the range has no data for that metric.
 class HistoryStats {
@@ -129,6 +245,22 @@ class HistoryRepo {
     // `app_build`, exactly as `speed detection:` settles the two above.
     'g_long',
     'g_lat',
+    // design 0061 T4d (FB-71), appended under the standing rule above. HOW WIDE
+    // THE WINDOW THIS ROW SUMMARISES IS, in seconds: 60 for every row recorded
+    // before FB-71 and for any row a per-minute export aggregated, 1 for a
+    // stored second exported as itself.
+    //
+    // 🔴 It is the row's GRANULARITY, never its duration and never its
+    // confidence. A minute cut into segments by a disconnect can hold as few as
+    // 3 samples and is still `bucket_s = 60`; `samples` is the only column that
+    // says how much data is behind the row.
+    //
+    // Per row rather than per file because ONE FILE HOLDS BOTH. An export asked
+    // for at second resolution over a range reaching back before FB-71 contains
+    // stored seconds and legacy minute averages side by side, and the
+    // preamble's `resolution: contains=` says so — but only this column says
+    // WHICH ROWS.
+    'bucket_s',
   ];
 
   /// Insert one telemetry sample, attributed to [deviceId] when known.
@@ -186,12 +318,14 @@ class HistoryRepo {
     double? accelMps2,
     double? gLongMs2,
     double? gLatMs2,
+    int bucketS = 60,
   }) {
     final incoming = _row(sample, deviceId, samples, appBuild,
         speedMps: speedMps,
         accelMps2: accelMps2,
         gLongMs2: gLongMs2,
-        gLatMs2: gLatMs2);
+        gLatMs2: gLatMs2,
+        bucketS: bucketS);
 
     return _db.transaction<int>((txn) async {
       // `device_id IS NULL` rather than `= ?`: unattributed rows are their own
@@ -290,14 +424,68 @@ class HistoryRepo {
     return merged;
   }
 
-  /// Batch-insert many samples in a single transaction.
-  Future<void> insertSamples(
-    Iterable<TelemetrySample> samples, {
-    String? deviceId,
-  }) async {
+  /// Write many rows in ONE transaction — design 0061 T7a/T7d, the path the
+  /// per-second recorder uses.
+  ///
+  /// 🔴 **Why this exists at all.** [insertSample] opens a transaction and does
+  /// a read-modify-write per row. At one row per minute per unit that is one
+  /// transaction a minute; at one per SECOND it is sixty, and this project has
+  /// already run one accidental experiment in writing a row per sample — the
+  /// class comment on the controller's bucket records a **900× write
+  /// amplification with no error, no exception and nothing on screen**. Sixty
+  /// platform round-trips a minute is not that, but it is the same direction,
+  /// so writes are accumulated for ~10 seconds and committed together: six
+  /// round-trips a minute against the one we have today.
+  ///
+  /// 🔑 **Segments of the same second are merged HERE, in memory, before the
+  /// batch** — same weighting [_mergeRows] uses, which for a mean is exact. A
+  /// second can still arrive in pieces (a lifecycle flush can land mid-second),
+  /// and design 0048's guarantee is one row per (device, window). Merging in
+  /// Dart keeps that guarantee without a single DB read.
+  ///
+  /// ⚠️ **The guarantee is per BATCH, not absolute.** If two segments of one
+  /// second land in different batches — a flush falling exactly on the boundary
+  /// — they become two rows, exactly as segmented minutes have since design
+  /// 0048 G2. That is why every read path aggregates rather than assuming one
+  /// row per window.
+  Future<void> insertSamples(Iterable<HistoryWrite> writes) async {
+    // Insertion order preserved: rows go in the order they were recorded, so a
+    // reader of `id` sees the sequence that actually happened.
+    final merged = <String, Map<String, Object?>>{};
+    final order = <String>[];
+    for (final w in writes) {
+      final row = _row(w.sample, w.deviceId, w.samples, w.appBuild,
+          speedMps: w.speedMps,
+          accelMps2: w.accelMps2,
+          gLongMs2: w.gLongMs2,
+          gLatMs2: w.gLatMs2,
+          bucketS: w.bucketS);
+      // The same key [insertSample] merges on — exact timestamp plus device.
+      // NUL cannot occur in a device id, so the two halves cannot run
+      // together into a colliding key.
+      //
+      // 🔴 Spelled as the six-character ESCAPE below, never as a literal NUL
+      // byte. A raw NUL here compiles, passes every test, and `git diff` still
+      // renders the file — but `grep` classifies the WHOLE FILE as binary and
+      // skips it. This project's standing rule is "grep -rn for every landing
+      // point before you change anything" (`docs/feedback-triage/discipline.md`,
+      // 2026-08-14), so a source file invisible to grep is one whose next change
+      // gets made with a call site unseen. Found exactly that way on 2026-08-14:
+      // a repo-wide grep for `bucketExpr` came back empty while the symbol was
+      // sitting a few hundred lines below this one.
+      final key = '${w.deviceId ?? ''}\u0000${row['timestamp']}';
+      final prev = merged[key];
+      if (prev == null) {
+        merged[key] = row;
+        order.add(key);
+      } else {
+        merged[key] = _mergeRows(prev, row);
+      }
+    }
+    if (merged.isEmpty) return;
     final batch = _db.batch();
-    for (final s in samples) {
-      batch.insert(Db.tableHistory, _row(s, deviceId, null, null));
+    for (final k in order) {
+      batch.insert(Db.tableHistory, merged[k]!);
     }
     await batch.commit(noResult: true);
   }
@@ -311,6 +499,7 @@ class HistoryRepo {
     double? accelMps2,
     double? gLongMs2,
     double? gLatMs2,
+    int bucketS = 60,
   }) =>
       Map<String, Object?>.from(s.toMap())
         ..['device_id'] = deviceId
@@ -319,7 +508,12 @@ class HistoryRepo {
         ..['speed'] = speedMps
         ..['accel'] = accelMps2
         ..['g_long'] = gLongMs2
-        ..['g_lat'] = gLatMs2;
+        ..['g_lat'] = gLatMs2
+        // 🔴 Written explicitly, never left to the column's DEFAULT. The
+        // default is 60 (it is what back-filled every v16 row on upgrade), so
+        // an insert that omitted this would silently claim a stored second was
+        // a minute average — and nothing downstream could tell.
+        ..['bucket_s'] = bucketS;
 
   /// Query history newest-first.
   ///
@@ -409,6 +603,138 @@ class HistoryRepo {
     return (clauses.join(' AND '), args);
   }
 
+  /// The bucket-start expression, in SQL, for [bucketMs]-wide windows aligned
+  /// to LOCAL midnight — design 0061 T13 (Q6, ruled 2026-08-14).
+  ///
+  /// `timestamp` is a UTC epoch, so the previous `(timestamp / b) * b` cut its
+  /// buckets on UTC boundaries: at UTC+8 a 24-hour bucket ran 08:00 to 08:00
+  /// and the chart labelled it `MM/dd` — so 08/01 08:00 .. 08/02 08:00 was
+  /// drawn as "08/01". Shifting by the offset before dividing and back after
+  /// puts the boundary on the viewer's own midnight.
+  ///
+  /// 🔴 **The offset is the VIEWER's, taken when the query runs**
+  /// ([DateTime.now].timeZoneOffset), not the writer's, not a setting, not the
+  /// unit's RTC. The chart answers "which day did I, here, now, see this on",
+  /// and that is a question about the person looking.
+  ///
+  /// 🔴 **The same data viewed from two time zones therefore buckets
+  /// DIFFERENTLY, and that is the intended behaviour, not a defect.** Written
+  /// down because the obvious "fixes" — pinning a zone, or storing the
+  /// recording zone — each invert the paragraph above. Whoever comes to
+  /// "correct" this should have to argue with this comment first.
+  ///
+  /// ⚠️ Callers must use the SAME string in `SELECT` and in `GROUP BY`.
+  /// Two expressions that merely agree mathematically are one edit away from
+  /// grouping by one key and reporting another — and SQLite would not complain;
+  /// the chart would simply draw its points in the wrong places.
+  static String bucketExpr(int bucketMs, int tzOffsetMs) =>
+      '(((timestamp + ($tzOffsetMs)) / $bucketMs) * $bucketMs - ($tzOffsetMs))';
+
+  /// Local-zone offset at the moment of the query — see [bucketExpr].
+  static int currentTzOffsetMs() =>
+      DateTime.now().timeZoneOffset.inMilliseconds;
+
+  /// SQL for the `samples`-WEIGHTED mean of [col].
+  ///
+  /// 🔴 A bare `AVG(col)` is wrong here and the corpus has measured how wrong.
+  /// One stored minute can be several rows (design 0048 G2 leaves old segments
+  /// alone), and those segments hold wildly different sample counts —
+  /// `conventions.md` records a 19:26 minute stored as 405 / 69 / 3 / 56, where
+  /// the unweighted mean of the four `ampere` values comes out with THE WRONG
+  /// SIGN, and a 20:09 minute off by 69 %. The standing corpus rule is
+  /// "per-minute statistics are always weighted by `samples`", and a new
+  /// aggregation that ignored it would re-introduce, in the app, the exact
+  /// defect four separate log batches have re-discovered.
+  ///
+  /// Rows with a NULL [col] contribute no weight, so a segment that never read
+  /// the register cannot dilute one that did — the same rule [_mergeRows]
+  /// follows. A NULL or non-positive `samples` still weighs 1, or a segment
+  /// that forgot to count would erase one that did.
+  static String _wavg(String col) =>
+      'SUM(CASE WHEN $col IS NULL THEN 0.0 '
+      'ELSE $col * 1.0 * (CASE WHEN COALESCE(samples, 0) > 0 THEN samples ELSE 1 END) END) / '
+      'NULLIF(SUM(CASE WHEN $col IS NULL THEN 0 '
+      'ELSE (CASE WHEN COALESCE(samples, 0) > 0 THEN samples ELSE 1 END) END), 0)';
+
+  /// The History LIST, aggregated into [bucketMs]-wide display windows,
+  /// newest-first — design 0061 T3a.
+  ///
+  /// Grouped by (device, window), never by window alone: the screen scopes
+  /// itself to one unit today, but a query that would silently average a 3.7 V
+  /// power bank into a 14 V capacitor if it ever stopped doing so is not one to
+  /// leave lying around (FB-38's shape).
+  ///
+  /// [limit] caps WINDOWS, not stored rows — and it no longer saves any I/O
+  /// (see [HistoryListRow] and the History screen's `_rowCap`): SQLite must
+  /// scan and group every row matching the scope before it can know which
+  /// windows are the newest. That is what makes `idx_history_device_ts`
+  /// (schema v17) load-bearing rather than a nicety.
+  ///
+  /// [tzOffsetMs] defaults to the viewer's current offset; it is a parameter so
+  /// a test can pin it. See [bucketExpr] for why it exists at all.
+  Future<List<HistoryListRow>> queryListBuckets({
+    DateTime? since,
+    required int bucketMs,
+    int? limit,
+    String? deviceId,
+    bool attributedOnly = false,
+    int? tzOffsetMs,
+  }) async {
+    final b = bucketMs < 1000 ? 1000 : bucketMs;
+    final off = tzOffsetMs ?? currentTzOffsetMs();
+    final bucket = bucketExpr(b, off);
+    final (clause, scopeArgs) =
+        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final rows = await _db.rawQuery(
+      // ⚠️ `$bucket` appears in SELECT and in GROUP BY as the SAME string —
+      // see [bucketExpr].
+      'SELECT $bucket AS bucket, device_id AS device_id, '
+      '${_wavg('pvlt')} AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
+      '${_wavg('svlt')} AS avgSvlt, '
+      '${_wavg('ampere')} AS avgAmpere, '
+      '${_wavg('temperature')} AS avgTemp, '
+      'MIN(temperature) AS minTemp, MAX(temperature) AS maxTemp, '
+      // Discrete, so "did it happen in this window", never an average. MAX over
+      // the ReportedStatus space orders it the way the screen reads it:
+      // cut-off (2) outranks anti-theft (1) outranks normal (0), which is the
+      // same precedence `_classify` applies to a single row.
+      'MAX(mode) AS mode, '
+      // The WORST health bucket seen, for the same reason the thresholds use
+      // extremes: a window that dipped is a window that dipped.
+      'MIN(soh) AS soh, '
+      'SUM(samples) AS samples, COUNT(*) AS n '
+      'FROM ${Db.tableHistory} $where '
+      'GROUP BY device_id, $bucket '
+      'ORDER BY bucket DESC${limit == null ? '' : ' LIMIT $limit'}',
+      <Object?>[...?scopeArgs],
+    );
+    double? d(Object? v) => (v as num?)?.toDouble();
+    int? i(Object? v) => (v as num?)?.toInt();
+    return rows
+        .map((r) => HistoryListRow(
+              sample: TelemetrySample(
+                timestamp: DateTime.fromMillisecondsSinceEpoch(
+                    (r['bucket'] as num).toInt()),
+                pvlt: d(r['avgPvlt']),
+                svlt: d(r['avgSvlt']),
+                current: d(r['avgAmpere']),
+                temperatureC: d(r['avgTemp'])?.round(),
+                mode: i(r['mode']),
+                sohBucket: i(r['soh']),
+              ),
+              deviceId: r['device_id'] as String?,
+              bucketMs: b,
+              minPvlt: d(r['minPvlt']),
+              maxPvlt: d(r['maxPvlt']),
+              minTemp: i(r['minTemp']),
+              maxTemp: i(r['maxTemp']),
+              rows: i(r['n']) ?? 0,
+              samples: i(r['samples']),
+            ))
+        .toList(growable: false);
+  }
+
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
   /// returns avg/min/max of pvlt + temperature per bucket (ascending by time).
   /// [bucketMs] >= 60000 (one minute, the storage granularity).
@@ -417,24 +743,37 @@ class HistoryRepo {
   /// which is exactly how the device dimension came to exist on the list and
   /// not on the chart — so the History screen drew one unit's 3.7 V beside
   /// another's 14 V and called it a voltage anomaly.
+  ///
+  /// Buckets are aligned to the VIEWER's local midnight — see [bucketExpr] for
+  /// the offset's provenance and for why the same data buckets differently in
+  /// another time zone on purpose. [tzOffsetMs] is a parameter only so a test
+  /// can pin it.
   Future<List<HistoryBucket>> queryBuckets({
     DateTime? since,
     required int bucketMs,
     String? deviceId,
     bool attributedOnly = false,
+    int? tzOffsetMs,
   }) async {
     final b = bucketMs < 60000 ? 60000 : bucketMs;
+    final off = tzOffsetMs ?? currentTzOffsetMs();
+    final bucket = bucketExpr(b, off);
     final (clause, scopeArgs) =
         _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final rows = await _db.rawQuery(
-      'SELECT (timestamp / $b) * $b AS bucket, '
+      // ⚠️ `$bucket` is the same string in SELECT and GROUP BY, deliberately —
+      // see [bucketExpr]. The two used to be spelled differently here
+      // (`(timestamp / b) * b` against `timestamp / b`); they agreed, but only
+      // by arithmetic, and a divergence would have grouped by one key while
+      // reporting another with no error anywhere.
+      'SELECT $bucket AS bucket, '
       'AVG(pvlt) AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
       'AVG(temperature) AS avgTemp, MIN(temperature) AS minTemp, '
       'MAX(temperature) AS maxTemp, COUNT(*) AS n '
       'FROM ${Db.tableHistory} $where '
-      'GROUP BY timestamp / $b ORDER BY bucket ASC',
+      'GROUP BY $bucket ORDER BY bucket ASC',
       args,
     );
     double? d(Object? v) => (v as num?)?.toDouble();
@@ -604,6 +943,11 @@ class HistoryRepo {
   /// The event loop is yielded between pages, so BLE notifications keep being
   /// delivered and the keep-alive write cannot time out mid-export (FB-40's
   /// neighbourhood).
+  /// [granularity] decides what a ROW of this file is (design 0061 T4d):
+  /// [HistoryGranularity.minute] aggregates stored rows into one row per
+  /// (unit, minute) — which is byte for byte what every export produced before
+  /// FB-71 — while [HistoryGranularity.second] emits stored rows untouched.
+  /// Either way every row states its own `bucket_s`.
   Future<int> exportCsvToFile(
     File file, {
     DateTime? since,
@@ -611,11 +955,13 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
     void Function(int written, int total)? onProgress,
   }) async {
     final sink = file.openWrite();
     try {
       return await _exportCsvStream(
+        granularity: granularity,
         // Flushing per page is what keeps the streaming honest: an unawaited
         // `IOSink.write` only queues, so without this the whole export would
         // pile up in the sink's buffer and we would have moved the peak rather
@@ -648,9 +994,11 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
   }) async {
     final buf = StringBuffer();
     final rows = await _exportCsvStream(
+      granularity: granularity,
       emit: (chunk) async => buf.write(chunk),
       since: since,
       deviceId: deviceId,
@@ -687,6 +1035,12 @@ class HistoryRepo {
   /// started, by id — every later row sorts above the pin and is simply not
   /// part of this file. `rows:` then equals the number of rows written, by
   /// construction rather than by luck.
+  ///
+  /// 📐 **Two shapes of page** (design 0061 T4d). At
+  /// [HistoryGranularity.second] a page is stored rows, exactly as before. At
+  /// [HistoryGranularity.minute] a page is `GROUP BY (device, minute)`, and the
+  /// paging, the pin and the count all apply to GROUPS — `rows:` still equals
+  /// the rows written, but they are windows now.
   Future<int> _exportCsvStream({
     required Future<void> Function(String chunk) emit,
     DateTime? since,
@@ -694,6 +1048,8 @@ class HistoryRepo {
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
     List<String> header = const [],
+    HistoryGranularity granularity = HistoryGranularity.minute,
+    int? tzOffsetMs,
     void Function(int written, int total)? onProgress,
   }) async {
     // No `attributedOnly` here, and there must never be one: since design 0043
@@ -707,8 +1063,18 @@ class HistoryRepo {
     final where =
         scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
     final args = <Object?>[...?scopeArgs, pin];
+    final byMinute = granularity == HistoryGranularity.minute;
+    // Aligned to the viewer's local minute, the same expression the list and
+    // the chart group by — see [bucketExpr]. A whole-hour offset cannot move a
+    // minute boundary, but there are zones offset by 30 and 45 minutes, and
+    // having the export cut its minutes somewhere the screen does not is
+    // exactly the "the file and the screen say different things" failure this
+    // whole change is trying not to commit.
+    final bucket = bucketExpr(60000, tzOffsetMs ?? currentTzOffsetMs());
+    final groupBy = 'device_id, $bucket';
 
-    final total = await _countWhere(where, args);
+    final total =
+        byMinute ? await _countGroups(where, args, groupBy) : await _countWhere(where, args);
     // A per-device export cannot state its own completeness from the result set
     // — the rows it excluded are, by definition, not in it. So count them
     // separately. `_contentSummary` can say "(+unattributed)" only for an
@@ -725,7 +1091,8 @@ class HistoryRepo {
 
     final preamble = <String>[
       for (final h in header) '# $h',
-      if (header.isNotEmpty) '# ${await _contentSummarySql(where, args)}',
+      if (header.isNotEmpty)
+        '# ${await _contentSummarySql(where, args, rows: total, bucket: byMinute ? bucket : null)}',
       // Omitted entirely at zero: an empty field reads as a missing feature
       // (export_header.dart's rule).
       if (header.isNotEmpty && excluded > 0)
@@ -743,14 +1110,24 @@ class HistoryRepo {
 
     var written = 0;
     while (written < total) {
-      final page = await _db.query(
-        Db.tableHistory,
-        where: where,
-        whereArgs: args,
-        orderBy: 'timestamp DESC, id DESC',
-        limit: _exportPageSize,
-        offset: written,
-      );
+      final page = byMinute
+          ? await _db.rawQuery(
+              'SELECT $bucket AS timestamp, device_id AS device_id, '
+              '${_minuteExportColumns()} '
+              'FROM ${Db.tableHistory} WHERE $where '
+              'GROUP BY $groupBy '
+              'ORDER BY timestamp DESC, device_id DESC '
+              'LIMIT $_exportPageSize OFFSET $written',
+              args,
+            )
+          : await _db.query(
+              Db.tableHistory,
+              where: where,
+              whereArgs: args,
+              orderBy: 'timestamp DESC, id DESC',
+              limit: _exportPageSize,
+              offset: written,
+            );
       if (page.isEmpty) break; // rows deleted under us; stop rather than spin
       final rows = <List<Object?>>[];
       for (final m in page) {
@@ -783,6 +1160,117 @@ class HistoryRepo {
       await Future<void>.delayed(Duration.zero);
     }
     return written;
+  }
+
+  /// The aggregate `SELECT` list for a per-minute export page — design 0061
+  /// T4d. Every CSV column except `timestamp` and `device_id`, which the caller
+  /// supplies as the group keys.
+  ///
+  /// 🔑 **The means are weighted by `samples`, exactly as the History list is**
+  /// (see [_wavg] for the measured reason, and for why a bare `AVG` over
+  /// segmented minute rows can come out with the wrong SIGN). Screen and file
+  /// agreeing about the same minute is not a nicety here: the reporter reads
+  /// one and we read the other.
+  ///
+  /// ⚠️ **The non-mean columns report the LARGEST value in the window, not the
+  /// last one.** [_mergeRows] — the app's one rule for combining rows of the
+  /// same minute — calls them last-value-wins, and a `GROUP BY` on the SQLite
+  /// this app is allowed to assume cannot express "last" (window functions need
+  /// 3.25+, and on Android sqflite runs against the system library on a minSdk
+  /// 24 device). The choice is therefore between the largest and an arbitrary
+  /// one; the largest at least reproduces, and for the two that matter it fails
+  /// in the safe direction — `mode` keeps a cut-off rather than a normal, and
+  /// `twf` keeps a fault word rather than a zero. `soh` is the exception and
+  /// takes MIN, matching the list: a window that dipped is a window that
+  /// dipped.
+  static String _minuteExportColumns() {
+    const means = <String>[
+      'pvlt',
+      'svlt',
+      'ampere',
+      'dvol1',
+      'dvol2',
+      'dvol3',
+      'dvol4',
+      'speed',
+      'accel',
+      'g_long',
+      'g_lat',
+    ];
+    // Stored INTEGER, so the weighted mean is rounded back — same treatment
+    // `_mergeRows` gives them.
+    const meanInts = <String>['temperature', 'soc'];
+    return <String>[
+      for (final c in means) '${_wavg(c)} AS $c',
+      for (final c in meanInts) 'CAST(ROUND(${_wavg(c)}) AS INTEGER) AS $c',
+      'MIN(soh) AS soh',
+      'MAX(mode) AS mode',
+      'MAX(twf) AS twf',
+      'MAX(serial) AS serial',
+      'MAX(app_build) AS app_build',
+      'SUM(samples) AS samples',
+      // 🔴 A literal, and correct by construction: this row IS a minute window,
+      // whatever the rows underneath it were. A minute window built out of
+      // stored seconds is `60` for the same reason one built out of a legacy
+      // minute average is — `bucket_s` describes the row in the file, not its
+      // ancestry.
+      '60 AS bucket_s',
+    ].join(', ');
+  }
+
+  /// Rows a per-minute export of this scope would write — i.e. how many
+  /// (unit, minute) windows it holds.
+  Future<int> _countGroups(
+      String where, List<Object?> args, String groupBy) async {
+    final r = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM '
+      '(SELECT 1 FROM ${Db.tableHistory} WHERE $where GROUP BY $groupBy)',
+      args,
+    );
+    return (r.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  /// How many rows an export of this scope at [granularity] would write.
+  ///
+  /// Used by the export sheet's size estimate (design 0061 T4c / Q4), where it
+  /// must run OFF the UI thread's critical path — at second resolution this
+  /// counts a table 60× the size of the one that used to be here.
+  Future<int> countExportRows({
+    DateTime? since,
+    String? deviceId,
+    required HistoryGranularity granularity,
+    int? tzOffsetMs,
+  }) async {
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause ?? '1';
+    final args = <Object?>[...?scopeArgs];
+    if (granularity == HistoryGranularity.second) {
+      return _countWhere(where, args);
+    }
+    final bucket = bucketExpr(60000, tzOffsetMs ?? currentTzOffsetMs());
+    return _countGroups(where, args, 'device_id, $bucket');
+  }
+
+  /// The distinct stored granularities in this scope, ascending — the raw
+  /// material for the preamble's `resolution: contains=` line (design 0061
+  /// §3.2.3). Empty when the scope holds no rows at all, which is a DIFFERENT
+  /// statement from "one granularity" and is why the caller must not default
+  /// it.
+  Future<List<int>> distinctBucketWidths({
+    DateTime? since,
+    String? deviceId,
+  }) async {
+    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final where = clause == null ? '' : 'WHERE $clause';
+    final rows = await _db.rawQuery(
+      'SELECT DISTINCT bucket_s AS b FROM ${Db.tableHistory} $where '
+      'ORDER BY b ASC',
+      <Object?>[...?scopeArgs],
+    );
+    return rows
+        .map((r) => (r['b'] as num?)?.toInt())
+        .whereType<int>()
+        .toList(growable: false);
   }
 
   /// Highest `id` currently in the table, used to pin an export's scope. Zero on
@@ -871,16 +1359,29 @@ class HistoryRepo {
   /// summarise (design 0030 T4b). The wording, spacing and omission rules are
   /// unchanged from the version that walked the rows — recipients have
   /// spreadsheets and scripts reading these lines.
-  Future<String> _contentSummarySql(String where, List<Object?> args) async {
+  ///
+  /// [rows] is passed in rather than counted here, because at per-minute
+  /// granularity the file's rows are WINDOWS and `COUNT(*)` over the table
+  /// would describe something the reader is not holding. [bucket] is the same
+  /// aggregation's bucket expression, non-null in that case only, so `range:`
+  /// names the first and last row IN THE FILE instead of landing up to 59
+  /// seconds away from them.
+  Future<String> _contentSummarySql(
+    String where,
+    List<Object?> args, {
+    required int rows,
+    String? bucket,
+  }) async {
+    final ts = bucket ?? 'timestamp';
     final r = await _db.rawQuery(
-      'SELECT COUNT(*) AS n, MIN(timestamp) AS minTs, MAX(timestamp) AS maxTs, '
+      'SELECT MIN($ts) AS minTs, MAX($ts) AS maxTs, '
       'COUNT(DISTINCT device_id) AS devices, '
       'SUM(CASE WHEN device_id IS NULL THEN 1 ELSE 0 END) AS unattributed '
       'FROM ${Db.tableHistory} WHERE $where',
       args,
     );
     final row = r.first;
-    final n = (row['n'] as num?)?.toInt() ?? 0;
+    final n = rows;
     if (n == 0) return 'rows: 0';
     String at(Object? ms) =>
         DateTime.fromMillisecondsSinceEpoch((ms as num).toInt())

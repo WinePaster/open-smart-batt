@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/history_repo.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -62,6 +63,7 @@ class ExportTarget {
     this.classSlug,
     this.ident,
     this.layout = kExportLayoutNone,
+    this.granularity = HistoryGranularity.minute,
   });
 
   /// Everything, no filename fragments — the pre-0006 behaviour.
@@ -90,6 +92,21 @@ class ExportTarget {
   /// force", which is what an offline export means.
   final String layout;
 
+  /// How much detail the history CSV should carry — design 0061 T4c (FB-71).
+  ///
+  /// Defaults to [HistoryGranularity.minute], which is byte for byte what
+  /// every export produced before FB-71: an upgrade must not change the file
+  /// anyone already knows how to read, and the judgement that settled the
+  /// default is design 0030 Q4b's — can the reporter actually SEND it. Seven
+  /// days is ~12 MB per minute and ~77 MB per second; LINE and Messenger carry
+  /// the first and not the second.
+  ///
+  /// Carried on the target for [layout]'s reason (FB-68): everything a file
+  /// states about itself is resolved once, at the instant the user asked, and
+  /// travels together. Meaningless for the diagnostic log, which has no history
+  /// rows — that sheet does not offer the choice and the default stands.
+  final HistoryGranularity granularity;
+
   /// The same identity, re-scoped to the current connection (diagnostic log
   /// only).
   ///
@@ -103,6 +120,7 @@ class ExportTarget {
         classSlug: classSlug,
         ident: ident,
         layout: layout,
+        granularity: granularity,
       );
 }
 
@@ -406,23 +424,72 @@ String exportScopeDeviceLabel({String? name, String? ident}) {
 /// user taps. A few seconds of "which instant is the export stamped from" is
 /// worth trading for two files that agree — and the sheet is the user's decision
 /// point, not work, so the export it describes starts here.
+/// An approximate byte size, rendered for the export sheet — design 0061 T4c.
+///
+/// 🔴 **Never `0 MB`.** A field that reads zero looks like a working field that
+/// found nothing, which is FB-32's rule at the level of a number: it is worse
+/// than no field at all. Anything under a tenth of a megabyte is rendered as a
+/// bound instead. Callers that have no count must not call this — they show the
+/// qualitative copy and no number.
+String formatApproxBytes(int bytes) {
+  final mb = bytes / 1000000;
+  if (mb < 0.1) return '< 0.1 MB';
+  if (mb < 10) return '${mb.toStringAsFixed(1)} MB';
+  if (mb < 1000) return '${mb.round()} MB';
+  return '${(mb / 1000).toStringAsFixed(1)} GB';
+}
+
+/// Bytes one exported CSV row costs, measured rather than guessed.
+///
+/// FB-59's acceptance run wrote 90,720 rows into 11.6 MB — 128 B of data plus
+/// separators, call it 134. ⚠️ That was measured on MINUTE rows; a second row
+/// has the same columns with different values, so the figure should carry over,
+/// but that is a reasonable expectation and not a measurement (design 0061
+/// §3.4.1 note 4).
+const int kApproxCsvRowBytes = 134;
+
 Future<ExportTarget?> chooseExportScope(
   BuildContext context, {
   required bool offerSession,
+  bool offerGranularity = false,
+  DateTime? since,
 }) async {
   // The two halves of the snapshot, taken together. `layout` first because
   // `currentDeviceTarget` takes it: there is no code path that builds a target
   // and then goes looking for a layout.
   final layout = currentExportLayoutValue(context);
   final current = currentDeviceTarget(context, layout: layout);
+  // The size estimate's only input, captured with everything else — it runs
+  // after the sheet is up, by which time a `context.read` may be against a
+  // screen that is gone.
+  final tele = context.read<TelemetryController>();
   if (current == null) {
-    return ExportTarget(scope: ExportScope.allDevices, layout: layout);
+    // 🔴 Offline still gets the choice when the caller offers it. Nothing here
+    // depends on a link — the rows are already on disk — and short-circuiting
+    // would leave "export all data" from a disconnected phone silently pinned
+    // to minutes with no way to say otherwise.
+    if (!offerGranularity) {
+      return ExportTarget(scope: ExportScope.allDevices, layout: layout);
+    }
+    if (!context.mounted) return null;
+    return showModalBottomSheet<ExportTarget>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _ExportScopeSheet(
+        layout: layout,
+        current: null,
+        sessionTarget: null,
+        deviceLabel: '',
+        offerGranularity: true,
+        since: since,
+        tele: tele,
+      ),
+    );
   }
   // Derived from `current`, never resolved again — see [ExportTarget.asSession].
   final sessionTarget = offerSession
       ? current.asSession(context.read<TelemetryController>().recordingSessionId)
       : null;
-  final l10n = AppLocalizations.of(context);
   final label = exportScopeDeviceLabel(
     // Looked up as a nullable type on purpose (design 0057): provider returns
     // null instead of throwing where nobody supplied one, so a screen without
@@ -437,41 +504,205 @@ Future<ExportTarget?> chooseExportScope(
 
   return showModalBottomSheet<ExportTarget>(
     context: context,
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              l10n.exportScopeTitle,
-              style: Theme.of(sheetContext).textTheme.titleMedium,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.smartphone_outlined),
-            title: Text(l10n.exportScopeThisDevice(label)),
-            onTap: () => Navigator.of(sheetContext).pop(current),
-          ),
-          if (sessionTarget != null)
-            ListTile(
-              leading: const Icon(Icons.link_outlined),
-              title: Text(l10n.exportScopeThisSession),
-              onTap: () => Navigator.of(sheetContext).pop(sessionTarget),
-            ),
-          ListTile(
-            leading: const Icon(Icons.all_inclusive_outlined),
-            title: Text(l10n.exportScopeAllDevices),
-            onTap: () => Navigator.of(sheetContext).pop(
-              // Carries the snapshot's layout: an all-devices export taken from
-              // a connected phone still has a dashboard to describe, and it is
-              // the same dashboard the device-scoped option would have named.
-              ExportTarget(scope: ExportScope.allDevices, layout: layout),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
+    isScrollControlled: true,
+    builder: (sheetContext) => _ExportScopeSheet(
+      layout: layout,
+      current: current,
+      sessionTarget: sessionTarget,
+      deviceLabel: label,
+      offerGranularity: offerGranularity,
+      since: since,
+      tele: tele,
     ),
   );
+}
+
+/// The scope sheet's body — stateful only because of the granularity picker
+/// (design 0061 T4c), which has to hold a selection and a running count.
+class _ExportScopeSheet extends StatefulWidget {
+  const _ExportScopeSheet({
+    required this.layout,
+    required this.current,
+    required this.sessionTarget,
+    required this.deviceLabel,
+    required this.offerGranularity,
+    required this.since,
+    required this.tele,
+  });
+
+  final String layout;
+  final ExportTarget? current;
+  final ExportTarget? sessionTarget;
+  final String deviceLabel;
+  final bool offerGranularity;
+  final DateTime? since;
+  final TelemetryController tele;
+
+  @override
+  State<_ExportScopeSheet> createState() => _ExportScopeSheetState();
+}
+
+class _ExportScopeSheetState extends State<_ExportScopeSheet> {
+  /// 📌 Per minute. See [ExportTarget.granularity] for the judgement.
+  HistoryGranularity _granularity = HistoryGranularity.minute;
+
+  /// Estimated bytes per granularity, or null while it is being counted / when
+  /// it could not be counted at all.
+  ///
+  /// 🔴 Both are computed, both are shown, and they are shown TOGETHER. The
+  /// requirement is that the number follow the choice (Q4 condition 1) — a
+  /// figure that does not move is decoration and, worse, suggests the switch
+  /// did nothing. Showing each option's own size satisfies that and answers the
+  /// question one step earlier: the user sees what the choice costs BEFORE
+  /// making it.
+  final Map<HistoryGranularity, int?> _bytes = <HistoryGranularity, int?>{};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.offerGranularity) _estimate();
+  }
+
+  /// 🔴 Off the build path, deliberately. At second resolution this counts a
+  /// table 60× the size of the one that used to be here, and a sheet that
+  /// waited for it would be a sheet that hangs on exactly the phones with the
+  /// most data (Q4 condition 2).
+  Future<void> _estimate() async {
+    for (final g in HistoryGranularity.values) {
+      try {
+        final rows = await widget.tele.countExportRows(
+          since: widget.since,
+          deviceId: widget.current?.deviceId,
+          granularity: g,
+        );
+        if (!mounted) return;
+        // ⚠️ Zero rows leaves it NULL rather than "0 MB" — see
+        // [formatApproxBytes]. Nothing to export is a state the caller already
+        // reports after the fact; a confident zero here would read as a
+        // measurement.
+        setState(() => _bytes[g] = rows > 0 ? rows * kApproxCsvRowBytes : null);
+      } catch (_) {
+        // 🔴 Falls back to the qualitative copy, never to a number
+        // (Q4 condition 3). The option's own subtitle already says "much
+        // larger file" / "smaller file", so losing the estimate loses precision
+        // and not meaning.
+        if (!mounted) return;
+        setState(() => _bytes[g] = null);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final current = widget.current;
+    final sessionTarget = widget.sessionTarget;
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                l10n.exportScopeTitle,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (widget.offerGranularity) ...[
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Text(
+                    l10n.exportResolutionTitle,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+              ),
+              _option(
+                l10n,
+                HistoryGranularity.minute,
+                l10n.exportResolutionMinute,
+                l10n.exportResolutionMinuteSub,
+              ),
+              _option(
+                l10n,
+                HistoryGranularity.second,
+                l10n.exportResolutionSecond,
+                l10n.exportResolutionSecondSub,
+              ),
+              const Divider(height: 1),
+            ],
+            if (current != null)
+              ListTile(
+                leading: const Icon(Icons.smartphone_outlined),
+                title: Text(l10n.exportScopeThisDevice(widget.deviceLabel)),
+                onTap: () => Navigator.of(context).pop(_with(current)),
+              ),
+            if (sessionTarget != null)
+              ListTile(
+                leading: const Icon(Icons.link_outlined),
+                title: Text(l10n.exportScopeThisSession),
+                onTap: () => Navigator.of(context).pop(_with(sessionTarget)),
+              ),
+            ListTile(
+              leading: const Icon(Icons.all_inclusive_outlined),
+              title: Text(l10n.exportScopeAllDevices),
+              onTap: () => Navigator.of(context).pop(
+                // Carries the snapshot's layout: an all-devices export taken
+                // from a connected phone still has a dashboard to describe, and
+                // it is the same dashboard the device-scoped option would have
+                // named.
+                ExportTarget(
+                  scope: ExportScope.allDevices,
+                  layout: widget.layout,
+                  granularity: _granularity,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The chosen granularity, stamped onto whichever scope the user tapped.
+  ExportTarget _with(ExportTarget t) => ExportTarget(
+        scope: t.scope,
+        deviceId: t.deviceId,
+        sessionId: t.sessionId,
+        classSlug: t.classSlug,
+        ident: t.ident,
+        layout: t.layout,
+        granularity: _granularity,
+      );
+
+  Widget _option(
+    AppLocalizations l10n,
+    HistoryGranularity g,
+    String title,
+    String subtitle,
+  ) {
+    final bytes = _bytes[g];
+    final selected = _granularity == g;
+    // A plain tile with a radio GLYPH rather than `RadioListTile`: that widget's
+    // `groupValue`/`onChanged` pair is deprecated in favour of a `RadioGroup`
+    // ancestor, and migrating it is not this change's business.
+    return ListTile(
+      leading: Icon(selected
+          ? Icons.radio_button_checked
+          : Icons.radio_button_unchecked),
+      selected: selected,
+      onTap: () => setState(() => _granularity = g),
+      dense: true,
+      title: Text(title),
+      subtitle: Text(
+        bytes == null
+            ? subtitle
+            : '$subtitle ${l10n.exportResolutionApproxSize(formatApproxBytes(bytes))}',
+      ),
+    );
+  }
 }

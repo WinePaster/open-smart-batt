@@ -182,6 +182,13 @@ void main() {
       );
 
       final csv = (await repo.exportCsv(
+        // Second granularity: the two fixture rows are 1 s apart, so a
+        // per-minute export would file both under the same minute and this
+        // test's row lookup — by exact ISO timestamp — would have nothing to
+        // find. The rule being pinned (a capacitor's current cell is blank) is
+        // per row and holds on both paths; the raw path is the one that can
+        // address a single row.
+        granularity: HistoryGranularity.second,
         classFor: (id) => id == 'CAP'
             ? ProductClass.supercapacitor
             : ProductClass.smartBattery,

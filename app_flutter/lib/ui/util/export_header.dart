@@ -13,6 +13,7 @@
 /// plugin and possibly disagreeing with them.
 library;
 
+import '../../data/history_repo.dart';
 import '../../models/device_ident.dart';
 import 'export_scope.dart';
 
@@ -79,6 +80,62 @@ String? deviceLine(ExportDeviceIdentity d) {
   return '  ${parts.join('  ')}';
 }
 
+/// The `resolution:` pair for an export preamble — design 0061 §3.2.3 / §4.4,
+/// closing design 0030's T4d.
+///
+/// 🔑 **Two lines, and the pair is the point.** It is FB-60's shape reused:
+/// `requested=` says what was ASKED FOR, `contains=` says what the file
+/// actually holds. One line cannot separate "I asked for seconds and this whole
+/// file is seconds" from "I asked for seconds and part of this file only ever
+/// existed as minute averages", and after FB-71 both are ordinary files. A
+/// recipient who cannot tell those apart reads a legacy stretch as a gap in the
+/// seconds.
+///
+/// ASCII, `key=value`, never localized — the reader is whoever receives the
+/// file, months later, and the ingest recipes read it with `sed`/`grep`. Same
+/// rule as `ampere sign:`, which is likewise emitted twice under one key.
+class ExportResolution {
+  const ExportResolution({required this.requested, this.contains});
+
+  /// `1min` / `1s`, or `n/a (no history rows)`.
+  final String requested;
+
+  /// What the file holds: `1min` for an aggregated export, else the stored
+  /// widths it emitted (`1s`, `1s,60s`, …). Null omits the second line, which
+  /// is right only where there is no content to describe.
+  final String? contains;
+
+  /// The value for a file with no history rows in it at all — the diagnostic
+  /// log, and any export whose scope came back empty.
+  ///
+  /// 🔴 Emitted rather than omitted, per FB-32: a line that appears only when
+  /// there is something to say makes its absence mean both "nothing" and "an
+  /// older build wrote this".
+  static const none = ExportResolution(requested: 'n/a (no history rows)');
+
+  /// The pair for a history CSV at [granularity] over a scope holding
+  /// [storedWidths] (from `HistoryRepo.distinctBucketWidths`, ascending).
+  factory ExportResolution.forCsv(
+    HistoryGranularity granularity,
+    List<int> storedWidths,
+  ) {
+    if (storedWidths.isEmpty) return none;
+    return ExportResolution(
+      requested: granularity.slug,
+      // An aggregated export contains minutes whatever it was built from —
+      // `contains` describes THE FILE, never the table behind it.
+      contains: granularity == HistoryGranularity.minute
+          ? '1min'
+          : storedWidths.map((w) => '${w}s').join(','),
+    );
+  }
+
+  List<String> get lines => <String>[
+        'resolution: requested=$requested',
+        if (contains != null) 'resolution: contains=$contains',
+      ];
+}
+
 /// The `#`-preamble lines for an export, WITHOUT the `# ` prefix (the writer
 /// adds it, since the log and the CSV emit them at different points).
 ///
@@ -104,6 +161,7 @@ List<String> exportHeaderLines({
   required String home,
   required bool speedDetection,
   required bool gMeter,
+  required ExportResolution resolution,
   String? window,
   bool ampereColumn = false,
   int? connections,
@@ -140,6 +198,16 @@ List<String> exportHeaderLines({
     // be a field with nothing behind it (the rule the rest of this preamble
     // follows). Both CSV call sites supply it.
     if (window != null) 'window: $window',
+    // design 0061 T4a (FB-71), closing design 0030's T4d. Sits here because it
+    // answers the same shape of question `window:` does — asked for against
+    // actually present — and the two read together.
+    //
+    // `required` rather than optional, like `layout:` / `home:` /
+    // `speed detection:` / `g meter:` and for the identical reason
+    // (export_header.dart's standing FB-32 rule): a call site must not be able
+    // to quietly stop emitting it. The diagnostic log, which has no history
+    // rows, passes [ExportResolution.none] and says so out loud.
+    ...resolution.lines,
     // design 0056 follow-up, ruled 2026-08-11. The `ampere` column is SIGNED,
     // and the sign means OPPOSITE things on the two product families. Until
     // this line existed the file stated a number and nothing else, so a

@@ -848,7 +848,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyEmptyToday => '今天還沒有紀錄。\n連線裝置後就會開始累積。';
 
   @override
-  String get historyEmptyWarning => '沒有警告或事件紀錄。';
+  String historyEmptyWarning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '最近 $count 筆紀錄中沒有警告或事件。',
+      zero: '沒有載入任何紀錄，所以沒有警告可以顯示。',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get historyEmptyAll => '尚無歷史紀錄。\n連線裝置後就會開始累積。';
@@ -858,6 +866,29 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get historyEmptyDeviceRange => '這台裝置在此範圍內沒有紀錄。';
+
+  @override
+  String get historyListMinuteNote => '清單以每分鐘一列顯示；完整的每秒資料可以在匯出時選。';
+
+  @override
+  String historyChartBucketMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '圖上每一點是 $count 分鐘的平均',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historyChartBucketHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '圖上每一點是 $count 小時的平均',
+    );
+    return '$_temp0';
+  }
 
   @override
   String historyFooter(int count) {
@@ -1201,6 +1232,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get retentionForever => '永久';
 
   @override
+  String get settingsHistorySizeLabel => '歷史紀錄佔用';
+
+  @override
+  String settingsHistorySizeSub(String used, String perYear) {
+    return '目前 $used，照這個速度大約每年增加 $perYear。上面的保留期限可以控制它。';
+  }
+
+  @override
+  String settingsHistorySizeSubShort(String used) {
+    return '目前 $used。上面的保留期限可以控制它。';
+  }
+
+  @override
   String get settingsExportAllLabel => '匯出全部資料 (CSV)';
 
   @override
@@ -1303,6 +1347,26 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get startupResetBody => '這會刪除全部歷史紀錄、已儲存裝置與設定，且無法復原。';
+
+  @override
+  String get exportResolutionTitle => '匯出的詳細程度';
+
+  @override
+  String get exportResolutionMinute => '每分鐘一筆（平均）';
+
+  @override
+  String get exportResolutionMinuteSub => '檔案較小，適合用 LINE 或 email 傳給別人。';
+
+  @override
+  String get exportResolutionSecond => '每秒一筆（完整）';
+
+  @override
+  String get exportResolutionSecondSub => '看得到啟動、電推那種一瞬間的變化；檔案會大很多。';
+
+  @override
+  String exportResolutionApproxSize(String size) {
+    return '大約 $size。';
+  }
 
   @override
   String get exportScopeTitle => '匯出範圍';
