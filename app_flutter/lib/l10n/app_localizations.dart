@@ -1484,6 +1484,12 @@ abstract class AppLocalizations {
   /// **'Temperature'**
   String get historyLegendTemperature;
 
+  /// Legend entry for the shaded min-max band behind each trend line (FB-74). The line is the bucket's mean and a bucket is 1 minute to 24 hours wide, so one over-voltage second moves it by millivolts; the band is the only thing on the chart that shows the instant happened. Unlabelled shading reads as decoration, hence a legend entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Range (min–max)'**
+  String get historyLegendRange;
+
   /// No description provided for @historyStatMin.
   ///
   /// In en, this message translates to:

@@ -231,6 +231,7 @@
   "historyRangeAll": "全部",
   "historyLegendVoltage": "電壓",
   "historyLegendTemperature": "溫度",
+  "historyLegendRange": "區間範圍（最小–最大）",
   "historyStatMin": "最小",
   "historyStatAvg": "平均",
   "historyStatMax": "最大",
