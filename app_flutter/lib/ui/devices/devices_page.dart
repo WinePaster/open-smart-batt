@@ -94,13 +94,19 @@ class DevicesPage extends StatefulWidget {
   /// by an edit. Making it required means the compiler asks the question.
   final bool active;
 
-  /// Switch to the Settings tab, handed down from the shell.
+  /// Show the Settings tab, handed down from the shell.
   ///
   /// It is threaded rather than looked up because it must go through the
   /// shell's single `_setTab` entry point: [DeviceDetailPage] hosts the
   /// dashboard, whose stale-telemetry banner links to Settings, and the
   /// 2026-08-07 review found that exact callback writing `_tab` behind the GNSS
   /// gate's back — leaving the receiver running under the Settings page.
+  ///
+  /// 🔴 "Show", not "switch to": the shell's implementation also LEAVES the
+  /// pushed [DeviceDetailPage] this page opens, because switching the tab
+  /// underneath a route the user is still looking at is indistinguishable from
+  /// the control being dead. Do not replace it with a bare tab switch — see
+  /// `main.dart`'s `_openSettingsFromDetail`.
   final VoidCallback? onOpenSettings;
 
   @override

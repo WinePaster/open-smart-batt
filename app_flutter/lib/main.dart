@@ -501,10 +501,39 @@ class _RootShellState extends State<RootShell> {
           builder: (_) => DeviceDetailPage(
             deviceId: deviceId,
             fallbackName: fallbackName,
-            onOpenSettings: () => _setTab(_Tab.settings),
+            onOpenSettings: _openSettingsFromDetail,
           ),
         ),
       );
+
+  /// "Open Settings" as pressed from INSIDE the pushed device page — today the
+  /// dashboard's stale-telemetry banner, which is the only surface that owns
+  /// this callback.
+  ///
+  /// 🔴 The `popUntil` is the whole fix, not tidiness. [DashboardPage] has
+  /// lived inside [DeviceDetailPage] since design 0046 R3, and that page is a
+  /// PUSHED ROUTE. `_setTab` swaps the IndexedStack page *under* it — so the
+  /// banner used to change a screen nobody could see and leave the device page
+  /// covering it. Pressing it did nothing observable at all.
+  ///
+  /// That is the same defect shape as the app-bar pill's dead no-op (see
+  /// [_openConnectionTarget]): a control whose entire effect is invisible from
+  /// the surface a user actually presses it on. It survived because the
+  /// callback is threaded — `nav_shell_test` and `widget_test` both invoked it
+  /// with nothing pushed, where the tab switch IS the whole story.
+  ///
+  /// `popUntil(isFirst)` rather than `pop()`: the destination is "the shell",
+  /// not "one route fewer", and it is a harmless no-op when nothing is pushed —
+  /// which is the state [DevicesPage] hands this down in.
+  ///
+  /// Order is pop-then-switch: leave the route, then change what is behind it.
+  /// No `mounted` guard is needed or wanted — this runs on the SHELL's state,
+  /// the route being returned TO; the pop disposes the page above it, never
+  /// this one.
+  void _openSettingsFromDetail() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    _setTab(_Tab.settings);
+  }
 
   /// Where the app-bar connection pill goes (ruled 2026-08-12).
   ///
@@ -665,9 +694,15 @@ class _RootShellState extends State<RootShell> {
                   // there. Every tab change in this file goes through `_setTab`,
                   // which is the only thing keeping gate condition 3 in step
                   // with what is on screen.
+                  //
+                  // The SAME callback the shell's own push uses, because the
+                  // route it has to leave is the same one: this list pushes
+                  // [DeviceDetailPage] too, and a second copy that only did
+                  // `_setTab` would put the invisible-tab-switch defect back on
+                  // one of the two entrances. See [_openSettingsFromDetail].
                   DevicesPage(
                     active: _tab == _Tab.devices,
-                    onOpenSettings: () => _setTab(_Tab.settings),
+                    onOpenSettings: _openSettingsFromDetail,
                   ),
                   // Re-keyed on each switch to 歷史 so it reloads the latest
                   // records.

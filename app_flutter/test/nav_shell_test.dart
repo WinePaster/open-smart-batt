@@ -387,4 +387,126 @@ void main() {
               'the list comes back scanning without anyone re-asking');
     });
   });
+
+  // ==========================================================================
+  // "Open Settings" from inside the pushed device page (fixed 2026-08-15)
+  // ==========================================================================
+  //
+  // 🔴 The defect these pin is a control that did NOTHING VISIBLE. The
+  // stale-telemetry banner belongs to [DashboardPage], and design 0046 R3 moved
+  // the dashboard inside [DeviceDetailPage] — a PUSHED ROUTE. The shell's
+  // callback was a bare `_setTab(settings)`, which swaps the IndexedStack page
+  // UNDERNEATH that route: the tab really did change, and the device page went
+  // on covering it. Tapping the banner looked broken.
+  //
+  // ⚠️ Why 940-odd green tests missed it, stated so the next reader does not
+  // weaken these back: the callback is THREADED, and every test that had ever
+  // fired it — `widget_test`'s GPS-gate test and the suite's tab tests — fired
+  // it with nothing pushed, which is exactly the one stack depth where a bare
+  // `_setTab` is correct. So these two drive it from the route it is actually
+  // pressed on, and assert the ROUTE as well as the tab. Asserting only
+  // `IndexedStack.index` would have been green throughout the defect.
+  //
+  // Both entrances are covered on purpose: the shell pushes this page (pill /
+  // home tile) and so does [DevicesPage], and the two used to hand down two
+  // separately-written callbacks. One of them being fixed is the state this
+  // group exists to prevent.
+  group('Settings from the device page', () {
+    /// The callback the banner would fire, taken from the REAL page in the
+    /// tree — not a hand-built one. What is under test is the wiring, and a
+    /// locally constructed callback would test the test.
+    void tapBannerLink(WidgetTester tester) {
+      final page = tester.widget<DeviceDetailPage>(
+          find.byType(DeviceDetailPage, skipOffstage: false));
+      expect(page.onOpenSettings, isNotNull,
+          reason: 'a null here is the same dead control by another route: the '
+              'banner renders its chevron only when this is wired');
+      page.onOpenSettings!();
+    }
+
+    /// Past the pop transition. Same two-frame wait the pill tests use: the
+    /// page defers its visibility report to a post-frame callback, so the route
+    /// is gone one frame before the controllers hear about it.
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+    }
+
+    testWidgets('leaves the page opened from the pill, and lands on 設定',
+        (tester) async {
+      final s = await pumpShell(tester);
+      ble.connectedId = 'DEV-A';
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.bluetooth));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the precondition: a route is on top of the shell');
+
+      tapBannerLink(tester);
+      await settle(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'THE defect: the tab changed and this stayed on top, so the '
+              'user saw nothing happen');
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3,
+          reason: 'and the destination is still Settings — leaving the route '
+              'must not cost the tab switch it was pressed for');
+      expect(
+          tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+          3,
+          reason: 'the bar agrees, so the user can see where they landed');
+
+      // The pre-existing invariant this fix must not break: every route to
+      // another tab still closes GNSS gate condition 3 (design 0042 G4). The
+      // pop and the tab switch each close one half — the page reports its own
+      // `detailVisible`, the shell reports the tab — and getting the ORDER
+      // wrong would leave one of them latched open.
+      expect(s.speed.detailVisible, isFalse);
+      expect(s.speed.dashboardVisible, isFalse);
+      expect(s.speed.speedSurfaceVisible, isFalse);
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and the same from the page opened via the devices list',
+        (tester) async {
+      final s = await pumpShell(tester);
+      await tester.runAsync(() => s.devices.saveNew('DEV-A', 'Cap #1'));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.list_alt_outlined));
+      await tester.pump();
+      await drain(tester);
+      // Saved after the shell mounted, so the tab opened on 搜尋裝置 (design
+      // 0055 rule 1) and the row is on the other sub-tab.
+      await tester.tap(find.text('已儲存'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+      await tester.tap(find.text('Cap #1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await drain(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+
+      tapBannerLink(tester);
+      await settle(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing);
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3,
+          reason: 'this entrance hands the callback down through DevicesPage; '
+              'it is the same callback for a reason');
+      // `DevicesPage._openDetail` resumes AFTER the push returns (it reveals the
+      // 已儲存 sub-tab if the unit got named up there). That continuation now
+      // runs off a pop it did not perform, on a tab that is no longer showing —
+      // it must not throw, and it must not drag the user back to 裝置.
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    });
+  });
 }
