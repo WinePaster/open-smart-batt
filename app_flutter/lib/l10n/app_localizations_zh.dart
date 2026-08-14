@@ -1650,4 +1650,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get devicesLinkedNoAdvert => '連線中 · 連線時不廣播，所以掃不到';
+
+  @override
+  String get fullscreenEnter => '全螢幕';
+
+  @override
+  String get fullscreenExit => '離開全螢幕';
 }

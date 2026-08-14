@@ -16,16 +16,50 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
 import 'connection_failure.dart';
 import 'save_device_flow.dart';
+
+/// May FB-75's automatic connect resolve [savedId] to something we can see?
+///
+/// A top-level function, and a pure one, because the platform is the whole
+/// question: on the host that runs the tests `Platform.isIOS` is false, so a
+/// method that read it directly would make the iOS branch — the only branch
+/// with a failure mode — the one branch no test could reach.
+///
+/// [useNameKey] is `Platform.isIOS` at the call site, and carries the same
+/// meaning it has in [rebindSavedDeviceId]: iOS hands out a per-install NSUUID
+/// that has to be matched against live scan results, Android keeps a stable MAC
+/// that needs no resolving at all.
+@visibleForTesting
+bool autoConnectTargetVisible({
+  required bool useNameKey,
+  required String savedId,
+  required String savedName,
+  required Map<String, String> candidates,
+}) {
+  if (!useNameKey) return true;
+  final target = rebindSavedDeviceId(
+    savedId: savedId,
+    savedName: savedName,
+    candidates: candidates,
+    useNameKey: true,
+  );
+  // 🔴 Not "did rebinding return something": it FALLS BACK to the saved id when
+  // it cannot resolve, so a bare null-check would pass on exactly the case this
+  // guard exists for. The question is whether the id it returned belongs to a
+  // unit that is in front of us right now.
+  return candidates.containsKey(target);
+}
 
 /// The per-device page, pushed from the devices tab.
 ///
@@ -87,6 +121,12 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// [ConnectionController.setDetailVisible].
   ConnectionController? _conn;
 
+  /// One-shot latch for [_maybeAutoConnect] (FB-75). At most one automatic
+  /// attempt per page instance — [didChangeDependencies] re-runs whenever an
+  /// inherited widget changes, and a page that re-fired on every locale change
+  /// or theme rebuild would be a connect loop, not a convenience.
+  bool _autoConnectTried = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -94,7 +134,87 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     _gforce = context.read<GForceController>();
     _conn = context.read<ConnectionController>();
     _setVisible(true);
+    _maybeAutoConnect();
   }
+
+  /// Open a SAVED unit's page ⇒ connect to it, once (FB-75, ruled 2026-08-14).
+  ///
+  /// 🔑 This is a NEW feature, not a repair. Nothing in this app has ever
+  /// auto-connected: every `connect()` / `connectToSaved()` caller was a user
+  /// tap, and the setting labelled 「自動重連」 only ever entered AFTER a link
+  /// dropped (it needs `_desiredDeviceId`, which only `connect()` writes). A
+  /// dealer read the label as "it should connect by itself", opened a saved
+  /// unit's page, and reasonably asked why nothing happened.
+  ///
+  /// ⛔ It stays a one-shot with a hard gate list because the failure modes are
+  /// all worse than the inconvenience it removes:
+  ///
+  ///   * the service is SINGLE-CONNECTION (`BleService._links` holds 0 or 1,
+  ///     and `connect()` awaits `disconnect()` first) ⇒ auto-connecting from
+  ///     B's page would silently tear down A's live link. Hence `isOnline`;
+  ///   * two connects 1.9 s apart once ran GATT setup twice on one link and
+  ///     doubled 18 minutes of telemetry (`ble_service.dart`, 2026.08.13/001)
+  ///     ⇒ hence the latch plus `isBusy` / `isRetrying` / `isAutoConnectArmed`;
+  ///   * a unit that cannot finish setup (FB-50: 42.4 % of connections in one
+  ///     capture never reached `ready`) would otherwise get a fresh doomed
+  ///     attempt every time its page is opened ⇒ hence `isSetupStalled`;
+  ///   * `lastError != null` means the user is looking at a failure report with
+  ///     a retry button on it. Retrying it for them, without being asked, is
+  ///     how a page starts arguing with the person reading it.
+  void _maybeAutoConnect() {
+    if (_autoConnectTried) return;
+    final conn = _conn;
+    if (conn == null) return;
+
+    // Saved units only: there is no "the device you asked for" for a unit
+    // nobody has named, and design 0055 gives unsaved ones an explicit
+    // connect-then-name flow that must stay user-driven.
+    final saved = context.read<DeviceController>().deviceFor(widget.deviceId);
+    if (saved == null) return;
+    // The user turned automatic connection off. That the setting is named for
+    // RE-connection is exactly the confusion this feature came from, so it is
+    // read as the one switch that governs "the app may connect on its own".
+    if (!context.read<SettingsController>().autoReconnect) return;
+    if (conn.isOnline ||
+        conn.isBusy ||
+        conn.isRetrying ||
+        conn.isAutoConnectArmed) {
+      return;
+    }
+    if (conn.lastError != null) return;
+    if (conn.isSetupStalled) return;
+    if (!conn.isAdapterOn) return;
+    if (!_resolvableOnThisPlatform(conn, saved)) return;
+
+    _autoConnectTried = true;
+    // Post-frame for `_setVisible`'s reason: this notifies listeners, and
+    // `didChangeDependencies` runs inside the build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(conn.connectToSaved(saved).catchError((Object _) {}));
+    });
+  }
+
+  /// 🔴 The iOS half of FB-75, and the reason this feature is not simply "call
+  /// connect on open".
+  ///
+  /// Opening this page STOPS the scan ([ConnectionController.setDetailVisible],
+  /// W-3), while iOS identifies peripherals by a per-install NSUUID that has to
+  /// be re-bound against live scan results ([rebindSavedDeviceId]). Come in from
+  /// a home tile rather than from the devices list and that candidate set can be
+  /// empty — so an unconditional auto-connect would replace today's honest
+  /// "not connected + a button" with a spinner that ends in
+  /// `device_unreachable`. That is precisely the direction FB-52 and FB-53 were
+  /// fixed away from, and it would be a regression bought with a convenience.
+  ///
+  /// Android keeps a stable MAC, so there is nothing to resolve there.
+  bool _resolvableOnThisPlatform(ConnectionController conn, SavedDevice saved) =>
+      autoConnectTargetVisible(
+        useNameKey: Platform.isIOS,
+        savedId: saved.id,
+        savedName: saved.name,
+        candidates: {for (final r in conn.scanResults) r.id: r.name},
+      );
 
   @override
   void dispose() {
@@ -171,8 +291,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final subtitle = wireMac != null && wireMac.isNotEmpty
         ? wireMac
         : (title == deviceId || title == shortDeviceId(deviceId)
-            ? l10n.devicesNoAdvertisedName
-            : shortDeviceId(deviceId));
+              ? l10n.devicesNoAdvertisedName
+              : shortDeviceId(deviceId));
 
     return Scaffold(
       appBar: AppBar(
@@ -242,11 +362,13 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         actions: [
           if (saved != null)
             TextButton(
-              onPressed: () => unawaited(promptAndRenameDevice(
-                context,
-                deviceId: deviceId,
-                currentAlias: saved.alias,
-              )),
+              onPressed: () => unawaited(
+                promptAndRenameDevice(
+                  context,
+                  deviceId: deviceId,
+                  currentAlias: saved.alias,
+                ),
+              ),
               child: Text(
                 l10n.devicesAliasRenameTitle,
                 style: TextStyle(
@@ -260,16 +382,17 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       ),
       body: live
           ? (saved == null
-              ? Column(
-                  children: [
-                    _UnsavedNotice(deviceId: deviceId),
-                    Expanded(
-                      child: DashboardPage(
-                          onOpenSettings: widget.onOpenSettings),
-                    ),
-                  ],
-                )
-              : DashboardPage(onOpenSettings: widget.onOpenSettings))
+                ? Column(
+                    children: [
+                      _UnsavedNotice(deviceId: deviceId),
+                      Expanded(
+                        child: DashboardPage(
+                          onOpenSettings: widget.onOpenSettings,
+                        ),
+                      ),
+                    ],
+                  )
+                : DashboardPage(onOpenSettings: widget.onOpenSettings))
           : _OfflineBody(
               deviceId: deviceId,
               fallbackName: widget.fallbackName,

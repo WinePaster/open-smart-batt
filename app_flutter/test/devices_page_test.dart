@@ -409,7 +409,16 @@ void main() {
 
         switch (entry.key) {
           case 'Not connected':
-            break;
+            // 🔴 FB-75 (2026-08-14) made this the one case that needs setting
+            // up rather than left alone: opening a SAVED unit's page now starts
+            // a connection by itself, so with the radio clear and no prior
+            // error the page the badge leads to is 「Connecting…」, not the idle
+            // report. Turning the switch off is the user state in which the
+            // idle report is still what they get — and it keeps this test about
+            // what it has always been about (the badge is a DOOR), instead of
+            // silently becoming a test of the new auto-connect.
+            await tester.runAsync(() => s.settings.setAutoReconnect(false));
+            await tester.pump();
           case 'Connecting':
             ble.connectedId = 'DEV-A';
             ble._linkOut.add(BleLinkState.connecting);
@@ -1032,6 +1041,18 @@ void main() {
     await settle(tester);
     expect(ble.startScans, greaterThan(beforeBack),
         reason: 'and it comes back when the page does');
+    // 🔴 A second drain, added with FB-75 (2026-08-14). Opening a saved unit's
+    // page now starts a connection by itself, and that writes an EVT line — a
+    // real (ffi) insert whose lock timer is created inside the fake-async zone
+    // AFTER the last pump. Without this the assertions above still pass and the
+    // test fails at teardown with "a Timer is still pending", which reads like a
+    // leak in the page rather than one more database write.
+    //
+    // Twice, because `settle` drains and THEN pumps: the resumed scan's own EVT
+    // insert is issued by the pump at the end of the previous settle, so it
+    // needs a drain that comes after it.
+    await settle(tester);
+    await settle(tester);
   });
 
   // ---------------------------------------------------------------------------
