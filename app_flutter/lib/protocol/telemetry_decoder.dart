@@ -274,13 +274,16 @@ class TelemetryDecoder {
       // to `default`. It used to publish chargeV1/chargeV2 by reading b4..b5 and
       // b6..b7 as two millivolt words — the §8.2 pair formula. The v2 half is
       // now positively refuted rather than merely unverified: on device-type
-      // 0x17 the last payload byte mirrors the 0x21 temperature in °C (seven
-      // units, 85.9-99.4% against the nearest-in-time 0x21, every miss off by
-      // exactly one degree), and a byte carrying degrees cannot be half of a
-      // millivolt word. Every rate in that range is a per-capture slice, not a
-      // unit's lifetime rate: the 100% upper bound this comment used to quote
-      // was one capture's subset of one unit, whose longer capture reads 97.9%
-      // (corrected 2026-08-14 alongside the public docs).
+      // 0x17 the last payload byte tracks the 0x21 temperature in °C, and a
+      // byte carrying degrees cannot be half of a millivolt word. That is the
+      // whole reason the v2 half is refused; the strength of the agreement is
+      // not what the refusal rests on, so do not tune anything to it.
+      // Recomputed per unit over the whole corpus on 2026-08-14: seven units,
+      // 40,967 frames, 72.3-100.0% per unit, 79.3% pooled. The ranges this
+      // comment used to quote (85.9-100%, then 85.9-99.4%) were per-capture
+      // slices, and "every miss is off by exactly one degree" holds on six of
+      // the seven units but fails on the largest. The agreement is
+      // unit-dependent: never gate decoding on it.
       // On 0x18 units it is 0% and constant while 0x21 moves,
       // so that generation uses a different layout again. See PROTOCOL.md §10.1.
       //
