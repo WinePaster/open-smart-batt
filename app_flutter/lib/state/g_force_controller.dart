@@ -149,8 +149,19 @@ class GForceController extends ChangeNotifier {
   /// settings change; see the library comment for why this is the only input.
   void applySettings(AppSettings s) {
     var changed = false;
-    if (_enabled != s.gMeterEnabled) {
-      _enabled = s.gMeterEnabled;
+    // EFFECTIVE, not stored (design 0063 §3.0.3). The user's own switch is
+    // left untouched in the settings row; what this mirrors is whether the
+    // feature is allowed to run at all.
+    //
+    // ⚠️ Non-obvious consequence, and it is the one we want: a switch to
+    // advanced mode arrives here as `_enabled` going false, which falls through
+    // to `_stopRide()` below and TEARS DOWN an already-open accelerometer
+    // stream — actively, in the same frame, rather than waiting for the card to
+    // unmount. In advanced mode the card never unmounts (the home grid stays in
+    // the IndexedStack), so "wait for unmount" would have left the sensor
+    // running for the rest of the session.
+    if (_enabled != s.gMeterEffective) {
+      _enabled = s.gMeterEffective;
       changed = true;
     }
     if (_storedCalibration != s.gCalibration) {

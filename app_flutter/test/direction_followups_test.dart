@@ -406,6 +406,8 @@ void main() {
           ampereColumn: ampereColumn,
           layout: 'face=fixed modules=gaugeVoltage,readouts',
           home: 'grid',
+          // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+          mode: AppMode.personal,
           speedDetection: false,
           gMeter: false,
           resolution: ExportResolution.forCsv(

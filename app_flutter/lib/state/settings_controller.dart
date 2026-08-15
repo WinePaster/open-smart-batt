@@ -61,11 +61,24 @@ class SettingsController extends ChangeNotifier {
       ? _settings.backgroundMonitoringIos
       : _settings.backgroundMonitoring;
   bool get keepScreenAwake => _settings.keepScreenAwake;
+
+  /// Personal or advanced (design 0063). The navigation shell reads this on
+  /// `initState` and again from its listener — it decides how many tabs exist.
+  AppMode get mode => _settings.mode;
   AppThemeMode get themeMode => _settings.themeMode;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
+  /// 🔴 **The STORED switch — what the user said, not whether the feature is
+  /// running.** Since design 0063 the answer to "is speed on?" is
+  /// [AppSettings.speedDetectionEffective], which folds [mode] in. These two
+  /// pass-throughs exist for the Settings screen, which has to draw the user's
+  /// own answer even while advanced mode is withholding the feature (Q9), and
+  /// they are the wrong thing for anybody else to read. `app_mode_test.dart` H9
+  /// greps `lib/` to keep that list closed.
   bool get speedDetection => _settings.speedDetection;
   SpeedUnit get speedUnit => _settings.speedUnit;
+
+  /// The STORED switch — see [speedDetection], same rule, same reason.
   bool get gMeterEnabled => _settings.gMeterEnabled;
   String? get gCalibration => _settings.gCalibration;
   String? get homeLayout => _settings.homeLayout;
@@ -102,6 +115,16 @@ class SettingsController extends ChangeNotifier {
       : _settings.copyWith(backgroundMonitoring: v));
   Future<void> setKeepScreenAwake(bool v) =>
       update(_settings.copyWith(keepScreenAwake: v));
+  /// Switch between personal and advanced (design 0063).
+  ///
+  /// 🔴 It writes ONE field. Do not "tidy up" by also clearing
+  /// [AppSettings.speedDetection] / [AppSettings.gMeterEnabled] here: Q9 rules
+  /// that the stored switches survive the round trip, so a user who tries
+  /// advanced mode and comes back finds their own choices intact. The
+  /// withdrawal of those features is expressed by the effective getters, which
+  /// change answer the instant this returns — nothing has to be written for it.
+  Future<void> setMode(AppMode v) => update(_settings.copyWith(mode: v));
+
   Future<void> setThemeMode(AppThemeMode v) =>
       update(_settings.copyWith(themeMode: v));
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));

@@ -342,6 +342,8 @@ void main() {
           scope: 'all devices',
           layout: 'default',
           home: 'tiles=auto',
+          // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+          mode: AppMode.personal,
           speedDetection: false, gMeter: false,
           resolution: ExportResolution.none,
           devices: const [
@@ -407,6 +409,8 @@ void main() {
         scope: 'all devices',
         layout: 'default',
         home: 'tiles=auto',
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );

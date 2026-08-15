@@ -225,7 +225,35 @@ class Db {
   /// into every existing row as part of `ADD COLUMN`, so v16 data describes
   /// itself correctly the moment the upgrade lands — no UPDATE pass, no window
   /// where a row exists with no granularity.
-  static const int schemaVersion = 17;
+  ///
+  /// v18 — design 0063. `settings.app_mode TEXT`, the personal/advanced split.
+  ///
+  ///   settings.app_mode  TEXT, **nullable, NO DEFAULT** — `AppMode.name`, or
+  ///     NULL for every row written before this migration.
+  ///
+  /// TEXT rather than an INTEGER flag because it is an enum with a name, and
+  /// this project stores enums by `.name` (`theme_mode` v2, `retention` v9,
+  /// `speed_unit` v12): a stored `advanced` is legible in a `sqlite3` dump and
+  /// in a bug report, where a stored `1` is a lookup into whatever the enum
+  /// order happened to be that release. It is also what makes reordering the
+  /// enum harmless.
+  ///
+  /// 🔴 **NULL is not a missing value here, it is the answer.**
+  /// `AppSettings.fromMap` reads NULL — and anything it does not recognise — as
+  /// [AppMode.personal], which is exactly today's behaviour, so an upgrade
+  /// changes nothing for anybody. The opposite reading would hide the home tab
+  /// from every existing user the first time they launched the new build, with
+  /// no action of theirs to explain it. Same class of accident as the
+  /// `speed_detection` decoder's `== 1` rather than `!= 0` (see
+  /// `app_settings.dart`): an upgrade may add capability, never grant itself
+  /// one. That is also why there is no DEFAULT — a DEFAULT would state that
+  /// every pre-v18 row had chosen personal mode, and they never chose anything.
+  ///
+  /// CLAIMING A NUMBER (see the note under v8): 18 was taken after checking
+  /// every local and remote ref — the highest anywhere was 17. design 0064
+  /// (accent colour) also has 18 written into its plan and is NOT yet in any
+  /// branch; whoever writes it second takes 19.
+  static const int schemaVersion = 18;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -646,6 +674,22 @@ class AppDatabase {
         'ON ${Db.tableHistory} (device_id, timestamp)',
       );
     }
+    if (from < 18) {
+      // design 0063. One additive, nullable column — see [Db.schemaVersion] v18
+      // for why NULL rather than a DEFAULT is the whole point of it.
+      //
+      // ⚠️ Deliberately UNLIKE v17 above, which uses its DEFAULT as a backfill.
+      // There the default was a true statement about every old row ("you are a
+      // per-minute average"). Here it would be a false one: nobody who upgrades
+      // into this has ever been shown the setting, so the row must say "not
+      // asked" and let the decoder answer personal. A DEFAULT would make an
+      // upgraded phone indistinguishable from one whose owner chose personal —
+      // and the day we want to know how many people actually picked a mode,
+      // that difference is the only thing that could tell us.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN app_mode TEXT',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -769,7 +813,8 @@ class AppDatabase {
       speed_unit TEXT NOT NULL DEFAULT 'kmh',
       home_layout TEXT,
       g_meter_enabled INTEGER NOT NULL DEFAULT 0,
-      g_calibration TEXT
+      g_calibration TEXT,
+      app_mode TEXT
     )
     ''',
     '''

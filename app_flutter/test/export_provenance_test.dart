@@ -74,6 +74,8 @@ void main() {
         scope: 'device=battery/1206',
         layout: layout,
         home: 'tiles=auto',
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );
@@ -93,6 +95,8 @@ void main() {
         scope: 'all devices',
         layout: layout,
         home: 'tiles=auto',
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );
@@ -140,6 +144,8 @@ void main() {
         scope: 'device=capacitor/7809 session=3',
         layout: layout,
         home: 'tiles=auto',
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
         connections: 2,
@@ -150,6 +156,12 @@ void main() {
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
         'resolution: requested=n/a (no history rows)',
+        // design 0063. Directly above the two switch lines because it is what
+        // makes their `off` readable: since 0063 they print the EFFECTIVE
+        // value, so `off` means either "the user turned it off" or "advanced
+        // mode withheld it", and only this line separates the two. Emitted for
+        // `personal` too — FB-32's rule, one more time.
+        'mode: personal',
         'speed detection: off',
         'g meter: off',
         'home: tiles=auto',
@@ -183,6 +195,8 @@ void main() {
         ampereColumn: true,
         layout: layout,
         home: 'tiles=auto',
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: false,
         gMeter: false,
         resolution:
@@ -200,6 +214,9 @@ void main() {
             'power bank positive=discharge (0x4A-0x49)',
         'ampere sign: capacitor rows are blank - that unit cannot measure '
             'current',
+        // design 0063 — see the log twin above. Both preambles carry it, in the
+        // same place, which is the point of these two byte-for-byte lists.
+        'mode: personal',
         'speed detection: off',
         'g meter: off',
         'home: tiles=auto',

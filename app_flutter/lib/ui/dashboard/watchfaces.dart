@@ -302,8 +302,16 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
 /// ever returns — and deleting it would delete the record of why the predicate
 /// is "speed OR G" rather than "speed", which took two field reports to get
 /// right. Its one surviving caller is [renderedWatchface]'s dead branch.
+///
+/// 🔲 Moved onto the EFFECTIVE value by design 0063 with **zero behavioural
+/// effect** — the function is vestigial, so nothing observable changes either
+/// way. It was changed anyway because §3.0.3's rule is "every consumer reads
+/// the fold", and a rule with one visible exception is a rule the next reader
+/// has to weigh instead of follow. The exception would also outlive its excuse:
+/// the day the picker comes back, this line is live again and would be the one
+/// place still asking the wrong question.
 bool ridingSelectable(AppSettings s, {required bool gForceAvailable}) =>
-    s.speedDetection || gForceAvailable;
+    s.speedDetectionEffective || gForceAvailable;
 
 /// The face actually DRAWN, given the stored one, the class and the settings.
 ///

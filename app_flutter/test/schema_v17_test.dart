@@ -239,13 +239,23 @@ void main() {
       );
     });
 
-    test('both report schema version 17', () async {
+    test('both report the same schema version, and it is at least 17',
+        () async {
       final upgraded = await upgradeFromV11('v17_ver');
       final fresh = await freshDatabase('v17_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
+        // The load-bearing half: an upgraded file and a fresh one must stamp
+        // the SAME number, whatever the head happens to be.
         expect(v['user_version'], Db.schemaVersion);
-        expect(Db.schemaVersion, 17);
+        // 🔴 Was `expect(Db.schemaVersion, 17)` — an exact pin, changed when
+        // design 0063 took v18 on 2026-08-15. A per-version file cannot pin the
+        // HEAD without having to be edited by every later migration, which
+        // makes it noise in exactly the diffs that need reading carefully. What
+        // this file is about is that v17's column survives to the head, so the
+        // floor is the honest assertion; `schema_v18_test.dart` holds the
+        // current exact pin, as each new one will.
+        expect(Db.schemaVersion, greaterThanOrEqualTo(17));
       }
     });
   });

@@ -562,8 +562,17 @@ class _DataCardState extends State<_DataCard> {
     final home = currentExportHomeValue(context);
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
-    final speedDetection = context.read<SettingsController>().speedDetection;
-    final gMeter = context.read<SettingsController>().gMeterEnabled;
+    //
+    // 🔴 The EFFECTIVE values (design 0063 §3.0.3 / Q1'), not the stored
+    // switches. In advanced mode the switches keep the user's answer while the
+    // features are withheld, so printing the stored value would put
+    // `g meter: on` on a file whose `g_long` column cannot contain anything —
+    // the same lie FB-32 spent three replies chasing, arriving down a new path.
+    // `mode:` beside them says which of the two is being reported.
+    final appSettings = context.read<SettingsController>().settings;
+    final mode = appSettings.mode;
+    final speedDetection = appSettings.speedDetectionEffective;
+    final gMeter = appSettings.gMeterEffective;
     try {
       final filename = exportFileName(
         base: 'opensmartbatt-history',
@@ -608,6 +617,7 @@ class _DataCardState extends State<_DataCard> {
           ampereColumn: true,
           layout: layout,
           home: home,
+          mode: mode,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),
@@ -785,8 +795,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
-    final speedOn = context.read<SettingsController>().speedDetection;
-    final gMeterOn = context.read<SettingsController>().gMeterEnabled;
+    // Effective, not stored — see the history-CSV handler above for why, and
+    // `export_header.dart`'s `mode:` line for what tells the two apart.
+    final logSettings = context.read<SettingsController>().settings;
+    final logMode = logSettings.mode;
+    final speedOn = logSettings.speedDetectionEffective;
+    final gMeterOn = logSettings.gMeterEffective;
     // 🔴 FB-68: the layout comes from the target, resolved with the identity at
     // the moment the export was asked for. This handler is the one that proved
     // it matters — the diagnostic log of batch 2026.08.13-001 carried
@@ -810,8 +824,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           await exportDeviceIdentities(devices, tele, target, facts: facts);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, speedOn, gMeterOn, layout,
-              home, identities);
+              tele, services, target, rawLog, logMode, speedOn, gMeterOn,
+              layout, home, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -943,6 +957,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    // design 0063. Threaded through with the other pre-await reads rather than
+    // fetched here, for the reason stated on `rawPacketLog` above.
+    AppMode mode,
     bool speedDetection,
     bool gMeter,
     String layout,
@@ -960,6 +977,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       scope: exportScopeLabel(target),
       layout: layout,
       home: home,
+      mode: mode,
       speedDetection: speedDetection,
       gMeter: gMeter,
       // design 0061 §3.4.3: this file has no history rows at all, so it says

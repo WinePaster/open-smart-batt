@@ -282,8 +282,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // design 0042 §3.9: unconditional, `off` included — otherwise an empty
     // `speed` column means both "the feature was off" and "the signal never
     // arrived", which is the ambiguity FB-32 exists to prevent.
-    final speedDetection = context.read<SettingsController>().speedDetection;
-    final gMeter = context.read<SettingsController>().gMeterEnabled;
+    // 🔴 EFFECTIVE, not stored (design 0063 §3.0.3). Advanced mode keeps the
+    // user's switches and withholds the features, so the stored value would
+    // describe an intention while the file describes a session — and this is a
+    // file, read months later by whoever received it.
+    final appSettings = context.read<SettingsController>().settings;
+    final mode = appSettings.mode;
+    final speedDetection = appSettings.speedDetectionEffective;
+    final gMeter = appSettings.gMeterEffective;
     final since = _sinceFor(_range);
     try {
       final filename = exportFileName(
@@ -331,6 +337,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ampereColumn: true,
           layout: layout,
           home: home,
+          mode: mode,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),

@@ -680,10 +680,11 @@ void main() {
       // The schema HEAD, not v15 — this line has always pinned "where the
       // registry currently is", and the head moved to 16 on 2026-08-13 when
       // design 0060 added `autoconnect_arm`, then to 17 on 2026-08-14 when
-      // design 0061 added `history.bucket_s`. What T57-8 actually asserts is
+      // design 0061 added `history.bucket_s`, then to 18 on 2026-08-15 when
+      // design 0063 added `settings.app_mode`. What T57-8 actually asserts is
       // everything below: `device_facts` still arrives EMPTY and its index is
       // still non-unique, neither of which a later migration may change.
-      expect(Db.schemaVersion, 17);
+      expect(Db.schemaVersion, 18);
       expect(s.facts.facts, isEmpty,
           reason: 'NO backfill from saved_devices (0048 G2): a pre-v15 unit '
               'was never observed under a knowable instant, and inventing one '

@@ -14,6 +14,7 @@
 library;
 
 import '../../data/history_repo.dart';
+import '../../models/app_settings.dart' show AppMode;
 import '../../models/device_ident.dart';
 import 'export_scope.dart';
 
@@ -159,6 +160,7 @@ List<String> exportHeaderLines({
   required String scope,
   required String layout,
   required String home,
+  required AppMode mode,
   required bool speedDetection,
   required bool gMeter,
   required ExportResolution resolution,
@@ -295,6 +297,23 @@ List<String> exportHeaderLines({
     // them (G3). Placed in the optional middle, before the required layout tail.
     if (deviceLines.isNotEmpty) 'devices: ${deviceLines.length}',
     ...deviceLines,
+    // design 0063. WHICH SHAPE OF THE APP wrote this file — personal (home
+    // grid present, speed and G meter available) or advanced (no home tab, and
+    // those two features withheld regardless of what the switches say).
+    //
+    // It sits immediately above `speed detection:` / `g meter:` because it is
+    // the line that makes those two readable. Since design 0063 they print the
+    // EFFECTIVE value, so `speed detection: off` now has two causes — the user
+    // turned it off, or advanced mode withheld it — and this line is the only
+    // thing that separates them. Without it we would have replaced FB-32's
+    // ambiguity with a new one rather than removed it.
+    //
+    // `required`, `personal` emitted too, not localized: the standing FB-32
+    // rule three lines below, applied once more. A line that appeared only in
+    // advanced mode would make its absence mean both "they were in personal
+    // mode" and "a build older than 0.7.21 wrote this" — and the second reading
+    // will still be available for years, because these files outlive releases.
+    'mode: ${mode.name}',
     // design 0042 §3.9, and the same FB-32 rule as `raw packet log:` above —
     // which is why it is `required` rather than `bool?`. Without it, a CSV with
     // no values in the `speed` column has TWO readings: the feature was off, or
@@ -331,6 +350,16 @@ List<String> exportHeaderLines({
     // session — the still-window check can withdraw a calibration mid-ride —
     // and a preamble line written once at export time cannot describe a moving
     // value honestly. The switch is a fact about the whole file.
+    //
+    // 🔴 **Amended 2026-08-15 (design 0063 Q1'), and the distinction above
+    // survives intact.** What the call sites now pass is the switch folded
+    // through the app mode (`AppSettings.gMeterEffective`), not the raw stored
+    // switch. That is still a fact about the whole file rather than a moving
+    // value — the mode cannot change mid-export — and it had to change,
+    // because "on" while advanced mode was withholding the feature would have
+    // reproduced exactly the empty-column-with-a-confident-header defect this
+    // line was added to end. Same sentence, one more input. See `mode:` above
+    // for how a reader tells the two causes of `off` apart.
     'g meter: ${gMeter ? 'on' : 'off'}',
     // design 0046 Step 10. The same argument as `layout:` below, applied to the
     // page most screenshots are now OF: since design 0046 R3 the home grid is

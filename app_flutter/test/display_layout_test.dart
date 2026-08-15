@@ -563,8 +563,11 @@ void main() {
       // an existing table, but only by appending a column with a NOT NULL
       // DEFAULT, so every column asserted above keeps its name, type and value.
       // Its own migration is checked in `schema_v17_test.dart`.
+      // v18 added `settings.app_mode` (design 0063) — a nullable column with NO
+      // default on a table this test does not read, so again nothing above
+      // moves. Its own migration is checked in `schema_v18_test.dart`.
       // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 17);
+      expect(Db.schemaVersion, 18);
     });
   });
 }
