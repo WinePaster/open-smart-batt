@@ -985,6 +985,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDisplayHeading => '顯示';
 
   @override
+  String get settingsAppModeLabel => '模式';
+
+  @override
+  String get settingsAppModeSub => '進階模式會把「主頁」從底部選單移除，速度偵測與 G 值錶也會一併停用。';
+
+  @override
+  String get settingsAppModePersonal => '個人';
+
+  @override
+  String get settingsAppModeAdvanced => '進階';
+
+  @override
+  String get settingsDisabledByAdvancedMode => '進階模式已停用這項功能。切回個人模式即可恢復你原本的設定。';
+
+  @override
   String get settingsThemeLabel => '主題';
 
   @override

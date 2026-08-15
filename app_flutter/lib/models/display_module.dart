@@ -221,7 +221,14 @@ bool phoneModuleAvailable(
   required bool gForceAvailable,
 }) =>
     switch (m) {
-      DisplayModule.speed => s.speedDetection,
+      // The EFFECTIVE value (design 0063 §3.0.3), not the stored switch. In
+      // advanced mode the home grid is unreachable but still mounted, so a
+      // speed card built from the stored switch would keep the GNSS gate's
+      // first condition open and would keep `home: tiles=` listing `speed` in
+      // every export. Reading the fold here means the card is never laid out at
+      // all, which is the same "off ⇒ nothing lands by construction" guarantee
+      // [AppSettings.speedDetection] was already documented to give.
+      DisplayModule.speed => s.speedDetectionEffective,
       DisplayModule.gForce => gForceAvailable,
       // 🔑 Declared, not inherited. The clock has no upstream that can be
       // absent — no link, no fix, no calibration, no switch — so its

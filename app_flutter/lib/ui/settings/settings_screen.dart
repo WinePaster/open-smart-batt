@@ -151,6 +151,27 @@ class _DisplayCard extends StatelessWidget {
       headingIcon: Icons.speed,
       child: Column(
         children: [
+          // 🔑 FIRST in the card, ahead of the theme row (design 0063 §3.0.4).
+          // Not cosmetic ordering: this control decides whether two rows BELOW
+          // it can be touched at all, and a switch that greys out because of
+          // something further down the page reads as a fault rather than as a
+          // consequence.
+          //
+          // It also has to be somewhere in 設定 specifically, because 設定 is
+          // the only tab present in BOTH modes — it is the way back for a user
+          // who turned advanced mode on and lost the grid (0063 P6).
+          SettingsRow(
+            label: l10n.settingsAppModeLabel,
+            sub: l10n.settingsAppModeSub,
+            trailing: SegmentedControl<AppMode>(
+              selected: s.mode,
+              onChanged: s.setMode,
+              options: [
+                (value: AppMode.personal, label: l10n.settingsAppModePersonal),
+                (value: AppMode.advanced, label: l10n.settingsAppModeAdvanced),
+              ],
+            ),
+          ),
           SettingsRow(
             label: l10n.settingsThemeLabel,
             sub: l10n.settingsThemeSub,
@@ -189,7 +210,18 @@ class _DisplayCard extends StatelessWidget {
             ),
           ),
           const _SpeedDetectionRow(),
-          if (s.speedDetection)
+          // 🔴 The EFFECTIVE value, not the stored switch — and that is the
+          // opposite of the rule the two switch rows themselves follow
+          // (design 0063 Q9: a switch must keep showing what the USER said,
+          // even while advanced mode withholds the feature).
+          //
+          // The difference is what the row IS. `_SpeedDetectionRow` is the
+          // user's own answer, so it stays and greys out. This row is a
+          // SETTING FOR a feature that is not running: "km/h or mph" for a
+          // readout nothing can produce. Greying it out would be a third
+          // disabled control in a row, and leaving it live would offer a choice
+          // with no observable effect. Owner ruling 2026-08-15, 逐字「整組收起來」.
+          if (s.settings.speedDetectionEffective)
             SettingsRow(
               label: l10n.settingsSpeedUnitLabel,
               trailing: SegmentedControl<SpeedUnit>(
@@ -211,7 +243,14 @@ class _DisplayCard extends StatelessWidget {
             onTap: () => showSpeedMeasurementExplainer(context),
           ),
           const _GMeterRow(),
-          if (s.gMeterEnabled) const _GCalibrationRow(),
+          // Effective, same rule and same reason as the speed-unit row above.
+          // ⚠️ Note what this does NOT touch: the stored calibration itself.
+          // Design 0045 already ruled that turning the G meter off leaves
+          // `gCalibration` alone — "the mount has not moved because the user
+          // switched a feature off" — and hiding the row that RE-RUNS the
+          // wizard is the same promise one level up. Switch back to personal
+          // mode and the calibration is still there.
+          if (s.settings.gMeterEffective) const _GCalibrationRow(),
           // design 0045 §3.6b — same shape, same reason.
           SettingsLinkRow(
             icon: Icons.help_outline,
@@ -278,15 +317,30 @@ class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // 🔴 The STORED switch, never the effective value (design 0063 Q9). While
+    // advanced mode withholds the feature the row still shows what the user
+    // chose, so switching back is visibly a restoration rather than a fresh
+    // decision. The screen answers "what did I say"; the export header answers
+    // "what actually happened", and only the second one folds the mode in.
     final on = context.select<SettingsController, bool>(
         (s) => s.settings.speedDetection);
+    final blocked = context.select<SettingsController, bool>(
+        (s) => s.mode == AppMode.advanced);
     return SettingsRow(
       label: l10n.settingsSpeedDetectionLabel,
-      sub: l10n.settingsSpeedDetectionSub,
-      subHighlight: !on,
+      // 🔑 The sub-line CHANGES, it does not merely grey out. A disabled switch
+      // with its usual caption underneath is indistinguishable from a broken
+      // one — which is the "the feature vanished and nobody knows why" failure
+      // this project has warned about in its own design docs — and in a test it
+      // looks identical too. Naming the mode is what makes it an answer.
+      sub: blocked
+          ? l10n.settingsDisabledByAdvancedMode
+          : l10n.settingsSpeedDetectionSub,
+      subHighlight: blocked || !on,
       trailing: _Toggle(
         value: on,
-        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
+        onChanged:
+            (_busy || blocked) ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }
@@ -341,15 +395,21 @@ class _GMeterRowState extends State<_GMeterRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // Stored switch, not effective value — see [_SpeedDetectionRow.build].
     final on = context.select<SettingsController, bool>(
         (s) => s.settings.gMeterEnabled);
+    final blocked = context.select<SettingsController, bool>(
+        (s) => s.mode == AppMode.advanced);
     return SettingsRow(
       label: l10n.settingsGMeterLabel,
-      sub: l10n.settingsGMeterSub,
-      subHighlight: !on,
+      sub: blocked
+          ? l10n.settingsDisabledByAdvancedMode
+          : l10n.settingsGMeterSub,
+      subHighlight: blocked || !on,
       trailing: _Toggle(
         value: on,
-        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
+        onChanged:
+            (_busy || blocked) ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }
@@ -562,8 +622,17 @@ class _DataCardState extends State<_DataCard> {
     final home = currentExportHomeValue(context);
     // design 0042 §3.9: emitted unconditionally, `off` included, so that an
     // empty `speed` column has one reading instead of two.
-    final speedDetection = context.read<SettingsController>().speedDetection;
-    final gMeter = context.read<SettingsController>().gMeterEnabled;
+    //
+    // 🔴 The EFFECTIVE values (design 0063 §3.0.3 / Q1'), not the stored
+    // switches. In advanced mode the switches keep the user's answer while the
+    // features are withheld, so printing the stored value would put
+    // `g meter: on` on a file whose `g_long` column cannot contain anything —
+    // the same lie FB-32 spent three replies chasing, arriving down a new path.
+    // `mode:` beside them says which of the two is being reported.
+    final appSettings = context.read<SettingsController>().settings;
+    final mode = appSettings.mode;
+    final speedDetection = appSettings.speedDetectionEffective;
+    final gMeter = appSettings.gMeterEffective;
     try {
       final filename = exportFileName(
         base: 'opensmartbatt-history',
@@ -608,6 +677,7 @@ class _DataCardState extends State<_DataCard> {
           ampereColumn: true,
           layout: layout,
           home: home,
+          mode: mode,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),
@@ -785,8 +855,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
     final rawLog = context.read<SettingsController>().rawPacketLog;
-    final speedOn = context.read<SettingsController>().speedDetection;
-    final gMeterOn = context.read<SettingsController>().gMeterEnabled;
+    // Effective, not stored — see the history-CSV handler above for why, and
+    // `export_header.dart`'s `mode:` line for what tells the two apart.
+    final logSettings = context.read<SettingsController>().settings;
+    final logMode = logSettings.mode;
+    final speedOn = logSettings.speedDetectionEffective;
+    final gMeterOn = logSettings.gMeterEffective;
     // 🔴 FB-68: the layout comes from the target, resolved with the identity at
     // the moment the export was asked for. This handler is the one that proved
     // it matters — the diagnostic log of batch 2026.08.13-001 carried
@@ -810,8 +884,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           await exportDeviceIdentities(devices, tele, target, facts: facts);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, speedOn, gMeterOn, layout,
-              home, identities);
+              tele, services, target, rawLog, logMode, speedOn, gMeterOn,
+              layout, home, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -943,6 +1017,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // screen may be gone and a `context.read` would throw mid-export — the same
     // reason `labelFor` is captured by the caller.
     bool rawPacketLog,
+    // design 0063. Threaded through with the other pre-await reads rather than
+    // fetched here, for the reason stated on `rawPacketLog` above.
+    AppMode mode,
     bool speedDetection,
     bool gMeter,
     String layout,
@@ -960,6 +1037,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       scope: exportScopeLabel(target),
       layout: layout,
       home: home,
+      mode: mode,
       speedDetection: speedDetection,
       gMeter: gMeter,
       // design 0061 §3.4.3: this file has no history rows at all, so it says

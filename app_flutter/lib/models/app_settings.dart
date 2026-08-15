@@ -24,6 +24,37 @@ enum SpeedUnit { kmh, mph }
 /// [light].
 enum AppThemeMode { light, dark, auto }
 
+/// Which shape of the app the user wants (design 0063). DEFAULT [personal].
+///
+/// 🔑 **[personal] IS today's app, to the byte.** Same four tabs, same startup
+/// tab, same effective value for every switch. The entire feature is the other
+/// value: [advanced] hides the home grid and, because of that, withdraws the
+/// three things that only ever lived on it.
+///
+/// ONE two-valued setting rather than a list of visible tabs (§3.0.1), and that
+/// was a decision: a list makes "no tabs at all" and "only Settings" states the
+/// program can represent, and neither should exist. The two modes differ in
+/// exactly one tab, so a bool-shaped thing is the honest model of them.
+///
+/// Persisted by `.name` in `settings.app_mode` (schema v18). An unreadable or
+/// absent value decodes to [personal] and never throws — see
+/// [AppSettings._appModeFromMap].
+enum AppMode {
+  /// Home・Devices・History・Settings. Speed, G meter and full screen all
+  /// available. Every install, new or upgraded, starts here.
+  personal,
+
+  /// Devices・History・Settings — no home grid.
+  ///
+  /// 🔴 The name is the second one this had. It shipped through design as
+  /// "diagnostic mode" and was renamed on the owner's ruling (§0.8 Q8), because
+  /// the mode diagnoses nothing: someone reading "diagnostic" goes looking for
+  /// raw frames and undecoded fields and finds three ordinary tabs. "Advanced"
+  /// promises only what it delivers — skip the dashboard, go straight to the
+  /// units.
+  advanced,
+}
+
 /// How long recorded telemetry history is kept.
 ///
 /// 🔴 **The default is [days90] for a NEW INSTALL and [forever] for everyone
@@ -131,6 +162,15 @@ class AppSettings {
   final bool keepScreenAwake;
 
   // --- display ---
+  /// Personal or advanced (design 0063). DEFAULT [AppMode.personal].
+  ///
+  /// Reaches further than the tab it removes: it is the left-hand half of
+  /// [speedDetectionEffective] and [gMeterEffective], so switching to
+  /// [AppMode.advanced] takes the speed card out of every generated home
+  /// layout, closes the GNSS gate, stops the accelerometer stream and flips
+  /// both export-header lines to `off` — without touching what the user stored.
+  final AppMode mode;
+
   /// Theme preference (light / dark / auto). DEFAULT [AppThemeMode.light].
   final AppThemeMode themeMode;
   final AppLang lang;
@@ -156,7 +196,30 @@ class AppSettings {
   /// face-level answer would then have laid out `speed` for someone who never
   /// saw the location consent dialog. The guarantee is unchanged; the layer it
   /// is enforced at is not.
+  ///
+  /// 🔴 **This field is what the USER SAID, and only that.** Since design 0063
+  /// it is no longer the answer to "is speed on?" — [mode] can withhold the
+  /// feature without touching it, and [speedDetectionEffective] is the value
+  /// every consumer must read. Keeping the two apart is design 0063 Q9: a user
+  /// who tries advanced mode and comes back must find their own switch where
+  /// they left it, not silently turned off on their behalf.
   final bool speedDetection;
+
+  /// Is the speed feature actually ON right now — the value everything except
+  /// the Settings switch itself must read (design 0063 §3.0.3).
+  ///
+  /// 🔑 **ONE place folds stored value + mode into an answer, and this is it.**
+  /// It lives on [AppSettings] rather than on a controller for
+  /// [phoneModuleAvailable]'s reason (`display_module.dart`): that function's
+  /// doc calls itself the single fact both drawing surfaces share, and it takes
+  /// an [AppSettings]. A fold done anywhere upstream would be a second decision
+  /// point sitting next to the one that exists to prevent second decision
+  /// points — and the failure mode is not a crash, it is an export header that
+  /// says `speed detection: on` beside an empty column, months later, to
+  /// somebody who cannot ask us what happened.
+  ///
+  /// `app_mode_test.dart` H9 greps `lib/` to keep the consumer list closed.
+  bool get speedDetectionEffective => mode == AppMode.personal && speedDetection;
 
   /// km/h or mph for every speed on screen. DEFAULT [SpeedUnit.kmh].
   final SpeedUnit speedUnit;
@@ -189,7 +252,17 @@ class AppSettings {
   ///
   /// On alone shows nothing. The card needs a valid calibration as well —
   /// see [gCalibration] and `GForceController.available`.
+  ///
+  /// 🔴 Like [speedDetection], this is WHAT THE USER SAID and not whether the
+  /// feature is running — read [gMeterEffective] for that.
   final bool gMeterEnabled;
+
+  /// Is the G meter actually ON right now (design 0063 §3.0.3). See
+  /// [speedDetectionEffective] for why the fold lives here and nowhere else.
+  ///
+  /// ⚠️ Availability still needs a calibration on top of this
+  /// (`GForceController.available`); this only replaces the switch half.
+  bool get gMeterEffective => mode == AppMode.personal && gMeterEnabled;
 
   /// The phone→vehicle rotation, as `GForceCalibration.encode()`'s JSON — or
   /// NULL when the mount has never been calibrated (design 0045 §3.2).
@@ -265,6 +338,11 @@ class AppSettings {
     this.backgroundMonitoring = true,
     this.backgroundMonitoringIos = false,
     this.keepScreenAwake = false,
+    // 🔴 Not merely "the sensible default" — it is the ONLY default that keeps
+    // design 0063's central promise (personal mode == today's app). `fromMap`
+    // falls back to the same value for an upgraded row, so new installs and old
+    // ones land in the same place without a T8a-style split.
+    this.mode = AppMode.personal,
     this.themeMode = AppThemeMode.light,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
@@ -291,6 +369,7 @@ class AppSettings {
     bool? backgroundMonitoring,
     bool? backgroundMonitoringIos,
     bool? keepScreenAwake,
+    AppMode? mode,
     AppThemeMode? themeMode,
     AppLang? lang,
     TempUnit? tempUnit,
@@ -318,6 +397,7 @@ class AppSettings {
         backgroundMonitoringIos:
             backgroundMonitoringIos ?? this.backgroundMonitoringIos,
         keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
+        mode: mode ?? this.mode,
         themeMode: themeMode ?? this.themeMode,
         lang: lang ?? this.lang,
         tempUnit: tempUnit ?? this.tempUnit,
@@ -356,6 +436,11 @@ class AppSettings {
         'background_keep_alive': keepScreenAwake ? 1 : 0,
         'background_monitoring': backgroundMonitoring ? 1 : 0,
         'background_monitoring_ios': backgroundMonitoringIos ? 1 : 0,
+        // schema v18. Written even for `personal`: this map is an INSERT OR
+        // REPLACE of the whole row (see the warning above), so a column left
+        // out here is not "not saved", it is "erased the next time any other
+        // setting changes".
+        'app_mode': mode.name,
         'theme_mode': themeMode.name,
         'lang': lang.name,
         'temp_unit': tempUnit.name,
@@ -385,6 +470,7 @@ class AppSettings {
         // same reasoning as `speed_detection` below.
         backgroundMonitoringIos:
             (m['background_monitoring_ios'] as num?)?.toInt() == 1,
+        mode: _appModeFromMap(m),
         themeMode: _themeModeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],
@@ -430,6 +516,28 @@ class AppSettings {
         rawPacketLog: (m['raw_packet_log'] as num?)?.toInt() == 1,
         logMaxBytes: _normaliseLogMaxBytes((m['log_max_bytes'] as num?)?.toInt()),
       );
+
+  /// Resolve the app mode from a persisted row (schema v18).
+  ///
+  /// 🔴 **Three different absences all mean [AppMode.personal], and that is the
+  /// contract, not laziness**: the column is missing (pre-v18 row), the column
+  /// is NULL (upgraded but never set), or the string is one this build does not
+  /// know (a downgrade after a future release adds a third mode). Every one of
+  /// them is "this user has not asked for anything unusual", and the only safe
+  /// answer to that is the shape of the app they already have.
+  ///
+  /// **Never throws**, deliberately — same discipline as [_themeModeFromMap]. A
+  /// settings decoder that can throw turns one unreadable field into an app
+  /// that will not start, and the field it would die on here is cosmetic.
+  static AppMode _appModeFromMap(Map<String, Object?> m) {
+    final raw = m['app_mode'];
+    if (raw is String) {
+      for (final e in AppMode.values) {
+        if (e.name == raw) return e;
+      }
+    }
+    return AppMode.personal;
+  }
 
   /// Resolve the theme mode from a persisted row.
   ///

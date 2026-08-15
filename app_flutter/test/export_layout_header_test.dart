@@ -43,6 +43,8 @@ void main() {
         scope: 'device=battery/1206',
         layout: layout,
         home: home,
+        // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
+        mode: AppMode.personal,
         speedDetection: speedDetection,
         gMeter: gMeter,
         resolution: ExportResolution.none,
