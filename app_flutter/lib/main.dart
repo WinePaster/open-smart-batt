@@ -444,16 +444,31 @@ class _RootShellState extends State<RootShell> {
   /// same number; if a fourth ever wants it, it comes through here.
   ///
   /// 🔴 **The `IndexedStack` children do NOT follow this list.** Its `index` is
-  /// still `_tab.index`, all four pages stay mounted, and that is deliberate:
+  /// still `_tab.index`, the list is still FOUR long, and that is deliberate:
   /// removing a child would shift every later page's index AND throw away the
   /// tab state the stack was chosen to preserve (see the note at the top of
   /// this section). Visibility is a property of the MENU, not of the content.
   ///
-  /// ⚠️ The cost of that choice, stated rather than hidden: in advanced mode
-  /// [HomePage] stays mounted and keeps rebuilding, offstage, forever. It is
-  /// one offstage widget tree and it can draw nothing — the speed and G cards
-  /// are gone from it via the effective values, and gate condition 3 can never
-  /// open because `_tab` cannot be `home`.
+  /// ⚠️ ~~The cost of that choice, stated rather than hidden: in advanced mode
+  /// [HomePage] stays mounted and keeps rebuilding, offstage, forever.~~
+  ///
+  /// 🔴 **Amended 2026-08-15 (owner ruling). That cost is no longer paid, and
+  /// the rule above is narrower than it first read.** §3.4 forbade REMOVING a
+  /// child, for two reasons that are both about the list getting shorter. The
+  /// home SLOT therefore stays — but in advanced mode it holds a
+  /// `SizedBox.shrink()` instead of a [HomePage] (see the `build` method).
+  ///
+  /// The measurement that prompted it, from the source rather than a profiler:
+  /// `IndexedStack` paints only the selected child, so the offstage grid never
+  /// repainted — but it BUILT and LAID OUT, and `home_tiles.dart` holds
+  /// `context.watch<TelemetryController>()` in two places, a controller that
+  /// notifies on every sample. So an unreachable page was rebuilding at
+  /// telemetry rate for as long as the app ran with a unit connected.
+  ///
+  /// 🔑 What is given up: the grid's scroll offset resets when the user returns
+  /// to personal mode. That is a rare, deliberate action on a page they could
+  /// not see a moment ago — a different thing from losing it on every tab
+  /// switch, which is what this rule was written to prevent.
   List<_Tab> get _visibleTabs => [
         if (_mode == AppMode.personal) _Tab.home,
         _Tab.devices,
@@ -809,11 +824,38 @@ class _RootShellState extends State<RootShell> {
               IndexedStack(
                 index: _tab.index,
                 children: [
-                  HomePage(
-                    onOpenDevices: () => _setTab(_Tab.devices),
-                    onEdit: _openHomeEditor,
-                    onOpenDetail: _openDetail,
-                  ),
+                  // 🔴 The SLOT stays, the CONTENT does not (owner ruling
+                  // 2026-08-15, amending design 0063 §3.4).
+                  //
+                  // §3.4's rule was "the children do not follow `_visibleTabs`",
+                  // and the two reasons it gave are both about REMOVING a child:
+                  // every later page's index shifts, and the preserved tab state
+                  // is thrown away. Neither applies to swapping one child's
+                  // content — the list is still four long, so `_tab.index` still
+                  // points where it always did.
+                  //
+                  // What this buys is not paint. `IndexedStack` paints only the
+                  // selected child, so the offstage home grid never repainted.
+                  // It BUILDS and LAYS OUT, and `_ModuleTile` /
+                  // `_LiveReading` hold `context.watch<TelemetryController>()`
+                  // (`home_tiles.dart`), which notifies on every sample — so in
+                  // advanced mode, with a unit connected, an unreachable page
+                  // was rebuilding at telemetry rate for as long as the app ran.
+                  //
+                  // 🔑 The state loss is real and is the point of the trade: the
+                  // grid's scroll offset resets when the user comes BACK to
+                  // personal mode. That is a rare, deliberate action, and the
+                  // page it resets is one they could not see a moment ago.
+                  // Losing it on every tab switch — what §3.4 was protecting
+                  // against — would be a different matter entirely.
+                  if (_mode == AppMode.advanced)
+                    const SizedBox.shrink()
+                  else
+                    HomePage(
+                      onOpenDevices: () => _setTab(_Tab.devices),
+                      onEdit: _openHomeEditor,
+                      onOpenDetail: _openDetail,
+                    ),
                   // The dashboard's stale-telemetry banner links to Settings,
                   // and the dashboard now lives inside a route this page pushes
                   // — so the callback is threaded down rather than re-derived

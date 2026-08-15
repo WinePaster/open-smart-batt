@@ -352,12 +352,47 @@ void main() {
         await pumpShell(tester, mode: mode);
         final stack = tester.widget<IndexedStack>(find.byType(IndexedStack));
         expect(stack.children, hasLength(4), reason: '$mode');
-        // `skipOffstage: false` because an IndexedStack keeps unselected pages
-        // MOUNTED but offstage — which is precisely why the sensor gate has to
-        // be told which tab is showing rather than inferring it from the tree.
-        expect(find.byType(HomePage, skipOffstage: false), findsOneWidget,
-            reason: 'the home page is hidden from the MENU, not unmounted');
       }
+    });
+
+    testWidgets(
+        '🔑 H3b: advanced mode empties the home SLOT without shortening the list',
+        (tester) async {
+      // Owner ruling 2026-08-15, amending design 0063 §3.4. The invariant H3
+      // guards (four children, so `_tab.index` keeps pointing where it did) is
+      // untouched; what changed is what sits in slot 0.
+      //
+      // 🔴 Why it is worth a test rather than an optimisation nobody records:
+      // `IndexedStack` paints only the selected child, so the offstage grid
+      // never repainted and the waste was invisible in every screenshot. It
+      // BUILT and LAID OUT — and `home_tiles.dart` watches `TelemetryController`
+      // in two places, which notifies per sample. An unreachable page was
+      // rebuilding at telemetry rate for as long as the app ran.
+      //
+      // `skipOffstage: false` on both halves: an IndexedStack keeps unselected
+      // pages MOUNTED but offstage, so a finder that skipped them would report
+      // "absent" in personal mode too and the test would pass for the wrong
+      // reason.
+      await pumpShell(tester, mode: AppMode.advanced);
+
+      expect(find.byType(HomePage, skipOffstage: false), findsNothing,
+          reason: 'advanced mode must not build a page nobody can reach');
+      expect(
+          tester.widget<IndexedStack>(find.byType(IndexedStack)).children,
+          hasLength(4),
+          reason: 'the SLOT stays — shortening the list is what §3.4 forbids, '
+              'and it is what would silently repoint every later tab');
+    });
+
+    testWidgets('H3c: personal mode still mounts the grid', (tester) async {
+      // The other half of H3b, in its own test rather than a second
+      // `pumpShell` in the same one. Two shells per test does not work here:
+      // the first one's database is closed underneath the second, and advanced
+      // mode lands on 裝置, whose scan writes a log line — the failure surfaces
+      // as `database_closed` from `ConnectionController.startScan`, nowhere
+      // near the thing being asserted.
+      await pumpShell(tester, mode: AppMode.personal);
+      expect(find.byType(HomePage, skipOffstage: false), findsOneWidget);
     });
   });
 
