@@ -499,20 +499,25 @@ class _QualityPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = context.colors;
+    // 🔴 Four rungs of one scale, told apart by colour alone (the labels are
+    // localised words nobody reads at a glance). Fixed status colours, never
+    // the accent — design 0064; this switch was missing from the design's
+    // classification list and is why `accent_classification_test.dart` covers
+    // it explicitly.
     final (IconData icon, Color color, String label) = switch (quality) {
       SpeedSignalQuality.good => (
           Icons.gps_fixed,
-          AppColors.good,
+          AppSemantics.good,
           l10n.speedQualityGood
         ),
       SpeedSignalQuality.fair => (
           Icons.gps_not_fixed,
-          AppColors.cyan,
+          AppSemantics.event,
           l10n.speedQualityFair
         ),
       SpeedSignalQuality.poor => (
           Icons.gps_not_fixed,
-          AppColors.amber,
+          AppSemantics.warn,
           l10n.speedQualityPoor
         ),
       SpeedSignalQuality.none => (
@@ -548,15 +553,20 @@ class _HeldBadge extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        // Same "not live" idiom as the dashboard's stale-telemetry bar, and it
+        // shares a card with the GPS quality rungs above — so it is a status
+        // tone, not the accent (design 0064). Note the READING itself does
+        // follow the accent (`held ? muted : accent` further up): that one is
+        // accent-vs-muted, which no theme can collapse.
         decoration: BoxDecoration(
-          color: AppColors.amber.withValues(alpha: 0.14),
+          color: AppSemantics.warn.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.pause_circle_outline,
-                size: 12, color: AppColors.amber),
+                size: 12, color: AppSemantics.warn),
             const SizedBox(width: 5),
             Text(
               label,
@@ -564,7 +574,7 @@ class _HeldBadge extends StatelessWidget {
                 fontSize: 10,
                 letterSpacing: 0.5,
                 fontWeight: FontWeight.w600,
-                color: AppColors.amber,
+                color: AppSemantics.warn,
               ),
             ),
           ],

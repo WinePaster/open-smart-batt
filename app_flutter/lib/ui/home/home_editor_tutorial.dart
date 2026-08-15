@@ -215,7 +215,7 @@ class _HomeEditorTutorialDialogState extends State<_HomeEditorTutorialDialog> {
         // `_showAddSheet` filters by product class; `_apply` calls `_persist`
         // on every change, and there is no save button anywhere on the page.
         _Step(
-          art: const _GlyphArt(Icons.close, color: AppColors.danger),
+          art: const _GlyphArt(Icons.close, color: AppSemantics.danger),
           lead: l10n.homeEditTutorialManageLead,
           body: l10n.homeEditTutorialManageBody,
         ),

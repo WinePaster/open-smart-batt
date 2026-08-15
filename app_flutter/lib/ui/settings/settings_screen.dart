@@ -1226,21 +1226,21 @@ void _showAbout(BuildContext context) {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.amber.withValues(alpha: 0.07),
+                color: AppSemantics.warn.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+                border: Border.all(color: AppSemantics.warn.withValues(alpha: 0.28)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.warning_amber_rounded,
-                      size: 15, color: AppColors.amber),
+                      size: 15, color: AppSemantics.warn),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       l10n.settingsAboutDialogWarning,
                       style: const TextStyle(
-                          fontSize: 11, height: 1.5, color: AppColors.amber),
+                          fontSize: 11, height: 1.5, color: AppSemantics.warn),
                     ),
                   ),
                 ],
@@ -1327,7 +1327,7 @@ Future<bool> _confirm(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
             confirmLabel ?? l10n.commonConfirm,
-            style: TextStyle(color: danger ? AppColors.danger : AppColors.amber),
+            style: TextStyle(color: danger ? AppSemantics.danger : AppColors.amber),
           ),
         ),
       ],

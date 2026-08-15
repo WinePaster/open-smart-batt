@@ -425,8 +425,15 @@ class _UnsavedNotice extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(15, 10, 15, 1),
       padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
       decoration: BoxDecoration(
-        color: const Color(0x12F6A821),
-        border: Border.all(color: const Color(0x73F6A821)),
+        // Was `const Color(0x12F6A821)` / `0x73F6A821` — amber spelled out in
+        // hex, which no search for `AppColors.` would ever have found. The
+        // FRAME is a fixed warning tone (design 0064); the Save button inside
+        // it is the app's ordinary filled action and keeps the accent. Alphas
+        // as the original bytes over 255 so "the value did not change" is
+        // arithmetic rather than trust.
+        color: AppSemantics.warn.withValues(alpha: 0x12 / 255),
+        border:
+            Border.all(color: AppSemantics.warn.withValues(alpha: 0x73 / 255)),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(

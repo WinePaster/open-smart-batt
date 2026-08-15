@@ -1092,12 +1092,16 @@ class _ConnectionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final conn = context.watch<ConnectionController>();
+    // 🔴 Four link states, four fixed status colours — never the accent. Pick
+    // green as your theme and `CONNECTING` would be `CONNECTED`; the pill is
+    // the app's most-read status and the two labels differ by one word.
+    // `accent_classification_test.dart` drives exactly this case.
     final (Color color, String label) = switch (conn.linkState) {
-      BleLinkState.ready => (AppColors.good, 'CONNECTED'),
+      BleLinkState.ready => (AppSemantics.good, 'CONNECTED'),
       BleLinkState.connecting ||
-      BleLinkState.connected => (AppColors.amber, 'CONNECTING'),
-      BleLinkState.disconnecting => (AppColors.amber, 'CLOSING'),
-      BleLinkState.disconnected => (AppColors.danger, 'OFFLINE'),
+      BleLinkState.connected => (AppSemantics.warn, 'CONNECTING'),
+      BleLinkState.disconnecting => (AppSemantics.warn, 'CLOSING'),
+      BleLinkState.disconnected => (AppSemantics.danger, 'OFFLINE'),
     };
     return InkWell(
       onTap: onTap,
@@ -1270,9 +1274,9 @@ class _DoNotRelockWarning extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.amber.withValues(alpha: 0.07),
+        color: AppSemantics.warn.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+        border: Border.all(color: AppSemantics.warn.withValues(alpha: 0.28)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1280,7 +1284,7 @@ class _DoNotRelockWarning extends StatelessWidget {
           const Icon(
             Icons.warning_amber_rounded,
             size: 15,
-            color: AppColors.amber,
+            color: AppSemantics.warn,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1289,7 +1293,7 @@ class _DoNotRelockWarning extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 height: 1.5,
-                color: AppColors.amber,
+                color: AppSemantics.warn,
               ),
             ),
           ),

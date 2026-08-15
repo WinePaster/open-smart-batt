@@ -138,8 +138,13 @@ class _StaleBannerState extends State<_StaleBanner> {
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
           child: Row(
             children: [
+              // "Pause glyph in amber" is the app's one idiom for "what you
+              // are looking at is not live" — here for stale telemetry, in
+              // `speed_card.dart`'s held badge for a frozen reading. Fixed
+              // (design 0064): both sites must keep saying it the same way,
+              // and neither is a brand surface.
               const Icon(Icons.pause_circle_outline,
-                  size: 18, color: AppColors.amber),
+                  size: 18, color: AppSemantics.warn),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

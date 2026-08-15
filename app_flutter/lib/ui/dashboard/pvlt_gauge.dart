@@ -318,9 +318,15 @@ class GaugeReadoutStack extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: ' $unit',
+                    // "Amber marks a UNIT" is a TYPOGRAPHIC role that holds
+                    // across every card (see `clock_card.dart` and
+                    // `home_tiles.dart`'s `_BigValue`), not an accent. Design
+                    // 0064 Q2 keeps it fixed: theming it would flatten the
+                    // value-vs-unit hierarchy, and the glyph is far too small
+                    // for anyone to read a theme change out of it anyway.
                     style: const TextStyle(
                       fontSize: 16,
-                      color: AppColors.amber,
+                      color: AppSemantics.warn,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

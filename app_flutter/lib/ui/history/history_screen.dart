@@ -1768,15 +1768,19 @@ class _StatusTag extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     late final Color fg;
     late final String label;
+    // 🔴 Three row states, three fixed status colours (design 0064). `event`
+    // used to be `AppColors.cyan` — the same constant the temperature series
+    // and the gauge sub-line use, which now follow the accent. Splitting the
+    // name is what stops the next person taking this switch along with them.
     switch (status) {
       case _RowStatus.normal:
-        fg = AppColors.good;
+        fg = AppSemantics.good;
         label = l10n.commonNormal;
       case _RowStatus.warning:
-        fg = AppColors.amber;
+        fg = AppSemantics.warn;
         label = l10n.commonWarning;
       case _RowStatus.event:
-        fg = AppColors.cyan;
+        fg = AppSemantics.event;
         label = l10n.historyStatusEvent;
     }
     return Container(

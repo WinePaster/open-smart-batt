@@ -933,7 +933,7 @@ class _EditorCellState extends State<_EditorCell> {
                           iconSize: 16,
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.close),
-                          color: AppColors.danger,
+                          color: AppSemantics.danger,
                           disabledColor: colors.muted.withValues(alpha: 0.35),
                         ),
                       ],
