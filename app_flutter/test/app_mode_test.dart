@@ -515,6 +515,57 @@ void main() {
       expect(services.settings.settings.gMeterEffective, isFalse);
     });
 
+    testWidgets(
+        '🔑 H11: the rows that CONFIGURE those features are gone, not greyed',
+        (tester) async {
+      // Owner ruling 2026-08-15, 逐字「整組收起來」.
+      //
+      // 🔴 This is the OPPOSITE rule to H7/H8 above, and the difference is what
+      // each row IS. The two switches are the user's own answer, so they stay
+      // and grey out (Q9). 速度單位 and 校準車架 are settings FOR a feature that
+      // is not running — "km/h or mph" for a readout nothing can produce, and
+      // "re-run the wizard" for a card that cannot appear. Greying them out
+      // would stack four disabled controls in one card; leaving them live would
+      // offer choices with no observable effect.
+      //
+      // What this test would catch: somebody "simplifying" the two conditions
+      // to one rule. Both directions are wrong, and neither shows up in H7/H8 —
+      // point the switches at the effective value and H8 goes red, but point
+      // THESE at the stored value and nothing else in the suite notices.
+      final services = await pumpShell(tester, mode: AppMode.personal);
+      await tester.runAsync(() async {
+        await services.settings.setSpeedDetection(true);
+        await services.settings.setGMeterEnabled(true);
+      });
+      await tester.pump();
+
+      // Personal mode with both switches on: both dependent rows are there.
+      await tester.tap(find.text('設定'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+      expect(find.text('速度單位'), findsOneWidget);
+      expect(find.text('校準車架'), findsOneWidget);
+
+      await tester.runAsync(() => services.settings.setMode(AppMode.advanced));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+
+      expect(find.text('速度單位'), findsNothing,
+          reason: 'a unit for a readout that cannot be produced');
+      expect(find.text('校準車架'), findsNothing,
+          reason: 'a wizard for a card that cannot appear');
+      // …while the switches themselves are still on screen, still saying yes.
+      expect(find.text('速度偵測'), findsOneWidget);
+      expect(find.text('G 值錶'), findsOneWidget);
+      // 🔑 And the stored calibration is untouched — design 0045's promise one
+      // level up: hiding the row that re-runs the wizard must not erase what
+      // the wizard produced.
+      expect(services.settings.settings.gMeterEnabled, isTrue);
+      expect(services.settings.settings.speedDetection, isTrue);
+    });
+
     testWidgets('the mode row itself is reachable in both modes', (tester) async {
       // P6: advanced mode keeps 設定 precisely so the way back exists. If this
       // row were ever gated on the mode, the feature would be a one-way door.

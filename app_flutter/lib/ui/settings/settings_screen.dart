@@ -210,7 +210,18 @@ class _DisplayCard extends StatelessWidget {
             ),
           ),
           const _SpeedDetectionRow(),
-          if (s.speedDetection)
+          // 🔴 The EFFECTIVE value, not the stored switch — and that is the
+          // opposite of the rule the two switch rows themselves follow
+          // (design 0063 Q9: a switch must keep showing what the USER said,
+          // even while advanced mode withholds the feature).
+          //
+          // The difference is what the row IS. `_SpeedDetectionRow` is the
+          // user's own answer, so it stays and greys out. This row is a
+          // SETTING FOR a feature that is not running: "km/h or mph" for a
+          // readout nothing can produce. Greying it out would be a third
+          // disabled control in a row, and leaving it live would offer a choice
+          // with no observable effect. Owner ruling 2026-08-15, 逐字「整組收起來」.
+          if (s.settings.speedDetectionEffective)
             SettingsRow(
               label: l10n.settingsSpeedUnitLabel,
               trailing: SegmentedControl<SpeedUnit>(
@@ -232,7 +243,14 @@ class _DisplayCard extends StatelessWidget {
             onTap: () => showSpeedMeasurementExplainer(context),
           ),
           const _GMeterRow(),
-          if (s.gMeterEnabled) const _GCalibrationRow(),
+          // Effective, same rule and same reason as the speed-unit row above.
+          // ⚠️ Note what this does NOT touch: the stored calibration itself.
+          // Design 0045 already ruled that turning the G meter off leaves
+          // `gCalibration` alone — "the mount has not moved because the user
+          // switched a feature off" — and hiding the row that RE-RUNS the
+          // wizard is the same promise one level up. Switch back to personal
+          // mode and the calibration is still there.
+          if (s.settings.gMeterEffective) const _GCalibrationRow(),
           // design 0045 §3.6b — same shape, same reason.
           SettingsLinkRow(
             icon: Icons.help_outline,
