@@ -20,16 +20,61 @@
 // one names the regression it catches rather than the code it touches.
 //
 // H1  fresh install and upgrade both land on personal   (also `schema_v18_test`)
+// H2  advanced shows three tabs and every one of them opens the right page
+// H3  the IndexedStack keeps all four children in BOTH modes
 // H4  advanced withdraws the features WITHOUT rewriting the user's switches
+// H5  switching mode while on 主頁 moves the user AND closes the sensor gate
+// H6  a cold start in advanced mode never renders a `selectedIndex` of -1
 // H9  the effective-value rule has no seventh consumer  (grep guard)
 // H10 the export preamble states the mode, and states the effective switches
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart'
+    show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/ble/ble.dart';
+import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/main.dart';
 import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/state/state.dart';
+import 'package:open_smart_batt/ui/devices/devices_page.dart';
+import 'package:open_smart_batt/ui/history/history_screen.dart';
+import 'package:open_smart_batt/ui/home/home_page.dart';
+import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+/// Inert BleService — copied from `nav_shell_test.dart`, same reason: these
+/// tests are about where a TAP goes, never about establishing a link, and the
+/// real implementation would leave a pending timer the fake-async zone in a
+/// widget test never advances.
+class _FakeBleService extends BleService {
+  @override
+  Stream<BluetoothAdapterState> get adapterState =>
+      const Stream<BluetoothAdapterState>.empty();
+
+  @override
+  Stream<bool> get scanning => const Stream<bool>.empty();
+
+  @override
+  bool get isScanning => false;
+
+  @override
+  Future<bool> ensurePermissions() async => true;
+
+  @override
+  String? get connectedDeviceId => null;
+
+  @override
+  Future<void> startScan(
+      {Duration timeout = const Duration(seconds: 15)}) async {}
+
+  @override
+  Future<void> stopScan() async {}
+}
 
 /// A settings row with both features switched ON, so that every assertion about
 /// advanced mode is about the MODE withdrawing them rather than about them
@@ -57,6 +102,72 @@ List<String> _header(AppSettings s) => exportHeaderLines(
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(sqfliteFfiInit);
+
+  /// Let the real (ffi) database finish whatever the last frame started.
+  Future<void> drain(WidgetTester tester) async {
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+  }
+
+  /// Boot the whole app on a real in-memory database, optionally having stored
+  /// [mode] BEFORE the first frame.
+  ///
+  /// 🔑 The mode is written before `pumpWidget`, not after — that is the point
+  /// of H6. `_RootShellState.initState` folds the mode into `_tab`, so a test
+  /// that switched afterwards would exercise the runtime path (H5) and would
+  /// never see the cold-start one, which is the path that can assert.
+  Future<AppServices> pumpShell(WidgetTester tester,
+      {AppMode mode = AppMode.personal}) async {
+    late final AppServices services;
+    await tester.runAsync(() async {
+      final appDb = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      services = await AppServices.create(
+          appDatabase: appDb, ble: _FakeBleService());
+      // 🔴 Written UNCONDITIONALLY, personal included. `inMemoryDatabasePath`
+      // is not a fresh database per test in this process — the settings row
+      // survives, so a helper that only wrote the non-default value would let
+      // one test's `advanced` become the next test's starting state. That cost
+      // a confusing red: H5 opened with no 主頁 because H3 had left the row on
+      // `advanced`, which looks exactly like the shell failing to honour
+      // personal mode.
+      await services.settings.setMode(mode);
+    });
+    await tester.pumpWidget(OpenSmartBattApp(services: services));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await drain(tester);
+    // The one-time community disclaimer resolves off a marker-file read, i.e.
+    // only on a REAL event loop — so it appears the moment the drain above runs
+    // one. It absorbs every tap aimed at the navigation bar underneath, which
+    // in this file would look exactly like "the destination did nothing".
+    final ack = find.text('我了解，開始使用');
+    if (ack.evaluate().isNotEmpty) {
+      await tester.tap(ack);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    // ⚠️ NO `addTearDown(services.dispose)`, and that is not an oversight:
+    // `AppServices.dispose` awaits a write drain and a database close, and an
+    // await registered in a tear-down runs OUTSIDE `runAsync` — where the
+    // widget-test fake clock never advances, so the whole file hangs with no
+    // output at all rather than failing. `nav_shell_test.dart`'s helper leaves
+    // it out for the same reason; the in-memory database dies with the process.
+    return services;
+  }
+
+  List<String> labelsOf(WidgetTester tester) => [
+        for (final d in tester
+            .widget<NavigationBar>(find.byType(NavigationBar))
+            .destinations)
+          (d as NavigationDestination).label,
+      ];
+
   group('H1: nobody is moved into advanced mode by an upgrade', () {
     test('a fresh install is personal', () {
       // The constructor default. `schema_v18_test` covers the other half — an
@@ -138,6 +249,173 @@ void main() {
             gForceAvailable: false),
         isTrue,
       );
+    });
+  });
+
+  group('H2/H3/H6: the bottom bar in advanced mode', () {
+    testWidgets('H6: a cold start lands on 裝置 with no -1 frame',
+        (tester) async {
+      // 🔴 The assert this file exists to keep away:
+      // `NavigationBar`'s constructor requires
+      // `0 <= selectedIndex < destinations.length` (Flutter 3.44.4,
+      // `material/navigation_bar.dart:123`). Leave `_tab` on `home` while
+      // advanced mode has removed that destination and `indexOf` hands it -1 —
+      // a hard crash in debug, a bar with nothing highlighted in release.
+      //
+      // `takeException()` rather than only checking the index, because the
+      // failure can happen in a FRAME THAT IS ALREADY GONE by the time the
+      // assertions below run: the fold could be done one frame late and every
+      // steady-state check would still pass.
+      await pumpShell(tester, mode: AppMode.advanced);
+      expect(tester.takeException(), isNull);
+
+      final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(bar.selectedIndex, 0);
+      expect(labelsOf(tester), ['裝置', '歷史', '設定']);
+      // Design 0063 Q10 ruled out a separate start-tab setting, so the mode has
+      // to imply it — and "the first tab that exists" is what it implies.
+      expect(find.byType(DevicesPage), findsOneWidget);
+    });
+
+    testWidgets('H2: every destination opens the page it names', (tester) async {
+      // 🔑 THE test of this feature, and the one no existing test could catch:
+      // the whole suite runs in personal mode, where `_visibleTabs.indexOf` and
+      // `_Tab.index` happen to agree. Drop one tab and they part company, so a
+      // bar that still mapped position to enum index would send 歷史 → 設定 and
+      // 設定 → nothing. Loud symptom, invisible to 1,777 green tests.
+      //
+      // Every destination is tapped rather than a sample, because an off-by-one
+      // is correct at exactly one position.
+      await pumpShell(tester, mode: AppMode.advanced);
+      // label -> (the page it must show, the ENUM index that page sits at).
+      // The second number is written out because it is the whole hazard: the
+      // menu positions here are 0/1/2 while the stack indices are 1/2/3, so
+      // 設定 is off by one in exactly the direction a `_Tab.values[i]` mapping
+      // would silently produce — it would open 歷史 instead.
+      const expected = <String, (Type, int)>{
+        '裝置': (DevicesPage, 1),
+        '歷史': (HistoryScreen, 2),
+        '設定': (SettingsScreen, 3),
+      };
+      for (final entry in expected.entries) {
+        await tester.tap(find.text(entry.key));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await drain(tester);
+        expect(
+          find.descendant(
+            of: find.byType(IndexedStack),
+            matching: find.byType(entry.value.$1),
+          ),
+          findsOneWidget,
+          reason: 'tapping ${entry.key} must show ${entry.value.$1}',
+        );
+        final stack = tester.widget<IndexedStack>(find.byType(IndexedStack));
+        expect(stack.index, entry.value.$2,
+            reason: '${entry.key} is at menu position '
+                '${labelsOf(tester).indexOf(entry.key)} but stack index '
+                '${entry.value.$2} — the two numberings must not be confused');
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('H3: all four pages stay in the IndexedStack, both modes',
+        (tester) async {
+      // Someone will eventually "tidy up" by dropping the hidden child. Two
+      // things break at once and neither announces itself: every later page
+      // shifts by one (so `_tab.index` points at the wrong child), and the
+      // preserved tab state the stack was chosen FOR is thrown away on every
+      // mode switch.
+      for (final mode in AppMode.values) {
+        await pumpShell(tester, mode: mode);
+        final stack = tester.widget<IndexedStack>(find.byType(IndexedStack));
+        expect(stack.children, hasLength(4), reason: '$mode');
+        // `skipOffstage: false` because an IndexedStack keeps unselected pages
+        // MOUNTED but offstage — which is precisely why the sensor gate has to
+        // be told which tab is showing rather than inferring it from the tree.
+        expect(find.byType(HomePage, skipOffstage: false), findsOneWidget,
+            reason: 'the home page is hidden from the MENU, not unmounted');
+      }
+    });
+  });
+
+  group('H5: switching mode at runtime', () {
+    testWidgets('from 主頁 it moves the user and closes the sensor gate',
+        (tester) async {
+      final services = await pumpShell(tester);
+      expect(find.byType(HomePage), findsOneWidget);
+      expect(services.speed.dashboardVisible, isTrue);
+      expect(services.gforce.dashboardVisible, isTrue);
+
+      await tester.runAsync(() => services.settings.setMode(AppMode.advanced));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(labelsOf(tester), ['裝置', '歷史', '設定']);
+      expect(find.byType(DevicesPage), findsOneWidget);
+
+      // 🔑 The half that a plain `setState(() => _tab = …)` would get wrong,
+      // and it would get it wrong SILENTLY: `_setTab` calls
+      // `_syncDashboardVisible()` outside its setState closure, so a direct
+      // assignment leaves gate condition 3 believing the grid is on screen.
+      // With the IndexedStack keeping the speed card mounted, the GNSS receiver
+      // would keep running and speed would keep landing in history — for the
+      // rest of the session, in the one mode whose point is that it does not.
+      // `main.dart` records this exact bypass having shipped once already.
+      expect(services.speed.dashboardVisible, isFalse);
+      expect(services.gforce.dashboardVisible, isFalse);
+    });
+
+    testWidgets('🔑 from FULL SCREEN it also leaves full screen',
+        (tester) async {
+      // ⚠️ This is the assertion that actually pins "the move goes through
+      // `_setTab`", and it was added after the obvious one above turned out not
+      // to. Replacing `_setTab(_Tab.devices)` with `setState(() => _tab = …)`
+      // leaves the two `dashboardVisible` flags FALSE anyway — a settings write
+      // rebuilds the MaterialApp (theme/locale), which re-runs
+      // `didChangeDependencies`, which syncs the gate for its own reasons. The
+      // defect is real and the test was passing over it.
+      //
+      // `_immersive` has no such second writer. It is cleared in `_setTab` and
+      // nowhere else, so the bypass shows up here as a user stuck with no app
+      // bar and no navigation bar on a tab that is not the grid — and, in
+      // advanced mode, no way back to the grid that would explain it. Full
+      // screen is a 主頁 state (design 0062 §7.1-7) and advanced mode has no
+      // 主頁 (design 0063 Q3), so leaving it is a requirement, not a courtesy.
+      final services = await pumpShell(tester);
+      await tester.tap(find.byIcon(Icons.fullscreen));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(NavigationBar), findsNothing,
+          reason: 'precondition: we are actually in full screen');
+
+      await tester.runAsync(() => services.settings.setMode(AppMode.advanced));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(labelsOf(tester), ['裝置', '歷史', '設定']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('switching back restores 主頁 as a destination', (tester) async {
+      // P6: the way out has to exist. Settings is present in both modes, so a
+      // user who cannot find the home tab can always get it back — and this
+      // says the bar really does grow again rather than needing a restart.
+      final services = await pumpShell(tester, mode: AppMode.advanced);
+      await tester.runAsync(() => services.settings.setMode(AppMode.personal));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+
+      expect(labelsOf(tester), ['主頁', '裝置', '歷史', '設定']);
+      // The user is NOT dragged to 主頁: they were reading 裝置 and asked for a
+      // menu change, not for a page change. Only the -1 case forces a move.
+      expect(find.byType(DevicesPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

@@ -367,6 +367,36 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
 /// in the release note (design 0046 §1.3).
 enum _Tab { home, devices, history, settings }
 
+// The bottom bar's three per-tab lookups (design 0063). They exist because the
+// destinations are no longer a fixed literal list — advanced mode drops 主頁 —
+// so label and icon have to be answerable for a _Tab rather than written at a
+// position.
+//
+// 🔑 Exhaustive `switch` with no wildcard, on purpose and following
+// `phoneModuleAvailable`'s precedent: a fifth tab must fail to COMPILE here
+// rather than inherit a placeholder icon from a default branch. The same
+// argument, one file away.
+String _navLabel(AppLocalizations l10n, _Tab t) => switch (t) {
+      _Tab.home => l10n.navHome,
+      _Tab.devices => l10n.navDevices,
+      _Tab.history => l10n.navHistory,
+      _Tab.settings => l10n.navSettings,
+    };
+
+IconData _navIcon(_Tab t) => switch (t) {
+      _Tab.home => Icons.dashboard_outlined,
+      _Tab.devices => Icons.list_alt_outlined,
+      _Tab.history => Icons.history_outlined,
+      _Tab.settings => Icons.settings_outlined,
+    };
+
+IconData _navSelectedIcon(_Tab t) => switch (t) {
+      _Tab.home => Icons.dashboard,
+      _Tab.devices => Icons.list_alt,
+      _Tab.history => Icons.history,
+      _Tab.settings => Icons.settings,
+    };
+
 /// Top-level navigation shell. Replaces the placeholder home: hosts the four
 /// screens in an [IndexedStack] (state preserved across tab switches) and shows
 /// the startup community disclaimer once on first launch.
@@ -386,8 +416,50 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   // Design 0046 R3, which overturns design 0034 G4 on the owner's ruling: the
   // app opens on the home grid rather than on one device's dashboard.
+  //
+  // 🔴 Design 0063 narrows that to PERSONAL mode, and the initial value here is
+  // no longer the whole story — [initState] folds the mode in before the first
+  // build. It is not merely a preference: in advanced mode `home` is not in
+  // [_visibleTabs], so `indexOf` returns -1 and [NavigationBar]'s constructor
+  // assert fires. See [_visibleTabs].
   _Tab _tab = _Tab.home;
   int _historyEpoch = 0; // bumped on each switch to 歷史 to force a reload
+
+  /// The settings, captured in [initState] so [dispose] can detach the listener
+  /// without touching a possibly-deactivated element tree — the same shape
+  /// `devices_page.dart` uses for [ConnectionController].
+  late final SettingsController _settings;
+
+  /// Personal or advanced (design 0063). Mirrored into this State rather than
+  /// read from [_settings] in `build`, so that [_onSettingsChanged] can see the
+  /// PREVIOUS value and tell an actual mode change apart from the many other
+  /// notifications a settings write produces.
+  late AppMode _mode;
+
+  /// The tabs the bottom bar offers, in order — the SINGLE derived source for
+  /// both the selected index and the tap mapping (design 0063 §3.4).
+  ///
+  /// 🔴 Personal has four, advanced has three, and `_Tab.index` therefore stops
+  /// being the menu position. Three call sites used to assume they were the
+  /// same number; if a fourth ever wants it, it comes through here.
+  ///
+  /// 🔴 **The `IndexedStack` children do NOT follow this list.** Its `index` is
+  /// still `_tab.index`, all four pages stay mounted, and that is deliberate:
+  /// removing a child would shift every later page's index AND throw away the
+  /// tab state the stack was chosen to preserve (see the note at the top of
+  /// this section). Visibility is a property of the MENU, not of the content.
+  ///
+  /// ⚠️ The cost of that choice, stated rather than hidden: in advanced mode
+  /// [HomePage] stays mounted and keeps rebuilding, offstage, forever. It is
+  /// one offstage widget tree and it can draw nothing — the speed and G cards
+  /// are gone from it via the effective values, and gate condition 3 can never
+  /// open because `_tab` cannot be `home`.
+  List<_Tab> get _visibleTabs => [
+        if (_mode == AppMode.personal) _Tab.home,
+        _Tab.devices,
+        _Tab.history,
+        _Tab.settings,
+      ];
 
   /// Full-screen mode: hide THIS APP's AppBar and NavigationBar (design 0062,
   /// FB-76). Not the system status bar — the reporter's "headbar / menubar"
@@ -403,8 +475,62 @@ class _RootShellState extends State<RootShell> {
   @override
   void initState() {
     super.initState();
+    _settings = context.read<SettingsController>();
+    _mode = _settings.mode;
+    // 🔴 Folded BEFORE the first build, not after it. In advanced mode `home`
+    // is not a destination, so a first frame built with `_tab == _Tab.home`
+    // would hand [NavigationBar] a `selectedIndex` of -1 — its constructor
+    // asserts `0 <= selectedIndex < destinations.length` (Flutter 3.44.4,
+    // `material/navigation_bar.dart:123`), which is a hard crash in a debug
+    // build and an unhighlighted bar in a release one.
+    //
+    // This is a real stored value and not a pre-load default: `AppServices`
+    // awaits `settings.load()` before the app is built at all
+    // (`app_services.dart`), which is the same guarantee `devices_page.dart`
+    // relies on for its initial tab.
+    //
+    // Advanced mode lands on 裝置 — design 0063 Q10 ruled OUT a separate
+    // start-tab setting, so the mode implies it: the first tab that exists.
+    if (_mode == AppMode.advanced) _tab = _Tab.devices;
+    // Runtime switching. `addListener` rather than `context.watch` in `build`,
+    // because the response to a mode change is not just a repaint: it may have
+    // to MOVE the user, and that has to go through `_setTab` (see its doc) so
+    // the GNSS/accelerometer gate is resynced. A `build`-time fold would need a
+    // `setState` from `didChangeDependencies`, which this codebase has no
+    // precedent for, and would still have to render one frame at index -1.
+    _settings.addListener(_onSettingsChanged);
     // After first frame: disclaimer (once) then a silent GitHub update check.
     WidgetsBinding.instance.addPostFrameCallback((_) => _startup());
+  }
+
+  /// 🔴 This State had NO `dispose` before design 0063 — it owned nothing that
+  /// needed releasing. It does now: a listener left on a [ChangeNotifier] that
+  /// outlives the shell keeps this State alive and calls `setState` on a
+  /// defunct element.
+  @override
+  void dispose() {
+    _settings.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  /// React to a settings write. Only the mode is of interest here; every other
+  /// field is watched by whoever draws it.
+  void _onSettingsChanged() {
+    final mode = _settings.mode;
+    if (mode == _mode) return;
+    setState(() => _mode = mode);
+    // 🔴 Through `_setTab`, never `setState(() => _tab = …)`. That shortcut is
+    // exactly the bypass its doc comment describes, and it is not a style
+    // preference: `_syncDashboardVisible()` runs OUTSIDE the setState closure,
+    // so a direct assignment leaves gate condition 3 believing the home grid is
+    // on screen — with the IndexedStack keeping the speed card mounted, the
+    // GNSS receiver would keep running and speed would keep landing in history
+    // for the rest of the session, in a mode whose whole point is that those
+    // features are off.
+    //
+    // Also a correctness requirement rather than a courtesy: leaving `_tab` on
+    // `home` while `home` is not in `_visibleTabs` is the -1 assert again.
+    if (mode == AppMode.advanced && _tab == _Tab.home) _setTab(_Tab.devices);
   }
 
   Future<void> _startup() async {
@@ -744,30 +870,23 @@ class _RootShellState extends State<RootShell> {
                   ),
                 ),
               ),
+              // 🔴 All three of these read `_visibleTabs` and NOTHING computes
+              // the visible set a second time (design 0063 §3.4). The menu
+              // position and `_Tab.index` are different numbers now, and the
+              // way this goes wrong is silent: a bar built from a second,
+              // slightly different list would put the user on History when they
+              // tapped Settings, in advanced mode only — so every existing test
+              // (all personal-mode) would stay green.
               child: NavigationBar(
-                selectedIndex: _tab.index,
-                onDestinationSelected: (i) => _setTab(_Tab.values[i]),
+                selectedIndex: _visibleTabs.indexOf(_tab),
+                onDestinationSelected: (i) => _setTab(_visibleTabs[i]),
                 destinations: [
-                  NavigationDestination(
-                    icon: const Icon(Icons.dashboard_outlined),
-                    selectedIcon: const Icon(Icons.dashboard),
-                    label: l10n.navHome,
-                  ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.list_alt_outlined),
-                    selectedIcon: const Icon(Icons.list_alt),
-                    label: l10n.navDevices,
-                  ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.history_outlined),
-                    selectedIcon: const Icon(Icons.history),
-                    label: l10n.navHistory,
-                  ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.settings_outlined),
-                    selectedIcon: const Icon(Icons.settings),
-                    label: l10n.navSettings,
-                  ),
+                  for (final t in _visibleTabs)
+                    NavigationDestination(
+                      icon: Icon(_navIcon(t)),
+                      selectedIcon: Icon(_navSelectedIcon(t)),
+                      label: _navLabel(l10n, t),
+                    ),
                 ],
               ),
             ),
