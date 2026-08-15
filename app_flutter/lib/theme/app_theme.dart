@@ -31,6 +31,20 @@ class AppColors {
 
   /// Foreground used on top of amber fills (mockup `#1a1205`).
   static const Color onAmber = Color(0xFF1A1205);
+
+  /// Foreground used on top of CYAN fills.
+  ///
+  /// Same construction as [onAmber] — the accent's own hue at ~10 % value — so
+  /// the pairing reads as deliberate rather than as a generic black. Derived
+  /// from [cyan]: HSV(175°, .81, .10) → `#051A18`.
+  ///
+  /// Exists because `ColorScheme.onSecondary` had been carrying [onAmber] since
+  /// the theme was written, while `ColorScheme.secondary` is [cyan]: the
+  /// foreground was computed for a different colour than the one it sits on. It
+  /// is a pre-existing flaw, unrelated to any accent work; design 0064 Q10 rules
+  /// that it be fixed on its own so the fix is not reviewed as part of a theme
+  /// change.
+  static const Color onCyan = Color(0xFF051A18);
 }
 
 /// Neutral palette that flips between light and dark. Attached to [ThemeData]
@@ -276,7 +290,7 @@ class AppTheme {
       primary: AppColors.amber,
       onPrimary: AppColors.onAmber,
       secondary: AppColors.cyan,
-      onSecondary: AppColors.onAmber,
+      onSecondary: AppColors.onCyan,
       surface: p.panel,
       onSurface: p.text,
       error: AppColors.danger,
