@@ -470,16 +470,16 @@ class _UnsavedNotice extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.amber,
+                color: context.accent.accent,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               ),
               child: Text(
                 l10n.devicesSave,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.5,
-                  color: AppColors.onAmber,
+                  color: context.accent.onAccent,
                 ),
               ),
             ),

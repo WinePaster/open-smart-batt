@@ -579,7 +579,7 @@ class _DevicesPageState extends State<DevicesPage>
                   : (hiddenCount > 0
                       ? l10n.devicesShowAllWithHidden(hiddenCount)
                       : l10n.devicesShowAll),
-              style: const TextStyle(fontSize: 12, color: AppColors.amber),
+              style: TextStyle(fontSize: 12, color: context.accent.accent),
             ),
           ),
         ),
@@ -683,9 +683,9 @@ class _SubTabs extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return TabBar(
       controller: controller,
-      labelColor: AppColors.amber,
+      labelColor: context.accent.accent,
       unselectedLabelColor: context.colors.muted,
-      indicatorColor: AppColors.amber,
+      indicatorColor: context.accent.accent,
       indicatorSize: TabBarIndicatorSize.tab,
       dividerColor: context.colors.line,
       labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
@@ -823,23 +823,23 @@ class _Header extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (scanning)
-                    const SizedBox(
+                    SizedBox(
                       width: 13,
                       height: 13,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.6,
-                        color: AppColors.amber,
+                        color: context.accent.accent,
                       ),
                     )
                   else
-                    const Icon(Icons.power_settings_new,
-                        size: 13, color: AppColors.amber),
+                    Icon(Icons.power_settings_new,
+                        size: 13, color: context.accent.accent),
                   const SizedBox(width: 6),
                   Text(
                     scanning ? l10n.devicesScanning : l10n.devicesRescan,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.amber,
+                      color: context.accent.accent,
                     ),
                   ),
                 ],
@@ -908,8 +908,8 @@ class _ScanDotState extends State<_ScanDot>
       child: Container(
         width: 7,
         height: 7,
-        decoration: const BoxDecoration(
-          color: AppColors.amber,
+        decoration: BoxDecoration(
+          color: context.accent.accent,
           shape: BoxShape.circle,
         ),
       ),
@@ -989,8 +989,8 @@ class _DeviceRow extends StatelessWidget {
                       border: Border.all(color: context.colors.line),
                       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     ),
-                    child: const Icon(Icons.battery_full,
-                        size: 19, color: AppColors.amber),
+                    child: Icon(Icons.battery_full,
+                        size: 19, color: context.accent.accent),
                   ),
                   const SizedBox(width: 12),
                   // alias + meta + badge (mockup `.dmain`).
@@ -1023,15 +1023,15 @@ class _DeviceRow extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: AppColors.amber,
+                                  color: context.accent.accent,
                                   borderRadius:
                                       BorderRadius.circular(AppTheme.radiusSm),
                                 ),
-                                child: const Text('RCE',
+                                child: Text('RCE',
                                     style: TextStyle(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w800,
-                                        color: AppColors.onAmber)),
+                                        color: context.accent.onAccent)),
                               ),
                             ],
                           ],
@@ -1344,25 +1344,25 @@ class _ConnectButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.amber,
+          color: context.accent.accent,
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: connecting
-            ? const SizedBox(
+            ? SizedBox(
                 width: 14,
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.8,
-                  color: AppColors.onAmber,
+                  color: context.accent.onAccent,
                 ),
               )
             : Text(
                 l10n.devicesConnect,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.5,
-                  color: AppColors.onAmber,
+                  color: context.accent.onAccent,
                 ),
               ),
       ),

@@ -318,7 +318,7 @@ class _Reading extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         letterSpacing: -1,
                         fontFeatures: const [FontFeature.tabularFigures()],
-                        color: held ? colors.muted : AppColors.amber,
+                        color: held ? colors.muted : context.accent.accent,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -404,7 +404,7 @@ class _AccelRow extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Row(
         children: [
-          Icon(icon, size: 15, color: AppColors.cyan),
+          Icon(icon, size: 15, color: context.accent.accentSecondary),
           const SizedBox(width: 6),
           Text(
             l10n.speedCardAccelLabel,

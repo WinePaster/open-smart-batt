@@ -137,6 +137,7 @@ class PvltGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = fraction.clamp(0.0, 1.0);
     final colors = context.colors;
+    final accent = context.accent;
     return SizedBox(
       width: size,
       height: size,
@@ -150,7 +151,7 @@ class PvltGauge extends StatelessWidget {
             curve: Curves.easeOut,
             builder: (context, value, _) => CustomPaint(
               size: Size.square(size),
-              painter: _GaugePainter(value, colors),
+              painter: _GaugePainter(value, colors, accent),
             ),
           ),
           GaugeReadoutStack(
@@ -359,7 +360,7 @@ class GaugeReadoutStack extends StatelessWidget {
                   : MainAxisAlignment.start,
               children: [
                 if (subIcon != null) ...[
-                  Icon(subIcon, size: 13, color: subColor ?? AppColors.cyan),
+                  Icon(subIcon, size: 13, color: subColor ?? context.accent.accentSecondary),
                   const SizedBox(width: 5),
                 ],
                 Flexible(
@@ -371,7 +372,7 @@ class GaugeReadoutStack extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       letterSpacing: 1,
-                      color: subColor ?? AppColors.cyan,
+                      color: subColor ?? context.accent.accentSecondary,
                     ),
                   ),
                 ),
@@ -386,13 +387,19 @@ class GaugeReadoutStack extends StatelessWidget {
 
 /// Paints the tick ring, value arc, pointer and hub (mockup `buildGauge`).
 class _GaugePainter extends CustomPainter {
-  const _GaugePainter(this.fraction, this.colors);
+  const _GaugePainter(this.fraction, this.colors, this.accent);
 
   /// 0..1 sweep fraction.
   final double fraction;
 
   /// Active neutral palette (so the dial repaints per theme).
   final AppPalette colors;
+
+  /// Active accent set (design 0064). Passed IN rather than read from a
+  /// context: a [CustomPainter] has none, and this is the app's signature
+  /// screen — the arc, pointer and hub are the first thing a user looks at
+  /// after changing the colour.
+  final AccentTheme accent;
 
   // Geometry mirrors the mockup: 270° sweep starting at 135°.
   static const double _startDeg = 135;
@@ -451,7 +458,7 @@ class _GaugePainter extends CustomPainter {
         sweep,
         false,
         Paint()
-          ..color = AppColors.amber
+          ..color = accent.accent
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3
           ..strokeCap = StrokeCap.round,
@@ -466,7 +473,7 @@ class _GaugePainter extends CustomPainter {
       center,
       tip,
       Paint()
-        ..color = AppColors.amber
+        ..color = accent.accent
         ..strokeWidth = 2.2
         ..strokeCap = StrokeCap.round,
     );
@@ -481,7 +488,7 @@ class _GaugePainter extends CustomPainter {
       center,
       4,
       Paint()
-        ..color = AppColors.amber
+        ..color = accent.accent
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.6,
     );
@@ -489,5 +496,10 @@ class _GaugePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GaugePainter oldDelegate) =>
-      oldDelegate.fraction != fraction || oldDelegate.colors != colors;
+      oldDelegate.fraction != fraction ||
+      oldDelegate.colors != colors ||
+      // Without this the dial keeps the OLD accent until something else moves
+      // the needle — i.e. the one screen the user is staring at is the one
+      // that appears not to have changed.
+      oldDelegate.accent != accent;
 }

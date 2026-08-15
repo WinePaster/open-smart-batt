@@ -184,7 +184,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _dealer,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   keyboardType: TextInputType.number,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
@@ -197,7 +197,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _password,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   obscureText: true,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
@@ -212,7 +212,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _cb,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     labelText: l10n.releaseDialogCbHint,
@@ -224,7 +224,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _pwsum,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
@@ -352,8 +352,8 @@ class _Btn extends StatelessWidget {
         decoration: BoxDecoration(
           color: filled
               ? (enabled
-                  ? AppColors.amber
-                  : AppColors.amber.withValues(alpha: 0.4))
+                  ? context.accent.accent
+                  : context.accent.accent.withValues(alpha: 0.4))
               : context.colors.panel2,
           border: Border.all(
             color: filled ? Colors.transparent : context.colors.line,
@@ -365,7 +365,7 @@ class _Btn extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: filled ? AppColors.onAmber : context.colors.muted,
+            color: filled ? context.accent.onAccent : context.colors.muted,
           ),
         ),
       ),

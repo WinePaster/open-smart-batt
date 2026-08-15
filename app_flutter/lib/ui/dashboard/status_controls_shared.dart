@@ -581,8 +581,8 @@ class ControlButton extends StatelessWidget {
       // tone" — it is the app's filled primary action, the same thing
       // `ElevatedButtonTheme` paints. It follows the accent (design 0064).
       case ControlButtonVariant.primary:
-        bg = AppColors.amber;
-        fg = AppColors.onAmber;
+        bg = context.accent.accent;
+        fg = context.accent.onAccent;
         border = Colors.transparent;
       case ControlButtonVariant.ghost:
         bg = context.colors.panel2;

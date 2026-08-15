@@ -1252,7 +1252,7 @@ void _showAbout(BuildContext context) {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(l10n.commonClose, style: const TextStyle(color: AppColors.amber)),
+          child: Text(l10n.commonClose, style: TextStyle(color: context.accent.accent)),
         ),
       ],
     ),
@@ -1292,10 +1292,10 @@ class _SmallSpinner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
       width: 16,
       height: 16,
-      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.amber),
+      child: CircularProgressIndicator(strokeWidth: 2, color: context.accent.accent),
     );
   }
 }
@@ -1327,7 +1327,7 @@ Future<bool> _confirm(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
             confirmLabel ?? l10n.commonConfirm,
-            style: TextStyle(color: danger ? AppSemantics.danger : AppColors.amber),
+            style: TextStyle(color: danger ? AppSemantics.danger : context.accent.accent),
           ),
         ),
       ],

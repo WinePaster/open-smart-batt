@@ -324,16 +324,16 @@ class ConnectionAdviceCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.amber,
+                  color: context.accent.accent,
                   borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 child: Text(
                   retryLabel,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.onAmber,
+                    color: context.accent.onAccent,
                   ),
                 ),
               ),
@@ -394,7 +394,7 @@ class _ConnectionPulseIconState extends State<ConnectionPulseIcon>
                     height: 96,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.amber),
+                      border: Border.all(color: context.accent.accent),
                     ),
                   ),
                 ),
@@ -402,12 +402,12 @@ class _ConnectionPulseIconState extends State<ConnectionPulseIcon>
             },
           ),
           if (widget.working)
-            const SizedBox(
+            SizedBox(
               width: 112,
               height: 112,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.amber,
+                color: context.accent.accent,
               ),
             ),
           Container(
@@ -418,7 +418,7 @@ class _ConnectionPulseIconState extends State<ConnectionPulseIcon>
               border: Border.all(color: context.colors.line),
               borderRadius: BorderRadius.circular(24),
             ),
-            child: const Icon(Icons.bluetooth, size: 42, color: AppColors.amber),
+            child: Icon(Icons.bluetooth, size: 42, color: context.accent.accent),
           ),
         ],
       ),

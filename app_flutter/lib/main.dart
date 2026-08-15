@@ -893,21 +893,21 @@ class _RootShellState extends State<RootShell> {
           : NavigationBarTheme(
               data: NavigationBarThemeData(
                 backgroundColor: context.colors.panel,
-                indicatorColor: AppColors.amber.withValues(alpha: 0.16),
+                indicatorColor: context.accent.accent.withValues(alpha: 0.16),
                 labelTextStyle: WidgetStateProperty.resolveWith(
                   (states) => TextStyle(
                     fontSize: 10,
                     letterSpacing: 1,
                     fontWeight: FontWeight.w600,
                     color: states.contains(WidgetState.selected)
-                        ? AppColors.amber
+                        ? context.accent.accent
                         : context.colors.muted,
                   ),
                 ),
                 iconTheme: WidgetStateProperty.resolveWith(
                   (states) => IconThemeData(
                     color: states.contains(WidgetState.selected)
-                        ? AppColors.amber
+                        ? context.accent.accent
                         : context.colors.muted,
                   ),
                 ),
@@ -1042,9 +1042,9 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             decoration: BoxDecoration(
               color: context.colors.panel,
               borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-              border: Border.all(color: AppColors.amber, width: 1.4),
+              border: Border.all(color: context.accent.accent, width: 1.4),
             ),
-            child: const Icon(Icons.bolt, size: 18, color: AppColors.amber),
+            child: Icon(Icons.bolt, size: 18, color: context.accent.accent),
           ),
           const SizedBox(width: 10),
           Column(
@@ -1186,9 +1186,9 @@ class _DisclaimerDialog extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: context.colors.panel2,
                   borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                  border: Border.all(color: AppColors.amber, width: 1.4),
+                  border: Border.all(color: context.accent.accent, width: 1.4),
                 ),
-                child: const Icon(Icons.bolt, size: 30, color: AppColors.amber),
+                child: Icon(Icons.bolt, size: 30, color: context.accent.accent),
               ),
               const SizedBox(height: 14),
               Text(
@@ -1205,10 +1205,10 @@ class _DisclaimerDialog extends StatelessWidget {
               Text(
                 l10n.disclaimerCommunityEdition,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   letterSpacing: 3,
-                  color: AppColors.amber,
+                  color: context.accent.accent,
                 ),
               ),
               const SizedBox(height: 16),

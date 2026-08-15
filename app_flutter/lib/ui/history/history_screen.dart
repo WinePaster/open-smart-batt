@@ -394,7 +394,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ?_deviceBar(),
         Expanded(
           child: RefreshIndicator(
-            color: AppColors.amber,
+            color: context.accent.accent,
             backgroundColor: context.colors.panel,
             onRefresh: () async => _reload(),
             child: FutureBuilder<_HistoryData>(
@@ -402,11 +402,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return _scrollable(
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 80),
                       child: Center(
                         child:
-                            CircularProgressIndicator(color: AppColors.amber),
+                            CircularProgressIndicator(color: context.accent.accent),
                       ),
                     ),
                   );
@@ -537,7 +537,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       onTap: _toggleWarning,
     );
     final export = _exporting
-        ? const SizedBox(
+        ? SizedBox(
             width: 28,
             height: 28,
             child: Center(
@@ -545,7 +545,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: AppColors.amber),
+                    strokeWidth: 2, color: context.accent.accent),
               ),
             ),
           )
@@ -971,18 +971,18 @@ class _TrendCardState extends State<_TrendCard> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _LegendDot(color: AppColors.amber, label: l10n.historyLegendVoltage),
+            _LegendDot(color: context.accent.accent, label: l10n.historyLegendVoltage),
             if (hasTemp) ...[
               const SizedBox(width: 16),
               _LegendDot(
-                  color: AppColors.cyan, label: l10n.historyLegendTemperature),
+                  color: context.accent.accentSecondary, label: l10n.historyLegendTemperature),
             ],
             // FB-74. Unlabelled shading reads as a rendering flourish; this is
             // the one thing on the chart that says an instantaneous event is
             // visible at all, so it gets a legend entry rather than a footnote.
             const SizedBox(width: 16),
             _LegendBand(
-                color: AppColors.amber, label: l10n.historyLegendRange),
+                color: context.accent.accent, label: l10n.historyLegendRange),
           ],
         ),
         const SizedBox(height: 8),
@@ -1003,8 +1003,8 @@ class _TrendCardState extends State<_TrendCard> {
                     multiDay: widget.multiDay,
                     bucketMs: widget.bucketMs,
                     selected: _selected,
-                    vColor: AppColors.amber,
-                    tColor: AppColors.cyan,
+                    vColor: context.accent.accent,
+                    tColor: context.accent.accentSecondary,
                     grid: context.colors.line,
                     text: context.colors.muted,
                   ),
@@ -1168,14 +1168,14 @@ class _StatsStrip extends StatelessWidget {
         : '${_toDisplayTemp(x, tempUnit).toStringAsFixed(0)}${_tempUnitLabel(tempUnit)}';
     return Column(
       children: [
-        _statRow(context, AppColors.amber, l10n.historyLegendVoltage,
+        _statRow(context, context.accent.accent, l10n.historyLegendVoltage,
             min: v(stats.minPvlt),
             avg: v(stats.avgPvlt),
             max: v(stats.maxPvlt),
             l10n: l10n),
         if (hasTemp) ...[
           const SizedBox(height: 6),
-          _statRow(context, AppColors.cyan, l10n.historyLegendTemperature,
+          _statRow(context, context.accent.accentSecondary, l10n.historyLegendTemperature,
               min: t(stats.minTemp),
               avg: t(stats.avgTemp),
               max: t(stats.maxTemp),
@@ -1306,6 +1306,12 @@ CustomPainter historyTrendPainterForTest({
   bool multiDay = false,
   int bucketMs = 60000,
   int? selected,
+  // The test asserts geometry, not hue, so the DEFAULT set is the honest
+  // stand-in — but it is a parameter rather than a literal so a colour test
+  // can drive the painter with a non-amber set, which is the only way the
+  // "voltage series still follows the theme" regression is visible at all
+  // (in amber, every one of these colours is what it always was).
+  AccentTheme accent = AccentTheme.amber,
 }) =>
     _TrendPainter(
       buckets: buckets,
@@ -1314,8 +1320,8 @@ CustomPainter historyTrendPainterForTest({
       multiDay: multiDay,
       bucketMs: bucketMs,
       selected: selected,
-      vColor: AppColors.amber,
-      tColor: AppColors.cyan,
+      vColor: accent.accent,
+      tColor: accent.accentSecondary,
       grid: const Color(0xFF333333),
       text: const Color(0xFF888888),
     );
@@ -1769,7 +1775,7 @@ class _StatusTag extends StatelessWidget {
     late final Color fg;
     late final String label;
     // 🔴 Three row states, three fixed status colours (design 0064). `event`
-    // used to be `AppColors.cyan` — the same constant the temperature series
+    // used to be `context.accent.accentSecondary` — the same constant the temperature series
     // and the gauge sub-line use, which now follow the accent. Splitting the
     // name is what stops the next person taking this switch along with them.
     switch (status) {

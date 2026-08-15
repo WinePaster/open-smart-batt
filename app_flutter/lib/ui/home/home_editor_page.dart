@@ -372,8 +372,8 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
             // colour would have to assert the button's property and would then
             // pass even if the icon overrode it. The thing that paints is the
             // thing that carries the value.
-            icon: const Icon(Icons.help_outline,
-                size: 19, color: AppColors.amber),
+            icon: Icon(Icons.help_outline,
+                size: 19, color: context.accent.accent),
           ),
           const SizedBox(width: 4),
         ],
@@ -740,7 +740,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                         ? Icons.battery_full
                         : homeModuleIcon(tile.module!),
                     size: 18,
-                    color: AppColors.amber,
+                    color: context.accent.accent,
                   ),
                   title: Text(label, style: const TextStyle(fontSize: 13)),
                   onTap: () {
@@ -792,7 +792,7 @@ class _DropLineState extends State<_DropLine> {
             duration: const Duration(milliseconds: 120),
             height: _over ? 3 : 1,
             decoration: BoxDecoration(
-              color: _over ? AppColors.amber : Colors.transparent,
+              color: _over ? context.accent.accent : Colors.transparent,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -877,7 +877,7 @@ class _EditorCellState extends State<_EditorCell> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 border: Border.all(
-                  color: _over ? AppColors.amber : Colors.transparent,
+                  color: _over ? context.accent.accent : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -983,7 +983,7 @@ class _EmptySlot extends StatelessWidget {
         // `widgets/dashed_border.dart` for why the picture may not have its
         // own dash pattern.
         painter: DashedBorderPainter(
-          color: highlighted ? AppColors.amber : context.colors.line,
+          color: highlighted ? context.accent.accent : context.colors.line,
           radius: AppTheme.radiusMd,
         ),
         child: const SizedBox(height: 86, width: double.infinity),
@@ -1030,14 +1030,14 @@ class _DragGhost extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
             color: context.colors.panel,
-            border: Border.all(color: AppColors.amber),
+            border: Border.all(color: context.accent.accent),
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(m == null ? Icons.battery_full : homeModuleIcon(m),
-                  size: 15, color: AppColors.amber),
+                  size: 15, color: context.accent.accent),
               const SizedBox(width: 7),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 150),
@@ -1123,7 +1123,7 @@ class _StyleThumb extends StatelessWidget {
           color: colors.bg,
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(
-            color: selected ? AppColors.amber : colors.line,
+            color: selected ? context.accent.accent : colors.line,
             width: selected ? 2 : 1,
           ),
         ),
@@ -1164,7 +1164,7 @@ class _StyleThumb extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? AppColors.amber : colors.text,
+                color: selected ? context.accent.accent : colors.text,
               ),
             ),
           ],

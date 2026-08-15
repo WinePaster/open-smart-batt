@@ -498,9 +498,9 @@ class _PowerPathRowState extends State<PowerPathRow> {
         return _badge(
           context,
           l10n.usbPortTypeA,
-          fill: AppColors.amber,
-          border: AppColors.amber,
-          textColor: AppColors.onAmber,
+          fill: context.accent.accent,
+          border: context.accent.accent,
+          textColor: context.accent.onAccent,
         );
       }
       // Idle, charging, or no reading: nothing to eliminate from. Draw nothing
@@ -512,18 +512,18 @@ class _PowerPathRowState extends State<PowerPathRow> {
     return _badge(
       context,
       l10n.usbPortTypeC,
-      fill: active ? AppColors.amber : null,
-      border: active ? AppColors.amber : colors.line,
-      textColor: active ? AppColors.onAmber : colors.text,
+      fill: active ? context.accent.accent : null,
+      border: active ? context.accent.accent : colors.line,
+      textColor: active ? context.accent.onAccent : colors.text,
     );
   }
 
   Widget _pdBadge(BuildContext context, AppLocalizations l10n) => _badge(
         context,
         l10n.powerPathPd,
-        fill: AppColors.cyan.withValues(alpha: 0.18),
-        border: AppColors.cyan,
-        textColor: AppColors.cyan,
+        fill: context.accent.accentSecondary.withValues(alpha: 0.18),
+        border: context.accent.accentSecondary,
+        textColor: context.accent.accentSecondary,
       );
 
   Widget _badge(BuildContext context, String label,

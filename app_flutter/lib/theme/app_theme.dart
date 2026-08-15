@@ -4,27 +4,43 @@
 /// CSS `:root`): carbon background, thin frames, amber accent, cyan secondary,
 /// tabular-numeric monospace for readouts. Portrait-locked app.
 ///
-/// The brand ACCENTS ([AppColors]) are identical in both themes; only the
-/// NEUTRALS flip. Neutrals live in the [AppPalette] [ThemeExtension] attached to
-/// both [ThemeData]s — read them via `context.colors` so every widget (Material
-/// and custom-painted alike) follows the effective brightness.
+/// THREE kinds of colour, and the difference between them is who decides:
+///
+/// * **neutrals** — [AppPalette], decided by light/dark, read via
+///   `context.colors`;
+/// * **status** — [AppSemantics], decided by us and never changed, read
+///   directly because they are `const`;
+/// * **accent** — [AccentTheme] (`accent_theme.dart`), decided by the USER
+///   since design 0064, read via `context.accent`.
+///
+/// Both of the context-driven ones are [ThemeExtension]s on the same
+/// [ThemeData], so every widget — Material and custom-painted alike — follows
+/// the effective brightness AND the chosen accent from one lookup.
+///
+/// ⚠️ The accent used to live here as `AppColors.amber`, `const` so that
+/// accent-only widgets could stay `const`. That was the point of it, and
+/// design 0064 is what it cost: those `const` constructors had to come apart
+/// one by one before the colour could vary at runtime.
 library;
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'accent_theme.dart';
 import 'card_style.dart';
 
 export 'accent_theme.dart';
 export 'card_style.dart';
 
-/// Brand accent palette (mockup CSS custom properties). IDENTICAL in light and
-/// dark — kept `const` so accent-only widgets can stay `const`.
+/// The pre-design-0064 brand palette: the DEFAULT accent set, spelled out.
 ///
-/// 🔑 BRAND ONLY. Colours that state a STATUS live in [AppSemantics], even when
-/// the two hold the same value — see that class for why the duplication is the
-/// point.
+/// 🔴 Not for use in widgets. Live accent colours come from `context.accent`
+/// ([AccentTheme]); these constants remain only as the source of
+/// [AccentTheme.amber]'s values and as the anchor for the test that proves an
+/// upgrading user's app did not repaint itself (G3). A widget that reads
+/// `AppColors.amber` is a widget that ignores the user's choice —
+/// `accent_classification_test.dart` fails the build for it.
 class AppColors {
   AppColors._();
 
@@ -35,19 +51,16 @@ class AppColors {
   /// Foreground used on top of amber fills (mockup `#1a1205`).
   static const Color onAmber = Color(0xFF1A1205);
 
-  /// Foreground used on top of CYAN fills.
-  ///
-  /// Same construction as [onAmber] — the accent's own hue at ~10 % value — so
-  /// the pairing reads as deliberate rather than as a generic black. Derived
-  /// from [cyan]: HSV(175°, .81, .10) → `#051A18`.
-  ///
-  /// Exists because `ColorScheme.onSecondary` had been carrying [onAmber] since
-  /// the theme was written, while `ColorScheme.secondary` is [cyan]: the
-  /// foreground was computed for a different colour than the one it sits on. It
-  /// is a pre-existing flaw, unrelated to any accent work; design 0064 Q10 rules
-  /// that it be fixed on its own so the fix is not reviewed as part of a theme
-  /// change.
-  static const Color onCyan = Color(0xFF051A18);
+  // 📌 `onCyan` (#051A18) lived here for exactly one commit. Design 0064 Q10
+  // introduced it to repair `ColorScheme.onSecondary`, which had been carrying
+  // [onAmber] while `secondary` was [cyan]. Q1 then made `secondary` part of
+  // the accent set, so its foreground had to become part of the set too — and
+  // criterion V3 (`accent_theme.dart`) is what makes ONE `onAccent` legitimate
+  // on both of a set's colours, checked per set rather than assumed. The
+  // constant went away; the requirement it stood for is now enforced per
+  // theme, and `theme_color_scheme_test.dart` drives a NON-amber set so the
+  // old flaw cannot come back unnoticed.
+
 }
 
 /// Colours that state a STATUS. The user never picks these.
@@ -317,18 +330,30 @@ class AppTheme {
   static const double radius = radiusLg;
 
   /// Industrial dark theme (the original mockup look).
-  static ThemeData dark() => _build(Brightness.dark, AppPalette.dark);
+  static ThemeData dark({AccentTheme accent = AccentTheme.amber}) =>
+      _build(Brightness.dark, AppPalette.dark, accent);
 
   /// Industrial light theme (high-contrast counterpart, DEFAULT).
-  static ThemeData light() => _build(Brightness.light, AppPalette.light);
+  static ThemeData light({AccentTheme accent = AccentTheme.amber}) =>
+      _build(Brightness.light, AppPalette.light, accent);
 
-  static ThemeData _build(Brightness brightness, AppPalette p) {
+  /// The accent set is a PARAMETER with a default rather than a required
+  /// argument: every existing caller (including ~40 widget tests and the
+  /// pre-services startup failure screen) means "the shipped look", and making
+  /// them all spell that out would bury the handful of call sites that
+  /// genuinely choose.
+  static ThemeData _build(Brightness brightness, AppPalette p, AccentTheme a) {
     final scheme = ColorScheme(
       brightness: brightness,
-      primary: AppColors.amber,
-      onPrimary: AppColors.onAmber,
-      secondary: AppColors.cyan,
-      onSecondary: AppColors.onCyan,
+      primary: a.accent,
+      onPrimary: a.onAccent,
+      secondary: a.accentSecondary,
+      // design 0064 Q10 fixed this to a cyan-correct constant while
+      // `secondary` was still a constant; Q1 then made `secondary` part of
+      // the theme, so the foreground has to follow it. One `onAccent` serves
+      // both colours — that is criterion V3 in `accent_theme.dart`, checked
+      // per set, and the reason this is a triple and not a quadruple.
+      onSecondary: a.onAccent,
       surface: p.panel,
       onSurface: p.text,
       error: AppSemantics.danger,
@@ -339,7 +364,7 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      extensions: [p],
+      extensions: [p, a],
       scaffoldBackgroundColor: p.bg,
       canvasColor: p.bg,
       dividerColor: p.line,
@@ -361,15 +386,15 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: p.panel,
-        selectedItemColor: AppColors.amber,
+        selectedItemColor: a.accent,
         unselectedItemColor: p.muted,
         type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.amber,
-          foregroundColor: AppColors.onAmber,
+          backgroundColor: a.accent,
+          foregroundColor: a.onAccent,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusMd),
@@ -390,13 +415,13 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
           (s) => s.contains(WidgetState.selected)
-              ? AppColors.onAmber
+              ? a.onAccent
               : (brightness == Brightness.dark
                   ? const Color(0xFFDFE5EE)
                   : Colors.white),
         ),
         trackColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? AppColors.amber : p.panel2,
+          (s) => s.contains(WidgetState.selected) ? a.accent : p.panel2,
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -415,7 +440,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: const BorderSide(color: AppColors.amber),
+          borderSide: BorderSide(color: a.accent),
         ),
       ),
       textTheme: TextTheme(

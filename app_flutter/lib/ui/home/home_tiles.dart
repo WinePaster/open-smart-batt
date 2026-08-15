@@ -218,8 +218,8 @@ class _AddDeviceTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 26),
           child: Column(
             children: [
-              const Icon(Icons.add_circle_outline,
-                  size: 36, color: AppColors.amber),
+              Icon(Icons.add_circle_outline,
+                  size: 36, color: context.accent.accent),
               const SizedBox(height: 12),
               Text(
                 l10n.homeAddFirstDevice,
@@ -293,7 +293,7 @@ class _DeviceTile extends StatelessWidget {
                   ),
                   child: Icon(Icons.battery_full,
                       size: 17,
-                      color: live ? AppColors.amber : context.colors.muted),
+                      color: live ? context.accent.accent : context.colors.muted),
                 ),
                 const SizedBox(width: 9),
                 Expanded(

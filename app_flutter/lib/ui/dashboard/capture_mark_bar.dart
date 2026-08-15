@@ -112,8 +112,8 @@ class _CaptureMarkBarState extends State<CaptureMarkBar> {
               padding: const EdgeInsets.fromLTRB(13, 11, 11, 11),
               child: Row(
                 children: [
-                  const Icon(Icons.bookmark_add_outlined,
-                      size: 16, color: AppColors.amber),
+                  Icon(Icons.bookmark_add_outlined,
+                      size: 16, color: context.accent.accent),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(

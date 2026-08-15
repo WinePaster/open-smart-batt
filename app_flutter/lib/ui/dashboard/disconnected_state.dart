@@ -249,12 +249,12 @@ class _QuickPick extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 if (busy)
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: AppColors.amber,
+                      color: context.accent.accent,
                     ),
                   )
                 else
@@ -291,8 +291,8 @@ class _DeviceGlyph extends StatelessWidget {
         border: Border.all(color: context.colors.line),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
-      child: const Icon(Icons.battery_charging_full,
-          size: 19, color: AppColors.amber),
+      child: Icon(Icons.battery_charging_full,
+          size: 19, color: context.accent.accent),
     );
   }
 }
