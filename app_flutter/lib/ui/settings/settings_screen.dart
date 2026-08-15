@@ -151,6 +151,27 @@ class _DisplayCard extends StatelessWidget {
       headingIcon: Icons.speed,
       child: Column(
         children: [
+          // 🔑 FIRST in the card, ahead of the theme row (design 0063 §3.0.4).
+          // Not cosmetic ordering: this control decides whether two rows BELOW
+          // it can be touched at all, and a switch that greys out because of
+          // something further down the page reads as a fault rather than as a
+          // consequence.
+          //
+          // It also has to be somewhere in 設定 specifically, because 設定 is
+          // the only tab present in BOTH modes — it is the way back for a user
+          // who turned advanced mode on and lost the grid (0063 P6).
+          SettingsRow(
+            label: l10n.settingsAppModeLabel,
+            sub: l10n.settingsAppModeSub,
+            trailing: SegmentedControl<AppMode>(
+              selected: s.mode,
+              onChanged: s.setMode,
+              options: [
+                (value: AppMode.personal, label: l10n.settingsAppModePersonal),
+                (value: AppMode.advanced, label: l10n.settingsAppModeAdvanced),
+              ],
+            ),
+          ),
           SettingsRow(
             label: l10n.settingsThemeLabel,
             sub: l10n.settingsThemeSub,
@@ -278,15 +299,30 @@ class _SpeedDetectionRowState extends State<_SpeedDetectionRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // 🔴 The STORED switch, never the effective value (design 0063 Q9). While
+    // advanced mode withholds the feature the row still shows what the user
+    // chose, so switching back is visibly a restoration rather than a fresh
+    // decision. The screen answers "what did I say"; the export header answers
+    // "what actually happened", and only the second one folds the mode in.
     final on = context.select<SettingsController, bool>(
         (s) => s.settings.speedDetection);
+    final blocked = context.select<SettingsController, bool>(
+        (s) => s.mode == AppMode.advanced);
     return SettingsRow(
       label: l10n.settingsSpeedDetectionLabel,
-      sub: l10n.settingsSpeedDetectionSub,
-      subHighlight: !on,
+      // 🔑 The sub-line CHANGES, it does not merely grey out. A disabled switch
+      // with its usual caption underneath is indistinguishable from a broken
+      // one — which is the "the feature vanished and nobody knows why" failure
+      // this project has warned about in its own design docs — and in a test it
+      // looks identical too. Naming the mode is what makes it an answer.
+      sub: blocked
+          ? l10n.settingsDisabledByAdvancedMode
+          : l10n.settingsSpeedDetectionSub,
+      subHighlight: blocked || !on,
       trailing: _Toggle(
         value: on,
-        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
+        onChanged:
+            (_busy || blocked) ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }
@@ -341,15 +377,21 @@ class _GMeterRowState extends State<_GMeterRow> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // Stored switch, not effective value — see [_SpeedDetectionRow.build].
     final on = context.select<SettingsController, bool>(
         (s) => s.settings.gMeterEnabled);
+    final blocked = context.select<SettingsController, bool>(
+        (s) => s.mode == AppMode.advanced);
     return SettingsRow(
       label: l10n.settingsGMeterLabel,
-      sub: l10n.settingsGMeterSub,
-      subHighlight: !on,
+      sub: blocked
+          ? l10n.settingsDisabledByAdvancedMode
+          : l10n.settingsGMeterSub,
+      subHighlight: blocked || !on,
       trailing: _Toggle(
         value: on,
-        onChanged: _busy ? null : (v) => unawaited(_onChanged(v)),
+        onChanged:
+            (_busy || blocked) ? null : (v) => unawaited(_onChanged(v)),
       ),
     );
   }

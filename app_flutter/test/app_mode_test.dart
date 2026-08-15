@@ -32,6 +32,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
@@ -45,6 +46,7 @@ import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/home/home_page.dart';
 import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
+import 'package:open_smart_batt/ui/widgets/industrial.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Inert BleService — copied from `nav_shell_test.dart`, same reason: these
@@ -105,6 +107,25 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
 
+  setUp(() {
+    // Speed detection ON (H8 needs it) opens the GNSS gate, which asks
+    // permission_handler for a status — and there is no plugin behind that
+    // channel in a unit test, so the raised `MissingPluginException` fails
+    // whichever test happens to be running. Answered `denied` (index 0)
+    // because these tests are about the SWITCH and the mode, never about a
+    // location fix; a granted status would start a position stream with no
+    // platform behind it either.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            (call) async => 0);
+    addTearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            null));
+  });
+
   /// Let the real (ffi) database finish whatever the last frame started.
   Future<void> drain(WidgetTester tester) async {
     await tester.runAsync(
@@ -129,14 +150,15 @@ void main() {
       );
       services = await AppServices.create(
           appDatabase: appDb, ble: _FakeBleService());
-      // 🔴 Written UNCONDITIONALLY, personal included. `inMemoryDatabasePath`
+      // 🔴 The WHOLE row is rewritten, not just the mode. `inMemoryDatabasePath`
       // is not a fresh database per test in this process — the settings row
-      // survives, so a helper that only wrote the non-default value would let
-      // one test's `advanced` become the next test's starting state. That cost
-      // a confusing red: H5 opened with no 主頁 because H3 had left the row on
-      // `advanced`, which looks exactly like the shell failing to honour
-      // personal mode.
-      await services.settings.setMode(mode);
+      // survives — so anything a previous test switched on is still on. Both
+      // failure modes were hit while writing this file: H5 opened with no 主頁
+      // because H3 had left `advanced` behind (which looks exactly like the
+      // shell ignoring personal mode), and a later test raised a permission
+      // plugin exception because H8's `speedDetection: true` had outlived it.
+      await services.settings
+          .update(AppSettings.defaults.copyWith(mode: mode));
     });
     await tester.pumpWidget(OpenSmartBattApp(services: services));
     await tester.pump();
@@ -416,6 +438,96 @@ void main() {
       // menu change, not for a page change. Only the -1 case forces a move.
       expect(find.byType(DevicesPage), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('H7/H8: the two switches in advanced mode', () {
+    /// Open 設定 and hand back the row containing [label].
+    Future<Finder> settingsRow(WidgetTester tester, String label) async {
+      await tester.tap(find.text('設定'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+      final row = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(SettingsRow),
+      );
+      // Scrolled into view first: `find.descendant(... Switch)` reads the
+      // widget from the ELEMENT tree, which a ListView will not have built for
+      // an off-screen row — the failure would be "no Switch found", i.e. it
+      // would look like the control is missing rather than merely unbuilt.
+      await tester.scrollUntilVisible(row, 120,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pump();
+      return row;
+    }
+
+    Switch switchIn(WidgetTester tester, Finder row) => tester.widget<Switch>(
+        find.descendant(of: row, matching: find.byType(Switch)));
+
+    testWidgets('H7: both are disabled and SAY WHY', (tester) async {
+      // 🔑 "Disabled" and "broken" look the same — on screen and in a test.
+      // Design 0063 Q3 asks for a control the user can see is switched off BY
+      // THE MODE, so the assertion has to cover the caption as well as the
+      // `onChanged`. Half of this (the null) would pass on a row that greyed
+      // out silently, which is the outcome the ruling exists to prevent.
+      final services = await pumpShell(tester, mode: AppMode.advanced);
+      await tester.runAsync(() async {
+        await services.settings.setSpeedDetection(true);
+        await services.settings.setGMeterEnabled(true);
+      });
+      await tester.pump();
+
+      for (final label in ['速度偵測', 'G 值錶']) {
+        final row = await settingsRow(tester, label);
+        expect(switchIn(tester, row).onChanged, isNull, reason: label);
+        final sub = tester.widget<SettingsRow>(row).sub;
+        expect(sub, isNotNull, reason: label);
+        expect(sub, contains('進階'),
+            reason: '$label must name the mode that turned it off, not just '
+                'go grey — a caption that still describes the feature is how '
+                'a withdrawn function becomes an apparent fault');
+      }
+    });
+
+    testWidgets('H8: they still show the STORED value', (tester) async {
+      // Design 0063 Q9's user-visible half. If someone "helpfully" points these
+      // at the effective values, a user who tries advanced mode finds both
+      // switches off when they come back — their own settings, apparently
+      // erased by looking at another screen. Nothing would be logged and no
+      // export would disagree; only this test would.
+      final services = await pumpShell(tester, mode: AppMode.personal);
+      await tester.runAsync(() async {
+        await services.settings.setSpeedDetection(true);
+        await services.settings.setGMeterEnabled(true);
+        await services.settings.setMode(AppMode.advanced);
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      for (final label in ['速度偵測', 'G 值錶']) {
+        final row = await settingsRow(tester, label);
+        expect(switchIn(tester, row).value, isTrue,
+            reason: '$label shows what the user said, not what is running');
+      }
+      // And the model agrees that the feature is nonetheless off.
+      expect(services.settings.settings.speedDetectionEffective, isFalse);
+      expect(services.settings.settings.gMeterEffective, isFalse);
+    });
+
+    testWidgets('the mode row itself is reachable in both modes', (tester) async {
+      // P6: advanced mode keeps 設定 precisely so the way back exists. If this
+      // row were ever gated on the mode, the feature would be a one-way door.
+      for (final mode in AppMode.values) {
+        await pumpShell(tester, mode: mode);
+        final row = await settingsRow(tester, '模式');
+        expect(
+          tester.widget<SegmentedControl<AppMode>>(find.descendant(
+              of: row, matching: find.byType(SegmentedControl<AppMode>))),
+          isA<SegmentedControl<AppMode>>()
+              .having((c) => c.selected, 'selected', mode),
+        );
+      }
     });
   });
 

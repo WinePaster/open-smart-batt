@@ -1712,6 +1712,36 @@ abstract class AppLocalizations {
   /// **'Display'**
   String get settingsDisplayHeading;
 
+  /// design 0063. Deliberately just 'Mode' rather than 'App mode' or 'Display mode': it is the first row of the Display card and the sub-line says what it does. 🔴 The VALUE labels are the ones that were argued over — see settingsAppModeAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode'**
+  String get settingsAppModeLabel;
+
+  /// It names ALL THREE consequences, not just the tab. Design 0063 Q3 ruled the two features are genuinely disabled rather than merely hidden, so a sub-line mentioning only the tab would leave the user to discover the rest by finding two switches they cannot touch. This row sits FIRST in the card because it changes the availability of two rows below it, and a control should be read before what it governs.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced mode removes 主頁 (Home) from the bottom menu, and turns off speed detection and the G meter with it.'**
+  String get settingsAppModeSub;
+
+  /// No description provided for @settingsAppModePersonal.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal'**
+  String get settingsAppModePersonal;
+
+  /// 🔴 It was 'Diagnostic' throughout design and was renamed on the owner's ruling (design 0063 §0.8 Q8). The mode diagnoses nothing — it is three ordinary tabs — so 'Diagnostic' would send people looking for raw frames and undecoded fields that are not there. 'Advanced' promises only what it delivers: skip the dashboard, go straight to the units.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get settingsAppModeAdvanced;
+
+  /// design 0063 Q3 / §3.0.4. A greyed-out switch with no explanation is indistinguishable from a broken one, which is what the project's own warning about silently vanishing features is about. The second sentence is the part that matters: it promises the stored choice is still there (Q9), which is exactly what the switch's own position is showing while it is disabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced mode has turned this off. Switch back to Personal to restore your setting.'**
+  String get settingsDisabledByAdvancedMode;
+
   /// No description provided for @settingsThemeLabel.
   ///
   /// In en, this message translates to:
