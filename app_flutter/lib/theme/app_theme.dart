@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import 'card_style.dart';
 
+export 'accent_theme.dart';
 export 'card_style.dart';
 
 /// Brand accent palette (mockup CSS custom properties). IDENTICAL in light and
