@@ -286,6 +286,39 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     });
   }
 
+  /// Re-run the three queries, ignoring the P-4 cache (owner ruling 2026-08-16).
+  ///
+  /// 🔴 **This block does not refresh itself, and that — not the 30 s TTL — was
+  /// the real gap.** There is no timer and no listener here: the queries run on
+  /// `initState`, when `deviceId` changes, and when the range changes. Sit on a
+  /// device page while it charges and the section shows the snapshot it took
+  /// when you arrived, cache or no cache. Dropping [kDeviceHistoryCacheTtl] to
+  /// zero would not have fixed that; only an explicit re-query does.
+  ///
+  /// ⚠️ **A button rather than pull-to-refresh, and that is forced.**
+  /// `RefreshIndicator` needs a Scrollable *below* it, and this widget is a
+  /// [Column] hosted inside somebody else's scroll view — five of them
+  /// (two `ListView`s, two `SingleChildScrollView`s, and `OneScreenReport`).
+  /// Pull would have to wrap each host and then reach back in here, and on four
+  /// of those hosts the rest of the page is already live, so "pull to refresh"
+  /// would promise something only one block on the page can do.
+  ///
+  /// 🔑 [_visibleRows] is deliberately NOT reset. The user asked for newer data,
+  /// not for their place in the list back — unlike [_setRange], where the query
+  /// itself changes and the old offset means nothing.
+  // 🔴 A BLOCK body, not `setState(() => _future = _load(...))`. The arrow form
+  // returns the assigned value — a `Future` — and `setState` asserts against a
+  // callback that returns one ("Maybe it is marked as async"). The assertion
+  // fires inside the gesture handler, so the tap logs an exception and the
+  // rebuild simply never happens: the button looks wired, `_load` even runs and
+  // returns the newer rows, and the screen does not change. Cost me a bisect;
+  // `_setRange` above already had it right.
+  void _refresh() {
+    setState(() {
+      _future = _load(force: true);
+    });
+  }
+
   /// Client-side only — the filter runs over rows already fetched, exactly as
   /// it does on the History tab. No re-query, and therefore no throttle to
   /// think about.
@@ -542,6 +575,19 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // First in the group: it acts on the whole block, while the two
+                // controls after it act on what the block already fetched.
+                IconButton(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  tooltip: l10n.deviceHistoryRefresh,
+                  // Default IconButton is 48 dp; named here so a later
+                  // `visualDensity` tidy-up cannot quietly shrink it below the
+                  // 40 dp floor this project learned from FB-70.
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+                const SizedBox(width: 4),
                 FilterChip2(
                   label: l10n.historyFilterWarning,
                   icon: Icons.warning_amber_rounded,

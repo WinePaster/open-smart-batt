@@ -896,6 +896,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get deviceHistoryRefresh => '重新整理';
+
+  @override
   String get historyListMinuteNote => '清單以每分鐘一列顯示；完整的每秒資料可以在匯出時選。';
 
   @override

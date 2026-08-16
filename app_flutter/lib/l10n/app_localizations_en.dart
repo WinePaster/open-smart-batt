@@ -946,6 +946,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get deviceHistoryRefresh => 'Refresh';
+
+  @override
   String get historyListMinuteNote =>
       'The list shows one row per minute. Full per-second data is available when you export.';
 

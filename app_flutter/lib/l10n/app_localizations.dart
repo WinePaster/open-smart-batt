@@ -1580,6 +1580,12 @@ abstract class AppLocalizations {
   /// **'Show {count} more'**
   String deviceHistoryShowMore(int count);
 
+  /// No description provided for @deviceHistoryRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get deviceHistoryRefresh;
+
   /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading.
   ///
   /// In en, this message translates to:

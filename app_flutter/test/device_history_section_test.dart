@@ -694,4 +694,57 @@ void main() {
       expect(showsVoltage(vA), isTrue);
     });
   });
+  // ===========================================================================
+  // 🔑 R1–R2: the refresh button (owner ruling 2026-08-16).
+  //
+  // 🔴 What this fixes is NOT the 30 s cache TTL. The section has no timer and
+  // no listener — it queries on mount, on `deviceId` change, and on range
+  // change, and nothing else. Sit on a device page while it charges and it
+  // shows the snapshot it took when you arrived, cache or no cache. Setting
+  // `kDeviceHistoryCacheTtl` to zero would not have changed that; only an
+  // explicit re-query does, which is why these tests assert new ROWS appear
+  // rather than asserting anything about the cache.
+  // ===========================================================================
+  group('R: the refresh button', () {
+    testWidgets('R1: it re-queries and picks up rows written since mount',
+        (tester) async {
+      await boot(tester);
+      await addRows(tester, 'A', 12.6, count: 3, fromMinute: 1);
+      await pumpSection(tester, deviceId: 'A', live: false);
+      final before = tester.widgetList(find.byType(HistoryRow)).length;
+      expect(before, greaterThan(0));
+
+      // A row lands while the user is looking at the page.
+      await addRows(tester, 'A', 12.4, count: 3, fromMinute: 30);
+      await tester.pump();
+      expect(tester.widgetList(find.byType(HistoryRow)).length, before,
+          reason: 'nothing re-queries on its own — this is the gap R1 closes');
+
+      await tester.tap(find.byTooltip('Refresh'));
+      await tester.pump();
+      // Same three chained reads as `pumpSection` — they need the real loop.
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pumpAndSettle();
+      expect(tester.widgetList(find.byType(HistoryRow)).length,
+          greaterThan(before),
+          reason: 'the button must bypass the P-4 cache, not just setState');
+    });
+
+    testWidgets('R2: the target is at least 40x40 dp', (tester) async {
+      // Measured, not asserted-to-exist — FB-70 was a working feature behind a
+      // 14×14 dp hit box. The default IconButton is 48, but a later
+      // `visualDensity` change would shrink it silently and nothing else here
+      // would notice.
+      await boot(tester);
+      await addRows(tester, 'A', 12.6, count: 2, fromMinute: 1);
+      await pumpSection(tester, deviceId: 'A', live: false);
+      final size = tester.getSize(find.ancestor(
+          of: find.byIcon(Icons.refresh),
+          matching: find.byType(IconButton)));
+      expect(size.width, greaterThanOrEqualTo(40.0));
+      expect(size.height, greaterThanOrEqualTo(40.0));
+    });
+  });
+
 }

@@ -677,6 +677,7 @@
     "description": "Shown while the block's three queries run. The block is expanded by default, so this runs on every detail-page open; the placeholder is a FIXED height so the scroll position does not jump when the data lands (design 0065 P-5)."
   },
   "deviceHistoryShowMore": "Show {count} more",
+  "deviceHistoryRefresh": "Refresh",
   "@deviceHistoryShowMore": {
     "description": "The embedded list renders in slices rather than all at once. Measured 2026-08-16: 1,000 rows in a Column inflate 24,207 elements, and unlike the History tab this block is expanded on every detail-page open. Says HOW MANY more remain, so it is never a button that might do nothing.",
     "placeholders": {
