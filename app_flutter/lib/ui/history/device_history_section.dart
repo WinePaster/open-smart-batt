@@ -86,14 +86,7 @@ import 'history_screen.dart';
 /// whole job is a `LayoutBuilder` + `ConstrainedBox(minHeight: viewport)` that
 /// centres a report in one screen, which sliver protocol has no equivalent for.
 ///
-/// ⚠️ **Do not read this as "slivers are not worth it here" in general.** A
-/// full-page list that owns its own scroll view has none of the above problems
-/// and should use `CustomScrollView`. Design 0065 §0.8 is the long version.
-const int kDeviceHistoryInitialRows = 60;
 
-/// Rows added per "show more" tap. Not "all the rest": the whole point of the
-/// slice is that the element count grows in steps a phone can absorb.
-const int kDeviceHistoryRowStep = 120;
 
 /// How long a completed query stays good for (design 0065 P-4).
 ///
@@ -182,6 +175,17 @@ void debugClearDeviceHistoryCache() => _QueryCache.clear();
 @visibleForTesting
 int debugDeviceHistoryBodyBuilds = 0;
 
+/// How many times the block has actually gone to the database.
+///
+/// 🔑 A seam, not a statistic. The P-4 cache and the refresh button are both
+/// about "did this re-query?", and until 2026-08-16 the tests inferred that
+/// from rendered numbers — a row appearing in the list. The owner's ruling that
+/// day removed the list, and the inference went with it: the stats strip
+/// aggregates, so a newer row can arrive and change nothing on screen. Counting
+/// the queries says the thing those tests mean.
+@visibleForTesting
+int debugDeviceHistoryQueries = 0;
+
 class DeviceHistorySection extends StatefulWidget {
   const DeviceHistorySection({
     super.key,
@@ -214,9 +218,7 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
   /// opening on different ranges would show one unit two different pictures
   /// (§6 R5).
   HistoryRange _range = HistoryRange.today;
-  bool _warningOnly = false;
   bool _exporting = false;
-  int _visibleRows = kDeviceHistoryInitialRows;
 
   late Future<DeviceHistoryData> _future;
 
@@ -254,7 +256,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     // The host can be handed a different unit without this State being
     // destroyed. Re-query rather than keep showing the previous unit's rows.
     if (old.deviceId != widget.deviceId) {
-      _visibleRows = kDeviceHistoryInitialRows;
       _future = _load();
     }
   }
@@ -274,6 +275,7 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
       final hit = _QueryCache.get(key);
       if (hit != null) return hit;
     }
+    debugDeviceHistoryQueries++;
     final since = historySinceFor(range);
     final stats = await tele.historyStats(since: since, deviceId: deviceId);
     // 🔴 `historyChartBucketMs`, never an inline "about the same" calculation.
@@ -298,7 +300,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     if (r == _range) return;
     setState(() {
       _range = r;
-      _visibleRows = kDeviceHistoryInitialRows;
       _future = _load();
     });
   }
@@ -320,9 +321,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
   /// of those hosts the rest of the page is already live, so "pull to refresh"
   /// would promise something only one block on the page can do.
   ///
-  /// 🔑 [_visibleRows] is deliberately NOT reset. The user asked for newer data,
-  /// not for their place in the list back — unlike [_setRange], where the query
-  /// itself changes and the old offset means nothing.
   // 🔴 A BLOCK body, not `setState(() => _future = _load(...))`. The arrow form
   // returns the assigned value — a `Future` — and `setState` asserts against a
   // callback that returns one ("Maybe it is marked as async"). The assertion
@@ -336,10 +334,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     });
   }
 
-  /// Client-side only — the filter runs over rows already fetched, exactly as
-  /// it does on the History tab. No re-query, and therefore no throttle to
-  /// think about.
-  void _toggleWarning() => setState(() => _warningOnly = !_warningOnly);
 
   /// 🔴 The export is pinned to THIS page's unit, connected or not.
   ///
@@ -379,11 +373,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     }
   }
 
-  void _showMore(int remaining) => setState(() =>
-      _visibleRows += remaining < kDeviceHistoryRowStep
-          ? remaining
-          : kDeviceHistoryRowStep);
-
   @override
   Widget build(BuildContext context) {
     // Watched: the user can change it in Settings and walk straight back here.
@@ -406,9 +395,7 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
       widget.deviceId,
       widget.live,
       _range,
-      _warningOnly,
       _exporting,
-      _visibleRows,
       tempUnit,
       ov,
       uv,
@@ -456,17 +443,65 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
               ],
             ),
           ),
-          // ② Range. Same three options, same order, same widget as the
-          // History tab's toolbar.
+          // ② Range, refresh and export — ONE row (owner ruling 2026-08-16).
+          //
+          // They were on two rows: the range here, and refresh/export in a
+          // right-aligned strip below the chart ("between the summary and the
+          // rows, where both of their objects begin", ruled 2026-08-07 for the
+          // History TAB). That placement rule died with the rows — see ⑤ —
+          // and a lone action strip floating mid-block had nothing left to sit
+          // between.
+          //
+          // 🔑 Both controls live OUTSIDE the `FutureBuilder` below, which is
+          // what makes this row possible at all: neither needs the query's
+          // result. Refresh replaces the future; `_exportCsv` re-derives its
+          // own scope from `_range` and `widget.deviceId`.
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: SegmentedControl<HistoryRange>(
-              selected: _range,
-              onChanged: _setRange,
-              options: <({HistoryRange value, String label})>[
-                (value: HistoryRange.today, label: l10n.historyRangeToday),
-                (value: HistoryRange.week, label: l10n.historyRangeWeek),
-                (value: HistoryRange.all, label: l10n.historyRangeAll),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedControl<HistoryRange>(
+                    selected: _range,
+                    onChanged: _setRange,
+                    options: <({HistoryRange value, String label})>[
+                      (value: HistoryRange.today, label: l10n.historyRangeToday),
+                      (value: HistoryRange.week, label: l10n.historyRangeWeek),
+                      (value: HistoryRange.all, label: l10n.historyRangeAll),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  tooltip: l10n.deviceHistoryRefresh,
+                  // 40 dp floor, named rather than inherited — see FB-70.
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
+                  padding: EdgeInsets.zero,
+                ),
+                if (_exporting)
+                  const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    onPressed: _exportCsv,
+                    icon: const Icon(Icons.file_download_outlined, size: 18),
+                    tooltip: l10n.historyExportCsv,
+                    constraints:
+                        const BoxConstraints(minWidth: 40, minHeight: 40),
+                    padding: EdgeInsets.zero,
+                  ),
               ],
             ),
           ),
@@ -530,13 +565,6 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     double? uv,
     double? ot,
   }) {
-    final listRows = historyApplyWarningFilter(
-      data.rows,
-      warningOnly: _warningOnly,
-      ov: ov,
-      uv: uv,
-      ot: ot,
-    );
     final chartEmpty = data.buckets.length < 2;
     // 🔴 The block is still DRAWN when there is nothing in it. A section that
     // vanishes for a unit with no records is the dead-end shape FB-53 and
@@ -546,23 +574,9 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     if (data.rows.isEmpty && chartEmpty) {
       return _message(_emptyText(l10n, 0));
     }
-    // The class that decides whether the current column means anything. The
-    // live pair is offered ONLY for a page whose unit is on the link — the same
-    // restriction `deviceClassFor` documents, for the same FB-41 reason.
-    final devices = context.watch<DeviceController>();
-    final facts = context.watch<DeviceFactsController?>();
-    final conn = context.read<ConnectionController>();
-    final deviceClass = deviceClassFor(
-      devices,
-      widget.deviceId,
-      facts: facts,
-      liveDeviceId: widget.live ? widget.deviceId : null,
-      liveClass: conn.resolvedClass,
-    );
-    final shown = listRows.length <= _visibleRows
-        ? listRows
-        : listRows.sublist(0, _visibleRows);
-    final remaining = listRows.length - shown.length;
+    // 🔑 `deviceClassFor` and its three provider reads went with the row list:
+    // the class was only ever needed to decide whether a row's CURRENT column
+    // meant anything. The chart does not have that column.
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -582,115 +596,31 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
             bucketMs: data.bucketMs,
           ),
         ),
-        // ④ The actions, right-aligned — same position as the History tab's
-        // (ruled 2026-08-07: between the summary and the rows, where both of
-        // their objects begin).
-        Padding(
-          padding: const EdgeInsets.only(top: 10, bottom: 12),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // First in the group: it acts on the whole block, while the two
-                // controls after it act on what the block already fetched.
-                IconButton(
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh, size: 18),
-                  tooltip: l10n.deviceHistoryRefresh,
-                  // Default IconButton is 48 dp; named here so a later
-                  // `visualDensity` tidy-up cannot quietly shrink it below the
-                  // 40 dp floor this project learned from FB-70.
-                  constraints:
-                      const BoxConstraints(minWidth: 40, minHeight: 40),
-                ),
-                const SizedBox(width: 4),
-                FilterChip2(
-                  label: l10n.historyFilterWarning,
-                  icon: Icons.warning_amber_rounded,
-                  selected: _warningOnly,
-                  onTap: _toggleWarning,
-                ),
-                const SizedBox(width: 7),
-                if (_exporting)
-                  SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: Center(
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: context.accent.accent),
-                      ),
-                    ),
-                  )
-                else
-                  FilterChip2(
-                    label: l10n.historyExportCsv,
-                    icon: Icons.file_download_outlined,
-                    filled: true,
-                    selected: true,
-                    onTap: _exportCsv,
-                  ),
-              ],
-            ),
-          ),
-        ),
-        // ⑤ The rows.
-        if (listRows.isEmpty)
-          _message(_emptyText(l10n, data.rows.length))
-        else
-          IndustrialCard(
-            padding: const EdgeInsets.all(11),
-            child: Column(
-              children: [
-                // design 0061 T3a, in the History tab's own words: without this
-                // the `HH:mm` stamps read as a stored reading rather than as
-                // the window they summarise.
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: Text(
-                    l10n.historyListMinuteNote,
-                    style:
-                        TextStyle(fontSize: 10.5, color: context.colors.muted),
-                  ),
-                ),
-                for (final r in shown)
-                  HistoryRow(
-                    row: r,
-                    tempUnit: tempUnit,
-                    status: historyClassifyRow(r, ov: ov, uv: uv, ot: ot),
-                    deviceClass: deviceClass,
-                  ),
-                if (remaining > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: TextButton(
-                      onPressed: () => _showMore(remaining),
-                      child: Text(l10n.deviceHistoryShowMore(remaining)),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        // ④／⑤ REMOVED 2026-08-16 (owner ruling): the warning filter, the
+        // per-minute row list, and the action strip that sat above them.
+        //
+        // What is left is the chart plus its stats strip — the question this
+        // block exists to answer on a device page is "what has this unit been
+        // doing", and the curve answers it at a glance. The row list answered a
+        // different question ("what exactly was the value at 14:03"), and the
+        // History tab still answers that one, for every unit including ones no
+        // longer in range.
+        //
+        // 🔑 Three things went with them, and none is a loss to mourn:
+        //  * the slicing UI (`_showMore`, 60 + 120) existed only to keep the
+        //    row list from inflating thousands of elements — no rows, no need;
+        //  * the warning filter needed OV/UV/OT thresholds, and those come from
+        //    the CONNECTED unit (`telemetry_controller`), i.e. the FB-41 shape
+        //    in a third field. Design 0065 §6 risk E is now moot HERE (it still
+        //    stands on the History tab, which is where it was filed);
+        //  * `historyListBuckets` is no longer queried, so the block is two
+        //    queries rather than three.
       ],
     );
   }
 
   /// [loaded] is how many windows the query actually returned.
   String _emptyText(AppLocalizations l10n, int loaded) {
-    if (_warningOnly) {
-      // 🔴 Never "this device has no warnings". The filter runs in Dart AFTER
-      // the SQL `LIMIT`, so it has only ever seen the newest [kHistoryRowCap]
-      // windows — the History tab wrote the same reasoning down first. Offline
-      // there is a SECOND thing it has not seen: the thresholds themselves,
-      // which come off the live wire. The copy has to name both, or an empty
-      // result reads as an all-clear that nobody actually checked.
-      return widget.live
-          ? l10n.historyEmptyWarning(loaded)
-          : l10n.deviceHistoryEmptyWarningOffline(loaded);
-    }
     // "All" and still nothing ⇒ this unit genuinely has no records. Any other
     // range ⇒ say it is the range, because there may well be plenty just
     // outside it.
