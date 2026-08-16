@@ -97,6 +97,13 @@ void main() {
         ),
       ));
       await tester.pump();
+      // design 0065: the dashboard now ends with the embedded history block,
+      // which fires its queries on mount. Real database IO cannot settle under
+      // the widget tester's fake clock, so it is drained here — otherwise the
+      // test ends holding a pending timer.
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await tester.pump();
     }
 
     /// Every wording the removed banner could produce, in both locales.
@@ -117,6 +124,12 @@ void main() {
         ble.emitTelemetry(sample);
         await Future<void>.delayed(Duration.zero);
       });
+      await tester.pump();
+      // Connecting re-routes the dashboard, which mounts a FRESH history block
+      // (design 0065) and so starts a fresh set of queries. Drained here for
+      // the same reason `pump` drains its own.
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
       await tester.pump();
     }
 

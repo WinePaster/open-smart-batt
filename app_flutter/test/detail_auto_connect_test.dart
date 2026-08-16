@@ -302,6 +302,12 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    // design 0065 mounts a history block on this page, and re-pumping a fresh
+    // page builds a fresh one with a fresh set of queries. Real
+    // database IO cannot settle under the fake clock, so it is drained here.
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await tester.pump();
 
     expect(conn.connectToSavedCalls, 0);
   });

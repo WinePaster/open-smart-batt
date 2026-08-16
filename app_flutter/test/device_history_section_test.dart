@@ -30,6 +30,11 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/protocol/protocol.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/class_pending_view.dart';
+import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
+import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
+import 'package:open_smart_batt/ui/dashboard/unidentified_view.dart';
+import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/history/device_history_section.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -70,6 +75,19 @@ class _StubBle extends BleService {
     await _linkOut.close();
     await super.dispose();
   }
+}
+
+/// A connection that is already past `ClassPendingView`'s grace window.
+///
+/// The real `pendingFor` needs a link that reaches `ready` and then real
+/// seconds to elapse; `waiting_states_test.dart` already pins those rules, and
+/// this file only needs the view in the state where it HAS content to hang the
+/// history block under.
+class _StalledConn extends ConnectionController {
+  _StalledConn(super.ble, {required super.settings});
+
+  @override
+  Duration? get pendingFor => const Duration(seconds: 30);
 }
 
 void main() {
@@ -564,5 +582,116 @@ void main() {
     await remount(true);
     expect(showsVoltage(9.87), isTrue,
         reason: 'and once the entry is gone the block really does re-query');
+  });
+
+  // ==========================================================================
+  // T65-11 — all FIVE mount points, not just the easy two.
+  // ==========================================================================
+  group('T65-11 — every route the detail page can take carries the block', () {
+    // CATCHES: shipping only the pack routes — which is what the design's own
+    // first draft proposed before the owner ruled for all four (Q3) — or a
+    // later refactor quietly dropping the two short-lived states, which are
+    // the easiest to forget precisely because they are brief.
+    //
+    // 📌 The short-lived routes are NOT empty shells: `history.device_id` is
+    // written from the session, never from the product class, so an
+    // unclassified or still-identifying unit has ordinary readable rows.
+    Future<void> pumpRoute(WidgetTester tester, Widget view) async {
+      tester.view.physicalSize = const Size(900, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<SettingsController>.value(
+                value: services.settings),
+            ChangeNotifierProvider<DeviceController>.value(
+                value: services.devices),
+            ChangeNotifierProvider<DeviceFactsController>.value(
+                value: services.facts),
+            ChangeNotifierProvider<ConnectionController>.value(
+                value: services.connection),
+            ChangeNotifierProvider<TelemetryController>.value(
+                value: services.telemetry),
+            ChangeNotifierProvider<GForceController>.value(
+                value: services.gforce),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: Scaffold(body: view),
+          ),
+        ),
+      );
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('pack (battery / capacitor)', (tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await pumpRoute(tester, const PackView(deviceId: unitA));
+      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue, reason: 'and it actually queried');
+    });
+
+    testWidgets('power bank', (tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await pumpRoute(tester, const PowerBankView(deviceId: unitA));
+      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue);
+    });
+
+    testWidgets('unidentified — a RESTING state, and it has rows',
+        (tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await pumpRoute(tester, const UnidentifiedView(deviceId: unitA));
+      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue);
+    });
+
+    testWidgets('class pending', (tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      // The view draws nothing at all inside its grace window, deliberately —
+      // so the block is asserted on the state where the view has content.
+      final stalled = _StalledConn(ble, settings: services.settings);
+      addTearDown(stalled.dispose);
+      await pumpRoute(
+        tester,
+        ChangeNotifierProvider<ConnectionController>.value(
+          value: stalled,
+          child: const ClassPendingView(deviceId: unitA),
+        ),
+      );
+      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue);
+    });
+
+    testWidgets('and the offline body, which is the whole point (Q4)',
+        (tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+      await pumpRoute(
+        tester,
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<GpsSpeedController>.value(
+                value: services.speed),
+          ],
+          child: const DeviceDetailPage(deviceId: unitA),
+        ),
+      );
+      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue);
+    });
   });
 }

@@ -181,6 +181,14 @@ void main() {
     await tester.pumpWidget(
         extra.isEmpty ? app : MultiProvider(providers: extra, child: app));
     await tester.pump();
+    // The three screens now carry design 0065's history block, which queries on
+    // mount. Real database IO cannot settle under the fake clock, so it is
+    // drained here rather than left as a pending timer at teardown.
+    if (extra.isNotEmpty) {
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await tester.pump();
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -267,9 +275,17 @@ void main() {
       await pump(
         tester,
         const Scaffold(body: UnidentifiedView(deviceId: 'DEV-A')),
+        // design 0065 mounts the history block under this report, so the
+        // providers it reads have to be here too.
         extra: [
           ChangeNotifierProvider<ConnectionController>.value(
               value: services.connection),
+          ChangeNotifierProvider<SettingsController>.value(
+              value: services.settings),
+          ChangeNotifierProvider<DeviceController>.value(
+              value: services.devices),
+          ChangeNotifierProvider<TelemetryController>.value(
+              value: services.telemetry),
         ],
       );
       expect(find.byType(OneScreenReport), findsOneWidget);
@@ -288,6 +304,10 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(
               value: services.telemetry),
+          ChangeNotifierProvider<SettingsController>.value(
+              value: services.settings),
+          ChangeNotifierProvider<DeviceController>.value(
+              value: services.devices),
         ],
       );
       expect(find.byType(OneScreenReport), findsOneWidget);

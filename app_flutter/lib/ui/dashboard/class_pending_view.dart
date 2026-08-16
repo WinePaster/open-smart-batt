@@ -31,6 +31,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../history/device_history_section.dart';
 import '../widgets/one_screen_report.dart';
 
 /// Placeholder shown while the product class is undetermined.
@@ -119,6 +120,11 @@ class _ClassPendingViewState extends State<ClassPendingView> {
     }
 
     return OneScreenReport(
+      // The wait is brief; the unit's stored history is not. Same reasoning as
+      // `unidentified_view.dart` — the rows are attributed by session, not by
+      // class, so there is something here to show while the class is still
+      // unknown (design 0065 §0.4).
+      below: DeviceHistorySection(deviceId: widget.deviceId, live: true),
       report: [
         _PendingGlyph(stalled: stalled),
         const SizedBox(height: 22),

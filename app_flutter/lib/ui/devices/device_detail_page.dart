@@ -26,6 +26,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
+import '../history/device_history_section.dart';
 import '../widgets/one_screen_report.dart';
 import 'connection_failure.dart';
 import 'save_device_flow.dart';
@@ -80,12 +81,27 @@ class DeviceDetailPage extends StatefulWidget {
     this.onOpenSettings,
   });
 
-  /// 🔴 A pure NAVIGATION parameter. It says which unit the user is LOOKING at,
-  /// which is a different question from which unit is connected, and design
-  /// 0046 §6 R-3 forbids letting it reach any data-attribution path: history
-  /// rows, session numbers and export scope all key off the CONNECTED device.
-  /// Conflating the two is exactly how FB-41/FB-42 filed one unit's telemetry
-  /// under another's, a defect only fixed in v0.6.13.
+  /// 🔴 Which unit the user is LOOKING at — a different question from which
+  /// unit is connected, and the line between them is where FB-41/FB-42 filed
+  /// one unit's telemetry under another's (fixed only in v0.6.13).
+  ///
+  /// ⚠️ AMENDED 2026-08-16 (design 0065 §3.8). This used to say the id is "a
+  /// pure NAVIGATION parameter" that design 0046 §6 R-3 "forbids letting reach
+  /// any data-attribution path: history rows, session numbers and export scope
+  /// all key off the CONNECTED device". Two of those three are still exactly
+  /// true; the sentence around them was too wide, and read literally it now
+  /// forbids things this page is required to do. The precise rule:
+  ///
+  ///  * **WRITING / ATTRIBUTION keys off the CONNECTED unit, always.** The
+  ///    `history.device_id` column and session numbers come from
+  ///    [SessionContext], which only a link can begin. Nothing on this page
+  ///    may write a row against the unit merely being looked at — that IS
+  ///    R-3, and it is unchanged.
+  ///  * **READING SCOPE keys off THIS id, and must.** Which unit's stored rows
+  ///    to query, and which unit an export taken from this page covers, are
+  ///    questions about the page, not about the link. Design 0022/0043 already
+  ///    scope reads this way; design 0065 §0.6 rules that an export started
+  ///    here covers this unit 「不管是不是連線他」.
   final String deviceId;
 
   /// The advertised name, for a device with no saved record (design 0055 §4.2).
@@ -575,6 +591,21 @@ class _OfflineBody extends StatelessWidget {
     }
 
     return OneScreenReport(
+      // 🔴 OFFLINE IS THE CASE THIS FEATURE EXISTS FOR (design 0065 Q4). The
+      // dealer who asked for it wants a unit's history precisely when the unit
+      // is not in front of him — the car is elsewhere, the battery is out, the
+      // link will not come up. A history block that appeared only on a working
+      // connection would not have answered his report at all.
+      //
+      // It goes UNDER the failure report, not into it: the report keeps its
+      // full screen and its centring (see [OneScreenReport]), so this is
+      // something the user scrolls to rather than something competing with the
+      // reason they cannot connect.
+      //
+      // `live: false` — by definition here, which is what withholds the wire
+      // thresholds from the warning classification. See
+      // [DeviceHistorySection.live].
+      below: DeviceHistorySection(deviceId: deviceId, live: false),
       report: [
         ConnectionPulseIcon(working: mine && working),
         const SizedBox(height: 24),

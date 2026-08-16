@@ -40,6 +40,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../history/device_history_section.dart';
 import '../widgets/one_screen_report.dart';
 
 /// Shown when the device-type byte is one this build does not map.
@@ -67,6 +68,12 @@ class UnidentifiedView extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final conn = context.watch<ConnectionController>();
     return OneScreenReport(
+      // 🔴 An unidentified unit HAS history. `history.device_id` is written
+      // from the session, never from the product class, so the rows exist and
+      // are readable exactly like any other unit's — this view asserts nothing
+      // about the hardware, and showing what the unit has already recorded
+      // asserts nothing either (design 0065 §0.4).
+      below: DeviceHistorySection(deviceId: deviceId, live: true),
       report: [
         Icon(Icons.help_outline, size: 44, color: context.colors.muted),
         const SizedBox(height: 22),

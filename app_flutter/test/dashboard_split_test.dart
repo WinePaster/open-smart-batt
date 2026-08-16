@@ -113,6 +113,13 @@ void main() {
       ),
     );
     await tester.pump();
+    // design 0065: the pack shell now ends with the embedded history block,
+    // which fires its three queries on mount. Real database IO cannot settle
+    // under the widget tester's fake clock, so it is drained here — otherwise
+    // every test in this file ends holding a pending timer.
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await tester.pump();
   }
 
   group('controls subset — each body shows only what its class has', () {

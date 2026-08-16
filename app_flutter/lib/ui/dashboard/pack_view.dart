@@ -37,6 +37,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../history/device_history_section.dart';
 import '../widgets/industrial_card.dart';
 import 'dashboard_cards.dart';
 import 'display_modules.dart';
@@ -133,9 +134,16 @@ class PackScaffold extends StatelessWidget {
     // `effectiveWatchface` is what makes Q4 true here — an unclassified pack
     // gets the standard face whatever is stored, so the page a user is being
     // asked to identify is never rearranged under them.
-    final deviceId =
+    // 🔴 RENAMED 2026-08-16 (design 0065). It was called `deviceId`, and once
+    // the shell gained a `deviceId` FIELD naming the unit whose page this is,
+    // that local shadowed it — the compiler caught it here, but the same two
+    // words meaning two different units in one method is precisely the
+    // confusion FB-41 came out of. This one is "whose dashboard arrangement is
+    // in force", a property of the LINK; `widget`-level `deviceId` is "whose
+    // page is this".
+    final layoutOwnerId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
-    final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    final stored = context.watch<DeviceController>().layoutFor(layoutOwnerId);
     // The two master switches reach the LAYOUT, not just their own cards: with
     // both off a stored `riding` renders as `standard` rather than as a copy of
     // `compact` (design 0042 §3.9, revised 2026-08-07), and with only one on
@@ -221,6 +229,26 @@ class PackScaffold extends StatelessWidget {
               headingIcon: Icons.shield_outlined,
               child: controls,
             ),
+
+            // ---- this unit's own history (design 0065) -------------------
+            //
+            // 🔴 IT SITS AFTER THE PROTECTION CARD AND THAT IS NOT A BREACH OF
+            // "controls last, always". Design 0034 §6's invariant is
+            // STRUCTURAL: there is no `DisplayModule` for the protection card,
+            // so no watchface can name it and none can reorder it. This block
+            // has no `DisplayModule` either — it is appended by the SHELL, not
+            // inserted into the watchface loop above. The two are not on the
+            // same axis, and the rule the loop's comment states is untouched.
+            //
+            // Below the fold on purpose: connected, what the user came for is
+            // the live readings, and design 0051 D2's card order is unchanged
+            // above this line.
+            //
+            // `live: true` — this shell is only ever built by `DashboardPage`,
+            // whose only two call sites are inside the detail page's
+            // `live ? … : _OfflineBody(…)`. The offline half mounts the same
+            // block with `live: false`.
+            DeviceHistorySection(deviceId: deviceId, live: true),
           ],
         ),
       ),
