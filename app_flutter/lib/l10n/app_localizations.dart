@@ -1772,6 +1772,54 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get settingsThemeAuto;
 
+  /// No description provided for @settingsAccentThemeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Accent colour'**
+  String get settingsAccentThemeLabel;
+
+  /// No description provided for @settingsAccentThemeSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Two colours, not one — the second is what charts draw temperature with'**
+  String get settingsAccentThemeSub;
+
+  /// No description provided for @accentThemeAmber.
+  ///
+  /// In en, this message translates to:
+  /// **'Amber'**
+  String get accentThemeAmber;
+
+  /// No description provided for @accentThemeAzure.
+  ///
+  /// In en, this message translates to:
+  /// **'Azure'**
+  String get accentThemeAzure;
+
+  /// No description provided for @accentThemeViolet.
+  ///
+  /// In en, this message translates to:
+  /// **'Violet'**
+  String get accentThemeViolet;
+
+  /// No description provided for @accentThemeMagenta.
+  ///
+  /// In en, this message translates to:
+  /// **'Magenta'**
+  String get accentThemeMagenta;
+
+  /// No description provided for @accentThemeLime.
+  ///
+  /// In en, this message translates to:
+  /// **'Lime'**
+  String get accentThemeLime;
+
+  /// No description provided for @accentThemeTeal.
+  ///
+  /// In en, this message translates to:
+  /// **'Teal'**
+  String get accentThemeTeal;
+
   /// No description provided for @settingsSpeedDetectionLabel.
   ///
   /// In en, this message translates to:

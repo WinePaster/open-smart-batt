@@ -1015,6 +1015,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsThemeAuto => '自動';
 
   @override
+  String get settingsAccentThemeLabel => '主題色彩';
+
+  @override
+  String get settingsAccentThemeSub => '一組兩色 —— 第二個顏色是圖表畫溫度用的';
+
+  @override
+  String get accentThemeAmber => '琥珀';
+
+  @override
+  String get accentThemeAzure => '天藍';
+
+  @override
+  String get accentThemeViolet => '紫羅蘭';
+
+  @override
+  String get accentThemeMagenta => '洋紅';
+
+  @override
+  String get accentThemeLime => '萊姆';
+
+  @override
+  String get accentThemeTeal => '青綠';
+
+  @override
   String get settingsSpeedDetectionLabel => '速度偵測';
 
   @override

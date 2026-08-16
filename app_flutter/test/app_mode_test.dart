@@ -728,4 +728,93 @@ void main() {
       }
     });
   });
+  // ===========================================================================
+  // 🔑 A1–A3: the accent-theme picker (design 0064 Phase 1).
+  //
+  // Lives in this file rather than beside `accent_theme_test.dart` because it
+  // needs the whole shell: the picker's selected state is resolved from a NULL
+  // stored id, and `MaterialApp` is what turns the chosen theme into the colours
+  // the rest of the tree reads.
+  // ===========================================================================
+  group('A: the accent theme picker', () {
+    Future<void> openSettings(WidgetTester tester) async {
+      await tester.tap(find.text('設定'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await drain(tester);
+      await tester.scrollUntilVisible(find.text('主題色彩'), 120,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pump();
+    }
+
+    testWidgets('A1: six swatches, and a fresh install shows amber selected',
+        (tester) async {
+      // 🔴 "Fresh install" is `accentThemeId == null`, NOT the string 'amber'.
+      // The column is deliberately left without a DEFAULT so that "never chose"
+      // and "chose amber" stay distinguishable (`AppSettings.accentThemeId`), and
+      // the picker has to resolve that itself. If someone later gives the column
+      // a default to "simplify" this, the ring keeps working and only the export
+      // header quietly starts lying — so the assertion is on the ring here and
+      // on the header in A3.
+      final services = await pumpShell(tester);
+      expect(services.settings.settings.accentThemeId, isNull);
+      await openSettings(tester);
+
+      expect(find.byType(InkWell).evaluate().length, greaterThanOrEqualTo(6));
+      for (final name in ['琥珀', '天藍', '紫羅蘭', '洋紅', '萊姆', '青綠']) {
+        expect(find.bySemanticsLabel(name), findsOneWidget, reason: name);
+      }
+      // Read the widget's own properties rather than the composited semantics
+      // node: the swatch is wrapped in a Tooltip, so the node carries fields
+      // this assertion has no opinion about and `matchesSemantics` — which is
+      // exhaustive — would fail on them.
+      Semantics swatch(String name) => tester.widget<Semantics>(
+          find.byWidgetPredicate(
+              (w) => w is Semantics && w.properties.label == name));
+      expect(swatch('琥珀').properties.selected, isTrue,
+          reason: 'null resolves to amber, and the ring has to say so');
+      expect(swatch('青綠').properties.selected, isFalse,
+          reason: 'exactly one ring, or the control says nothing');
+    });
+
+    testWidgets('A2: every target is at least 40x40 dp', (tester) async {
+      // 🔴 MEASURED, not asserted-to-exist. FB-70 was a fully working rename
+      // feature behind a 14×14 dp hit box: users deleted and re-added devices
+      // rather than find it. A 22 dp swatch is what reads as a colour chip; the
+      // target around it is what makes it usable, and only a measurement keeps
+      // the two from being collapsed into one by a later "tidy-up".
+      await pumpShell(tester);
+      await openSettings(tester);
+      for (final name in ['琥珀', '青綠']) {
+        // The InkWell IS the target — `descendant`, not `ancestor`: the
+        // Semantics node wraps it, so the thing being measured is inside the
+        // finder's match, not above it.
+        final size = tester.getSize(find.descendant(
+            of: find.bySemanticsLabel(name),
+            matching: find.byType(InkWell)).first);
+        expect(size.width, greaterThanOrEqualTo(40.0), reason: name);
+        expect(size.height, greaterThanOrEqualTo(40.0), reason: name);
+      }
+    });
+
+    testWidgets('A3: choosing one stores the ID, not the colours',
+        (tester) async {
+      // Design §3.7. Storing the hex would freeze whichever `accentSecondary`
+      // shipped that day into the user's database — and the six pairs are
+      // expected to move once the §0.6 thin-line check is run on real hardware.
+      // Storing the id means a corrected constant fixes everyone.
+      final services = await pumpShell(tester);
+      await openSettings(tester);
+      await tester.tap(find.bySemanticsLabel('青綠'));
+      await tester.pump();
+      await drain(tester);
+
+      expect(services.settings.settings.accentThemeId, 'teal');
+      // …and nothing that looks like a colour went in.
+      expect(services.settings.settings.accentThemeId, isNot(contains('#')));
+      expect(services.settings.settings.accentThemeId,
+          isNot(matches(RegExp(r'^[0-9A-Fa-f]{6}$'))));
+    });
+  });
+
 }

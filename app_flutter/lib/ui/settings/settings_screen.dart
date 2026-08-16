@@ -185,6 +185,7 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _AccentThemeRow(),
           SettingsRow(
             label: l10n.settingsLanguageLabel,
             sub: l10n.settingsLanguageSub,
@@ -1340,3 +1341,148 @@ Future<bool> _confirm(
 /// yields null, which cancels — an accidental tap outside must not ship a file
 /// the user was just told is nearly empty.
 enum _RawLogChoice { exportAnyway, enable }
+
+/// The six accent themes, as swatches (design 0064 Phase 1).
+///
+/// 🔴 **Its own row, not a `trailing` slot.** Six 40×40 dp targets are 240 dp
+/// wide before any gaps — wider than the trailing column on any phone. Shrinking
+/// them to fit is the move this project has already been punished for: FB-70 was
+/// a fully working rename feature behind a 14×14 dp hit box, and users deleted
+/// and re-added devices rather than find it. The SWATCH is 22 dp because that is
+/// what reads as a colour chip; the TARGET around it is 40.
+///
+/// 🔑 **Each swatch shows TWO colours, and that is the point.** Owner ruling
+/// 2026-08-15 (design 0064 §0.1): the unit here is a THEME — `accent` plus
+/// `accentSecondary` — because those two are the pair a chart draws its voltage
+/// and temperature series with (§0.5 Q3). A single-colour chip would say the
+/// user is picking one colour, and then the temperature line changing would look
+/// like a bug.
+class _AccentThemeRow extends StatelessWidget {
+  const _AccentThemeRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = context.colors;
+    final s = context.watch<SettingsController>();
+    // NULL means "never chosen", which renders as amber — see
+    // `AppSettings.accentThemeId`. Resolving it here keeps the selected ring on
+    // the amber swatch for a fresh install without writing a value to say so.
+    final current = AccentTheme.byId(s.settings.accentThemeId) ?? AccentTheme.amber;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.settingsAccentThemeLabel,
+              style: TextStyle(fontSize: 13.5, color: colors.text)),
+          const SizedBox(height: 2),
+          Text(l10n.settingsAccentThemeSub,
+              style: TextStyle(fontSize: 11, color: colors.muted)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final t in AccentTheme.all)
+                _Swatch(
+                  theme: t,
+                  selected: t.id == current.id,
+                  label: _accentThemeName(l10n, t.id),
+                  onTap: () => s.setAccentTheme(t.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The localized name of an accent theme id.
+///
+/// A `switch` on the id rather than a field on [AccentTheme]: the theme table is
+/// `const` and shared with the export header, which must stay machine-stable
+/// ASCII (`theme: …` is read by the corpus tools). Names are for humans and move
+/// with the locale; ids do not move at all.
+String _accentThemeName(AppLocalizations l10n, String id) => switch (id) {
+      'amber' => l10n.accentThemeAmber,
+      'azure' => l10n.accentThemeAzure,
+      'violet' => l10n.accentThemeViolet,
+      'magenta' => l10n.accentThemeMagenta,
+      'lime' => l10n.accentThemeLime,
+      'teal' => l10n.accentThemeTeal,
+      // An id the build does not know cannot be drawn honestly, and the picker
+      // is not where that should be discovered — `AccentTheme.byId` already
+      // falls back to amber for it. Shown raw so it is visible rather than
+      // silently mislabelled.
+      _ => id,
+    };
+
+/// One theme chip: [AccentTheme.accent] as the disc, [AccentTheme.accentSecondary]
+/// as the inner dot, a ring when selected.
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.theme,
+    required this.selected,
+    required this.label,
+    required this.onTap,
+  });
+
+  final AccentTheme theme;
+  final bool selected;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      label: label,
+      selected: selected,
+      button: true,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          // 🔴 40×40, and the swatch inside is 22 — see [_AccentThemeRow].
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: theme.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    // The ring is the ONLY selection marker, so it is drawn in
+                    // the text colour rather than in the accent: a ring in the
+                    // swatch's own colour would vanish on that swatch.
+                    color: selected ? colors.text : colors.line,
+                    width: selected ? 2.5 : 1,
+                  ),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: theme.accentSecondary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
