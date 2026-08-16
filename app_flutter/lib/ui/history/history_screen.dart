@@ -22,11 +22,8 @@ import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/power_flow.dart';
-import '../dashboard/watchfaces.dart';
-import '../util/export_header.dart';
-import '../util/export_naming.dart';
 import '../util/export_scope.dart';
-import '../util/export_share.dart';
+import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
 
 /// Selectable chart/list time range.
@@ -54,7 +51,126 @@ String historyWindowLabel(HistoryRange r, DateTime? since) {
 }
 
 /// Row classification derived from a stored [TelemetrySample].
-enum _RowStatus { normal, warning, event }
+///
+/// PUBLIC since design 0065: the device detail page renders the same rows with
+/// the same three states, and a second enum saying the same three words is how
+/// two surfaces start disagreeing about what "warning" means.
+enum HistoryRowStatus { normal, warning, event }
+
+/// Most list entries to build widgets for.
+///
+/// 🔴 **1,000 MINUTE WINDOWS, not 1,000 stored rows** (design 0061 §3.3.3).
+/// The number did not change when storage went to one row per second; its
+/// meaning did. The list groups by [kHistoryListBucketMs] before this applies,
+/// so it still covers 16 h 40 m exactly as it did when a row WAS a minute —
+/// that is why the cap did not have to move.
+///
+/// ⚠️ **It no longer saves any I/O.** It used to bound the rows SQLite
+/// touched; it now applies to the output of a `GROUP BY`, and SQLite has to
+/// scan and group every row in scope before it knows which windows are the
+/// newest — up to 86,400 rows per unit for "today" at second resolution,
+/// against 1,440 before. What survives is only the widget bound. The composite
+/// `idx_history_device_ts` (schema v17) is what pays for the scan, and it is
+/// why that index stopped being optional.
+///
+/// 🔴 Top-level since design 0065 so the detail page's embedded section uses
+/// the SAME cap. A second, smaller cap there would make the two surfaces show
+/// different numbers of rows for one unit (design 0065 §6 R5).
+const int kHistoryRowCap = 1000;
+
+/// Display window for the list: one minute, always.
+///
+/// Not the chart's dynamic width. The list is read row by row by a person
+/// looking for a moment, so its unit has to stay the same one all day; the
+/// chart's job is to fit a span on screen, so its width has to move. They were
+/// one number once and it made both worse.
+const int kHistoryListBucketMs = 60000;
+
+/// How many points the chart aims for across the visible span.
+const int kHistoryTargetBucketPoints = 180;
+
+/// The cut-off for [r] — `null` for [HistoryRange.all], which has none.
+///
+/// 🔴 Top-level, and the ONLY derivation (design 0065 §6 R5). The History tab
+/// and the detail page's embedded section must agree on what "today" means down
+/// to the millisecond, or one unit shows two sets of numbers on two screens and
+/// the difference is invisible to whoever reports it.
+DateTime? historySinceFor(HistoryRange r) {
+  final n = DateTime.now();
+  switch (r) {
+    case HistoryRange.today:
+      return DateTime(n.year, n.month, n.day);
+    case HistoryRange.week:
+      return DateTime(n.year, n.month, n.day).subtract(const Duration(days: 6));
+    case HistoryRange.all:
+      return null;
+  }
+}
+
+/// The chart's bucket width for a span starting at [from]: aim for
+/// [kHistoryTargetBucketPoints] points, never narrower than a minute nor wider
+/// than a day.
+///
+/// [from] is the range's cut-off, or — for "all" — the oldest stored row; null
+/// means there is nothing to span, and the minimum applies.
+///
+/// 🔴 Top-level for [historySinceFor]'s reason, and this one is the sharper
+/// half of it: the width decides how much each plotted point averages, so two
+/// surfaces computing it "about the same way" would draw two different-looking
+/// charts from identical data (design 0065 §6 R5, pinned by `T65-12`).
+int historyChartBucketMs(DateTime? from, {DateTime? now}) {
+  final spanMs = from == null
+      ? kHistoryListBucketMs
+      : (now ?? DateTime.now()).millisecondsSinceEpoch -
+          from.millisecondsSinceEpoch;
+  return (spanMs ~/ kHistoryTargetBucketPoints)
+      .clamp(kHistoryListBucketMs, 24 * 3600000);
+}
+
+/// Classify one display window — design 0061 §3.3.2, and the one rule in this
+/// file that is worth reading twice.
+///
+/// 🔴 **Thresholds are judged on the window's EXTREMES, never on its mean.**
+/// A minute holds ~60 stored seconds; one of them going over-voltage moves
+/// [HistoryListRow.maxPvlt] and leaves the mean flat. Judging on the mean would
+/// mark that minute `normal`, drop it out of "warnings only", and so erase — at
+/// read time — exactly the instantaneous event that storing seconds exists to
+/// preserve. The SQL and this method would both look entirely ordinary while
+/// doing it, which is why it is spelled out here and pinned by a test
+/// (`history_list_aggregation_test.dart`).
+///
+/// ⚠️ `mode` reaches here as `MAX(mode)` over the window — "did a cut-off or an
+/// anti-theft happen at any point", which is the only reading a discrete status
+/// has once a window holds several of them. Averaging a status code is
+/// meaningless.
+///
+/// 🔴 **Null thresholds still classify `event`** and that is load-bearing for
+/// design 0065: the detail page withholds `ov`/`uv`/`ot` unless the unit on
+/// screen is the unit on the link (§3.2.2), and what survives is the status the
+/// DEVICE ITSELF reported. Only the `warning` class is lost. Whoever changes
+/// this must not "simplify" the null case into `normal`.
+HistoryRowStatus historyClassifyRow(
+  HistoryListRow r, {
+  double? ov,
+  double? uv,
+  double? ot,
+}) {
+  final m = r.sample.mode;
+  if (m == ReportedStatus.antiTheftActive ||
+      m == ReportedStatus.cutOffActive) {
+    return HistoryRowStatus.event;
+  }
+  // MAX for over-voltage, MIN for under-voltage: each threshold is crossed
+  // from its own side, and the extreme on that side is the only value that
+  // can answer it.
+  final hi = r.maxPvlt;
+  final lo = r.minPvlt;
+  if (ov != null && hi != null && hi > ov) return HistoryRowStatus.warning;
+  if (uv != null && lo != null && lo < uv) return HistoryRowStatus.warning;
+  final t = r.maxTemp;
+  if (t != null && ot != null && t > ot) return HistoryRowStatus.warning;
+  return HistoryRowStatus.normal;
+}
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -64,31 +180,11 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  /// Most list entries to build widgets for.
-  ///
-  /// 🔴 **1,000 MINUTE WINDOWS, not 1,000 stored rows** (design 0061 §3.3.3).
-  /// The number did not change when storage went to one row per second; its
-  /// meaning did. The list groups by [_listBucketMs] before this applies, so it
-  /// still covers 16 h 40 m exactly as it did when a row WAS a minute — that is
-  /// why the cap did not have to move.
-  ///
-  /// ⚠️ **It no longer saves any I/O.** It used to bound the rows SQLite
-  /// touched; it now applies to the output of a `GROUP BY`, and SQLite has to
-  /// scan and group every row in scope before it knows which windows are the
-  /// newest — up to 86,400 rows per unit for "today" at second resolution,
-  /// against 1,440 before. What survives is only the widget bound. The
-  /// composite `idx_history_device_ts` (schema v17) is what pays for the scan,
-  /// and it is why that index stopped being optional.
-  static const int _rowCap = 1000;
-
-  /// Display window for the list: one minute, always.
-  ///
-  /// Not the chart's dynamic width. The list is read row by row by a person
-  /// looking for a moment, so its unit has to stay the same one all day; the
-  /// chart's job is to fit a span on screen, so its width has to move. They
-  /// were one number once and it made both worse.
-  static const int _listBucketMs = 60000;
-  static const int _targetBucketPoints = 180;
+  // 📌 The three constants that used to live here — the row cap, the list
+  // bucket width and the chart's target point count — are now top-level
+  // ([kHistoryRowCap] / [kHistoryListBucketMs] / [kHistoryTargetBucketPoints]),
+  // shared with design 0065's embedded section. Their documentation moved with
+  // them; nothing about their values changed.
 
   HistoryRange _range = HistoryRange.today; // default
   bool _warningOnly = false;
@@ -124,17 +220,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   TelemetryController get _tele => context.read<TelemetryController>();
 
-  DateTime? _sinceFor(HistoryRange r) {
-    final n = DateTime.now();
-    switch (r) {
-      case HistoryRange.today:
-        return DateTime(n.year, n.month, n.day);
-      case HistoryRange.week:
-        return DateTime(n.year, n.month, n.day).subtract(const Duration(days: 6));
-      case HistoryRange.all:
-        return null;
-    }
-  }
+  DateTime? _sinceFor(HistoryRange r) => historySinceFor(r);
 
   Future<_HistoryData> _load() async {
     final tele = _tele;
@@ -171,7 +257,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           buckets: [],
           stats: HistoryStats.empty,
           total: 0,
-          bucketMs: _listBucketMs);
+          bucketMs: kHistoryListBucketMs);
     }
     // The picker sits OUTSIDE the FutureBuilder so that it does not blink out
     // on every range change — which also means the future completing does not
@@ -184,20 +270,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final total = await tele.historyAttributedCount();
     final stats = await tele.historyStats(since: since, deviceId: scoped);
     // Bucket width: aim for ~180 points across the visible span (>= 1 minute).
-    final from = since ?? stats.firstAt;
-    final spanMs = from == null
-        ? 60000
-        : DateTime.now().millisecondsSinceEpoch - from.millisecondsSinceEpoch;
-    final bucketMs = (spanMs ~/ _targetBucketPoints).clamp(60000, 24 * 3600000);
+    final bucketMs = historyChartBucketMs(since ?? stats.firstAt);
     final buckets = await tele.historyBuckets(
         since: since, bucketMs: bucketMs, deviceId: scoped);
     // One entry per MINUTE, not one per stored row (design 0061 T3a). See
-    // [_rowCap] for what the cap counts now, and [HistoryListRow] for why the
-    // window carries its own min/max.
+    // [kHistoryRowCap] for what the cap counts now, and [HistoryListRow] for
+    // why the window carries its own min/max.
     final rows = await tele.historyListBuckets(
         since: since,
-        bucketMs: _listBucketMs,
-        limit: _rowCap,
+        bucketMs: kHistoryListBucketMs,
+        limit: kHistoryRowCap,
         deviceId: scoped);
     return _HistoryData(
         rows: rows,
@@ -232,147 +314,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // The picker chooses WHICH device to export and HOW MUCH DETAIL; it does
     // not replace the time range already chosen on this screen — the two
     // intersect, and the range is what the sheet's size estimate is scoped by.
+    final since = _sinceFor(_range);
     final target = await chooseExportScope(
       context,
       offerSession: false,
       offerGranularity: true,
-      since: _sinceFor(_range),
+      since: since,
     );
     if (target == null || !mounted) return;
     setState(() => _exporting = true);
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    // Captured now: the label lookup runs after an await, when this screen may
-    // already be gone.
-    final devices = context.read<DeviceController>();
-    // design 0057: the identity cache, captured with everything else. Nullable
-    // lookup — provider yields null where nobody supplied one, and the read
-    // path then behaves exactly as it did before 0057.
-    final facts = context.read<DeviceFactsController?>();
-    final services = context.read<AppServices>();
-    // The live pair, captured with everything else (design 0055 follow-up): a
-    // unit that was never named has no stored class, and without this its
-    // capacitor `0.0 A` would be exported as a measurement. Only the unit on
-    // the link is eligible — see [deviceClassFor].
-    final liveId = context.read<TelemetryController>().recordingDeviceId;
-    final liveClass = context.read<ConnectionController>().resolvedClass;
-    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
-    ProductClass classFor(String? id) => deviceClassFor(
-          devices,
-          id,
-          facts: facts,
-          liveDeviceId: liveId,
-          liveClass: liveClass,
-        );
-    // iPad popover anchor (D.7): capture before any await invalidates context.
-    final origin = sharePositionFromContext(context);
-    // The dashboard layout in force at the MOMENT OF EXPORT (design 0034 §8),
-    // which for a device-scoped or all-devices export alike is this phone's —
-    // the setting is bound to the connected unit, so an offline export honestly
-    // reports that no layout was in force.
-    //
-    // 🔴 FB-68: "the moment of export" is now ONE instant, fixed inside the
-    // target by `chooseExportScope`, and this is the file the field pairs were
-    // half of — the history CSV. Re-reading it here would let this file and the
-    // diagnostic log the same reporter sends seconds later disagree about the
-    // same phone.
-    final layout = target.layout;
-    // Phone-wide, no link to lose, so it is not part of the snapshot.
-    final home = currentExportHomeValue(context);
-    // design 0042 §3.9: unconditional, `off` included — otherwise an empty
-    // `speed` column means both "the feature was off" and "the signal never
-    // arrived", which is the ambiguity FB-32 exists to prevent.
-    // 🔴 EFFECTIVE, not stored (design 0063 §3.0.3). Advanced mode keeps the
-    // user's switches and withholds the features, so the stored value would
-    // describe an intention while the file describes a session — and this is a
-    // file, read months later by whoever received it.
-    final appSettings = context.read<SettingsController>().settings;
-    final mode = appSettings.mode;
-    // design 0064: captured with the rest of the snapshot, before the awaits.
-    final themeMode = appSettings.themeMode;
-    final accent =
-        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
-    final speedDetection = appSettings.speedDetectionEffective;
-    final gMeter = appSettings.gMeterEffective;
-    final since = _sinceFor(_range);
     try {
-      final filename = exportFileName(
-        base: 'opensmartbatt-history',
-        classSlug: target.classSlug,
-        ident: target.ident,
-        stamp: exportStamp(),
-        extension: 'csv',
-      );
-      // design 0061 T7b — before a single row is read. See
-      // [TelemetryController.flushHistoryForExport].
-      await _tele.flushHistoryForExport();
-      final file = await exportTempFile(filename);
-      // design 0061 T4a. What the scope ACTUALLY holds, asked of the database
-      // over the same window the export walks — never assumed. An empty list
-      // means "no rows", which `ExportResolution.forCsv` renders as `n/a`
-      // rather than inventing a granularity for a file with nothing in it.
-      final resolution = ExportResolution.forCsv(
-        target.granularity,
-        await _tele.historyBucketWidths(
-            since: since, deviceId: target.deviceId),
-      );
-      // Streamed straight into the file (design 0030 T4b) and NOT capped at
-      // `_rowCap` (T4c / FB-59): that cap belongs to the list below, which
-      // pages a screen at a time, and passing it here silently threw away
-      // everything past the newest 1,000 rows of whatever range the user had
-      // chosen.
-      final rows = await _tele.exportHistoryCsvToFile(
-        file,
+      // 📦 The writing half moved to `history_csv_export.dart` when design 0065
+      // gave the device detail page a second export button — unchanged, so that
+      // the two surfaces cannot drift into describing one database differently.
+      // What stays here is what is genuinely this screen's: its range, and its
+      // busy flag.
+      await exportHistoryCsv(
+        context,
+        target: target,
         since: since,
-        deviceId: target.deviceId,
-        granularity: target.granularity,
-        labelFor: labelFor,
-        classFor: classFor,
-        header: exportHeaderLines(
-          title: 'OpenSmartBatt history export',
-          exportedAt: DateTime.now(),
-          appBuild: services.appBuild,
-          platform: services.platform,
-          scope: exportScopeLabel(target),
-          window: historyWindowLabel(_range, since),
-          resolution: resolution,
-          // design 0056 follow-up: this file HAS an `ampere` column, so it
-          // states what that column's sign means. See `export_header.dart`.
-          ampereColumn: true,
-          layout: layout,
-          home: home,
-          mode: mode,
-          themeMode: themeMode,
-          accent: accent,
-          speedDetection: speedDetection,
-          gMeter: gMeter,
-        ),
+        window: historyWindowLabel(_range, since),
       );
-      // Row count, not text emptiness: every export carries a provenance
-      // preamble (app build, platform, scope, timestamp), so the file is never
-      // literally empty and testing the text would never fire.
-      if (rows == 0) {
-        // The header-only file is already on disk; delete it rather than leave
-        // a plausible-looking export in the temp directory for a share sheet
-        // (or a file manager) to pick up later.
-        await file.delete().catchError((_) => file);
-        messenger.showSnackBar(SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.commonNoRecordsToExport),
-        ));
-        return;
-      }
-      await shareExportFile(
-        file: file,
-        filename: filename,
-        mimeType: 'text/csv',
-        subject: l10n.historyExportSubject,
-        sharePositionOrigin: origin,
-      );
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.commonExportFailed('$e'))));
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -427,7 +389,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         buckets: [],
                         stats: HistoryStats.empty,
                         total: 0,
-                        bucketMs: _listBucketMs);
+                        bucketMs: kHistoryListBucketMs);
                 final listRows =
                     _applyWarning(data.rows, ov: ov, uv: uv, ot: ot);
                 final chartEmpty = data.buckets.length < 2;
@@ -442,7 +404,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ? l10n.historyChartTodayTitle
                           : l10n.historyChartTitle,
                       headingIcon: Icons.show_chart,
-                      child: _TrendCard(
+                      child: HistoryTrendCard(
                         buckets: data.buckets,
                         stats: data.stats,
                         tempUnit: tempUnit,
@@ -471,10 +433,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               ),
                             ),
                             for (final r in listRows)
-                              _HistoryRow(
+                              HistoryRow(
                                 row: r,
                                 tempUnit: tempUnit,
-                                status: _classify(r, ov: ov, uv: uv, ot: ot),
+                                status: historyClassifyRow(r,
+                                    ov: ov, uv: uv, ot: ot),
                                 // Class-gated, not data-driven — and the class
                                 // now decides the WORDING as well as the
                                 // presence (design 0056). See
@@ -791,55 +754,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
     double? ov,
     double? uv,
     double? ot,
-  }) {
-    if (!_warningOnly) return rows;
-    return rows
-        .where((r) => _classify(r, ov: ov, uv: uv, ot: ot) != _RowStatus.normal)
-        .toList(growable: false);
-  }
+  }) =>
+      historyApplyWarningFilter(rows,
+          warningOnly: _warningOnly, ov: ov, uv: uv, ot: ot);
+}
 
-  /// Classify one display window — design 0061 §3.3.2, and the one rule in this
-  /// file that is worth reading twice.
-  ///
-  /// 🔴 **Thresholds are judged on the window's EXTREMES, never on its mean.**
-  /// A minute holds ~60 stored seconds; one of them going over-voltage moves
-  /// [HistoryListRow.maxPvlt] and leaves the mean flat. Judging on the mean
-  /// would mark that minute `normal`, drop it out of "warnings only", and so
-  /// erase — at read time — exactly the instantaneous event that storing
-  /// seconds exists to preserve. The SQL and this method would both look
-  /// entirely ordinary while doing it, which is why it is spelled out here and
-  /// pinned by a test (`history_list_aggregation_test.dart`).
-  ///
-  /// ⚠️ `mode` reaches here as `MAX(mode)` over the window — "did a cut-off or
-  /// an anti-theft happen at any point", which is the only reading a discrete
-  /// status has once a window holds several of them. Averaging a status code is
-  /// meaningless.
-  ///
-  /// PUBLIC-ish (library-private but called from a test through
-  /// [historyClassifyForTest]) so the rule can be pinned without pumping the
-  /// whole screen.
-  static _RowStatus _classify(
-    HistoryListRow r, {
-    double? ov,
-    double? uv,
-    double? ot,
-  }) {
-    final m = r.sample.mode;
-    if (m == ReportedStatus.antiTheftActive ||
-        m == ReportedStatus.cutOffActive) {
-      return _RowStatus.event;
-    }
-    // MAX for over-voltage, MIN for under-voltage: each threshold is crossed
-    // from its own side, and the extreme on that side is the only value that
-    // can answer it.
-    final hi = r.maxPvlt;
-    final lo = r.minPvlt;
-    if (ov != null && hi != null && hi > ov) return _RowStatus.warning;
-    if (uv != null && lo != null && lo < uv) return _RowStatus.warning;
-    final t = r.maxTemp;
-    if (t != null && ot != null && t > ot) return _RowStatus.warning;
-    return _RowStatus.normal;
-  }
+/// The "warnings only" filter, as one function both surfaces call.
+///
+/// [warningOnly] is passed in rather than read from a screen's state so the
+/// pass-through case lives here too — the identity return matters, because a
+/// caller memoising on the result's object identity (design 0065 §3.5.2) would
+/// otherwise rebuild every time the filter is off.
+List<HistoryListRow> historyApplyWarningFilter(
+  List<HistoryListRow> rows, {
+  required bool warningOnly,
+  double? ov,
+  double? uv,
+  double? ot,
+}) {
+  if (!warningOnly) return rows;
+  return rows
+      .where((r) =>
+          historyClassifyRow(r, ov: ov, uv: uv, ot: ot) !=
+          HistoryRowStatus.normal)
+      .toList(growable: false);
 }
 
 /// Whether a display window would be filtered INTO the "warnings only" list.
@@ -847,15 +785,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
 /// Exists for one test — the one that pins design 0061 §3.3.2 — so that the
 /// min/max rule can be asserted directly instead of through a pumped screen.
 /// Returns false for `normal`, true for `warning` and `event`, which is exactly
-/// what `_applyWarning` keeps.
+/// what [historyApplyWarningFilter] keeps.
 bool historyWindowIsFlagged(
   HistoryListRow row, {
   double? ov,
   double? uv,
   double? ot,
 }) =>
-    _HistoryScreenState._classify(row, ov: ov, uv: uv, ot: ot) !=
-    _RowStatus.normal;
+    historyClassifyRow(row, ov: ov, uv: uv, ot: ot) != HistoryRowStatus.normal;
 
 /// One entry in the device picker.
 ///
@@ -903,8 +840,16 @@ double _toDisplayTemp(double c, TempUnit u) =>
 String _tempUnitLabel(TempUnit u) => u == TempUnit.fahrenheit ? '°F' : '°C';
 
 /// Legend + dual-axis chart (tap a point for that bucket's detail) + stats.
-class _TrendCard extends StatefulWidget {
-  const _TrendCard({
+///
+/// PUBLIC since design 0065 §3.2.1 ③ — the detail page's embedded section shows
+/// the same chart for one unit. Every input is a plain value; it reads no
+/// provider, which is what makes it reusable at all.
+///
+/// 🔑 The stats strip is INSIDE this card (the last child of its `build`), so a
+/// caller wanting "chart + min/avg/max" needs nothing else.
+class HistoryTrendCard extends StatefulWidget {
+  const HistoryTrendCard({
+    super.key,
     required this.buckets,
     required this.stats,
     required this.tempUnit,
@@ -923,10 +868,10 @@ class _TrendCard extends StatefulWidget {
   final int bucketMs;
 
   @override
-  State<_TrendCard> createState() => _TrendCardState();
+  State<HistoryTrendCard> createState() => _HistoryTrendCardState();
 }
 
-class _TrendCardState extends State<_TrendCard> {
+class _HistoryTrendCardState extends State<HistoryTrendCard> {
   static const double _chartH = 160;
   int? _selected;
 
@@ -935,7 +880,7 @@ class _TrendCardState extends State<_TrendCard> {
       widget.stats.avgTemp != null;
 
   @override
-  void didUpdateWidget(_TrendCard old) {
+  void didUpdateWidget(HistoryTrendCard old) {
     super.didUpdateWidget(old);
     // Data reloaded (range change / refresh): drop a now-invalid selection.
     if (_selected != null && _selected! >= widget.buckets.length) {
@@ -1649,8 +1594,16 @@ String? historyCurrentBit(
       shown.abs().toStringAsFixed(1), direction);
 }
 
-class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({
+/// One display window as a list row.
+///
+/// PUBLIC since design 0065 §3.2.1 ⑤. Every input is a plain value — including
+/// [status], which the CALLER classifies: the detail page has to withhold the
+/// live thresholds when the unit on screen is not the unit on the link
+/// (§3.2.2), and a widget that classified for itself would have to be told the
+/// same thing anyway, one layer deeper.
+class HistoryRow extends StatelessWidget {
+  const HistoryRow({
+    super.key,
     required this.row,
     required this.tempUnit,
     required this.status,
@@ -1668,7 +1621,7 @@ class _HistoryRow extends StatelessWidget {
   final ProductClass deviceClass;
 
   final TempUnit tempUnit;
-  final _RowStatus status;
+  final HistoryRowStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -1741,13 +1694,13 @@ class _HistoryRow extends StatelessWidget {
 
   String _subLine(AppLocalizations l10n) {
     switch (status) {
-      case _RowStatus.event:
+      case HistoryRowStatus.event:
         return sample.mode == ReportedStatus.cutOffActive
             ? l10n.historyRowEventCutOff
             : l10n.historyRowEventAntiTheft;
-      case _RowStatus.warning:
+      case HistoryRowStatus.warning:
         return _warningText(l10n);
-      case _RowStatus.normal:
+      case HistoryRowStatus.normal:
         final bits = <String>[];
         if (sample.sohBucket != null) {
           bits.add(l10n.historyRowSoh(sample.sohBucket!));
@@ -1773,7 +1726,7 @@ class _HistoryRow extends StatelessWidget {
 class _StatusTag extends StatelessWidget {
   const _StatusTag({required this.status});
 
-  final _RowStatus status;
+  final HistoryRowStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -1785,13 +1738,13 @@ class _StatusTag extends StatelessWidget {
     // and the gauge sub-line use, which now follow the accent. Splitting the
     // name is what stops the next person taking this switch along with them.
     switch (status) {
-      case _RowStatus.normal:
+      case HistoryRowStatus.normal:
         fg = AppSemantics.good;
         label = l10n.commonNormal;
-      case _RowStatus.warning:
+      case HistoryRowStatus.warning:
         fg = AppSemantics.warn;
         label = l10n.commonWarning;
-      case _RowStatus.event:
+      case HistoryRowStatus.event:
         fg = AppSemantics.event;
         label = l10n.historyStatusEvent;
     }

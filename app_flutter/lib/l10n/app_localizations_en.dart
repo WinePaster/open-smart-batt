@@ -919,6 +919,36 @@ class AppLocalizationsEn extends AppLocalizations {
       'No records for this device in the selected range.';
 
   @override
+  String get deviceHistorySectionTitle => 'This device\'s records';
+
+  @override
+  String get deviceHistoryEmpty =>
+      'No records for this device yet.\nThey start accumulating once it is connected.';
+
+  @override
+  String deviceHistoryEmptyWarningOffline(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'No warnings or events in the most recent $count records. Not connected, so only the status the device itself reported could be judged.',
+      zero: 'No records loaded, so there are no warnings to show.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deviceHistoryLoading => 'Reading this device\'s records…';
+
+  @override
+  String deviceHistoryShowMore(int count) {
+    return 'Show $count more';
+  }
+
+  @override
+  String get deviceHistoryRefresh => 'Refresh';
+
+  @override
   String get historyListMinuteNote =>
       'The list shows one row per minute. Full per-second data is available when you export.';
 

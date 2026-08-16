@@ -31,10 +31,19 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../history/device_history_section.dart';
+import '../widgets/one_screen_report.dart';
 
 /// Placeholder shown while the product class is undetermined.
 class ClassPendingView extends StatefulWidget {
-  const ClassPendingView({super.key});
+  const ClassPendingView({super.key, required this.deviceId});
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  ///
+  /// 📌 This state is brief — most connects resolve the class in well under a
+  /// second — but the unit's stored history is not, so there is something to
+  /// show here too (design 0065 §0.4).
+  final String deviceId;
 
   @override
   State<ClassPendingView> createState() => _ClassPendingViewState();
@@ -110,80 +119,70 @@ class _ClassPendingViewState extends State<ClassPendingView> {
       body = l10n.classPendingTimeoutBody;
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.maxHeight,
-            minWidth: constraints.maxWidth,
+    return OneScreenReport(
+      // The wait is brief; the unit's stored history is not. Same reasoning as
+      // `unidentified_view.dart` — the rows are attributed by session, not by
+      // class, so there is something here to show while the class is still
+      // unknown (design 0065 §0.4).
+      below: DeviceHistorySection(deviceId: widget.deviceId, live: true),
+      report: [
+        _PendingGlyph(stalled: stalled),
+        const SizedBox(height: 22),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w700,
+            color: context.colors.text,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _PendingGlyph(stalled: stalled),
-                const SizedBox(height: 22),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    letterSpacing: 0.5,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.text,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
-                  child: Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.7,
-                      color: context.colors.muted,
-                    ),
-                  ),
-                ),
-                if (stalled) ...[
-                  const SizedBox(height: 26),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: conn.isBusy
-                                ? null
-                                : () => conn.reconnectCurrent(),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: Text(l10n.classPendingRetryButton),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                        // 🔴 「仍要顯示讀數（未分類）」 was REMOVED here on
-                        // 2026-08-08 (design 0050 D3). It landed on the
-                        // unclassified pack shell — which was field for field
-                        // the battery's card set, so "show them anyway" meant
-                        // "assert a class nobody established". That is the
-                        // FB-43 shape, and the whole reason this view exists.
-                        //
-                        // Retrying is what remains, because it is the only
-                        // action that can actually change the answer.
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.7,
+              color: context.colors.muted,
             ),
           ),
         ),
-      ),
+        if (stalled) ...[
+          const SizedBox(height: 26),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        conn.isBusy ? null : () => conn.reconnectCurrent(),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: Text(l10n.classPendingRetryButton),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                // 🔴 「仍要顯示讀數（未分類）」 was REMOVED here on
+                // 2026-08-08 (design 0050 D3). It landed on the
+                // unclassified pack shell — which was field for field
+                // the battery's card set, so "show them anyway" meant
+                // "assert a class nobody established". That is the
+                // FB-43 shape, and the whole reason this view exists.
+                //
+                // Retrying is what remains, because it is the only
+                // action that can actually change the answer.
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

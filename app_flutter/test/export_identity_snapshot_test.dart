@@ -373,13 +373,29 @@ void main() {
           .join('\n');
     }
 
-    const handlers = <String>[
+    /// The files that BUILD an export header — the ones that must read the
+    /// layout out of the target they were handed.
+    ///
+    /// 📦 `history_screen.dart` used to be here. Design 0065 gave the device
+    /// detail page a second export button, so the CSV writer moved into
+    /// `history_csv_export.dart` and both surfaces call it; the rule did not
+    /// change, only where it is enforced. The screen that ASKS for an export is
+    /// still checked below, for the half of the rule that still applies to it.
+    const writers = <String>[
       'lib/ui/settings/settings_screen.dart',
+      'lib/ui/util/history_csv_export.dart',
+    ];
+
+    /// Screens that request an export but do not write one. They may not
+    /// resolve any of it themselves either — that is the whole snapshot rule —
+    /// they simply have no `layout:` line of their own to read.
+    const requesters = <String>[
       'lib/ui/history/history_screen.dart',
+      'lib/ui/history/device_history_section.dart',
     ];
 
     test('🔴 no export handler reads the live layout for itself', () {
-      for (final path in handlers) {
+      for (final path in [...writers, ...requesters]) {
         final src = sourceOf(path);
         expect(src.contains('currentExportLayoutValue('), isFalse,
             reason: '$path must take the layout from the ExportTarget it was '
@@ -387,11 +403,13 @@ void main() {
                 'disconnect in that window is what put `face=- modules=-` in a '
                 'file whose `# scope:` named a live unit (batch '
                 '2026.08.13-001).');
-        expect(src.contains('final layout = target.layout;'), isTrue,
-            reason: '$path should be reading the snapshot');
         expect(src.contains('currentDeviceTarget('), isFalse,
             reason: '$path gets its target from chooseExportScope, which is '
                 'the one place allowed to resolve one');
+      }
+      for (final path in writers) {
+        expect(sourceOf(path).contains('final layout = target.layout;'), isTrue,
+            reason: '$path should be reading the snapshot');
       }
     });
 

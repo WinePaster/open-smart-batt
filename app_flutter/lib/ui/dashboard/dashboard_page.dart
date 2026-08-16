@@ -35,7 +35,29 @@ import 'power_bank_view.dart';
 
 /// Dashboard body (intended to sit inside the app shell's [Scaffold] body).
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key, this.onOpenSettings});
+  const DashboardPage({
+    super.key,
+    required this.deviceId,
+    this.onOpenSettings,
+  });
+
+  /// The unit whose detail page this is the body of.
+  ///
+  /// 🔴 Threaded EXPLICITLY, all the way down to the four routed views, and
+  /// `required` rather than nullable — design 0065 §3.3.3. Two decisions worth
+  /// keeping:
+  ///
+  ///  * **Not read from `ConnectionController` further down.** The cheap way to
+  ///    give the views a device id is for each of them to ask which unit is
+  ///    connected — `pack_view.dart` already does exactly that for its layout
+  ///    lookup, so the line is right there to copy. But "the unit being looked
+  ///    at" and "the unit on the link" are different questions, and answering
+  ///    the first with the second is FB-41's shape.
+  ///  * **`required`, not nullable.** A nullable parameter invites "null means
+  ///    do not draw it", so a route that forgot to pass one would lose its
+  ///    history block SILENTLY — the dead-end shape FB-53 / design 0046
+  ///    T-new-6 were about. Required makes the same mistake a compile error.
+  final String deviceId;
 
   /// Switch to the Settings tab. The stale banner links there, because that is
   /// where the platform-specific explanation now lives — next to the
@@ -63,7 +85,7 @@ class DashboardPage extends StatelessWidget {
     return Column(
       children: [
         if (stalled) _StaleBanner(onOpenSettings: onOpenSettings),
-        const Expanded(child: DashboardRouter()),
+        Expanded(child: DashboardRouter(deviceId: deviceId)),
         // Renders only while raw packet logging is on: it stamps user-supplied
         // ground truth into the capture, and a mark with no packets beside it
         // correlates with nothing. Rationale for the gate is in the widget.
@@ -175,7 +197,10 @@ class _StaleBannerState extends State<_StaleBanner> {
 /// gauge. FB-43's field screenshot is a power bank in exactly that state, its
 /// single-cell 3.79 V presented as a pack's main voltage.
 class DashboardRouter extends StatelessWidget {
-  const DashboardRouter({super.key});
+  const DashboardRouter({super.key, required this.deviceId});
+
+  /// Passed through to whichever view is chosen — see [DashboardPage.deviceId].
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {
@@ -187,17 +212,17 @@ class DashboardRouter extends StatelessWidget {
     // somewhere silently.
     switch (routing) {
       case RoutingDecision.powerBank:
-        return const PowerBankView();
+        return PowerBankView(deviceId: deviceId);
       case RoutingDecision.pack:
-        return const PackView();
+        return PackView(deviceId: deviceId);
       // 🔴 design 0050 D8. This used to fall through to `PackView` — an
       // unidentified unit drawn with the battery's cards. See
       // `unidentified_view.dart` for why that is the FB-43 shape and why
       // naming the class is our job rather than the owner's.
       case RoutingDecision.unclassified:
-        return const UnidentifiedView();
+        return UnidentifiedView(deviceId: deviceId);
       case RoutingDecision.pending:
-        return const ClassPendingView();
+        return ClassPendingView(deviceId: deviceId);
     }
   }
 }

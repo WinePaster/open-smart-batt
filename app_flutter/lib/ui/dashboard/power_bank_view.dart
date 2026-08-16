@@ -32,13 +32,17 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../history/device_history_section.dart';
 import 'dashboard_cards.dart';
 import 'power_flow.dart';
 import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
 class PowerBankView extends StatelessWidget {
-  const PowerBankView({super.key});
+  const PowerBankView({super.key, required this.deviceId});
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +58,11 @@ class PowerBankView extends StatelessWidget {
     // WHICH cards, in WHAT order (design 0034 Phase 5). The layout is stored
     // against the connected unit (Q3), so both providers are read: the id moves
     // on connect, the stored layout moves when Settings writes it.
-    final deviceId =
+    // Renamed for `pack_view.dart`'s reason (design 0065): this is the unit
+    // whose stored layout is in force, NOT the unit whose page this is.
+    final layoutOwnerId =
         context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
-    final stored = context.watch<DeviceController>().layoutFor(deviceId);
+    final stored = context.watch<DeviceController>().layoutFor(layoutOwnerId);
     // See the same read in `pack_view.dart`: the two master switches reach the
     // LAYOUT, not just their own cards (design 0042 §3.9 / design 0045 Q3).
     final settings =
@@ -96,14 +102,30 @@ class PowerBankView extends StatelessWidget {
 
             // ---- the watchface: which cards, in what order --------------
             //
-            // NOTHING is appended after this loop, and that is design 0034 §6
-            // rule 3 rather than an omission: a power bank has no protection
-            // controls, and must not grow an empty control card for the sake of
-            // looking like the pack page. An always-empty card is the same
-            // mistake as a permanent `--`.
+            // NO CONTROL CARD is appended after this loop, and that is design
+            // 0034 §6 rule 3 rather than an omission: a power bank has no
+            // protection controls, and must not grow an empty control card for
+            // the sake of looking like the pack page. An always-empty card is
+            // the same mistake as a permanent `--`.
+            //
+            // ⚠️ AMENDED 2026-08-16 (design 0065 §3.3.2). This comment used to
+            // read "NOTHING is appended after this loop", and one thing now is
+            // — the history block below. The wording had to change with it:
+            // read literally, it is an instruction to the next person to delete
+            // that block, and design 0055 §3's lesson is that a comment left
+            // describing the old shape gets obeyed. What the rule actually
+            // forbids is an empty CONTROL CARD, and that is still forbidden.
             for (final m in order)
               ?dashboardCardFor(context, m,
                   shellClass: ProductClass.powerBank, tele: tele),
+
+            // ---- this unit's own history (design 0065) ------------------
+            //
+            // Not a watchface module and not a control card: no
+            // `DisplayModule` names it, and the shell appends it. See the
+            // fuller note in `pack_view.dart`, which is the same append for
+            // the same reason.
+            DeviceHistorySection(deviceId: deviceId, live: true),
           ],
         ),
       ),

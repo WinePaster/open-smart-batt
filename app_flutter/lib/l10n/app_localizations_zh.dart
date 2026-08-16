@@ -871,6 +871,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyEmptyDeviceRange => '這台裝置在此範圍內沒有紀錄。';
 
   @override
+  String get deviceHistorySectionTitle => '這台裝置的紀錄';
+
+  @override
+  String get deviceHistoryEmpty => '這台裝置還沒有紀錄。\n連上之後就會開始累積。';
+
+  @override
+  String deviceHistoryEmptyWarningOffline(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '最近 $count 筆紀錄裡沒有警示或事件。未連線，只能依裝置自己回報的狀態判定。',
+      zero: '沒有載入任何紀錄，因此沒有警示可顯示。',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deviceHistoryLoading => '正在讀取這台裝置的紀錄…';
+
+  @override
+  String deviceHistoryShowMore(int count) {
+    return '再顯示 $count 筆';
+  }
+
+  @override
+  String get deviceHistoryRefresh => '重新整理';
+
+  @override
   String get historyListMinuteNote => '清單以每分鐘一列顯示；完整的每秒資料可以在匯出時選。';
 
   @override

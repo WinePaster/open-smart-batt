@@ -479,8 +479,14 @@ void main() {
           .map((p) => p.first)
           .where((f) => !f.endsWith('export_header.dart'))
           .toSet();
+      // 📦 `history_screen.dart` is no longer on this list, and nothing about
+      // the CSV changed: design 0065 gave the device detail page a second
+      // export button, so the WRITING half moved to `history_csv_export.dart`
+      // and both surfaces call it. One writer is the point — two copies of a
+      // 14-field preamble is how the two would start describing one database
+      // differently.
       expect(callers, {
-        'lib/ui/history/history_screen.dart',
+        'lib/ui/util/history_csv_export.dart',
         'lib/ui/settings/settings_screen.dart',
       });
       for (final f in callers) {

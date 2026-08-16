@@ -113,6 +113,13 @@ void main() {
       ),
     );
     await tester.pump();
+    // design 0065: the pack shell now ends with the embedded history block,
+    // which fires its three queries on mount. Real database IO cannot settle
+    // under the widget tester's fake clock, so it is drained here — otherwise
+    // every test in this file ends holding a pending timer.
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await tester.pump();
   }
 
   group('controls subset — each body shows only what its class has', () {
@@ -157,7 +164,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(CapacitorView), findsOneWidget);
       expect(find.byType(BatteryView), findsNothing);
@@ -174,7 +181,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(BatteryView), findsOneWidget);
       expect(find.byType(CapacitorView), findsNothing);
@@ -191,7 +198,7 @@ void main() {
       });
 
       // No override, not connected → packLabel is unknown.
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(CapacitorView), findsNothing);
       expect(find.byType(BatteryView), findsNothing);
@@ -285,7 +292,7 @@ void main() {
 
       // The field unit: device-type 0x17 plus the 0x2E register pinned at 0.0 A.
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
       await tester.runAsync(() async {
         fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 0.0));
         await Future<void>.delayed(Duration.zero);
@@ -306,7 +313,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
       await tester.runAsync(() async {
         fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 1.5));
         await Future<void>.delayed(Duration.zero);

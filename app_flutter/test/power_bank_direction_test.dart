@@ -155,7 +155,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: Locale(locale),
-          home: const Scaffold(body: PowerBankView()),
+          home: const Scaffold(body: PowerBankView(deviceId: 'DEV-TEST')),
         ),
       ),
     );

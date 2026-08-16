@@ -1550,6 +1550,42 @@ abstract class AppLocalizations {
   /// **'No records for this device in the selected range.'**
   String get historyEmptyDeviceRange;
 
+  /// Heading of the history block embedded in the device detail page (design 0065). It has to say WHOSE records these are: the block is scoped to the unit whose page this is, which may not be the unit currently connected, and the page around it shows the connected unit's live readings.
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s records'**
+  String get deviceHistorySectionTitle;
+
+  /// Empty state of the embedded history block. It must read as 'not started yet' rather than as 'something is broken' — since the block is expanded by default (design 0065 Q5), this is what every never-recorded device shows on open. The block itself must NEVER disappear when empty (FB-53 / design 0046 T-new-6).
+  ///
+  /// In en, this message translates to:
+  /// **'No records for this device yet.\nThey start accumulating once it is connected.'**
+  String get deviceHistoryEmpty;
+
+  /// Warnings-only empty state on a detail page whose unit is NOT on the link. Two things it must not say. (1) 'This device has no warnings' — the filter has only seen the newest N windows, never the whole history (design 0061 T12). (2) Anything implying the check was complete: the over-voltage / under-voltage / over-temperature thresholds come off the live wire, so with no link the only classification left is the device's own reported status code. Saying so is the difference between an honest empty result and a false all-clear.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No records loaded, so there are no warnings to show.} other{No warnings or events in the most recent {count} records. Not connected, so only the status the device itself reported could be judged.}}'**
+  String deviceHistoryEmptyWarningOffline(int count);
+
+  /// Shown while the block's three queries run. The block is expanded by default, so this runs on every detail-page open; the placeholder is a FIXED height so the scroll position does not jump when the data lands (design 0065 P-5).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading this device\'s records…'**
+  String get deviceHistoryLoading;
+
+  /// The embedded list renders in slices rather than all at once. Measured 2026-08-16: 1,000 rows in a Column inflate 24,207 elements, and unlike the History tab this block is expanded on every detail-page open. Says HOW MANY more remain, so it is never a button that might do nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {count} more'**
+  String deviceHistoryShowMore(int count);
+
+  /// No description provided for @deviceHistoryRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get deviceHistoryRefresh;
+
   /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading.
   ///
   /// In en, this message translates to:

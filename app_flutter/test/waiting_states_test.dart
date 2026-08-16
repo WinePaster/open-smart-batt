@@ -220,7 +220,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => tester.runAsync(s.dispose));
       ble.failures = 0;
-      await pumpUnder(tester, s, const ClassPendingView());
+      await pumpUnder(tester, s, const ClassPendingView(deviceId: 'DEV-TEST'));
       await stall(tester, s);
 
       expect(find.text('Device type unavailable'), findsOneWidget);
@@ -232,7 +232,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => tester.runAsync(s.dispose));
       ble.failures = 3;
-      await pumpUnder(tester, s, const ClassPendingView());
+      await pumpUnder(tester, s, const ClassPendingView(deviceId: 'DEV-TEST'));
       await stall(tester, s);
 
       expect(find.text('Connection unstable'), findsOneWidget);
@@ -255,7 +255,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => tester.runAsync(s.dispose));
       ble.failures = 3;
-      await pumpUnder(tester, s, const ClassPendingView());
+      await pumpUnder(tester, s, const ClassPendingView(deviceId: 'DEV-TEST'));
       await tester.runAsync(() async {
         ble.emitLink(BleLinkState.ready);
         await Future<void>.delayed(const Duration(milliseconds: 20));

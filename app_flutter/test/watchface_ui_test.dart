@@ -41,6 +41,7 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
+import 'package:open_smart_batt/ui/history/device_history_section.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
@@ -158,6 +159,13 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    // design 0065: the dashboard now ends with the embedded history block,
+    // which fires its queries on mount. Real database IO cannot settle under
+    // the widget tester's fake clock, so it is drained here — otherwise the
+    // test ends holding a pending timer.
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
     await tester.pump();
   }
 
@@ -418,7 +426,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults,
@@ -439,7 +447,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
       await pumpUnder(
-          tester, s, const PackScaffold(controls: CapacitorControls()));
+          tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: CapacitorControls()));
       await feedDvol(tester);
 
       expect(dy(tester, find.byType(PvltGauge)),
@@ -464,7 +472,7 @@ void main() {
     testWidgets('power bank: SOC ring → chart → readouts', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      await pumpUnder(tester, s, const PowerBankView());
+      await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(TrendChartCard))));
@@ -486,7 +494,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
-      await pumpUnder(tester, s, const PackScaffold(controls: PackControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: PackControls()));
       await feedDvol(tester);
 
       expect(s.connection.packLabel, ProductClass.unknown);
@@ -512,7 +520,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
       await pumpUnder(
-          tester, s, const PackScaffold(controls: CapacitorControls()));
+          tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: CapacitorControls()));
       await feedDvol(tester);
 
       expect(find.byType(TrendChartCard), findsOneWidget);
@@ -541,7 +549,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(find.byType(TrendChartCard), findsOneWidget);
@@ -576,7 +584,7 @@ void main() {
         await setSpeedDetection(tester, s, true);
         await tester.runAsync(() => setFace(s, 'DEV-A', stored));
         await pumpUnder(
-            tester, s, const PackScaffold(controls: BatteryControls()));
+            tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
         await feedDvol(tester);
 
         // Every card of the fixed face, in its order.
@@ -609,7 +617,7 @@ void main() {
       });
 
       ble.connectedId = 'DEV-A';
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
       expect(find.byType(ReadoutsCard), findsOneWidget);
 
@@ -636,12 +644,31 @@ void main() {
         s.connection.setPackLabelOverride(ProductClass.smartBattery);
         await tester.runAsync(() => setFace(s, 'DEV-A', face));
         await pumpUnder(
-            tester, s, const PackScaffold(controls: BatteryControls()));
+            tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
         await feedDvol(tester);
 
-        // Structural: it is the LAST entry of the shell's child list, not
+        // Structural: it is the last CARD of the shell's child list, not
         // merely the lowest thing that happened to render.
-        expect(shellChildren(tester).last, isA<IndustrialCard>());
+        //
+        // ⚠️ AMENDED 2026-08-16 (design 0065 §3.3.4). This used to assert
+        // `.last`, and one thing now comes after the control card: the
+        // embedded history block. That is NOT a breach of design 0034 §6's
+        // "controls last, always" — that rule is about the WATCHFACE, and it
+        // is enforced structurally by there being no `DisplayModule` for the
+        // protection card, so no face can name it or move it. The history
+        // block has no `DisplayModule` either; it is appended by the SHELL,
+        // below everything the face placed. The two are not on the same axis.
+        //
+        // So the assertion becomes the precise one: the control card is the
+        // last thing the DASHBOARD puts up, and the only thing after it is the
+        // history block. A face that managed to place a card below the
+        // controls would still fail here.
+        final children = shellChildren(tester);
+        expect(children.last, isA<DeviceHistorySection>(),
+            reason: 'the history block is appended by the shell, last');
+        expect(children[children.length - 2], isA<IndustrialCard>(),
+            reason: 'and the control card is still the last card of the '
+                'dashboard proper');
         expect(find.byType(BatteryControls), findsOneWidget,
             reason: 'no face may remove it');
         // Every card a pack face can place, including the one Phase 1 added:
@@ -667,7 +694,7 @@ void main() {
         final s = await makeServices(tester);
         addTearDown(() => teardown(tester, s));
         await tester.runAsync(() => setFace(s, 'DEV-A', face));
-        await pumpUnder(tester, s, const PowerBankView());
+        await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
         // The page did render — otherwise "no controls" would be vacuous.
         //
@@ -704,7 +731,7 @@ void main() {
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSpeedDetection(tester, s, true);
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(find.byType(SpeedCard), findsNothing);
@@ -721,7 +748,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       await setSpeedDetection(tester, s, true);
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
-      await pumpUnder(tester, s, const PowerBankView());
+      await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(SpeedCard), findsNothing);
       expect(s.speed.streaming, isFalse);
