@@ -382,61 +382,17 @@ void main() {
       expect(find.text(l10n.historyChartTitle.toUpperCase()), findsOneWidget,
           reason: 'a multi-day range retitles the chart');
 
-      // (c) the warnings filter.
-      final buildsBeforeFilter = debugDeviceHistoryBodyBuilds;
-      await tester.tap(find.text(l10n.historyFilterWarning));
-      await tester.pump();
-      expect(debugDeviceHistoryBodyBuilds, greaterThan(buildsBeforeFilter));
+      // ~~(c) the warnings filter.~~ 🔴 Removed 2026-08-16 with the filter
+      // itself (owner ruling). The two cases above still cover what this test
+      // is for — that the P-2′ memo lets a user-visible change through — and
+      // they exercise the two remaining kinds of key: a settings value
+      // (`tempUnit`) and a state field (`_range`).
     });
   });
 
   // ==========================================================================
   // T65-13 — what the block is allowed to claim when it is offline.
   // ==========================================================================
-  group('the warnings filter never over-claims', () {
-    testWidgets('🔴 T65-13 — offline, an empty filter result says WHY',
-        (tester) async {
-      // CATCHES: reusing the History tab's `historyEmptyWarning` here. That
-      // sentence is already careful about one thing — it counts only the rows
-      // it loaded — but on this page there is a SECOND thing it has not seen:
-      // the over-voltage / under-voltage / over-temperature limits come off the
-      // live wire, and there is no wire. An unqualified "no warnings" would be
-      // an all-clear nobody checked.
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: 3);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      await tester.tap(find.text(l10n.historyFilterWarning));
-      await tester.pump();
-
-      expect(find.text(l10n.deviceHistoryEmptyWarningOffline(3)), findsOneWidget);
-      expect(find.text(l10n.historyEmptyWarning(3)), findsNothing,
-          reason: 'the History tab\'s wording omits the missing thresholds');
-      // …and the sentence actually carries the qualification, so the assertion
-      // above cannot be satisfied by changing the l10n string to the same text.
-      expect(l10n.deviceHistoryEmptyWarningOffline(3).toLowerCase(),
-          contains('not connected'));
-    });
-
-    testWidgets('offline still shows device-reported EVENTS', (tester) async {
-      // Losing the wire loses the `warning` class ONLY. A cut-off is a status
-      // code the device itself recorded, and it survives — which is why
-      // `historyClassifyRow` must keep classifying `event` with null
-      // thresholds.
-      await boot(tester);
-      await addRows(tester, unitA, vA,
-          count: 2, mode: ReportedStatus.cutOffActive);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      await tester.tap(find.text(l10n.historyFilterWarning));
-      await tester.pump();
-
-      expect(find.text(l10n.historyStatusEvent), findsWidgets,
-          reason: 'a cut-off is the device speaking, not a threshold we set');
-    });
-  });
 
   // ==========================================================================
   // T65-12 — the two surfaces must agree about one unit.
@@ -502,217 +458,6 @@ void main() {
   // ==========================================================================
   // The measured retreat (design 0065 §3.5.4 ③).
   // ==========================================================================
-  group('the list renders in slices', () {
-    testWidgets('a long list starts short and says how much is left',
-        (tester) async {
-      // 1,000 rows in a Column inflate 24,207 elements (measured 2026-08-16,
-      // `T65-4` M4) — over the plan's own 8,000 "must be lazy" line. Unlike the
-      // History tab, this block is built on EVERY detail-page open. The slice
-      // is the one retreat that touches neither the scroll skeleton (Q6, the
-      // owner's to rule) nor the row cap (which would make the two surfaces
-      // disagree about how much they loaded).
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: kDeviceHistoryInitialRows + 30);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      expect(find.byType(HistoryRow), findsNWidgets(kDeviceHistoryInitialRows));
-      expect(find.text(l10n.deviceHistoryShowMore(30)), findsOneWidget,
-          reason: 'a "show more" that does not say how much is left could be '
-              'a button that does nothing');
-
-      // 60 rows put the button well below the fold; a tap on an off-screen
-      // widget lands nowhere.
-      await tester.ensureVisible(find.text(l10n.deviceHistoryShowMore(30)));
-      await tester.pump();
-      await tester.tap(find.text(l10n.deviceHistoryShowMore(30)));
-      await tester.pump();
-      expect(find.byType(HistoryRow),
-          findsNWidgets(kDeviceHistoryInitialRows + 30));
-      expect(find.textContaining('Show'), findsNothing,
-          reason: 'nothing left to show');
-    });
-
-    testWidgets('a short list has no button at all', (tester) async {
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: 3);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      expect(find.byType(HistoryRow), findsNWidgets(3));
-      expect(find.textContaining('Show'), findsNothing);
-    });
-
-    // ------------------------------------------------------------------
-    // 🔴 The two tests above only ever exercise ONE of `_showMore`'s two
-    // branches — the `remaining < kDeviceHistoryRowStep` one, where the step
-    // constant is not consulted at all. With 30 left over, `_visibleRows +=
-    // 30`, `+= remaining`, and `= listRows.length` are indistinguishable. So
-    // is `kDeviceHistoryRowStep = 1000`, which would defeat the whole retreat
-    // silently: no error, no log, just the 24,207-element subtree the slice
-    // exists to avoid.
-    //
-    // `T65-14` … `T65-16` below are written against the SEEN row count for the
-    // reason `_refresh` was: on this file's own evidence, a control can be
-    // wired, run its work, and still not move the screen (see the block
-    // comment on `_refresh` — `setState` with an arrow body asserts inside the
-    // gesture handler, so the tap logs an exception and the rebuild never
-    // happens, while a test that asserted "the button is there" or "the
-    // callback ran" stayed green throughout).
-    //
-    // 📌 Range is switched to ALL first, deliberately. 200 rows are 200 minutes
-    // apart, and the default "today" range is cut at local midnight — a suite
-    // running at 02:00 would find only ~120 of them and the step assertions
-    // would read as a step regression rather than as the clock.
-    // ------------------------------------------------------------------
-
-    /// The whole of the section's list, from the row count outward. Rows are
-    /// counted through `widgetList` rather than `findsNWidgets` so a failure
-    /// prints the number that was actually on screen.
-    int seenRows(WidgetTester tester) =>
-        tester.widgetList(find.byType(HistoryRow)).length;
-
-    /// Widen the range to "all" so local midnight cannot truncate the fixture.
-    Future<void> useAllRange(WidgetTester tester, AppLocalizations l10n) async {
-      await tester.tap(find.text(l10n.historyRangeAll));
-      await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
-      await tester.pump();
-      await tester.pump();
-    }
-
-    /// Tap the "show N more" button wherever it currently is. 60+ rows put it
-    /// far below the fold, and a tap on an off-screen widget lands nowhere.
-    Future<void> tapShowMore(WidgetTester tester, String label) async {
-      await tester.ensureVisible(find.text(label));
-      await tester.pump();
-      await tester.tap(find.text(label));
-      await tester.pump();
-    }
-
-    testWidgets('🔴 T65-14 — one tap adds ONE step of 120, not the rest',
-        (tester) async {
-      // CATCHES: `_visibleRows = listRows.length` (the "just show everything"
-      // simplification, which is exactly the 24,207-element subtree §3.5.4 ③
-      // was the retreat FROM), `kDeviceHistoryRowStep` being widened, and a
-      // `_showMore` that adds nothing at all.
-      const total = 200; // 60 shown ⇒ 140 left ⇒ one full step, then a partial
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: total);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await useAllRange(tester, l10n);
-
-      expect(seenRows(tester), kDeviceHistoryInitialRows,
-          reason: 'the first slice is the constant, not the query size');
-      expect(total - kDeviceHistoryInitialRows,
-          greaterThan(kDeviceHistoryRowStep),
-          reason: 'the premise: more is left than one step can show, which is '
-              'the branch the other tests in this group never reach');
-      expect(find.text(l10n.deviceHistoryShowMore(140)), findsOneWidget);
-
-      // ① a FULL step.
-      await tapShowMore(tester, l10n.deviceHistoryShowMore(140));
-      expect(seenRows(tester),
-          kDeviceHistoryInitialRows + kDeviceHistoryRowStep,
-          reason: 'one tap is one step — 180 rows, and the remaining 20 are '
-              'still behind the button');
-      expect(find.text(l10n.deviceHistoryShowMore(20)), findsOneWidget,
-          reason: 'and the count on the button has to follow, or the second '
-              'tap tells the user something false');
-
-      // ② the PARTIAL step — never overshoot into an empty tail.
-      await tapShowMore(tester, l10n.deviceHistoryShowMore(20));
-      expect(seenRows(tester), total);
-      expect(find.textContaining('Show'), findsNothing,
-          reason: 'nothing left to show');
-    });
-
-    testWidgets('🔴 T65-15 — the "show more" target is at least 40x40 dp, '
-        'and the whole of it is live', (tester) async {
-      // FB-70 was a working feature behind a 14×14 dp hit box: nothing was
-      // broken, users simply could not land on it. The refresh button next to
-      // this one carries an explicit `BoxConstraints(minWidth: 40, minHeight:
-      // 40)` for that reason; this one inherits its floor from the theme, so
-      // it is the one that can be shrunk by a `visualDensity` or
-      // `materialTapTargetSize` change made somewhere else entirely.
-      //
-      // 🔴 Measuring alone is not enough — a 48 dp box around a dead button
-      // measures the same as a live one. So the tap below lands 1 dp inside
-      // the measured corner and the assertion is on the ROW COUNT.
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: 200);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await useAllRange(tester, l10n);
-
-      final button = find.ancestor(
-        of: find.text(l10n.deviceHistoryShowMore(140)),
-        matching: find.byType(TextButton),
-      );
-      expect(button, findsOneWidget);
-      await tester.ensureVisible(button);
-      await tester.pump();
-
-      final size = tester.getSize(button);
-      expect(size.height, greaterThanOrEqualTo(40.0),
-          reason: 'FB-70: the hit box, not the glyph');
-      expect(size.width, greaterThanOrEqualTo(40.0));
-
-      final before = seenRows(tester);
-      final rect = tester.getRect(button);
-      await tester.tapAt(rect.topLeft + const Offset(1, 1));
-      await tester.pump();
-      expect(seenRows(tester), greaterThan(before),
-          reason: 'the corner of the measured target has to be the button, '
-              'not padding around a smaller one');
-    });
-
-    testWidgets('T65-16 — refresh keeps the slice; a range change resets it',
-        (tester) async {
-      // Both halves are documented decisions in `device_history_section.dart`
-      // with nothing pinning them. They pull in OPPOSITE directions, which is
-      // why they are tested together: a reader "tidying up" by resetting
-      // `_visibleRows` in both places, or in neither, breaks exactly one of
-      // these.
-      await boot(tester);
-      await addRows(tester, unitA, vA, count: 200);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await useAllRange(tester, l10n);
-      await tapShowMore(tester, l10n.deviceHistoryShowMore(140));
-      expect(seenRows(tester), 180);
-
-      // (a) refresh — the user asked for newer data, NOT for their place in
-      //     the list back. Re-slicing to 60 here would silently undo 120 rows
-      //     of scrolling every time they check for an update.
-      await tester.ensureVisible(find.byTooltip('Refresh'));
-      await tester.pump();
-      await tester.tap(find.byTooltip('Refresh'));
-      await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
-      await tester.pumpAndSettle();
-      expect(seenRows(tester), 180,
-          reason: 'same rows, same slice — the query changed, the list did '
-              'not');
-
-      // (b) a range change — the query itself is different now, so the old
-      //     offset means nothing. "Week" still covers every fixture row
-      //     (they span 200 minutes), so a count of 60 can only be the reset.
-      await tester.ensureVisible(find.text(l10n.historyRangeWeek));
-      await tester.pump();
-      await tester.tap(find.text(l10n.historyRangeWeek));
-      await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
-      await tester.pumpAndSettle();
-      expect(seenRows(tester), kDeviceHistoryInitialRows,
-          reason: 'back to the first slice');
-      expect(find.text(l10n.deviceHistoryShowMore(140)), findsOneWidget,
-          reason: 'and the same 200 rows are still behind it, so the reset is '
-              'the only thing that changed');
-    });
-  });
 
   // ==========================================================================
   // P-4 — the cache that exists for FB-75's host swap (R3).
@@ -744,15 +489,21 @@ void main() {
       await pumpSection(tester, deviceId: unitA, live: live);
     }
 
+    // 🔴 Counted, not inferred from what is on screen. Until 2026-08-16 this
+    // read "9.87 is not rendered yet" — the row list was the observable. The
+    // list is gone and the stats strip AGGREGATES, so a newer row can arrive
+    // and move nothing visible. `debugDeviceHistoryQueries` says the thing this
+    // test actually means.
+    final queriesBefore = debugDeviceHistoryQueries;
     await remount(true);
     expect(showsVoltage(vA), isTrue);
-    expect(showsVoltage(9.87), isFalse,
-        reason: 'served from the P-4 cache — a re-query would have found the '
-            'row written since');
+    expect(debugDeviceHistoryQueries, queriesBefore,
+        reason: 'served from the P-4 cache — a re-query would have gone to the '
+            'database for the row written since');
 
     debugClearDeviceHistoryCache();
     await remount(true);
-    expect(showsVoltage(9.87), isTrue,
+    expect(debugDeviceHistoryQueries, greaterThan(queriesBefore),
         reason: 'and once the entry is gone the block really does re-query');
   });
 
@@ -883,13 +634,13 @@ void main() {
       await boot(tester);
       await addRows(tester, 'A', 12.6, count: 3, fromMinute: 1);
       await pumpSection(tester, deviceId: 'A', live: false);
-      final before = tester.widgetList(find.byType(HistoryRow)).length;
-      expect(before, greaterThan(0));
+      final before = debugDeviceHistoryQueries;
+      expect(before, greaterThan(0), reason: 'it queried once on mount');
 
       // A row lands while the user is looking at the page.
       await addRows(tester, 'A', 12.4, count: 3, fromMinute: 30);
       await tester.pump();
-      expect(tester.widgetList(find.byType(HistoryRow)).length, before,
+      expect(debugDeviceHistoryQueries, before,
           reason: 'nothing re-queries on its own — this is the gap R1 closes');
 
       await tester.tap(find.byTooltip('Refresh'));
@@ -898,8 +649,7 @@ void main() {
       await tester.runAsync(
           () async => Future<void>.delayed(const Duration(milliseconds: 200)));
       await tester.pumpAndSettle();
-      expect(tester.widgetList(find.byType(HistoryRow)).length,
-          greaterThan(before),
+      expect(debugDeviceHistoryQueries, greaterThan(before),
           reason: 'the button must bypass the P-4 cache, not just setState');
     });
 
