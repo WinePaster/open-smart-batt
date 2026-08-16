@@ -68,10 +68,27 @@ import 'history_screen.dart';
 ///
 /// The retreat taken is design 0065 §3.5.4 option ③ — render the list in slices
 /// — because it is the only one of the three that touches neither the scroll
-/// skeleton (Q6, still the owner's to rule) nor [kHistoryRowCap] (which would
-/// make this block and the History tab disagree about how much they loaded,
-/// §6 R5). One hour of windows is what fits the question the block answers:
-/// "what has this unit been doing".
+/// skeleton nor [kHistoryRowCap] (which would make this block and the History
+/// tab disagree about how much they loaded, §6 R5). One hour of windows is what
+/// fits the question the block answers: "what has this unit been doing".
+///
+/// 🔴 **Ruled 2026-08-16 (Q6): no slivers — but NOT because slivers would not
+/// help.** Measured the same day: 1,000 rows as a `ListView`'s DIRECT children
+/// inflate ~242 elements, and the same 1,000 as a `SliverList`'s children
+/// ~417 — both lazy. It is 1,000 rows inside ONE child of a `ListView` (this
+/// block's shape) that comes to ~3,030, because a `ListView`'s laziness reaches
+/// its direct children and stops there. Lifting these rows into slivers really
+/// would fix it.
+///
+/// The reason not to is architectural: this block hangs off FIVE hosts, and
+/// three of them ([OneScreenReport], used by `unidentified_view`,
+/// `class_pending_view` and the offline body) cannot take a sliver — their
+/// whole job is a `LayoutBuilder` + `ConstrainedBox(minHeight: viewport)` that
+/// centres a report in one screen, which sliver protocol has no equivalent for.
+///
+/// ⚠️ **Do not read this as "slivers are not worth it here" in general.** A
+/// full-page list that owns its own scroll view has none of the above problems
+/// and should use `CustomScrollView`. Design 0065 §0.8 is the long version.
 const int kDeviceHistoryInitialRows = 60;
 
 /// Rows added per "show more" tap. Not "all the rest": the whole point of the
