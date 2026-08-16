@@ -1723,4 +1723,158 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get fullscreenExit => '離開全螢幕';
+
+  @override
+  String get declaredRowAction => '型號';
+
+  @override
+  String get declaredTitle => '設定型號';
+
+  @override
+  String get declaredBody => '告訴我們這台是什麼裝置。不確定的欄位可以留空。';
+
+  @override
+  String get declaredNotDisplayed => '這些資料是收給我們看的，不會改變你畫面上的任何東西。';
+
+  @override
+  String get declaredSectionCategory => '類別';
+
+  @override
+  String get declaredSectionModel => '型號';
+
+  @override
+  String get declaredSectionRegion => '區規';
+
+  @override
+  String get declaredSectionLabel => '標籤顏色';
+
+  @override
+  String get declaredSectionCapacity => '標稱容量';
+
+  @override
+  String get declaredSectionNote => '備註';
+
+  @override
+  String get declaredOptional => '可留空';
+
+  @override
+  String get declaredClear => '清除';
+
+  @override
+  String get declaredCategoryMotorcycleCapacitor => '機車電容';
+
+  @override
+  String get declaredCategoryCarCapacitor => '汽車電容';
+
+  @override
+  String get declaredCategoryMotorcycleBattery => '機車電池';
+
+  @override
+  String get declaredCategoryCarBattery => '汽車電池';
+
+  @override
+  String get declaredCategoryPowerBank => '行動電源';
+
+  @override
+  String get declaredGenerationGen1 => '一代';
+
+  @override
+  String get declaredGenerationGen2 => '二代';
+
+  @override
+  String get declaredGenerationFlagship => '旗艦';
+
+  @override
+  String get declaredGroupOldGen => '舊代';
+
+  @override
+  String get declaredGroupNewGenB => '新代 · B 款（厚 65mm）';
+
+  @override
+  String get declaredGroupNewGenA => '新代 · A 款（厚 87mm）';
+
+  @override
+  String get declaredGroupRetrofit => '改智慧上蓋';
+
+  @override
+  String get declaredModelRetrofitLid => '改智慧上蓋';
+
+  @override
+  String get declaredRetrofitNoteLabel => '上蓋底下那顆電池是什麼？';
+
+  @override
+  String get declaredRetrofitNoteHint => '例如：原廠 7Ah、或某個牌子';
+
+  @override
+  String get declaredNoteHint => '其他想告訴我們的事';
+
+  @override
+  String get declaredRegionJp => '日規';
+
+  @override
+  String get declaredRegionEu => '歐規';
+
+  @override
+  String get declaredLabelOrange => '橘標';
+
+  @override
+  String get declaredLabelPurple => '紫標';
+
+  @override
+  String get declaredCapacityHint => '例如 48，或標籤上的 40B19L';
+
+  @override
+  String get declaredCapacityFreeText => '那四顆是建議值，不是清單。標籤上寫什麼就填什麼。';
+
+  @override
+  String get declaredMismatchCapacitor =>
+      '這台裝置回報的自己不是電容。還是可以儲存 —— 如果它是我們沒見過的硬體，那正是我們最想知道的。';
+
+  @override
+  String get declaredMismatchBattery =>
+      '這台裝置回報的自己不是電池。還是可以儲存 —— 如果它是我們沒見過的硬體，那正是我們最想知道的。';
+
+  @override
+  String get declaredMismatchPowerBank =>
+      '這台裝置回報的自己不是行動電源。還是可以儲存 —— 如果它是我們沒見過的硬體，那正是我們最想知道的。';
+
+  @override
+  String get declaredMismatchFlagship =>
+      '這台裝置回報的自己不是旗艦型。還是可以儲存 —— 如果它是我們沒見過的硬體，那正是我們最想知道的。';
+
+  @override
+  String get declaredHelpLine => '如果不清楚怎麼填寫，可以到 LINE 社群詢問。';
+
+  @override
+  String get declaredModel60A => '6.0A';
+
+  @override
+  String get declaredModel60B => '6.0B';
+
+  @override
+  String get declaredModel90A => '9.0A';
+
+  @override
+  String get declaredModel50AhB => '5.0Ah-B';
+
+  @override
+  String get declaredModel75AhB => '7.5Ah-B';
+
+  @override
+  String get declaredModel100AhB => '10.0Ah-B';
+
+  @override
+  String get declaredModel50AhA => '5.0Ah-A';
+
+  @override
+  String get declaredModel75AhA => '7.5Ah-A';
+
+  @override
+  String get declaredModel100AhA => '10.0Ah-A';
+
+  @override
+  String get declaredModel125AhA => '12.5Ah-A';
+
+  @override
+  String get declaredModel175AhA => '17.5Ah-A';
 }

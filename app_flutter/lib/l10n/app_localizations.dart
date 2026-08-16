@@ -3085,6 +3085,306 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Exit full screen'**
   String get fullscreenExit;
+
+  /// Saved-device row action, beside Rename. Kept to ONE word: the row carries three labelled buttons on a 320 pt phone (design 0066 §3.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get declaredRowAction;
+
+  /// No description provided for @declaredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set model'**
+  String get declaredTitle;
+
+  /// No description provided for @declaredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us what this unit is. Anything you are not sure of can be left blank.'**
+  String get declaredBody;
+
+  /// No description provided for @declaredNotDisplayed.
+  ///
+  /// In en, this message translates to:
+  /// **'This is collected for us to read; it changes nothing on your screens.'**
+  String get declaredNotDisplayed;
+
+  /// No description provided for @declaredSectionCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Type'**
+  String get declaredSectionCategory;
+
+  /// No description provided for @declaredSectionModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get declaredSectionModel;
+
+  /// No description provided for @declaredSectionRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'Case standard'**
+  String get declaredSectionRegion;
+
+  /// No description provided for @declaredSectionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Label colour'**
+  String get declaredSectionLabel;
+
+  /// No description provided for @declaredSectionCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Nominal capacity'**
+  String get declaredSectionCapacity;
+
+  /// No description provided for @declaredSectionNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Note'**
+  String get declaredSectionNote;
+
+  /// No description provided for @declaredOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'optional'**
+  String get declaredOptional;
+
+  /// No description provided for @declaredClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get declaredClear;
+
+  /// No description provided for @declaredCategoryMotorcycleCapacitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Motorcycle capacitor'**
+  String get declaredCategoryMotorcycleCapacitor;
+
+  /// No description provided for @declaredCategoryCarCapacitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Car capacitor'**
+  String get declaredCategoryCarCapacitor;
+
+  /// No description provided for @declaredCategoryMotorcycleBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'Motorcycle battery'**
+  String get declaredCategoryMotorcycleBattery;
+
+  /// No description provided for @declaredCategoryCarBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'Car battery'**
+  String get declaredCategoryCarBattery;
+
+  /// No description provided for @declaredCategoryPowerBank.
+  ///
+  /// In en, this message translates to:
+  /// **'Power bank'**
+  String get declaredCategoryPowerBank;
+
+  /// No description provided for @declaredGenerationGen1.
+  ///
+  /// In en, this message translates to:
+  /// **'Gen 1'**
+  String get declaredGenerationGen1;
+
+  /// No description provided for @declaredGenerationGen2.
+  ///
+  /// In en, this message translates to:
+  /// **'Gen 2'**
+  String get declaredGenerationGen2;
+
+  /// No description provided for @declaredGenerationFlagship.
+  ///
+  /// In en, this message translates to:
+  /// **'Flagship'**
+  String get declaredGenerationFlagship;
+
+  /// No description provided for @declaredGroupOldGen.
+  ///
+  /// In en, this message translates to:
+  /// **'Old catalogue'**
+  String get declaredGroupOldGen;
+
+  /// No description provided for @declaredGroupNewGenB.
+  ///
+  /// In en, this message translates to:
+  /// **'New catalogue · B (65 mm case)'**
+  String get declaredGroupNewGenB;
+
+  /// No description provided for @declaredGroupNewGenA.
+  ///
+  /// In en, this message translates to:
+  /// **'New catalogue · A (87 mm case)'**
+  String get declaredGroupNewGenA;
+
+  /// No description provided for @declaredGroupRetrofit.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrofit smart lid'**
+  String get declaredGroupRetrofit;
+
+  /// No description provided for @declaredModelRetrofitLid.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrofit smart lid'**
+  String get declaredModelRetrofitLid;
+
+  /// No description provided for @declaredRetrofitNoteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Which battery is under the lid?'**
+  String get declaredRetrofitNoteLabel;
+
+  /// No description provided for @declaredRetrofitNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. the stock 7 Ah, or a brand name'**
+  String get declaredRetrofitNoteHint;
+
+  /// No description provided for @declaredNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Anything else worth telling us'**
+  String get declaredNoteHint;
+
+  /// No description provided for @declaredRegionJp.
+  ///
+  /// In en, this message translates to:
+  /// **'JIS (Japan)'**
+  String get declaredRegionJp;
+
+  /// No description provided for @declaredRegionEu.
+  ///
+  /// In en, this message translates to:
+  /// **'DIN (Europe)'**
+  String get declaredRegionEu;
+
+  /// No description provided for @declaredLabelOrange.
+  ///
+  /// In en, this message translates to:
+  /// **'Orange label'**
+  String get declaredLabelOrange;
+
+  /// No description provided for @declaredLabelPurple.
+  ///
+  /// In en, this message translates to:
+  /// **'Purple label'**
+  String get declaredLabelPurple;
+
+  /// No description provided for @declaredCapacityHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 48, or 40B19L from the label'**
+  String get declaredCapacityHint;
+
+  /// No description provided for @declaredCapacityFreeText.
+  ///
+  /// In en, this message translates to:
+  /// **'The four buttons are suggestions, not a list. Type whatever the label actually says.'**
+  String get declaredCapacityFreeText;
+
+  /// No description provided for @declaredMismatchCapacitor.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit did not report itself as a capacitor. You can still save — if it is hardware we have not seen, that is exactly what we want to know.'**
+  String get declaredMismatchCapacitor;
+
+  /// No description provided for @declaredMismatchBattery.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit did not report itself as a battery. You can still save — if it is hardware we have not seen, that is exactly what we want to know.'**
+  String get declaredMismatchBattery;
+
+  /// No description provided for @declaredMismatchPowerBank.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit did not report itself as a power bank. You can still save — if it is hardware we have not seen, that is exactly what we want to know.'**
+  String get declaredMismatchPowerBank;
+
+  /// No description provided for @declaredMismatchFlagship.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit did not report itself as a flagship. You can still save — if it is hardware we have not seen, that is exactly what we want to know.'**
+  String get declaredMismatchFlagship;
+
+  /// design 0066 §3.9 — PLAIN TEXT by owner ruling. It must not become a tappable link.
+  ///
+  /// In en, this message translates to:
+  /// **'If you are not sure how to fill this in, ask in the LINE community.'**
+  String get declaredHelpLine;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'6.0A'**
+  String get declaredModel60A;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'6.0B'**
+  String get declaredModel60B;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'9.0A'**
+  String get declaredModel90A;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'5.0Ah-B'**
+  String get declaredModel50AhB;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'7.5Ah-B'**
+  String get declaredModel75AhB;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'10.0Ah-B'**
+  String get declaredModel100AhB;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'5.0Ah-A'**
+  String get declaredModel50AhA;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'7.5Ah-A'**
+  String get declaredModel75AhA;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'10.0Ah-A'**
+  String get declaredModel100AhA;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'12.5Ah-A'**
+  String get declaredModel125AhA;
+
+  /// Catalogue part number, NOT a sentence. Identical in every locale — do not translate (design 0066).
+  ///
+  /// In en, this message translates to:
+  /// **'17.5Ah-A'**
+  String get declaredModel175AhA;
 }
 
 class _AppLocalizationsDelegate
