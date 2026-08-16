@@ -47,7 +47,10 @@ import 'watchfaces.dart';
 /// never routing — every branch renders the same [PackScaffold] layout, so this
 /// switch only ever changes which controls sit inside it.
 class PackView extends StatelessWidget {
-  const PackView({super.key});
+  const PackView({super.key, required this.deviceId});
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {
@@ -55,34 +58,38 @@ class PackView extends StatelessWidget {
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
     switch (label) {
       case ProductClass.supercapacitor:
-        return const CapacitorView();
+        return CapacitorView(deviceId: deviceId);
       case ProductClass.smartBattery:
-        return const BatteryView();
+        return BatteryView(deviceId: deviceId);
       case ProductClass.powerBank:
       case ProductClass.unknown:
         // Still identifying (or a stray power-bank label a pack can never truly
         // be): the bounded fallback — union of controls except anti-theft.
-        return const PackScaffold(controls: PackControls());
+        return PackScaffold(deviceId: deviceId, controls: const PackControls());
     }
   }
 }
 
 /// Super-capacitor body: the shared pack shell with [CapacitorControls].
 class CapacitorView extends StatelessWidget {
-  const CapacitorView({super.key});
+  const CapacitorView({super.key, required this.deviceId});
+
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) =>
-      const PackScaffold(controls: CapacitorControls());
+      PackScaffold(deviceId: deviceId, controls: const CapacitorControls());
 }
 
 /// Smart-battery body: the shared pack shell with [BatteryControls].
 class BatteryView extends StatelessWidget {
-  const BatteryView({super.key});
+  const BatteryView({super.key, required this.deviceId});
+
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) =>
-      const PackScaffold(controls: BatteryControls());
+      PackScaffold(deviceId: deviceId, controls: const BatteryControls());
 }
 
 /// Shared pack chrome: cosmetic label chip + serial + PVLT gauge + data-driven
@@ -91,7 +98,18 @@ class BatteryView extends StatelessWidget {
 /// battery bodies cannot drift apart in the ~70 % of the page they share, and
 /// so switching between them changes nothing but the injected controls.
 class PackScaffold extends StatelessWidget {
-  const PackScaffold({super.key, required this.controls});
+  const PackScaffold({
+    super.key,
+    required this.deviceId,
+    required this.controls,
+  });
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  ///
+  /// ⚠️ NOT the same thing as the `connectedDeviceId` read below for the stored
+  /// layout. That one asks "whose dashboard arrangement is in force", which is
+  /// a property of the link; this one asks "whose page is this".
+  final String deviceId;
 
   /// The class-specific protection body (CapacitorControls / BatteryControls /
   /// PackControls).

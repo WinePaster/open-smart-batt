@@ -38,7 +38,10 @@ import 'watchfaces.dart';
 
 /// The power-bank dashboard body.
 class PowerBankView extends StatelessWidget {
-  const PowerBankView({super.key});
+  const PowerBankView({super.key, required this.deviceId});
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {

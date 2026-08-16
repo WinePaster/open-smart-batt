@@ -35,7 +35,14 @@ import '../widgets/one_screen_report.dart';
 
 /// Placeholder shown while the product class is undetermined.
 class ClassPendingView extends StatefulWidget {
-  const ClassPendingView({super.key});
+  const ClassPendingView({super.key, required this.deviceId});
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  ///
+  /// 📌 This state is brief — most connects resolve the class in well under a
+  /// second — but the unit's stored history is not, so there is something to
+  /// show here too (design 0065 §0.4).
+  final String deviceId;
 
   @override
   State<ClassPendingView> createState() => _ClassPendingViewState();

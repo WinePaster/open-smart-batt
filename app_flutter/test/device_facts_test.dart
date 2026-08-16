@@ -345,7 +345,7 @@ void main() {
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             locale: const Locale('en'),
-            home: const Scaffold(body: DashboardRouter()),
+            home: const Scaffold(body: DashboardRouter(deviceId: 'DEV-TEST')),
           ),
         ),
       );

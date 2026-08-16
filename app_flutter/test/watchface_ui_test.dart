@@ -418,7 +418,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults,
@@ -439,7 +439,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
       await pumpUnder(
-          tester, s, const PackScaffold(controls: CapacitorControls()));
+          tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: CapacitorControls()));
       await feedDvol(tester);
 
       expect(dy(tester, find.byType(PvltGauge)),
@@ -464,7 +464,7 @@ void main() {
     testWidgets('power bank: SOC ring → chart → readouts', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
-      await pumpUnder(tester, s, const PowerBankView());
+      await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
       expect(dy(tester, find.byType(PvltGauge)),
           lessThan(dy(tester, find.byType(TrendChartCard))));
@@ -486,7 +486,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.diagnostic));
-      await pumpUnder(tester, s, const PackScaffold(controls: PackControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: PackControls()));
       await feedDvol(tester);
 
       expect(s.connection.packLabel, ProductClass.unknown);
@@ -512,7 +512,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
       await pumpUnder(
-          tester, s, const PackScaffold(controls: CapacitorControls()));
+          tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: CapacitorControls()));
       await feedDvol(tester);
 
       expect(find.byType(TrendChartCard), findsOneWidget);
@@ -541,7 +541,7 @@ void main() {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(find.byType(TrendChartCard), findsOneWidget);
@@ -576,7 +576,7 @@ void main() {
         await setSpeedDetection(tester, s, true);
         await tester.runAsync(() => setFace(s, 'DEV-A', stored));
         await pumpUnder(
-            tester, s, const PackScaffold(controls: BatteryControls()));
+            tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
         await feedDvol(tester);
 
         // Every card of the fixed face, in its order.
@@ -609,7 +609,7 @@ void main() {
       });
 
       ble.connectedId = 'DEV-A';
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
       expect(find.byType(ReadoutsCard), findsOneWidget);
 
@@ -636,7 +636,7 @@ void main() {
         s.connection.setPackLabelOverride(ProductClass.smartBattery);
         await tester.runAsync(() => setFace(s, 'DEV-A', face));
         await pumpUnder(
-            tester, s, const PackScaffold(controls: BatteryControls()));
+            tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
         await feedDvol(tester);
 
         // Structural: it is the LAST entry of the shell's child list, not
@@ -667,7 +667,7 @@ void main() {
         final s = await makeServices(tester);
         addTearDown(() => teardown(tester, s));
         await tester.runAsync(() => setFace(s, 'DEV-A', face));
-        await pumpUnder(tester, s, const PowerBankView());
+        await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
         // The page did render — otherwise "no controls" would be vacuous.
         //
@@ -704,7 +704,7 @@ void main() {
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
       await setSpeedDetection(tester, s, true);
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
-      await pumpUnder(tester, s, const PackScaffold(controls: BatteryControls()));
+      await pumpUnder(tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: BatteryControls()));
       await feedDvol(tester);
 
       expect(find.byType(SpeedCard), findsNothing);
@@ -721,7 +721,7 @@ void main() {
       addTearDown(() => teardown(tester, s));
       await setSpeedDetection(tester, s, true);
       await tester.runAsync(() => setFace(s, 'DEV-A', Watchface.riding));
-      await pumpUnder(tester, s, const PowerBankView());
+      await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(SpeedCard), findsNothing);
       expect(s.speed.streaming, isFalse);

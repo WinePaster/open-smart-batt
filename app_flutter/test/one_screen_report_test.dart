@@ -266,7 +266,7 @@ void main() {
       await boot(tester);
       await pump(
         tester,
-        const Scaffold(body: UnidentifiedView()),
+        const Scaffold(body: UnidentifiedView(deviceId: 'DEV-A')),
         extra: [
           ChangeNotifierProvider<ConnectionController>.value(
               value: services.connection),
@@ -283,7 +283,7 @@ void main() {
       addTearDown(conn.dispose);
       await pump(
         tester,
-        const Scaffold(body: ClassPendingView()),
+        const Scaffold(body: ClassPendingView(deviceId: 'DEV-A')),
         extra: [
           ChangeNotifierProvider<ConnectionController>.value(value: conn),
           ChangeNotifierProvider<TelemetryController>.value(

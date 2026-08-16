@@ -157,7 +157,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(CapacitorView), findsOneWidget);
       expect(find.byType(BatteryView), findsNothing);
@@ -174,7 +174,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(BatteryView), findsOneWidget);
       expect(find.byType(CapacitorView), findsNothing);
@@ -191,7 +191,7 @@ void main() {
       });
 
       // No override, not connected → packLabel is unknown.
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
 
       expect(find.byType(CapacitorView), findsNothing);
       expect(find.byType(BatteryView), findsNothing);
@@ -285,7 +285,7 @@ void main() {
 
       // The field unit: device-type 0x17 plus the 0x2E register pinned at 0.0 A.
       s.connection.setPackLabelOverride(ProductClass.supercapacitor);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
       await tester.runAsync(() async {
         fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 0.0));
         await Future<void>.delayed(Duration.zero);
@@ -306,7 +306,7 @@ void main() {
       });
 
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
-      await pumpUnder(tester, s, const PackView());
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
       await tester.runAsync(() async {
         fakeBle.emit(TelemetrySample(timestamp: DateTime.now(), current: 1.5));
         await Future<void>.delayed(Duration.zero);

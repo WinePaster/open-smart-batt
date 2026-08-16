@@ -388,12 +388,16 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                       _UnsavedNotice(deviceId: deviceId),
                       Expanded(
                         child: DashboardPage(
+                          deviceId: deviceId,
                           onOpenSettings: widget.onOpenSettings,
                         ),
                       ),
                     ],
                   )
-                : DashboardPage(onOpenSettings: widget.onOpenSettings))
+                : DashboardPage(
+                    deviceId: deviceId,
+                    onOpenSettings: widget.onOpenSettings,
+                  ))
           : _OfflineBody(
               deviceId: deviceId,
               fallbackName: widget.fallbackName,

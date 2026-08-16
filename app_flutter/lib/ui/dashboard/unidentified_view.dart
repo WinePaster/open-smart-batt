@@ -44,7 +44,19 @@ import '../widgets/one_screen_report.dart';
 
 /// Shown when the device-type byte is one this build does not map.
 class UnidentifiedView extends StatelessWidget {
-  const UnidentifiedView({super.key, this.onExportLog});
+  const UnidentifiedView({
+    super.key,
+    required this.deviceId,
+    this.onExportLog,
+  });
+
+  /// The unit this page is about — see [DashboardPage.deviceId].
+  ///
+  /// 📌 An unidentified unit is a RESTING state, not a transient one, and its
+  /// history rows exist like any other unit's (`history.device_id` is written
+  /// from the session, never from the class). So this route has records to
+  /// show — design 0065 §0.4.
+  final String deviceId;
 
   /// Route to the diagnostic export. Null hides the button — the view still
   /// says what it knows, which is the part that must never depend on a caller.
