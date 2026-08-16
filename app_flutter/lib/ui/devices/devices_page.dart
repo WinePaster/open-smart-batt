@@ -300,6 +300,14 @@ class _DevicesPageState extends State<DevicesPage>
   Future<void> _rename(SavedDevice d) =>
       promptAndRenameDevice(context, deviceId: d.id, currentAlias: d.alias);
 
+  /// design 0066 §3.7 — "設定型號", beside 重新命名 (owner's placement).
+  ///
+  /// Same condition as the rename it sits next to: SAVED devices only. Not a
+  /// restriction inherited by habit — an unsaved unit has no row for the seven
+  /// columns to be written into.
+  Future<void> _declareModel(SavedDevice d) =>
+      promptAndDeclareModel(context, deviceId: d.id);
+
   /// Drop the live link — and, again, stay on this page (R22).
   Future<void> _disconnect() async {
     await context.read<ConnectionController>().disconnect();
@@ -544,6 +552,7 @@ class _DevicesPageState extends State<DevicesPage>
               onOpenDetail: () =>
                   unawaited(_openDetail(d.id, fallbackName: d.name)),
               onEdit: () => _rename(d),
+              onDeclare: () => _declareModel(d),
               onDelete: () => _removeDevice(d),
               onDisconnect: _disconnect,
               onConnect: () => _connectSaved(d),
@@ -930,6 +939,7 @@ class _DeviceRow extends StatelessWidget {
     this.badge,
     this.onOpenDetail,
     this.onEdit,
+    this.onDeclare,
     this.onDelete,
     this.onDisconnect,
     this.isVendor = false,
@@ -950,6 +960,10 @@ class _DeviceRow extends StatelessWidget {
   final VoidCallback? onOpenDetail;
 
   final VoidCallback? onEdit;
+
+  /// design 0066 §3.7. Saved rows only, like [onEdit].
+  final VoidCallback? onDeclare;
+
   final VoidCallback? onDelete;
   final VoidCallback? onDisconnect;
   final bool isVendor;
@@ -1102,33 +1116,51 @@ class _DeviceRow extends StatelessWidget {
               // apart, because one of them is destructive and the report we are
               // answering is most likely a mis-tap of exactly that one.
               //
-              // [Flexible] rather than a [Spacer]: `main.dart` MULTIPLIES the
-              // system text scale by `AppTheme.baseTextScale` and never clamps
-              // it, so at a large accessibility font these two words can want
-              // more than the card is wide. Loose flex caps each at half the
-              // row and lets `_RowAction` ellipsise inside that, which is a
-              // shortened word instead of an overflow stripe.
-              if (onEdit != null || onDelete != null) ...[
+              // 🔴 A [Wrap], not a [Row] — changed 2026-08-17 when design 0066
+              // added a THIRD action ("型號") between the two. `main.dart`
+              // MULTIPLIES the system text scale by `AppTheme.baseTextScale` and
+              // never clamps it, and three words do not fit a 320 pt card the
+              // way two did. A `Row` of three loose [Flexible]s caps each at a
+              // third of the card, which at that width ellipsises 重新命名 down
+              // to 重新… — and a control whose WORD has been clipped is the FB-70
+              // failure mode wearing a longer label, since the word is the whole
+              // reason the glyphs were replaced.
+              //
+              // `WrapAlignment.spaceBetween` keeps the wide-screen behaviour
+              // intact: on one line the three sit exactly where a `spaceBetween`
+              // Row put them, so RENAME and the destructive REMOVE are still at
+              // opposite ends (`devices_page_test` measures that gap). When they
+              // do not fit, REMOVE drops to a second line at full width instead
+              // of being shortened — a longer card, not a clipped word.
+              if (onEdit != null || onDeclare != null || onDelete != null) ...[
                 const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     if (onEdit != null)
-                      Flexible(
-                        child: _RowAction(
-                          icon: Icons.edit_outlined,
-                          label: l10n.devicesAliasRenameTitle,
-                          onTap: onEdit!,
-                        ),
+                      _RowAction(
+                        icon: Icons.edit_outlined,
+                        label: l10n.devicesAliasRenameTitle,
+                        onTap: onEdit!,
+                      ),
+                    // design 0066 §3.7: the owner placed it beside 重新命名, and
+                    // it sits BETWEEN the two so that the destructive one keeps
+                    // the far edge to itself — the 2026-08-13 report this row
+                    // was rebuilt for was most likely a mis-tap of that one.
+                    if (onDeclare != null)
+                      _RowAction(
+                        icon: Icons.category_outlined,
+                        label: l10n.declaredRowAction,
+                        onTap: onDeclare!,
                       ),
                     if (onDelete != null)
-                      Flexible(
-                        child: _RowAction(
-                          icon: Icons.delete_outline,
-                          label: l10n.devicesRemove,
-                          danger: true,
-                          onTap: onDelete!,
-                        ),
+                      _RowAction(
+                        icon: Icons.delete_outline,
+                        label: l10n.devicesRemove,
+                        danger: true,
+                        onTap: onDelete!,
                       ),
                   ],
                 ),
@@ -1196,9 +1228,14 @@ class _RowAction extends StatelessWidget {
             children: [
               Icon(icon, size: 18, color: color),
               const SizedBox(width: 6),
-              // Flexible + ellipsis: the caller caps this at half the card, and
-              // an enlarged accessibility font can exceed that. A shortened
-              // word still says more than the glyph this replaces.
+              // Flexible + ellipsis. The caller is a [Wrap] since 2026-08-17, so
+              // this button now sizes to its own content and only meets this
+              // clamp when ONE label alone is wider than the whole card — a
+              // large accessibility font on a narrow phone. Before that the
+              // caller capped it at half the row; the clamp is kept because the
+              // failure it prevents (an overflow stripe, silent in release) is
+              // unchanged, and a shortened word still says more than the glyph
+              // this replaced.
               Flexible(
                 child: Text(
                   label,

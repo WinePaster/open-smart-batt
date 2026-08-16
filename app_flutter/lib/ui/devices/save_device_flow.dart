@@ -24,6 +24,7 @@ import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import 'alias_dialog.dart';
+import 'declared_model_dialog.dart';
 
 /// Ask for an alias and save [deviceId], unless it is saved already.
 ///
@@ -152,6 +153,52 @@ Future<bool> promptAndRenameDevice(
       await showAliasDialog(context, initial: currentAlias, isRename: true);
   if (alias == null) return false;
   await devices.rename(deviceId, alias);
+  return true;
+}
+
+/// Ask the owner what [deviceId] IS, and store the answer (design 0066).
+///
+/// Lives beside [promptAndRenameDevice] for the reason that function documents:
+/// a flow with more than one entrance, written twice, is how two screens start
+/// disagreeing about what "cancel" means. This one has one entrance today (the
+/// saved row) and the device's own page is the obvious second.
+///
+/// Returns true when something was written — INCLUDING a clear, which is a real
+/// answer and not a cancel. Null from the dialog is the cancel.
+///
+/// 🔴 No-op for a device that is not saved. §3.7: there is no row to write into,
+/// which is why the entrance is only offered on saved rows.
+///
+/// 🔴 The wire values handed to the dialog drive the §3.6 HINT and nothing else.
+/// `saved.productClass` is not modified here, before or after; the two live in
+/// different columns on purpose (§3.5).
+Future<bool> promptAndDeclareModel(
+  BuildContext context, {
+  required String deviceId,
+}) async {
+  final devices = context.read<DeviceController>();
+  final saved = devices.deviceFor(deviceId);
+  if (saved == null) return false;
+
+  // The raw device-type byte exists only while the unit is on the link — it is
+  // never persisted (`saved_devices` keeps the resolved CLASS, not the byte), so
+  // the flagship check is available for a connected unit and silently skipped
+  // for every other one. Skipping is the honest outcome: no evidence, no hint.
+  final conn = context.read<ConnectionController>();
+  final tele = context.read<TelemetryController>();
+  final isLive = conn.connectedDeviceId == deviceId && conn.isOnline;
+
+  final result = await showDeclaredModelDialog(
+    context,
+    initial: saved.declared,
+    wireClass: saved.productClass,
+    wireDeviceType: isLive ? tele.sample.deviceType : null,
+  );
+  if (result == null) return false;
+  // Not gated on `context.mounted` — same reasoning as the two functions above:
+  // the controller was captured before the dialog and nothing below touches the
+  // context, so a mounted check could only throw away an answer the user gave.
+  await devices.setDeclaredModel(deviceId, result);
   return true;
 }
 

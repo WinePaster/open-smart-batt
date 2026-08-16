@@ -1140,11 +1140,36 @@ void main() {
       final remove = rowAction('Remove');
       expect(rename, findsOneWidget);
       expect(remove, findsOneWidget);
-      // Not clipped: both boxes lie inside the surface, and they do not touch.
+      // Not clipped: both boxes lie inside the surface.
       expect(tester.getRect(rename).left, greaterThanOrEqualTo(0));
       expect(tester.getRect(remove).right, lessThanOrEqualTo(320));
-      expect(tester.getRect(remove).left,
-          greaterThan(tester.getRect(rename).right));
+
+      // 🔴 AMENDED 2026-08-17, when design 0066 put a third action between
+      // these two. This used to read `remove.left > rename.right`, which is a
+      // statement about ONE LINE and stopped being the right question the
+      // moment the row became a [Wrap]: at 320 pt the three actions no longer
+      // fit side by side, so 移除 drops to a second run — where its `left` is
+      // near zero and the old assertion fails while the property it was
+      // protecting is better satisfied than before.
+      //
+      // What that property actually is, from the comment at the call site: the
+      // 2026-08-13 report was most likely a mis-tap of the DESTRUCTIVE control
+      // 7 px from the one the user wanted, so rename and remove must never be
+      // adjacent. Stated directly — on the same run they are far apart, on
+      // different runs they are not neighbours at all — it survives the layout
+      // change instead of pinning one particular way of achieving it.
+      final r = tester.getRect(rename);
+      final x = tester.getRect(remove);
+      final sameRun = (x.top - r.top).abs() < 1;
+      expect(
+        sameRun ? x.left - r.right > 40 : true,
+        isTrue,
+        reason: 'rename and the destructive action must never end up 7 px '
+            'apart on one line — that mis-tap is what this row was rebuilt for',
+      );
+      // …and whichever way it laid out, no third action is wedged on top of
+      // either of them.
+      expect(r.overlaps(x), isFalse);
     });
 
     testWidgets('tapping it renames the device, in place', (tester) async {
@@ -1218,6 +1243,90 @@ void main() {
 
       expect(s.devices.deviceFor('DEV-A')?.alias, '');
       expect(find.text('Unnamed device'), findsOneWidget);
+    });
+
+    // -------------------------------------------------------------------------
+    // design 0066 §3.7 — 設定型號, beside 重新命名. The two live in one group
+    // because they share a row and a condition, and because the entrance is the
+    // half of this feature that can silently not exist: the form, the columns
+    // and the migration can all be perfect while nobody can reach them.
+    // -------------------------------------------------------------------------
+    testWidgets('T66: the saved row carries 型號, on a hittable target',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      final declare = rowAction('Model');
+      expect(declare, findsOneWidget,
+          reason: 'the owner placed it beside 重新命名 (§3.7)');
+      final size = tester.getSize(declare);
+      expect(size.height, greaterThanOrEqualTo(40));
+      expect(size.width, greaterThanOrEqualTo(40));
+      // It sits BETWEEN rename and the destructive one, so 移除 keeps the far
+      // edge — the 2026-08-13 mis-tap this row was rebuilt for.
+      expect(tester.getRect(declare).left,
+          greaterThan(tester.getRect(rowAction('Rename')).left));
+      expect(tester.getRect(declare).right,
+          lessThan(tester.getRect(rowAction('Remove')).right));
+    });
+
+    testWidgets('T66: it opens the form and the answer reaches the row',
+        (tester) async {
+      // End to end through the real controller and a real database — the layers
+      // between the dialog and the column are each covered in
+      // `declared_model_test.dart`, and what is left to check is that they are
+      // actually joined up.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      await tester.tap(rowAction('Model'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('declared-category-car-battery')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('declared-capacity')), '40B19L');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('declared-save')));
+      await settle(tester);
+
+      final d = s.devices.deviceFor('DEV-A')!;
+      expect(d.declared.category, DeclaredCategory.carBattery);
+      expect(d.declared.capacity, '40B19L');
+      // 🔴 And the measured class is exactly where it was (§3.5). The unit
+      // reported nothing, so it is still `unknown` — declaring a car battery
+      // must not have "helpfully" resolved it.
+      expect(d.productClass, ProductClass.unknown);
+      // R22 holds for this control too: nothing navigates.
+      expect(find.byType(DevicesPage), findsOneWidget);
+      expect(find.byType(DeviceDetailPage), findsNothing);
+    });
+
+    testWidgets('T66: an UNSAVED row has no 型號 entrance', (tester) async {
+      // §3.7's condition, checked where a user would meet it: an unsaved unit
+      // has no row for the seven columns, so offering the form would produce a
+      // dialog whose Save does nothing — the 2026-08-11「儲存裝置後沒反應」shape.
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await openScanTab(tester);
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          const DiscoveredDevice(
+              id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+
+      expect(find.text('RCE-CarBatt'), findsOneWidget);
+      expect(rowAction('Model'), findsNothing,
+          reason: 'the saved tab is not on screen, and the nearby row carries '
+              'no per-row actions at all');
     });
 
     // -------------------------------------------------------------------------
