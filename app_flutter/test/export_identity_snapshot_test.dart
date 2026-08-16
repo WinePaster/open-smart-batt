@@ -53,6 +53,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/ble/ble.dart';
@@ -306,6 +307,8 @@ void main() {
             home: 'tiles=auto',
             // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
             mode: AppMode.personal,
+            themeMode: AppThemeMode.light,
+            accent: AccentTheme.amber,
             speedDetection: false,
             gMeter: false,
             resolution: ExportResolution.none,

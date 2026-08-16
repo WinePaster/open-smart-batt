@@ -191,7 +191,7 @@ class _HomeEditorTutorialDialogState extends State<_HomeEditorTutorialDialog> {
         // sits inside an `AbsorbPointer`. `_onDragMoved` + `_autoScrollTick`
         // are the edge auto-scroll.
         _Step(
-          art: const _GlyphArt(Icons.drag_indicator, color: AppColors.amber),
+          art: _GlyphArt(Icons.drag_indicator, color: context.accent.accent),
           lead: l10n.homeEditTutorialDragLead,
           body: l10n.homeEditTutorialDragBody,
         ),
@@ -215,7 +215,7 @@ class _HomeEditorTutorialDialogState extends State<_HomeEditorTutorialDialog> {
         // `_showAddSheet` filters by product class; `_apply` calls `_persist`
         // on every change, and there is no save button anywhere on the page.
         _Step(
-          art: const _GlyphArt(Icons.close, color: AppColors.danger),
+          art: const _GlyphArt(Icons.close, color: AppSemantics.danger),
           lead: l10n.homeEditTutorialManageLead,
           body: l10n.homeEditTutorialManageBody,
         ),
@@ -313,19 +313,19 @@ class _Footer extends StatelessWidget {
                     height: 18,
                     decoration: BoxDecoration(
                       color: dontShowAgain
-                          ? AppColors.amber
+                          ? context.accent.accent
                           : Colors.transparent,
                       borderRadius:
                           BorderRadius.circular(AppTheme.radiusSm),
                       border: Border.all(
                         color:
-                            dontShowAgain ? AppColors.amber : colors.muted,
+                            dontShowAgain ? context.accent.accent : colors.muted,
                         width: 1.6,
                       ),
                     ),
                     child: dontShowAgain
-                        ? const Icon(Icons.check,
-                            size: 13, color: AppColors.onAmber)
+                        ? Icon(Icons.check,
+                            size: 13, color: context.accent.onAccent)
                         : null,
                   ),
                   const SizedBox(width: 9),
@@ -400,7 +400,7 @@ class _DropTargetsArt extends StatelessWidget {
             Container(
               height: 2,
               decoration: BoxDecoration(
-                color: AppColors.amber,
+                color: context.accent.accent,
                 borderRadius: BorderRadius.circular(1),
               ),
             ),
@@ -491,11 +491,11 @@ class _Blk extends StatelessWidget {
       height: 14,
       decoration: BoxDecoration(
         color: highlighted
-            ? AppColors.amber.withValues(alpha: 0.18)
+            ? context.accent.accent.withValues(alpha: 0.18)
             : colors.panel,
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border:
-            Border.all(color: highlighted ? AppColors.amber : colors.line2),
+            Border.all(color: highlighted ? context.accent.accent : colors.line2),
       ),
     );
   }

@@ -88,7 +88,7 @@ Future<bool> showSpeedDetectionConsentDialog(BuildContext context) async {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(l10n.speedConsentEnable,
-                style: const TextStyle(color: AppColors.amber)),
+                style: TextStyle(color: context.accent.accent)),
           ),
         ],
       );

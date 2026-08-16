@@ -185,6 +185,7 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          const _AccentThemeRow(),
           SettingsRow(
             label: l10n.settingsLanguageLabel,
             sub: l10n.settingsLanguageSub,
@@ -631,6 +632,10 @@ class _DataCardState extends State<_DataCard> {
     // `mode:` beside them says which of the two is being reported.
     final appSettings = context.read<SettingsController>().settings;
     final mode = appSettings.mode;
+    // design 0064: captured with the rest of the snapshot, before the awaits.
+    final themeMode = appSettings.themeMode;
+    final accent =
+        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
     final speedDetection = appSettings.speedDetectionEffective;
     final gMeter = appSettings.gMeterEffective;
     try {
@@ -678,6 +683,8 @@ class _DataCardState extends State<_DataCard> {
           layout: layout,
           home: home,
           mode: mode,
+          themeMode: themeMode,
+          accent: accent,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),
@@ -859,6 +866,10 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // `export_header.dart`'s `mode:` line for what tells the two apart.
     final logSettings = context.read<SettingsController>().settings;
     final logMode = logSettings.mode;
+    // design 0064, captured here for the same pre-await reason as the rest.
+    final logThemeMode = logSettings.themeMode;
+    final logAccent =
+        AccentTheme.byId(logSettings.accentThemeId) ?? AccentTheme.amber;
     final speedOn = logSettings.speedDetectionEffective;
     final gMeterOn = logSettings.gMeterEffective;
     // 🔴 FB-68: the layout comes from the target, resolved with the identity at
@@ -884,8 +895,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           await exportDeviceIdentities(devices, tele, target, facts: facts);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, logMode, speedOn, gMeterOn,
-              layout, home, identities);
+              tele, services, target, rawLog, logMode, logThemeMode,
+              logAccent, speedOn, gMeterOn, layout, home, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -1020,6 +1031,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // design 0063. Threaded through with the other pre-await reads rather than
     // fetched here, for the reason stated on `rawPacketLog` above.
     AppMode mode,
+    // design 0064, same pre-await capture rule as `mode` above.
+    AppThemeMode themeMode,
+    AccentTheme accent,
     bool speedDetection,
     bool gMeter,
     String layout,
@@ -1038,6 +1052,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       layout: layout,
       home: home,
       mode: mode,
+      themeMode: themeMode,
+      accent: accent,
       speedDetection: speedDetection,
       gMeter: gMeter,
       // design 0061 §3.4.3: this file has no history rows at all, so it says
@@ -1226,21 +1242,21 @@ void _showAbout(BuildContext context) {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.amber.withValues(alpha: 0.07),
+                color: AppSemantics.warn.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+                border: Border.all(color: AppSemantics.warn.withValues(alpha: 0.28)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.warning_amber_rounded,
-                      size: 15, color: AppColors.amber),
+                      size: 15, color: AppSemantics.warn),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       l10n.settingsAboutDialogWarning,
                       style: const TextStyle(
-                          fontSize: 11, height: 1.5, color: AppColors.amber),
+                          fontSize: 11, height: 1.5, color: AppSemantics.warn),
                     ),
                   ),
                 ],
@@ -1252,7 +1268,7 @@ void _showAbout(BuildContext context) {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(l10n.commonClose, style: const TextStyle(color: AppColors.amber)),
+          child: Text(l10n.commonClose, style: TextStyle(color: context.accent.accent)),
         ),
       ],
     ),
@@ -1292,10 +1308,10 @@ class _SmallSpinner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
       width: 16,
       height: 16,
-      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.amber),
+      child: CircularProgressIndicator(strokeWidth: 2, color: context.accent.accent),
     );
   }
 }
@@ -1327,7 +1343,7 @@ Future<bool> _confirm(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
             confirmLabel ?? l10n.commonConfirm,
-            style: TextStyle(color: danger ? AppColors.danger : AppColors.amber),
+            style: TextStyle(color: danger ? AppSemantics.danger : context.accent.accent),
           ),
         ),
       ],
@@ -1340,3 +1356,148 @@ Future<bool> _confirm(
 /// yields null, which cancels — an accidental tap outside must not ship a file
 /// the user was just told is nearly empty.
 enum _RawLogChoice { exportAnyway, enable }
+
+/// The six accent themes, as swatches (design 0064 Phase 1).
+///
+/// 🔴 **Its own row, not a `trailing` slot.** Six 40×40 dp targets are 240 dp
+/// wide before any gaps — wider than the trailing column on any phone. Shrinking
+/// them to fit is the move this project has already been punished for: FB-70 was
+/// a fully working rename feature behind a 14×14 dp hit box, and users deleted
+/// and re-added devices rather than find it. The SWATCH is 22 dp because that is
+/// what reads as a colour chip; the TARGET around it is 40.
+///
+/// 🔑 **Each swatch shows TWO colours, and that is the point.** Owner ruling
+/// 2026-08-15 (design 0064 §0.1): the unit here is a THEME — `accent` plus
+/// `accentSecondary` — because those two are the pair a chart draws its voltage
+/// and temperature series with (§0.5 Q3). A single-colour chip would say the
+/// user is picking one colour, and then the temperature line changing would look
+/// like a bug.
+class _AccentThemeRow extends StatelessWidget {
+  const _AccentThemeRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = context.colors;
+    final s = context.watch<SettingsController>();
+    // NULL means "never chosen", which renders as amber — see
+    // `AppSettings.accentThemeId`. Resolving it here keeps the selected ring on
+    // the amber swatch for a fresh install without writing a value to say so.
+    final current = AccentTheme.byId(s.settings.accentThemeId) ?? AccentTheme.amber;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.settingsAccentThemeLabel,
+              style: TextStyle(fontSize: 13.5, color: colors.text)),
+          const SizedBox(height: 2),
+          Text(l10n.settingsAccentThemeSub,
+              style: TextStyle(fontSize: 11, color: colors.muted)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final t in AccentTheme.all)
+                _Swatch(
+                  theme: t,
+                  selected: t.id == current.id,
+                  label: _accentThemeName(l10n, t.id),
+                  onTap: () => s.setAccentTheme(t.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The localized name of an accent theme id.
+///
+/// A `switch` on the id rather than a field on [AccentTheme]: the theme table is
+/// `const` and shared with the export header, which must stay machine-stable
+/// ASCII (`theme: …` is read by the corpus tools). Names are for humans and move
+/// with the locale; ids do not move at all.
+String _accentThemeName(AppLocalizations l10n, String id) => switch (id) {
+      'amber' => l10n.accentThemeAmber,
+      'azure' => l10n.accentThemeAzure,
+      'violet' => l10n.accentThemeViolet,
+      'magenta' => l10n.accentThemeMagenta,
+      'lime' => l10n.accentThemeLime,
+      'teal' => l10n.accentThemeTeal,
+      // An id the build does not know cannot be drawn honestly, and the picker
+      // is not where that should be discovered — `AccentTheme.byId` already
+      // falls back to amber for it. Shown raw so it is visible rather than
+      // silently mislabelled.
+      _ => id,
+    };
+
+/// One theme chip: [AccentTheme.accent] as the disc, [AccentTheme.accentSecondary]
+/// as the inner dot, a ring when selected.
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.theme,
+    required this.selected,
+    required this.label,
+    required this.onTap,
+  });
+
+  final AccentTheme theme;
+  final bool selected;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      label: label,
+      selected: selected,
+      button: true,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          // 🔴 40×40, and the swatch inside is 22 — see [_AccentThemeRow].
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: theme.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    // The ring is the ONLY selection marker, so it is drawn in
+                    // the text colour rather than in the accent: a ring in the
+                    // swatch's own colour would vanish on that swatch.
+                    color: selected ? colors.text : colors.line,
+                    width: selected ? 2.5 : 1,
+                  ),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: theme.accentSecondary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

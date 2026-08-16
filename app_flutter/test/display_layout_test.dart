@@ -566,8 +566,11 @@ void main() {
       // v18 added `settings.app_mode` (design 0063) — a nullable column with NO
       // default on a table this test does not read, so again nothing above
       // moves. Its own migration is checked in `schema_v18_test.dart`.
-      // Bump this in lockstep with Db.schemaVersion.
-      expect(Db.schemaVersion, 18);
+      // v19 added `settings.accent_theme` (design 0064) — same shape, same
+      // table, same absence of consequence here; `schema_v19_test.dart`.
+      // A FLOOR from v19 on: a test about the v9 → v10 migration should not
+      // need editing every time an unrelated column is appended elsewhere.
+      expect(Db.schemaVersion, greaterThanOrEqualTo(19));
     });
   });
 }

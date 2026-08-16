@@ -218,8 +218,8 @@ class _AddDeviceTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 26),
           child: Column(
             children: [
-              const Icon(Icons.add_circle_outline,
-                  size: 36, color: AppColors.amber),
+              Icon(Icons.add_circle_outline,
+                  size: 36, color: context.accent.accent),
               const SizedBox(height: 12),
               Text(
                 l10n.homeAddFirstDevice,
@@ -293,7 +293,7 @@ class _DeviceTile extends StatelessWidget {
                   ),
                   child: Icon(Icons.battery_full,
                       size: 17,
-                      color: live ? AppColors.amber : context.colors.muted),
+                      color: live ? context.accent.accent : context.colors.muted),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
@@ -337,7 +337,7 @@ class _LiveDot extends StatelessWidget {
             width: 5,
             height: 5,
             decoration: const BoxDecoration(
-              color: AppColors.good,
+              color: AppSemantics.good,
               shape: BoxShape.circle,
             ),
           ),
@@ -347,7 +347,7 @@ class _LiveDot extends StatelessWidget {
                 fontSize: 9,
                 letterSpacing: 1,
                 fontWeight: FontWeight.w700,
-                color: AppColors.good,
+                color: AppSemantics.good,
               )),
         ],
       );
@@ -472,9 +472,12 @@ class _BigValue extends StatelessWidget {
                     unit,
                     maxLines: 1,
                     softWrap: false,
+                    // The unit marker `clock_card.dart:244` points at by name.
+                    // Fixed, not the accent — design 0064 Q2; same reasoning
+                    // as the gauge's own unit in `pvlt_gauge.dart`.
                     style: TextStyle(
                       fontSize: 13,
-                      color: muted ? context.colors.muted : AppColors.amber,
+                      color: muted ? context.colors.muted : AppSemantics.warn,
                     ),
                   ),
                 ],

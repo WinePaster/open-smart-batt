@@ -197,7 +197,7 @@ class GForceCardBody extends StatelessWidget {
                       trail: trail,
                       ring: context.colors.line2,
                       grid: context.colors.line,
-                      dotColor: AppColors.amber,
+                      dotColor: context.accent.accent,
                     ),
                   ),
                 );
@@ -274,7 +274,7 @@ class _GReadout extends StatelessWidget {
               height: 1.1,
               fontWeight: FontWeight.w700,
               fontFeatures: const [FontFeature.tabularFigures()],
-              color: emphasised ? AppColors.amber : colors.text,
+              color: emphasised ? context.accent.accent : colors.text,
             ),
           ),
         ),

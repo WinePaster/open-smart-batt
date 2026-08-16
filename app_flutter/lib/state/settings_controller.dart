@@ -127,6 +127,16 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setThemeMode(AppThemeMode v) =>
       update(_settings.copyWith(themeMode: v));
+
+  /// Choose an accent set (design 0064), or null to go back to "never chose".
+  ///
+  /// Takes an ID rather than colours, matching what is stored — see
+  /// [AppSettings.accentThemeId]. Null goes through `clearAccentTheme` for the
+  /// same reason [setGCalibration] does: `copyWith` cannot otherwise express a
+  /// nullable field being set back to null, and the difference between "never
+  /// chose" and "chose the default" is one we want to keep.
+  Future<void> setAccentTheme(String? id) => update(
+      _settings.copyWith(accentThemeId: id, clearAccentTheme: id == null));
   Future<void> setLang(AppLang v) => update(_settings.copyWith(lang: v));
   Future<void> setTempUnit(TempUnit v) =>
       update(_settings.copyWith(tempUnit: v));

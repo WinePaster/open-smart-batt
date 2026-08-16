@@ -1,6 +1,6 @@
 /// OpenSmartBatt — RSSI signal-strength bars (mockup `.sig` `.sig i`).
 ///
-/// Four ascending bars; bars at-or-below [level] light up [AppColors.good],
+/// Four ascending bars; bars at-or-below [level] light up [AppSemantics.good],
 /// the rest stay the neutral `line2` color. Pure presentation widget.
 library;
 
@@ -41,7 +41,7 @@ class SignalBars extends StatelessWidget {
               width: 3,
               height: _heights[i],
               decoration: BoxDecoration(
-                color: lit ? AppColors.good : context.colors.line2,
+                color: lit ? AppSemantics.good : context.colors.line2,
                 borderRadius: BorderRadius.circular(1),
               ),
             ),

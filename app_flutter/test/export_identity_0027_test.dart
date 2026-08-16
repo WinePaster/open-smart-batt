@@ -15,6 +15,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -344,6 +345,8 @@ void main() {
           home: 'tiles=auto',
           // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
           mode: AppMode.personal,
+          themeMode: AppThemeMode.light,
+          accent: AccentTheme.amber,
           speedDetection: false, gMeter: false,
           resolution: ExportResolution.none,
           devices: const [
@@ -411,6 +414,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );

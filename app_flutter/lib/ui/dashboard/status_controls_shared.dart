@@ -385,7 +385,7 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(
             l10n.cutOffDialogConfirm,
-            style: const TextStyle(color: AppColors.danger),
+            style: const TextStyle(color: AppSemantics.danger),
           ),
         ),
       ],
@@ -505,10 +505,14 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    // 🔴 One switch, three status colours: they are only ever readable as a
+    // set. If `warn` followed the user's accent (design 0064) and the accent
+    // were red, "warning" and "locked" would render identically — and in the
+    // default amber theme that mistake is invisible.
     final accent = switch (tone) {
-      ControlTone.good => AppColors.good,
-      ControlTone.warn => AppColors.amber,
-      ControlTone.locked => AppColors.danger,
+      ControlTone.good => AppSemantics.good,
+      ControlTone.warn => AppSemantics.warn,
+      ControlTone.locked => AppSemantics.danger,
       ControlTone.neutral => colors.muted,
     };
     final borderColor = tone == ControlTone.neutral ? colors.line : accent;
@@ -572,9 +576,13 @@ class ControlButton extends StatelessWidget {
     late final Color fg;
     late final Color border;
     switch (variant) {
+      // BRAND, not status: this enum picks a BUTTON TREATMENT, and its own
+      // `warn` member below uses `danger`, so `primary` is not "the amber
+      // tone" — it is the app's filled primary action, the same thing
+      // `ElevatedButtonTheme` paints. It follows the accent (design 0064).
       case ControlButtonVariant.primary:
-        bg = AppColors.amber;
-        fg = AppColors.onAmber;
+        bg = context.accent.accent;
+        fg = context.accent.onAccent;
         border = Colors.transparent;
       case ControlButtonVariant.ghost:
         bg = context.colors.panel2;
@@ -582,8 +590,8 @@ class ControlButton extends StatelessWidget {
         border = context.colors.line;
       case ControlButtonVariant.warn:
         bg = Colors.transparent;
-        fg = AppColors.danger;
-        border = AppColors.danger;
+        fg = AppSemantics.danger;
+        border = AppSemantics.danger;
     }
     return Opacity(
       opacity: enabled ? 1 : 0.45,
@@ -655,7 +663,7 @@ class AdvisoryNote extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.amber),
+        const Icon(Icons.warning_amber_rounded, size: 14, color: AppSemantics.warn),
         const SizedBox(width: 7),
         Expanded(
           child: Text(
@@ -663,7 +671,7 @@ class AdvisoryNote extends StatelessWidget {
             style: const TextStyle(
               fontSize: 10.5,
               height: 1.6,
-              color: AppColors.amber,
+              color: AppSemantics.warn,
             ),
           ),
         ),

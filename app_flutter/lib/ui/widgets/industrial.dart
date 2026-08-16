@@ -148,7 +148,7 @@ class _SegButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: selected ? AppColors.amber : Colors.transparent,
+        color: selected ? context.accent.accent : Colors.transparent,
         padding: const EdgeInsets.symmetric(
             horizontal: _kSegPadH, vertical: 7),
         child: Text(
@@ -159,7 +159,7 @@ class _SegButton extends StatelessWidget {
           style: TextStyle(
             fontSize: _kSegFontSize,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.onAmber : context.colors.muted,
+            color: selected ? context.accent.onAccent : context.colors.muted,
           ),
         ),
       ),
@@ -223,7 +223,7 @@ class FilterChip2 extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: _kChipPadH, vertical: 7),
         decoration: BoxDecoration(
-          color: on ? AppColors.amber : context.colors.panel2,
+          color: on ? context.accent.accent : context.colors.panel2,
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border:
               Border.all(color: on ? Colors.transparent : context.colors.line),
@@ -234,7 +234,7 @@ class FilterChip2 extends StatelessWidget {
             if (icon != null) ...[
               Icon(icon,
                   size: _kChipIconSize,
-                  color: on ? AppColors.onAmber : context.colors.text),
+                  color: on ? context.accent.onAccent : context.colors.text),
               const SizedBox(width: _kChipIconGap),
             ],
             Text(
@@ -243,7 +243,7 @@ class FilterChip2 extends StatelessWidget {
                 fontSize: _kChipFontSize,
                 letterSpacing: 0.5,
                 fontWeight: on ? FontWeight.w700 : FontWeight.w400,
-                color: on ? AppColors.onAmber : context.colors.text,
+                color: on ? context.accent.onAccent : context.colors.text,
               ),
             ),
           ],
@@ -301,7 +301,7 @@ class SettingsRow extends StatelessWidget {
                       fontSize: 10.5,
                       height: 1.5,
                       color:
-                          subHighlight ? AppColors.amber : context.colors.muted,
+                          subHighlight ? context.accent.accent : context.colors.muted,
                     ),
                   ),
                 ],
@@ -349,11 +349,11 @@ class SettingsLinkRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: AppColors.cyan),
+            Icon(icon, size: 15, color: context.accent.accentSecondary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(label,
-                  style: const TextStyle(fontSize: 13, color: AppColors.cyan)),
+                  style: TextStyle(fontSize: 13, color: context.accent.accentSecondary)),
             ),
             trailing ??
                 Icon(Icons.chevron_right,

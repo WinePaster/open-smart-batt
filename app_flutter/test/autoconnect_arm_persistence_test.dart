@@ -322,11 +322,13 @@ void main() {
           freshCols.map((c) => c['name']).toList(),
           reason: 'the v16 branch and the CREATE list must not drift apart');
       // The schema HEAD, which moved to 17 on 2026-08-14 (design 0061 / FB-71
-      // added `history.bucket_s`) and to 18 on 2026-08-15 (design 0063 added
-      // `settings.app_mode`). `autoconnect_arm` itself is untouched by either —
+      // added `history.bucket_s`), to 18 on 2026-08-15 (design 0063 added
+      // `settings.app_mode`) and to 19 the same day (design 0064 added
+      // `settings.accent_theme`). `autoconnect_arm` is untouched by all three —
       // what this line pins is that nobody REPLACED the v16 branch while adding
-      // a later one.
-      expect(Db.schemaVersion, 18);
+      // a later one, which is a floor, not an equality. Stated as a floor so
+      // the next migration does not have to edit a test about v16.
+      expect(Db.schemaVersion, greaterThanOrEqualTo(19));
     });
 
     test('the row is singular by construction, not by convention', () async {

@@ -177,7 +177,7 @@ class _Step extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 6),
-          Icon(icon, size: 34, color: AppColors.amber),
+          Icon(icon, size: 34, color: context.accent.accent),
           const SizedBox(height: 12),
           Text(
             title,
@@ -199,7 +199,7 @@ class _Step extends StatelessWidget {
             LinearProgressIndicator(
               value: indeterminate ? null : progress,
               backgroundColor: colors.line,
-              color: AppColors.amber,
+              color: context.accent.accent,
             ),
           ],
           if (actionLabel != null) ...[
@@ -207,7 +207,7 @@ class _Step extends StatelessWidget {
             TextButton(
               onPressed: onAction,
               child: Text(actionLabel!,
-                  style: const TextStyle(color: AppColors.amber)),
+                  style: TextStyle(color: context.accent.accent)),
             ),
           ],
           const SizedBox(height: 4),
@@ -264,7 +264,7 @@ class _DoneStep extends StatelessWidget {
                   trail: const [],
                   ring: colors.line2,
                   grid: colors.line,
-                  dotColor: AppColors.amber,
+                  dotColor: context.accent.accent,
                 ),
               ),
             ),
@@ -281,7 +281,7 @@ class _DoneStep extends StatelessWidget {
               TextButton(
                 onPressed: () => onSave(),
                 child: Text(l10n.gWizardSave,
-                    style: const TextStyle(color: AppColors.amber)),
+                    style: TextStyle(color: context.accent.accent)),
               ),
             ],
           ),

@@ -298,8 +298,12 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           title: 'OpenSmartBatt',
           debugShowCheckedModeBanner: false,
           // Real light / dark themes (DEFAULT light); `auto` follows the OS.
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
+          // 🔴 These are no longer constant across the app's life: picking an
+          // accent rebuilds both, which is what repaints the tree. That is the
+          // intended cost — a colour change that did not repaint would be a
+          // colour change nobody could see.
+          theme: AppTheme.light(accent: _accentOf(settings)),
+          darkTheme: AppTheme.dark(accent: _accentOf(settings)),
           themeMode: _themeModeOf(settings.themeMode),
           // i18n wiring -------------------------------------------------------
           localizationsDelegates: const [
@@ -333,6 +337,15 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
       ),
     );
   }
+
+  /// The accent set a stored id names (design 0064).
+  ///
+  /// 🔑 An unknown or absent id resolves to amber, and that one fallback
+  /// carries the whole upgrade story: a phone that has never seen the setting,
+  /// and a phone holding a set some future build withdrew, both land on the
+  /// look they already had rather than on an error.
+  static AccentTheme _accentOf(SettingsController s) =>
+      AccentTheme.byId(s.settings.accentThemeId) ?? AccentTheme.amber;
 
   /// Maps the persisted [AppThemeMode] to Flutter's [ThemeMode].
   static ThemeMode _themeModeOf(AppThemeMode m) => switch (m) {
@@ -893,21 +906,21 @@ class _RootShellState extends State<RootShell> {
           : NavigationBarTheme(
               data: NavigationBarThemeData(
                 backgroundColor: context.colors.panel,
-                indicatorColor: AppColors.amber.withValues(alpha: 0.16),
+                indicatorColor: context.accent.accent.withValues(alpha: 0.16),
                 labelTextStyle: WidgetStateProperty.resolveWith(
                   (states) => TextStyle(
                     fontSize: 10,
                     letterSpacing: 1,
                     fontWeight: FontWeight.w600,
                     color: states.contains(WidgetState.selected)
-                        ? AppColors.amber
+                        ? context.accent.accent
                         : context.colors.muted,
                   ),
                 ),
                 iconTheme: WidgetStateProperty.resolveWith(
                   (states) => IconThemeData(
                     color: states.contains(WidgetState.selected)
-                        ? AppColors.amber
+                        ? context.accent.accent
                         : context.colors.muted,
                   ),
                 ),
@@ -1042,9 +1055,9 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             decoration: BoxDecoration(
               color: context.colors.panel,
               borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-              border: Border.all(color: AppColors.amber, width: 1.4),
+              border: Border.all(color: context.accent.accent, width: 1.4),
             ),
-            child: const Icon(Icons.bolt, size: 18, color: AppColors.amber),
+            child: Icon(Icons.bolt, size: 18, color: context.accent.accent),
           ),
           const SizedBox(width: 10),
           Column(
@@ -1092,12 +1105,16 @@ class _ConnectionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final conn = context.watch<ConnectionController>();
+    // 🔴 Four link states, four fixed status colours — never the accent. Pick
+    // green as your theme and `CONNECTING` would be `CONNECTED`; the pill is
+    // the app's most-read status and the two labels differ by one word.
+    // `accent_classification_test.dart` drives exactly this case.
     final (Color color, String label) = switch (conn.linkState) {
-      BleLinkState.ready => (AppColors.good, 'CONNECTED'),
+      BleLinkState.ready => (AppSemantics.good, 'CONNECTED'),
       BleLinkState.connecting ||
-      BleLinkState.connected => (AppColors.amber, 'CONNECTING'),
-      BleLinkState.disconnecting => (AppColors.amber, 'CLOSING'),
-      BleLinkState.disconnected => (AppColors.danger, 'OFFLINE'),
+      BleLinkState.connected => (AppSemantics.warn, 'CONNECTING'),
+      BleLinkState.disconnecting => (AppSemantics.warn, 'CLOSING'),
+      BleLinkState.disconnected => (AppSemantics.danger, 'OFFLINE'),
     };
     return InkWell(
       onTap: onTap,
@@ -1182,9 +1199,9 @@ class _DisclaimerDialog extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: context.colors.panel2,
                   borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                  border: Border.all(color: AppColors.amber, width: 1.4),
+                  border: Border.all(color: context.accent.accent, width: 1.4),
                 ),
-                child: const Icon(Icons.bolt, size: 30, color: AppColors.amber),
+                child: Icon(Icons.bolt, size: 30, color: context.accent.accent),
               ),
               const SizedBox(height: 14),
               Text(
@@ -1201,10 +1218,10 @@ class _DisclaimerDialog extends StatelessWidget {
               Text(
                 l10n.disclaimerCommunityEdition,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   letterSpacing: 3,
-                  color: AppColors.amber,
+                  color: context.accent.accent,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1270,9 +1287,9 @@ class _DoNotRelockWarning extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.amber.withValues(alpha: 0.07),
+        color: AppSemantics.warn.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+        border: Border.all(color: AppSemantics.warn.withValues(alpha: 0.28)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1280,7 +1297,7 @@ class _DoNotRelockWarning extends StatelessWidget {
           const Icon(
             Icons.warning_amber_rounded,
             size: 15,
-            color: AppColors.amber,
+            color: AppSemantics.warn,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1289,7 +1306,7 @@ class _DoNotRelockWarning extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 height: 1.5,
-                color: AppColors.amber,
+                color: AppSemantics.warn,
               ),
             ),
           ),

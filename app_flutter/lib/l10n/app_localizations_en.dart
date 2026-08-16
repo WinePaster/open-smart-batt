@@ -1075,6 +1075,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsThemeAuto => 'Auto';
 
   @override
+  String get settingsAccentThemeLabel => 'Accent colour';
+
+  @override
+  String get settingsAccentThemeSub =>
+      'Two colours, not one — the second is what charts draw temperature with';
+
+  @override
+  String get accentThemeAmber => 'Amber';
+
+  @override
+  String get accentThemeAzure => 'Azure';
+
+  @override
+  String get accentThemeViolet => 'Violet';
+
+  @override
+  String get accentThemeMagenta => 'Magenta';
+
+  @override
+  String get accentThemeLime => 'Lime';
+
+  @override
+  String get accentThemeTeal => 'Teal';
+
+  @override
   String get settingsSpeedDetectionLabel => 'Speed detection';
 
   @override

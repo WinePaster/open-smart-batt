@@ -226,7 +226,7 @@ class _PackLabelChip extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.memory, size: 14, color: AppColors.amber),
+        Icon(Icons.memory, size: 14, color: context.accent.accent),
         const SizedBox(width: 6),
         Flexible(
           child: Text(

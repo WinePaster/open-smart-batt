@@ -123,9 +123,9 @@ class _CellRow extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 600),
                   curve: Curves.easeOut,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.amberDark, AppColors.amber],
+                      colors: [context.accent.accentMuted, context.accent.accent],
                     ),
                   ),
                 ),

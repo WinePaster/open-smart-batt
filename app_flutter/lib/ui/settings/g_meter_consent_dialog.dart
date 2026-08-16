@@ -74,7 +74,7 @@ Future<bool> showGMeterConsentDialog(BuildContext context) async {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(l10n.gConsentEnable,
-                style: const TextStyle(color: AppColors.amber)),
+                style: TextStyle(color: context.accent.accent)),
           ),
         ],
       );

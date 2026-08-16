@@ -93,9 +93,12 @@ Future<void> _show(BuildContext context, String title, List<_Para> paras) {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // The flag is literally named `warn`: this is a caution
+                    // tone, not the accent (design 0064). Not in the design's
+                    // classification list — found during the work.
                     if (p.warn) ...[
                       const Icon(Icons.priority_high,
-                          size: 15, color: AppColors.amber),
+                          size: 15, color: AppSemantics.warn),
                       const SizedBox(width: 6),
                     ],
                     Expanded(
@@ -103,7 +106,7 @@ Future<void> _show(BuildContext context, String title, List<_Para> paras) {
                           style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
-                              color: p.warn ? AppColors.amber : colors.text)),
+                              color: p.warn ? AppSemantics.warn : colors.text)),
                     ),
                   ],
                 ),

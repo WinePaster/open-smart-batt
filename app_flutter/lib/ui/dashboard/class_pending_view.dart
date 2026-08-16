@@ -203,12 +203,12 @@ class _PendingGlyph extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           if (!stalled)
-            const SizedBox(
+            SizedBox(
               width: 92,
               height: 92,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.amber,
+                color: context.accent.accent,
               ),
             ),
           Container(
@@ -222,7 +222,7 @@ class _PendingGlyph extends StatelessWidget {
             child: Icon(
               stalled ? Icons.help_outline : Icons.memory,
               size: 34,
-              color: AppColors.amber,
+              color: context.accent.accent,
             ),
           ),
         ],

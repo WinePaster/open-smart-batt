@@ -193,7 +193,7 @@ class CardHeading extends StatelessWidget {
     return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 13, color: AppColors.amber),
+          Icon(icon, size: 13, color: context.accent.accent),
           const SizedBox(width: 7),
         ],
         // 🔴 Flexible + ellipsis. A heading is a LABEL, so losing its tail is
@@ -227,7 +227,7 @@ class CardHeading extends StatelessWidget {
             style: device == null
                 ? AppTextStyles.cardHeading(context)
                 : AppTextStyles.cardHeading(context)
-                    .copyWith(color: AppColors.amber),
+                    .copyWith(color: context.accent.accent),
           ),
         ),
         const SizedBox(width: 7),

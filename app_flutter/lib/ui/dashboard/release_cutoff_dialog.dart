@@ -184,7 +184,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _dealer,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   keyboardType: TextInputType.number,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
@@ -197,7 +197,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _password,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   obscureText: true,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
@@ -212,7 +212,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _cb,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     labelText: l10n.releaseDialogCbHint,
@@ -224,7 +224,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
                 TextField(
                   controller: _pwsum,
                   style: TextStyle(fontSize: 14, color: context.colors.text),
-                  cursorColor: AppColors.amber,
+                  cursorColor: context.accent.accent,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
@@ -264,7 +264,7 @@ class _ReleaseDialogState extends State<_ReleaseDialog> {
               if (_error != null) ...[
                 const SizedBox(height: 6),
                 Text(_error!,
-                    style: const TextStyle(fontSize: 11, color: AppColors.danger)),
+                    style: const TextStyle(fontSize: 11, color: AppSemantics.danger)),
               ],
               const SizedBox(height: 14),
               _WarnBox(text: l10n.releaseDialogWarnBox),
@@ -307,15 +307,15 @@ class _WarnBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.amber.withValues(alpha: 0.07),
-        border: Border.all(color: AppColors.amber.withValues(alpha: 0.28)),
+        color: AppSemantics.warn.withValues(alpha: 0.07),
+        border: Border.all(color: AppSemantics.warn.withValues(alpha: 0.28)),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(Icons.warning_amber_rounded,
-              size: 15, color: AppColors.amber),
+              size: 15, color: AppSemantics.warn),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -323,7 +323,7 @@ class _WarnBox extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 height: 1.5,
-                color: AppColors.amber,
+                color: AppSemantics.warn,
               ),
             ),
           ),
@@ -352,8 +352,8 @@ class _Btn extends StatelessWidget {
         decoration: BoxDecoration(
           color: filled
               ? (enabled
-                  ? AppColors.amber
-                  : AppColors.amber.withValues(alpha: 0.4))
+                  ? context.accent.accent
+                  : context.accent.accent.withValues(alpha: 0.4))
               : context.colors.panel2,
           border: Border.all(
             color: filled ? Colors.transparent : context.colors.line,
@@ -365,7 +365,7 @@ class _Btn extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: filled ? AppColors.onAmber : context.colors.muted,
+            color: filled ? context.accent.onAccent : context.colors.muted,
           ),
         ),
       ),

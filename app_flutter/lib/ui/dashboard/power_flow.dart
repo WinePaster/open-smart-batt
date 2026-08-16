@@ -168,9 +168,13 @@ PowerFlow packFlowOf(double? current) {
 /// gauge's sub-line and the energy-path row now both name a direction, and a
 /// second copy of this table is how "charging" ends up green on one line and
 /// amber on the line below it.
+/// 🔴 Status colours, never the accent (design 0064). Charging and discharging
+/// are told apart by colour alone on the SOC tile, and this table was NOT in
+/// the design's classification list — found while doing the work. A green
+/// accent would have merged the two directions everywhere they are drawn.
 Color powerFlowColor(BuildContext context, PowerFlow flow) => switch (flow) {
-      PowerFlow.charging => AppColors.good,
-      PowerFlow.discharging => AppColors.amber,
+      PowerFlow.charging => AppSemantics.good,
+      PowerFlow.discharging => AppSemantics.warn,
       PowerFlow.idle || PowerFlow.unknown => context.colors.muted,
     };
 

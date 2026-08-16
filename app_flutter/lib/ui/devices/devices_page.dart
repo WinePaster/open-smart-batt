@@ -328,7 +328,7 @@ class _DevicesPageState extends State<DevicesPage>
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(l10n.devicesRemove,
-                style: const TextStyle(color: AppColors.danger)),
+                style: const TextStyle(color: AppSemantics.danger)),
           ),
         ],
       ),
@@ -579,7 +579,7 @@ class _DevicesPageState extends State<DevicesPage>
                   : (hiddenCount > 0
                       ? l10n.devicesShowAllWithHidden(hiddenCount)
                       : l10n.devicesShowAll),
-              style: const TextStyle(fontSize: 12, color: AppColors.amber),
+              style: TextStyle(fontSize: 12, color: context.accent.accent),
             ),
           ),
         ),
@@ -683,9 +683,9 @@ class _SubTabs extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return TabBar(
       controller: controller,
-      labelColor: AppColors.amber,
+      labelColor: context.accent.accent,
       unselectedLabelColor: context.colors.muted,
-      indicatorColor: AppColors.amber,
+      indicatorColor: context.accent.accent,
       indicatorSize: TabBarIndicatorSize.tab,
       dividerColor: context.colors.line,
       labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
@@ -823,23 +823,23 @@ class _Header extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (scanning)
-                    const SizedBox(
+                    SizedBox(
                       width: 13,
                       height: 13,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.6,
-                        color: AppColors.amber,
+                        color: context.accent.accent,
                       ),
                     )
                   else
-                    const Icon(Icons.power_settings_new,
-                        size: 13, color: AppColors.amber),
+                    Icon(Icons.power_settings_new,
+                        size: 13, color: context.accent.accent),
                   const SizedBox(width: 6),
                   Text(
                     scanning ? l10n.devicesScanning : l10n.devicesRescan,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.amber,
+                      color: context.accent.accent,
                     ),
                   ),
                 ],
@@ -908,8 +908,8 @@ class _ScanDotState extends State<_ScanDot>
       child: Container(
         width: 7,
         height: 7,
-        decoration: const BoxDecoration(
-          color: AppColors.amber,
+        decoration: BoxDecoration(
+          color: context.accent.accent,
           shape: BoxShape.circle,
         ),
       ),
@@ -962,7 +962,7 @@ class _DeviceRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.panel2,
         border: Border.all(
-          color: isConnected ? AppColors.good : context.colors.line,
+          color: isConnected ? AppSemantics.good : context.colors.line,
         ),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
@@ -989,8 +989,8 @@ class _DeviceRow extends StatelessWidget {
                       border: Border.all(color: context.colors.line),
                       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     ),
-                    child: const Icon(Icons.battery_full,
-                        size: 19, color: AppColors.amber),
+                    child: Icon(Icons.battery_full,
+                        size: 19, color: context.accent.accent),
                   ),
                   const SizedBox(width: 12),
                   // alias + meta + badge (mockup `.dmain`).
@@ -1023,15 +1023,15 @@ class _DeviceRow extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: AppColors.amber,
+                                  color: context.accent.accent,
                                   borderRadius:
                                       BorderRadius.circular(AppTheme.radiusSm),
                                 ),
-                                child: const Text('RCE',
+                                child: Text('RCE',
                                     style: TextStyle(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w800,
-                                        color: AppColors.onAmber)),
+                                        color: context.accent.onAccent)),
                               ),
                             ],
                           ],
@@ -1163,13 +1163,13 @@ class _RowAction extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  /// Draws in [AppColors.danger]. Set on removal — the word alone is not much
+  /// Draws in [AppSemantics.danger]. Set on removal — the word alone is not much
   /// of a warning next to a button that only renames something.
   final bool danger;
 
   @override
   Widget build(BuildContext context) {
-    final color = danger ? AppColors.danger : context.colors.muted;
+    final color = danger ? AppSemantics.danger : context.colors.muted;
     return Tooltip(
       message: label,
       child: InkWell(
@@ -1186,7 +1186,7 @@ class _RowAction extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border.all(
               color: danger
-                  ? AppColors.danger.withValues(alpha: 0.45)
+                  ? AppSemantics.danger.withValues(alpha: 0.45)
                   : context.colors.line,
             ),
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
@@ -1239,10 +1239,14 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (badge) {
-      ConnectionBadge.connected => AppColors.good,
-      ConnectionBadge.connecting => AppColors.amber,
-      ConnectionBadge.notAnswering => AppColors.amber,
-      ConnectionBadge.failed => AppColors.danger,
+      ConnectionBadge.connected => AppSemantics.good,
+      // 🔴 Harder to get right than the connection pill: the badge's fill AND
+      // border are both derived from this one colour (see `_badgeChip`), so an
+      // accent-driven `connecting` would make the whole capsule identical to
+      // `connected` — text aside. Fixed status colours only (design 0064).
+      ConnectionBadge.connecting => AppSemantics.warn,
+      ConnectionBadge.notAnswering => AppSemantics.warn,
+      ConnectionBadge.failed => AppSemantics.danger,
       ConnectionBadge.offline => context.colors.muted,
     };
     return InkWell(
@@ -1319,7 +1323,7 @@ class _ConnectButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.transparent,
-            border: Border.all(color: AppColors.danger),
+            border: Border.all(color: AppSemantics.danger),
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           ),
           child: Text(
@@ -1328,7 +1332,7 @@ class _ConnectButton extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
-              color: AppColors.danger,
+              color: AppSemantics.danger,
             ),
           ),
         ),
@@ -1340,25 +1344,25 @@ class _ConnectButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.amber,
+          color: context.accent.accent,
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: connecting
-            ? const SizedBox(
+            ? SizedBox(
                 width: 14,
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.8,
-                  color: AppColors.onAmber,
+                  color: context.accent.onAccent,
                 ),
               )
             : Text(
                 l10n.devicesConnect,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.5,
-                  color: AppColors.onAmber,
+                  color: context.accent.onAccent,
                 ),
               ),
       ),
@@ -1386,14 +1390,22 @@ class _AdapterOffNote extends StatelessWidget {
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0x12F6A821),
-        border: Border.all(color: const Color(0x47F6A821)),
+        // Was `const Color(0x12F6A821)` / `0x47F6A821` — the amber spelled out
+        // in hex, invisible to every search for `AppColors.`. Design 0064
+        // keeps this frame on the FIXED warning tone; the danger was never
+        // that it would stop following the accent, it is that the next person
+        // copies a bare hex for a BRAND surface and nothing ever finds it.
+        // Alpha written as the original byte over 255 so "the value did not
+        // change" is arithmetic rather than trust.
+        color: AppSemantics.warn.withValues(alpha: 0x12 / 255),
+        border:
+            Border.all(color: AppSemantics.warn.withValues(alpha: 0x47 / 255)),
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         children: [
           const Icon(Icons.warning_amber_rounded,
-              size: 15, color: AppColors.amber),
+              size: 15, color: AppSemantics.warn),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1403,7 +1415,7 @@ class _AdapterOffNote extends StatelessWidget {
               // Settings deep-link pill to signal the actionable path.
               l10n.devicesAdapterOff,
               style: const TextStyle(
-                  fontSize: 11, height: 1.5, color: AppColors.amber),
+                  fontSize: 11, height: 1.5, color: AppSemantics.warn),
             ),
           ),
           if (unauthorized && onOpenSettings != null) ...[
@@ -1416,19 +1428,24 @@ class _AdapterOffNote extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 decoration: BoxDecoration(
                   color: context.colors.panel2,
-                  border: Border.all(color: const Color(0x47F6A821)),
+                  // Same frame, same fixed amber: this pill is outlined and
+                  // labelled in the warning box's own colour, so it reads as
+                  // part of the frame rather than as an action in the app's
+                  // accent. Themed, the box would be two colours.
+                  border: Border.all(
+                      color: AppSemantics.warn.withValues(alpha: 0x47 / 255)),
                   borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.settings,
-                        size: 13, color: AppColors.amber),
+                        size: 13, color: AppSemantics.warn),
                     const SizedBox(width: 6),
                     Text(
                       l10n.navSettings,
                       style:
-                          const TextStyle(fontSize: 11, color: AppColors.amber),
+                          const TextStyle(fontSize: 11, color: AppSemantics.warn),
                     ),
                   ],
                 ),

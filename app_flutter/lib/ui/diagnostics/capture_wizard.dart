@@ -164,8 +164,13 @@ class _CaptureWizardState extends State<_CaptureWizard> {
           const SizedBox(height: 14),
           Row(
             children: [
+              // Fixed status colours (design 0064). The user WATCHES this flip
+              // from waiting to ready during the dwell; on a green accent the
+              // transition would have had no colour to change to. This pair
+              // was NOT in the design's classification list — found here.
               Icon(ready ? Icons.check_circle_outline : Icons.timer_outlined,
-                  size: 16, color: ready ? AppColors.good : AppColors.amber),
+                  size: 16,
+                  color: ready ? AppSemantics.good : AppSemantics.warn),
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
@@ -182,7 +187,7 @@ class _CaptureWizardState extends State<_CaptureWizard> {
             value: (_elapsed / kCaptureStepDwell.inSeconds).clamp(0.0, 1.0),
             minHeight: 3,
             backgroundColor: colors.line,
-            color: ready ? AppColors.good : AppColors.amber,
+            color: ready ? AppSemantics.good : AppSemantics.warn,
           ),
         ],
       ),

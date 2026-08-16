@@ -67,7 +67,7 @@ Future<void> runUpdateCheck(BuildContext context, {required bool manual}) async 
                 mode: LaunchMode.externalApplication);
           },
           child: Text(l10n.updateDownloadButton,
-              style: const TextStyle(color: AppColors.amber)),
+              style: TextStyle(color: context.accent.accent)),
         ),
       ],
     ),

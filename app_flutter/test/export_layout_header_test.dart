@@ -13,6 +13,7 @@
 // The six format constraints are asserted individually below because each one
 // has a specific downstream consumer that breaks silently, not loudly.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/ui/dashboard/watchfaces.dart';
@@ -45,6 +46,8 @@ void main() {
         home: home,
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: speedDetection,
         gMeter: gMeter,
         resolution: ExportResolution.none,

@@ -139,7 +139,7 @@ class _AliasDialogState extends State<_AliasDialog> {
                 controller: _ctrl,
                 autofocus: true,
                 style: TextStyle(fontSize: 14, color: context.colors.text),
-                cursorColor: AppColors.amber,
+                cursorColor: context.accent.accent,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
@@ -234,7 +234,7 @@ class _DialogButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 11),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: filled ? AppColors.amber : context.colors.panel2,
+          color: filled ? context.accent.accent : context.colors.panel2,
           border: Border.all(
             color: filled ? Colors.transparent : context.colors.line,
           ),
@@ -245,7 +245,7 @@ class _DialogButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: filled ? AppColors.onAmber : context.colors.muted,
+            color: filled ? context.accent.onAccent : context.colors.muted,
           ),
         ),
       ),
