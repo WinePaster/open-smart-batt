@@ -278,8 +278,25 @@ void main() {
         final dataGated =
             (DisplayModules.forClass(cls)?.dataGated ?? const <DisplayModule>{});
         final drawn = watchfaceModules(cls, Watchface.fixed).toSet();
-        expect(drawn.difference(dataGated).length, greaterThanOrEqualTo(3),
-            reason: '\$cls: the fixed face collapses to \${drawn.difference(dataGated)} '
+        // 🔴 Recalibrated 2026-08-16, and deliberately NOT by lowering a
+        // number until it passed. `>= 3` was a PROXY that happened to hold
+        // while every class drew gauge + chart + readouts; the owner's ruling
+        // that day took the gauge off the capacitor, so the proxy broke while
+        // the invariant this test is NAMED for did not.
+        //
+        // What it protects, in its own words above: "a unit that never sends
+        // 0x24 renders a page with nothing but an instrument". So assert that
+        // — something survives the data gates that is not the instrument —
+        // plus a floor of two, so the page cannot collapse to a single card
+        // either. On a capacitor that is {chart, readouts}; on a battery,
+        // {gaugeVoltage, chart, readouts}.
+        final survives = drawn.difference(dataGated);
+        final besidesGauge = survives.difference(
+            {DisplayModule.gaugeVoltage, DisplayModule.gaugeSoc});
+        expect(besidesGauge, isNotEmpty,
+            reason: '\$cls: nothing but an instrument survives the data gates');
+        expect(survives.length, greaterThanOrEqualTo(2),
+            reason: '\$cls: the fixed face collapses to \$survives '
                 'on a unit that sends no gated data');
       }
     });

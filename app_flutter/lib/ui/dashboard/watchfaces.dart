@@ -154,8 +154,37 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // So: the instrument first, because it is the one card readable at a
     // glance AND the one with something to draw from the first frame. Then the
     // chart, then the numbers, then the class's own card.
+    //
+    // 🔴 …EXCEPT the gauge, on a capacitor (owner ruling 2026-08-16, from a
+    // v0.7.21 screenshot of unit `cls`).
+    //
+    // A capacitor's PVLT sits in a band a few tenths of a volt wide and stays
+    // there: the screenshot's dial reads 12.09 with the needle parked, while
+    // the chart's own PVLT track under it shows the whole 10.54–14.03 excursion
+    // that actually happened. The dial's argument (design 0017 §3.2: a reading
+    // whose POSITION in the range is the point) is what fails here — the
+    // position never moves enough to be the point, and a 244 px instrument that
+    // says what the line under it already says is a screenful spent twice.
+    //
+    // ⚠️ 0017 §3.2 is not overturned. Its three tests compared PVLT against
+    // SOC and never split battery from capacitor, so "does a capacitor need
+    // it" is a question it did not ask. The battery keeps its dial.
+    //
+    // 🔑 PVLT does NOT vanish with it: the same ruling moved PVLT into the
+    // readouts grid (`dashboard_cards.dart`), because before this it lived
+    // ONLY on the dial. Dropping the dial without that half would have deleted
+    // the number outright.
+    //
+    // ⛔ Device detail only. The home grid keeps offering the gauge tile to
+    // capacitors — that surface is a layout the USER arranged, and taking a
+    // card out of it because we changed our mind is not ours to do.
     case Watchface.fixed:
-      return [gauge, DisplayModule.chart, DisplayModule.readouts, ?extra];
+      return [
+        if (cls != ProductClass.supercapacitor) gauge,
+        DisplayModule.chart,
+        DisplayModule.readouts,
+        ?extra,
+      ];
     // Card for card, in order, exactly what the dashboard drew before design
     // 0034 existed — and still exactly that after Phase 1. This IS the
     // implementation of G4 ("a user who never opens the setting sees no
