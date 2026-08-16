@@ -369,17 +369,42 @@ Widget? dashboardCardFor(
       return ReadoutsCard(
         view: readoutsView,
         items: [
+          // 🔴 PVLT FIRST, added 2026-08-16 (owner ruling, from a v0.7.21
+          // screenshot). Until then the pack's main voltage appeared on this
+          // page in exactly one place — the dial — so a grid that listed SVLT
+          // and temperature omitted the number both of those are read against.
+          //
+          // 🔑 On a capacitor that omission became a deletion: the same ruling
+          // drops the dial for that class (`watchfaces.dart`), and without this
+          // row PVLT would have had nowhere left to be.
+          //
+          // ⚠️ On a BATTERY this is deliberately redundant with the dial it
+          // keeps. They answer different questions — the dial says where in the
+          // range the pack is sitting, this says what the number is — and
+          // design 0017 §3.2's own argument for the dial is the POSITION, not
+          // the digits.
+          //
+          // Order is PVLT → SVLT → temperature, matching the chart's track
+          // order directly above it. Two surfaces on one screen listing the
+          // same three quantities in different orders is a reading error
+          // waiting to happen.
           Readout(
-            icon: Icons.thermostat,
-            label: l10n.dashboardReadoutTemperatureLabel,
-            value: _fmtInt(tele.temperatureDisplay),
-            unit: tele.temperatureUnitLabel,
+            icon: Icons.bolt,
+            label: l10n.gaugePvltLabel,
+            value: _fmt1(tele.pvlt),
+            unit: 'V',
           ),
           Readout(
             icon: Icons.bolt,
             label: l10n.dashboardReadoutSvltLabel,
             value: _fmt1(tele.svlt),
             unit: 'V',
+          ),
+          Readout(
+            icon: Icons.thermostat,
+            label: l10n.dashboardReadoutTemperatureLabel,
+            value: _fmtInt(tele.temperatureDisplay),
+            unit: tele.temperatureUnitLabel,
           ),
           // Class gate from the registry, data gate right here — the two are
           // different questions and are answered in different places (design

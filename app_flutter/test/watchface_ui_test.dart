@@ -246,8 +246,11 @@ void main() {
           DisplayModule.cells,
         ],
         // No `cells` — design 0050 D5,「電容沒有分串電壓」.
+        // 🔴 And no instrument either, ruled 2026-08-16: a capacitor's PVLT sits
+        // in a band a few tenths wide, so the needle never moves enough for
+        // POSITION — design 0017 §3.2's argument for a dial — to be the point.
+        // PVLT moved into the readouts grid in the same ruling.
         ProductClass.supercapacitor: [
-          DisplayModule.gaugeVoltage,
           DisplayModule.chart,
           DisplayModule.readouts,
         ],
@@ -298,11 +301,36 @@ void main() {
           expect(mods, isNotEmpty, reason: '${cls.name}/${f.slug}');
           expect(mods.toSet(), hasLength(mods.length),
               reason: '${cls.name}/${f.slug} repeats a card');
+          // 🔴 One NAMED carve-out, not a relaxed assertion (2026-08-16).
+          //
+          // The owner dropped the dial from the capacitor's drawn face: its
+          // PVLT sits in a band a few tenths wide, so the needle never moves
+          // enough for POSITION — design 0017 §3.2's whole argument for a dial
+          // — to be the point. PVLT moved into the readouts grid in the same
+          // ruling, so the number did not go with it.
+          //
+          // The guard stays ON for every other class, and the exception is
+          // spelled out rather than folded into a weaker predicate: remove the
+          // gauge from the battery or the power bank and this still fires. What
+          // the test was really protecting — the two lines above, non-empty and
+          // no repeats — is untouched, and the comment at the top of this test
+          // says so ("a blank page is the failure...").
           expect(
             mods.any((m) =>
                 m == DisplayModule.gaugeSoc || m == DisplayModule.gaugeVoltage),
-            isTrue,
-            reason: '${cls.name}/${f.slug} has no instrument',
+            // ⚠️ `fixed` ONLY. The ruling changed the face that is actually
+            // drawn; the retired faces still list the gauge and are still
+            // asserted to, because they are historical records of what those
+            // layouts were — not something this ruling revisited. (Written the
+            // wrong way round first, and this test caught it.)
+            cls == ProductClass.supercapacitor && f == Watchface.fixed
+                ? isFalse
+                : isTrue,
+            reason: cls == ProductClass.supercapacitor &&
+                    f == Watchface.fixed
+                ? '${cls.name}/${f.slug} must NOT carry an instrument '
+                    '(ruled 2026-08-16)'
+                : '${cls.name}/${f.slug} has no instrument',
           );
         }
       }
@@ -450,8 +478,18 @@ void main() {
           tester, s, const PackScaffold(deviceId: 'DEV-TEST', controls: CapacitorControls()));
       await feedDvol(tester);
 
-      expect(dy(tester, find.byType(PvltGauge)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
+      // 🔴 No dial at all on a capacitor since 2026-08-16 — and asserted as an
+      // ABSENCE on screen, not merely left out of the expected list above. The
+      // two can disagree: `watchfaceModules` is one decision point and
+      // `dashboardCardFor` is another, and a card that no face names could
+      // still be drawn by a stray branch.
+      expect(find.byType(PvltGauge), findsNothing,
+          reason: 'ruled 2026-08-16 — the needle never moves enough for '
+              'POSITION to be the point on this class');
+      // 🔑 …and PVLT is still ON the page, in the readouts grid. Without this
+      // the assertion above would be satisfied by having deleted the number.
+      // Locale is `en` in this harness (see `pumpUnder`).
+      expect(find.textContaining('PVLT'), findsWidgets);
       expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       // 🔴 No DVOL bars on a capacitor since design 0050 D5. `feedDvol` above

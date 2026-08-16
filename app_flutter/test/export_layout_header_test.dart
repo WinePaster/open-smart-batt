@@ -197,7 +197,7 @@ void main() {
           cls: ProductClass.supercapacitor,
           layout: const DisplayLayout(watchface: Watchface.compact),
         ),
-        'face=fixed modules=gaugeVoltage,chart,readouts',
+        'face=fixed modules=chart,readouts',
       );
     });
 
@@ -296,7 +296,7 @@ void main() {
     const expected = <ProductClass, String>{
       ProductClass.smartBattery: 'face=fixed modules=gaugeVoltage,chart,readouts,cells',
       // No `cells` — design 0050 D5,「電容沒有分串電壓」.
-      ProductClass.supercapacitor: 'face=fixed modules=gaugeVoltage,chart,readouts',
+      ProductClass.supercapacitor: 'face=fixed modules=chart,readouts',
       ProductClass.powerBank: 'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
       // 📌 `unknown` is IN the table now. Design 0034 Q4 used to force it onto
       // the standard face, which is why it used to be excluded; it is an
@@ -509,7 +509,11 @@ void main() {
       );
       final lines = out.text.split(RegExp(r'\r?\n'));
       final layoutLine = lines.firstWhere((l) => l.contains('layout: '));
-      expect(layoutLine, '# layout: face=fixed modules=gaugeVoltage,chart,readouts',
+      // 🔴 No `gaugeVoltage` — owner ruling 2026-08-16 dropped the dial from the
+      // capacitor's drawn face (`watchfaces.dart`). The point this test makes is
+      // unchanged: the stored `diagnostic` is read and then ignored, and the
+      // file records the page that was DRAWN.
+      expect(layoutLine, '# layout: face=fixed modules=chart,readouts',
           reason: 'the stored `diagnostic` is read and then ignored — the file '
               'records the page that was drawn');
       // Still inside the commented preamble, above the column header.
