@@ -40,6 +40,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/one_screen_report.dart';
 
 /// Shown when the device-type byte is one this build does not map.
 class UnidentifiedView extends StatelessWidget {
@@ -53,87 +54,71 @@ class UnidentifiedView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final conn = context.watch<ConnectionController>();
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.maxHeight,
-            minWidth: constraints.maxWidth,
+    return OneScreenReport(
+      report: [
+        Icon(Icons.help_outline, size: 44, color: context.colors.muted),
+        const SizedBox(height: 22),
+        Text(
+          l10n.unidentifiedTitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w700,
+            color: context.colors.text,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.help_outline,
-                    size: 44, color: context.colors.muted),
-                const SizedBox(height: 22),
-                Text(
-                  l10n.unidentifiedTitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    letterSpacing: 0.5,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.text,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
-                  child: Text(
-                    l10n.unidentifiedBody,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.7,
-                      color: context.colors.muted,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 26),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 260),
-                  child: Column(
-                    children: [
-                      if (onExportLog != null)
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: onExportLog,
-                            icon: const Icon(Icons.file_download_outlined,
-                                size: 16),
-                            label: Text(l10n.settingsExportLogLabel),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 10),
-                      // Reconnecting cannot change the answer — the byte is
-                      // what it is — but a re-read costs nothing and rules out
-                      // a corrupted frame, which is the one way this state can
-                      // be reached by accident rather than by hardware.
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              conn.isBusy ? null : () => conn.reconnectCurrent(),
-                          icon: const Icon(Icons.refresh, size: 16),
-                          label: Text(l10n.classPendingRetryButton),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            l10n.unidentifiedBody,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.7,
+              color: context.colors.muted,
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 26),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 260),
+          child: Column(
+            children: [
+              if (onExportLog != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onExportLog,
+                    icon: const Icon(Icons.file_download_outlined, size: 16),
+                    label: Text(l10n.settingsExportLogLabel),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              // Reconnecting cannot change the answer — the byte is
+              // what it is — but a re-read costs nothing and rules out
+              // a corrupted frame, which is the one way this state can
+              // be reached by accident rather than by hardware.
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      conn.isBusy ? null : () => conn.reconnectCurrent(),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: Text(l10n.classPendingRetryButton),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

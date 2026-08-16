@@ -31,6 +31,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/one_screen_report.dart';
 
 /// Placeholder shown while the product class is undetermined.
 class ClassPendingView extends StatefulWidget {
@@ -110,80 +111,65 @@ class _ClassPendingViewState extends State<ClassPendingView> {
       body = l10n.classPendingTimeoutBody;
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.maxHeight,
-            minWidth: constraints.maxWidth,
+    return OneScreenReport(
+      report: [
+        _PendingGlyph(stalled: stalled),
+        const SizedBox(height: 22),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w700,
+            color: context.colors.text,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _PendingGlyph(stalled: stalled),
-                const SizedBox(height: 22),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    letterSpacing: 0.5,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.text,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
-                  child: Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.7,
-                      color: context.colors.muted,
-                    ),
-                  ),
-                ),
-                if (stalled) ...[
-                  const SizedBox(height: 26),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: conn.isBusy
-                                ? null
-                                : () => conn.reconnectCurrent(),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: Text(l10n.classPendingRetryButton),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                        // 🔴 「仍要顯示讀數（未分類）」 was REMOVED here on
-                        // 2026-08-08 (design 0050 D3). It landed on the
-                        // unclassified pack shell — which was field for field
-                        // the battery's card set, so "show them anyway" meant
-                        // "assert a class nobody established". That is the
-                        // FB-43 shape, and the whole reason this view exists.
-                        //
-                        // Retrying is what remains, because it is the only
-                        // action that can actually change the answer.
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.7,
+              color: context.colors.muted,
             ),
           ),
         ),
-      ),
+        if (stalled) ...[
+          const SizedBox(height: 26),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        conn.isBusy ? null : () => conn.reconnectCurrent(),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: Text(l10n.classPendingRetryButton),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                // 🔴 「仍要顯示讀數（未分類）」 was REMOVED here on
+                // 2026-08-08 (design 0050 D3). It landed on the
+                // unclassified pack shell — which was field for field
+                // the battery's card set, so "show them anyway" meant
+                // "assert a class nobody established". That is the
+                // FB-43 shape, and the whole reason this view exists.
+                //
+                // Retrying is what remains, because it is the only
+                // action that can actually change the answer.
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

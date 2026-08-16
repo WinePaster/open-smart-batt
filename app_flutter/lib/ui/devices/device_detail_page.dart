@@ -26,6 +26,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
+import '../widgets/one_screen_report.dart';
 import 'connection_failure.dart';
 import 'save_device_flow.dart';
 
@@ -569,77 +570,63 @@ class _OfflineBody extends StatelessWidget {
       onConnectUnsaved();
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.maxHeight,
-            minWidth: constraints.maxWidth,
+    return OneScreenReport(
+      report: [
+        ConnectionPulseIcon(working: mine && working),
+        const SizedBox(height: 24),
+        Text(
+          copy.title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 23,
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w700,
+            color: context.colors.text,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ConnectionPulseIcon(working: mine && working),
-                const SizedBox(height: 24),
-                Text(
-                  copy.title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 23,
-                    letterSpacing: 0.5,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.text,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 280),
-                  child: Text(
-                    copy.body,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      height: 1.7,
-                      color: context.colors.muted,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 26),
-                if (copy.hasAdvice) ...[
-                  ConnectionAdviceCard(
-                    hint: copy.adviceHint!,
-                    retryLabel: l10n.disconnectedStalledRetry,
-                    onRetry: retry,
-                  ),
-                  const SizedBox(height: 26),
-                ],
-                // The plain way back onto the link when nothing has failed yet.
-                // Present in EVERY state, advice card or not: this page is
-                // reached from a list whose whole purpose is picking a unit to
-                // watch, so "connect" must never require reading a paragraph
-                // first.
-                if (!copy.hasAdvice)
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: (mine && working) ? null : retry,
-                        icon: const Icon(Icons.bluetooth, size: 16),
-                        label: Text(l10n.devicesConnect),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Text(
+            copy.body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14.5,
+              height: 1.7,
+              color: context.colors.muted,
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 26),
+        if (copy.hasAdvice) ...[
+          ConnectionAdviceCard(
+            hint: copy.adviceHint!,
+            retryLabel: l10n.disconnectedStalledRetry,
+            onRetry: retry,
+          ),
+          const SizedBox(height: 26),
+        ],
+        // The plain way back onto the link when nothing has failed yet.
+        // Present in EVERY state, advice card or not: this page is
+        // reached from a list whose whole purpose is picking a unit to
+        // watch, so "connect" must never require reading a paragraph
+        // first.
+        if (!copy.hasAdvice)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (mine && working) ? null : retry,
+                icon: const Icon(Icons.bluetooth, size: 16),
+                label: Text(l10n.devicesConnect),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
