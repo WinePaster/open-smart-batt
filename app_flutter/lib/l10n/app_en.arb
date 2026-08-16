@@ -719,6 +719,7 @@
   },
   "historyRowEventCutOff": "Cut-off mode activated",
   "historyRowEventAntiTheft": "Anti-theft mode activated",
+  "historyRowEventCutOffAndAntiTheft": "Cut-off and anti-theft both activated in this minute",
   "historyRowSoh": "SOH {percent}%",
   "@historyRowSoh": {
     "placeholders": {

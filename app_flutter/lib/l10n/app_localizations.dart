@@ -1622,6 +1622,12 @@ abstract class AppLocalizations {
   /// **'Anti-theft mode activated'**
   String get historyRowEventAntiTheft;
 
+  /// No description provided for @historyRowEventCutOffAndAntiTheft.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off and anti-theft both activated in this minute'**
+  String get historyRowEventCutOffAndAntiTheft;
+
   /// No description provided for @historyRowSoh.
   ///
   /// In en, this message translates to:
