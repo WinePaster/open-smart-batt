@@ -81,7 +81,7 @@ void main() {
           cls: ProductClass.smartBattery, layout: DisplayLayout.defaults);
       final lines = header(layout: v);
       expect(lines.where((l) => l.startsWith('layout: ')), hasLength(1));
-      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells');
+      expect(lines.last, 'layout: face=fixed modules=chart,readouts,cells');
     });
 
     test('the parameter is required, so no call site can drop it', () {
@@ -170,7 +170,7 @@ void main() {
       expect(
         exportLayoutValue(
             cls: ProductClass.smartBattery, layout: DisplayLayout.defaults),
-        'face=fixed modules=gaugeVoltage,chart,readouts,cells',
+        'face=fixed modules=chart,readouts,cells',
       );
     });
 
@@ -294,7 +294,7 @@ void main() {
     // Same class of thing as the `usb` → `energyPath` rename (design 0035 §5.3
     // / R4) and recorded the same way, in `docs/feedback-index/conventions.md`.
     const expected = <ProductClass, String>{
-      ProductClass.smartBattery: 'face=fixed modules=gaugeVoltage,chart,readouts,cells',
+      ProductClass.smartBattery: 'face=fixed modules=chart,readouts,cells',
       // No `cells` — design 0050 D5,「電容沒有分串電壓」.
       ProductClass.supercapacitor: 'face=fixed modules=chart,readouts',
       ProductClass.powerBank: 'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
@@ -393,7 +393,7 @@ void main() {
         speedDetection: false,
       );
       expect(lines, contains('speed detection: off'));
-      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells',
+      expect(lines.last, 'layout: face=fixed modules=chart,readouts,cells',
           reason: 'a stored riding face declares no speed module any more');
       expect(lines.last, isNot(contains('speed')));
     });
@@ -480,7 +480,7 @@ void main() {
       );
       expect(lines, contains('speed detection: off'));
       expect(lines, contains('g meter: off'));
-      expect(lines.last, 'layout: face=fixed modules=gaugeVoltage,chart,readouts,cells');
+      expect(lines.last, 'layout: face=fixed modules=chart,readouts,cells');
       expect(lines.last, isNot(contains('gForce')));
     });
   });
