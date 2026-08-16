@@ -168,6 +168,12 @@ void main() {
         // value, so `off` means either "the user turned it off" or "advanced
         // mode withheld it", and only this line separates the two. Emitted for
         // `personal` too — FB-32's rule, one more time.
+        // design 0066 §3.8. REQUIRED and emitted at zero — an export whose
+        // owner has declared nothing still says so, because a block that
+        // appeared only when somebody had answered would make its absence mean
+        // both "nobody answered" and "an older build wrote this", and this
+        // feature exists precisely to count how many people answer.
+        'declared: count=0',
         'mode: personal',
         'speed detection: off',
         'g meter: off',
@@ -230,6 +236,12 @@ void main() {
             'current',
         // design 0063 — see the log twin above. Both preambles carry it, in the
         // same place, which is the point of these two byte-for-byte lists.
+        // design 0066 §3.8. REQUIRED and emitted at zero — an export whose
+        // owner has declared nothing still says so, because a block that
+        // appeared only when somebody had answered would make its absence mean
+        // both "nobody answered" and "an older build wrote this", and this
+        // feature exists precisely to count how many people answer.
+        'declared: count=0',
         'mode: personal',
         'speed detection: off',
         'g meter: off',

@@ -16,6 +16,7 @@ library;
 import '../../data/history_repo.dart';
 import '../../models/app_settings.dart' show AppMode, AppThemeMode;
 import '../../theme/accent_theme.dart';
+import '../../models/declared_device_model.dart';
 import '../../models/device_ident.dart';
 import 'export_scope.dart';
 
@@ -30,6 +31,7 @@ class ExportDeviceIdentity {
     this.classSlug,
     this.name,
     this.label,
+    this.declared = DeclaredModel.none,
   });
 
   /// Platform device id — Android MAC, iOS NSUUID. Written as its
@@ -53,6 +55,14 @@ class ExportDeviceIdentity {
 
   /// The user's alias for the unit, if any.
   final String? label;
+
+  /// What the OWNER says this unit is (design 0066 §3.8).
+  ///
+  /// 🔴 It gets its OWN preamble block and is never folded into [classSlug].
+  /// `class=` is what the wire measured; this is what a person typed, and the
+  /// only reason to collect it is that a reader can tell those apart afterwards
+  /// (§3.5). A single merged field would answer neither question.
+  final DeclaredModel declared;
 }
 
 /// One `#   mac= hash= serial= class= name= label=` line (WITHOUT the `# `
@@ -300,6 +310,30 @@ List<String> exportHeaderLines({
     // them (G3). Placed in the optional middle, before the required layout tail.
     if (deviceLines.isNotEmpty) 'devices: ${deviceLines.length}',
     ...deviceLines,
+    // design 0066 §3.8. What the OWNER says each unit is, kept strictly apart
+    // from the `class=` on the device lines above — that one is the wire's
+    // answer, this one is a person's, and §3.5 exists because the only value in
+    // collecting the second is being able to tell it from the first.
+    //
+    // `declared: count=N` is REQUIRED and emitted even at zero — the standing
+    // FB-32 rule. A block that appeared only when somebody had filled the form
+    // in would make its absence mean both "nobody has declared anything" and "a
+    // build older than 0.7.22 wrote this file", and since this feature exists to
+    // measure how many people answer, that is the one ambiguity it cannot
+    // afford. Detail lines follow only for units that actually declared
+    // something, so an all-devices export names the two that did rather than
+    // padding out eight empty rows.
+    //
+    // A REPEATED KEY, like `resolution:` / `ampere sign:` / `note:` above:
+    // the alternative is one line per unit under distinct keys, and an
+    // all-devices export has no fixed number of units to name them after.
+    // Machine-stable `key=value`, never localized — the ingest recipes read it
+    // with `sed`/`grep`, and each detail line is joined to its unit by the same
+    // `hash=` the `devices:` block uses.
+    'declared: count=${devices.where((d) => d.declared.isNotEmpty).length}',
+    for (final d in devices)
+      if (d.declared.isNotEmpty && d.deviceId.isNotEmpty)
+        'declared: hash=${shortDeviceHash(d.deviceId)}  ${d.declared.exportValue}',
     // design 0063. WHICH SHAPE OF THE APP wrote this file — personal (home
     // grid present, speed and G meter available) or advanced (no home tab, and
     // those two features withheld regardless of what the switches say).

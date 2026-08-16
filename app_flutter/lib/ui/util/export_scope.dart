@@ -291,6 +291,11 @@ Future<List<ExportDeviceIdentity>> exportDeviceIdentities(
           // through to the cache instead of writing the blank out.
           name: savedName.isNotEmpty ? savedName : cached?.name,
           label: saved?.alias,
+          // design 0066 §3.8. ONLY from the saved record — there is no cache
+          // rung and no live fallback here, and there cannot be: a declaration
+          // is a thing a person typed into this phone, so a unit with no saved
+          // record has, by construction, nothing to declare (§3.7).
+          declared: saved?.declared ?? DeclaredModel.none,
         );
       }(),
   ];

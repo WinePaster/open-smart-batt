@@ -168,6 +168,13 @@ void main() {
             await db.execute('CREATE TABLE history ('
                 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
                 'timestamp INTEGER NOT NULL, device_id TEXT)');
+            // …and a stub `saved_devices`, because from v20 the chain ALTERs
+            // that one too (design 0066 adds the seven `declared_*` columns).
+            // Same rule and same narrowness as the history stub above: only
+            // what the migration needs, so nobody asserts device facts from a
+            // shape nothing guarantees.
+            await db.execute("CREATE TABLE saved_devices ("
+                "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
           },
         ),
       );
@@ -224,6 +231,13 @@ void main() {
             await db.execute('CREATE TABLE history ('
                 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
                 'timestamp INTEGER NOT NULL, device_id TEXT)');
+            // …and a stub `saved_devices`, because from v20 the chain ALTERs
+            // that one too (design 0066 adds the seven `declared_*` columns).
+            // Same rule and same narrowness as the history stub above: only
+            // what the migration needs, so nobody asserts device facts from a
+            // shape nothing guarantees.
+            await db.execute("CREATE TABLE saved_devices ("
+                "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
           },
         ),
       );

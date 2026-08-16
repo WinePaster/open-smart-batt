@@ -1823,4 +1823,162 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fullscreenExit => 'Exit full screen';
+
+  @override
+  String get declaredRowAction => 'Model';
+
+  @override
+  String get declaredTitle => 'Set model';
+
+  @override
+  String get declaredBody =>
+      'Tell us what this unit is. Anything you are not sure of can be left blank.';
+
+  @override
+  String get declaredNotDisplayed =>
+      'This is collected for us to read; it changes nothing on your screens.';
+
+  @override
+  String get declaredSectionCategory => 'Type';
+
+  @override
+  String get declaredSectionModel => 'Model';
+
+  @override
+  String get declaredSectionRegion => 'Case standard';
+
+  @override
+  String get declaredSectionLabel => 'Label colour';
+
+  @override
+  String get declaredSectionCapacity => 'Nominal capacity';
+
+  @override
+  String get declaredSectionNote => 'Note';
+
+  @override
+  String get declaredOptional => 'optional';
+
+  @override
+  String get declaredClear => 'Clear';
+
+  @override
+  String get declaredCategoryMotorcycleCapacitor => 'Motorcycle capacitor';
+
+  @override
+  String get declaredCategoryCarCapacitor => 'Car capacitor';
+
+  @override
+  String get declaredCategoryMotorcycleBattery => 'Motorcycle battery';
+
+  @override
+  String get declaredCategoryCarBattery => 'Car battery';
+
+  @override
+  String get declaredCategoryPowerBank => 'Power bank';
+
+  @override
+  String get declaredGenerationGen1 => 'Gen 1';
+
+  @override
+  String get declaredGenerationGen2 => 'Gen 2';
+
+  @override
+  String get declaredGenerationFlagship => 'Flagship';
+
+  @override
+  String get declaredGroupOldGen => 'Old catalogue';
+
+  @override
+  String get declaredGroupNewGenB => 'New catalogue · B (65 mm case)';
+
+  @override
+  String get declaredGroupNewGenA => 'New catalogue · A (87 mm case)';
+
+  @override
+  String get declaredGroupRetrofit => 'Retrofit smart lid';
+
+  @override
+  String get declaredModelRetrofitLid => 'Retrofit smart lid';
+
+  @override
+  String get declaredRetrofitNoteLabel => 'Which battery is under the lid?';
+
+  @override
+  String get declaredRetrofitNoteHint => 'e.g. the stock 7 Ah, or a brand name';
+
+  @override
+  String get declaredNoteHint => 'Anything else worth telling us';
+
+  @override
+  String get declaredRegionJp => 'JIS (Japan)';
+
+  @override
+  String get declaredRegionEu => 'DIN (Europe)';
+
+  @override
+  String get declaredLabelOrange => 'Orange label';
+
+  @override
+  String get declaredLabelPurple => 'Purple label';
+
+  @override
+  String get declaredCapacityHint => 'e.g. 48, or 40B19L from the label';
+
+  @override
+  String get declaredCapacityFreeText =>
+      'The four buttons are suggestions, not a list. Type whatever the label actually says.';
+
+  @override
+  String get declaredMismatchCapacitor =>
+      'This unit did not report itself as a capacitor. You can still save — if it is hardware we have not seen, that is exactly what we want to know.';
+
+  @override
+  String get declaredMismatchBattery =>
+      'This unit did not report itself as a battery. You can still save — if it is hardware we have not seen, that is exactly what we want to know.';
+
+  @override
+  String get declaredMismatchPowerBank =>
+      'This unit did not report itself as a power bank. You can still save — if it is hardware we have not seen, that is exactly what we want to know.';
+
+  @override
+  String get declaredMismatchFlagship =>
+      'This unit did not report itself as a flagship. You can still save — if it is hardware we have not seen, that is exactly what we want to know.';
+
+  @override
+  String get declaredHelpLine =>
+      'If you are not sure how to fill this in, ask in the LINE community.';
+
+  @override
+  String get declaredModel60A => '6.0A';
+
+  @override
+  String get declaredModel60B => '6.0B';
+
+  @override
+  String get declaredModel90A => '9.0A';
+
+  @override
+  String get declaredModel50AhB => '5.0Ah-B';
+
+  @override
+  String get declaredModel75AhB => '7.5Ah-B';
+
+  @override
+  String get declaredModel100AhB => '10.0Ah-B';
+
+  @override
+  String get declaredModel50AhA => '5.0Ah-A';
+
+  @override
+  String get declaredModel75AhA => '7.5Ah-A';
+
+  @override
+  String get declaredModel100AhA => '10.0Ah-A';
+
+  @override
+  String get declaredModel125AhA => '12.5Ah-A';
+
+  @override
+  String get declaredModel175AhA => '17.5Ah-A';
 }
