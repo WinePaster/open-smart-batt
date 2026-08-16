@@ -190,6 +190,32 @@ class AccentTheme extends ThemeExtension<AccentTheme> {
   /// Null rather than a throw or a fallback, because callers need to tell
   /// "unknown id" apart from "no choice stored" — see `AppSettings`, where both
   /// end at amber but only one of them is worth a decode path.
+  /// The pair, spelled out for the export preamble (design 0064 §3.8).
+  ///
+  /// 🔴 **Hex, even though the database stores the ID.** The two answer
+  /// different questions and the right answer differs:
+  ///
+  ///  * the DB records a CHOICE, so it must follow the palette — when a pair is
+  ///    corrected (the §0.6 thin-line check is expected to move at least one),
+  ///    changing the constant has to fix every user who picked it;
+  ///  * this line records the PIXELS a reporter's screenshot actually had, so it
+  ///    must never change afterwards. A file that said `azure` and nothing else
+  ///    would silently re-point at the corrected colours years later, and the
+  ///    screenshot it was paired with would stop matching it.
+  ///
+  /// The id is kept alongside because it is what a human says out loud, and
+  /// because it is the only half that can be grepped across the corpus.
+  String get exportValue => 'accent=$id '
+      '${_hex(accent)}/${_hex(accentSecondary)}';
+
+  /// RRGGBB, upper case, no alpha — the form the corpus already writes by hand
+  /// (`our-app.md` quotes colours this way) and the form a reader can paste
+  /// straight into a colour picker.
+  static String _hex(Color c) => (c.toARGB32() & 0xFFFFFF)
+      .toRadixString(16)
+      .toUpperCase()
+      .padLeft(6, '0');
+
   static AccentTheme? byId(String? id) {
     for (final t in all) {
       if (t.id == id) return t;

@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
@@ -76,6 +77,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );
@@ -97,6 +100,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
       );
@@ -146,6 +151,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
         connections: 2,
@@ -164,6 +171,11 @@ void main() {
         'mode: personal',
         'speed detection: off',
         'g meter: off',
+        // design 0064 §3.8 — added when the accent became user-chosen. This is
+        // whole-list equality on purpose, so a new header line has to be written
+        // in here by hand. Hex AND id: the DB stores the choice, this stores the
+        // pixels the reporter's screenshot actually had.
+        'theme: light accent=amber F6A821/46D4C8',
         'home: tiles=auto',
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);
@@ -197,6 +209,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false,
         gMeter: false,
         resolution:
@@ -219,6 +233,11 @@ void main() {
         'mode: personal',
         'speed detection: off',
         'g meter: off',
+        // design 0064 §3.8 — added when the accent became user-chosen. This is
+        // whole-list equality on purpose, so a new header line has to be written
+        // in here by hand. Hex AND id: the DB stores the choice, this stores the
+        // pixels the reporter's screenshot actually had.
+        'theme: light accent=amber F6A821/46D4C8',
         'home: tiles=auto',
         'layout: face=standard modules=gaugeVoltage,readouts,cells',
       ]);

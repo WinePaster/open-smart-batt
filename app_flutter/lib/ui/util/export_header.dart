@@ -14,7 +14,8 @@
 library;
 
 import '../../data/history_repo.dart';
-import '../../models/app_settings.dart' show AppMode;
+import '../../models/app_settings.dart' show AppMode, AppThemeMode;
+import '../../theme/accent_theme.dart';
 import '../../models/device_ident.dart';
 import 'export_scope.dart';
 
@@ -161,6 +162,8 @@ List<String> exportHeaderLines({
   required String layout,
   required String home,
   required AppMode mode,
+  required AppThemeMode themeMode,
+  required AccentTheme accent,
   required bool speedDetection,
   required bool gMeter,
   required ExportResolution resolution,
@@ -361,6 +364,35 @@ List<String> exportHeaderLines({
     // line was added to end. Same sentence, one more input. See `mode:` above
     // for how a reader tells the two causes of `off` apart.
     'g meter: ${gMeter ? 'on' : 'off'}',
+    // design 0064 §3.8. 🔴 Added the day the accent became user-chosen, and the
+    // reason is not cosmetics: our problem-reading runs on SCREENSHOTS
+    // (`feedback-attachments/our-app.md` has 11 rows that use 「橘」 as a pixel
+    // fact, and FB-38's conclusion is one of them — "the ORANGE line square-waves
+    // between 3.5 V and 14.4 V"). Once the user picks the palette, "orange line"
+    // stops identifying anything, and a screenshot with no file beside it cannot
+    // be re-derived. This line is what lets a future reader map a colour back to
+    // a role.
+    //
+    // 📌 Placed AFTER the two switch lines, not beside `mode:`. `app_mode_test`
+    // H10 asserts that `mode:` is directly above them, and that adjacency is
+    // load-bearing: since 0063 `speed detection: off` has two causes and `mode:`
+    // is the line that separates them. This line belongs to the screenshot
+    // story instead, so it sits with `home:`.
+    //
+    // ⚠️ Records the theme MODE, not the resolved brightness — `auto` is emitted
+    // as `auto`. Same rule as `g meter:` below: the switch is a fact about the
+    // whole file, while what `auto` resolved to moves during the session (the
+    // system flips it at sunset), and a preamble written once at export time
+    // cannot describe a moving value honestly.
+    //
+    // ⚠️ Hex AND id: see [AccentTheme.exportValue] for why the database stores
+    // one and this line stores the other.
+    //
+    // `required`, and emitted even for the default amber — the standing FB-32
+    // rule. A line that appeared only for a non-default theme would make its
+    // absence mean both "they were on amber" and "a build older than this wrote
+    // the file".
+    'theme: ${themeMode.name} ${accent.exportValue}',
     // design 0046 Step 10. The same argument as `layout:` below, applied to the
     // page most screenshots are now OF: since design 0046 R3 the home grid is
     // the default entry point, so "there is no charge reading on screen" needs

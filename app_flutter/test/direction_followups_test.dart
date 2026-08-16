@@ -408,6 +408,8 @@ void main() {
           home: 'grid',
           // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
           mode: AppMode.personal,
+          themeMode: AppThemeMode.light,
+          accent: AccentTheme.amber,
           speedDetection: false,
           gMeter: false,
           resolution: ExportResolution.forCsv(

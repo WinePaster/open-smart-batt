@@ -632,6 +632,10 @@ class _DataCardState extends State<_DataCard> {
     // `mode:` beside them says which of the two is being reported.
     final appSettings = context.read<SettingsController>().settings;
     final mode = appSettings.mode;
+    // design 0064: captured with the rest of the snapshot, before the awaits.
+    final themeMode = appSettings.themeMode;
+    final accent =
+        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
     final speedDetection = appSettings.speedDetectionEffective;
     final gMeter = appSettings.gMeterEffective;
     try {
@@ -679,6 +683,8 @@ class _DataCardState extends State<_DataCard> {
           layout: layout,
           home: home,
           mode: mode,
+          themeMode: themeMode,
+          accent: accent,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),
@@ -860,6 +866,10 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // `export_header.dart`'s `mode:` line for what tells the two apart.
     final logSettings = context.read<SettingsController>().settings;
     final logMode = logSettings.mode;
+    // design 0064, captured here for the same pre-await reason as the rest.
+    final logThemeMode = logSettings.themeMode;
+    final logAccent =
+        AccentTheme.byId(logSettings.accentThemeId) ?? AccentTheme.amber;
     final speedOn = logSettings.speedDetectionEffective;
     final gMeterOn = logSettings.gMeterEffective;
     // 🔴 FB-68: the layout comes from the target, resolved with the identity at
@@ -885,8 +895,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           await exportDeviceIdentities(devices, tele, target, facts: facts);
       final header =
           await _logHeader(
-              tele, services, target, rawLog, logMode, speedOn, gMeterOn,
-              layout, home, identities);
+              tele, services, target, rawLog, logMode, logThemeMode,
+              logAccent, speedOn, gMeterOn, layout, home, identities);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -1021,6 +1031,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // design 0063. Threaded through with the other pre-await reads rather than
     // fetched here, for the reason stated on `rawPacketLog` above.
     AppMode mode,
+    // design 0064, same pre-await capture rule as `mode` above.
+    AppThemeMode themeMode,
+    AccentTheme accent,
     bool speedDetection,
     bool gMeter,
     String layout,
@@ -1039,6 +1052,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       layout: layout,
       home: home,
       mode: mode,
+      themeMode: themeMode,
+      accent: accent,
       speedDetection: speedDetection,
       gMeter: gMeter,
       // design 0061 §3.4.3: this file has no history rows at all, so it says

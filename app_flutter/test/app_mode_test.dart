@@ -36,6 +36,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
@@ -95,6 +96,9 @@ List<String> _header(AppSettings s) => exportHeaderLines(
       layout: 'face=standard modules=gaugeVoltage,readouts,cells',
       home: 'tiles=auto',
       mode: s.mode,
+      themeMode: s.themeMode,
+      accent:
+          AccentTheme.byId(s.accentThemeId) ?? AccentTheme.amber,
       // Exactly what the three call sites in `lib/` pass — the EFFECTIVE
       // values. Passing the stored ones here would make this file agree with a
       // bug rather than catch it.
@@ -678,6 +682,31 @@ void main() {
       expect(_header(_bothOn), contains('mode: personal'));
       expect(_header(_bothOn.copyWith(mode: AppMode.advanced)),
           contains('mode: advanced'));
+    });
+
+    test('🔑 A4: the theme line carries hex AND id, and sits after the switches',
+        () {
+      // design 0064 §3.8. Two assertions, two different failure modes.
+      //
+      // 🔴 The HEX is what makes a screenshot re-readable. Our problem-reading
+      // runs on pictures — `feedback-attachments/our-app.md` has 11 rows that
+      // use 「橘」 as a pixel fact, and FB-38's conclusion is one of them. Once
+      // the user picks the palette, "the orange line" identifies nothing, and a
+      // build that recorded only `accent=azure` would silently re-point at
+      // whatever `azure` means after the §0.6 thin-line check moves it.
+      //
+      // 🔴 The POSITION is H10's rule, from the other side: `mode:` has to stay
+      // directly above the two switch lines, so this one goes after them. If a
+      // later line lands between `mode:` and `speed detection:`, H10 goes red
+      // and this stays green — the two tests fence the slot from both ends.
+      final lines = _header(_bothOn);
+      final theme = lines.singleWhere((l) => l.startsWith('theme: '));
+      expect(theme, 'theme: light accent=amber F6A821/46D4C8');
+      expect(lines.indexOf(theme),
+          greaterThan(lines.indexWhere((l) => l.startsWith('g meter: '))));
+      // …and it is machine-stable ASCII, not a localized name — the corpus
+      // tools grep it.
+      expect(theme, matches(RegExp(r'^theme: \w+ accent=\w+ [0-9A-F]{6}/[0-9A-F]{6}$')));
     });
 
     test('it sits directly above the two switch lines', () {

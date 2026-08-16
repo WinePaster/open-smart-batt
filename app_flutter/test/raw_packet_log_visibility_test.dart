@@ -16,6 +16,7 @@
 // Two reporters doing the same thing produced 63,375 frames and 1 line. The
 // file has to be able to say which of those it is.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
 
@@ -34,6 +35,8 @@ void main() {
         home: 'tiles=auto',
         // design 0063: a `required` param, so every direct caller has to name it. Personal is today's app.
         mode: AppMode.personal,
+        themeMode: AppThemeMode.light,
+        accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
         connections: 1,

@@ -288,6 +288,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // file, read months later by whoever received it.
     final appSettings = context.read<SettingsController>().settings;
     final mode = appSettings.mode;
+    // design 0064: captured with the rest of the snapshot, before the awaits.
+    final themeMode = appSettings.themeMode;
+    final accent =
+        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
     final speedDetection = appSettings.speedDetectionEffective;
     final gMeter = appSettings.gMeterEffective;
     final since = _sinceFor(_range);
@@ -338,6 +342,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           layout: layout,
           home: home,
           mode: mode,
+          themeMode: themeMode,
+          accent: accent,
           speedDetection: speedDetection,
           gMeter: gMeter,
         ),
