@@ -378,12 +378,25 @@ class DeclaredModel {
         // and is still recognisably what they typed.
         if (capacity != null && capacity!.isNotEmpty)
           'capacity=${_token(capacity!)}',
-        // 🔴 The NOTE IS NOT EXPORTED. It is free text about the user's own
-        // vehicle, which in this corpus routinely means a plate number or a
-        // person's name (see `save_device_flow.dart`, which withholds the alias
-        // from the diagnostic log for exactly this reason), and an export is
-        // mailed to us. `note=yes` records that one exists.
-        if (note != null && note!.isNotEmpty) 'note=yes',
+        // 🔴 The note IS exported, in full (owner ruling 2026-08-17).
+        //
+        // It shipped as `note=yes` on the reasoning that a note is free text
+        // about the user's own vehicle and `save_device_flow.dart` withholds
+        // the alias from the log for the same reason. ⚠️ **That precedent does
+        // not exist** — the alias is exported, as `label=` in
+        // `export_header.dart`. So the rule was withholding one thing a user
+        // typed while emitting another, with nothing to tell them apart.
+        //
+        // 🔑 And it cost more than consistency: the retrofit-lid branch has NO
+        // model list by design (there is no catalogue slot for a retrofit), so
+        // its free text IS its content. With the note withheld we learned that
+        // a unit was a retrofit and nothing whatever about what the retrofit
+        // was — which is the one thing that branch exists to ask.
+        //
+        // Same `_token` as the capacity: a note can run to several lines, and a
+        // newline would end the header line early and orphan the rest into
+        // something an ingest recipe reads as a new key.
+        if (note != null && note!.isNotEmpty) 'note=${_token(note!)}',
         if (declaredAt != null) 'at=${declaredAt!.toIso8601String()}',
       ].join('  ');
 

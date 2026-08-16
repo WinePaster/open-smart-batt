@@ -689,21 +689,42 @@ void main() {
       expect(device, isNot(contains('car-battery')));
     });
 
-    test('🔴 the free-text note is NOT exported, only its existence', () {
-      // It is a sentence about the user's own vehicle, and in this corpus that
-      // routinely means a plate number or a person's name — the reason
-      // `save_device_flow.dart` keeps the alias out of the diagnostic log. An
-      // export is mailed to us.
+    test('🔴 the free-text note IS exported, whitespace collapsed', () {
+      // ~~It is a sentence about the user's own vehicle … the reason
+      // `save_device_flow.dart` keeps the alias out of the diagnostic log.~~
+      //
+      // 🔴 Reversed 2026-08-17 (owner ruling), and the original reasoning was
+      // wrong on both halves:
+      //
+      //  * **the precedent does not exist.** `save_device_flow.dart` does not
+      //    withhold the alias — `export_header.dart` emits it as `label=`. The
+      //    rule withheld one thing the user typed while printing another;
+      //  * **exporting is itself the consent** (the owner's words). Nothing
+      //    leaves the phone until a person taps 匯出 and chooses where it goes,
+      //    which is the same act that already sends the alias, the layout and
+      //    every reading.
+      //
+      // 🔑 And withholding it broke a branch: `retrofit-lid` has no model list
+      // BY DESIGN (a retrofit has no catalogue slot), so the note is its only
+      // content. We were learning that a unit was a retrofit and nothing about
+      // what the retrofit was.
+      //
+      // CATCHES: a well-meaning revert to `note=yes`, and a note whose newline
+      // ends the header line early — the `_token` collapse is what stops the
+      // rest of a multi-line note from being read as a new key.
       final lines = header(devices: [
         const ExportDeviceIdentity(
           deviceId: 'AA',
           declared: DeclaredModel(
-              category: DeclaredCategory.powerBank, note: 'ABC-1234 我的車'),
+              category: DeclaredCategory.powerBank,
+              note: 'ABC-1234 我的車\n第二行'),
         ),
       ]);
       final line = lines.firstWhere((l) => l.startsWith('declared: hash='));
-      expect(line, contains('note=yes'));
-      expect(line, isNot(contains('ABC-1234')));
+      expect(line, contains('note=ABC-1234_我的車_第二行'));
+      expect(line, isNot(contains('note=yes')));
+      expect(lines.where((l) => l.contains('第二行')), hasLength(1),
+          reason: 'the newline must not split the note across two header lines');
     });
 
     test('a capacity with a space stays ONE key=value token', () {
