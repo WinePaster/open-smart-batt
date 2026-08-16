@@ -139,6 +139,31 @@ class DeviceController extends ChangeNotifier {
     await load();
   }
 
+  /// The declaration stored for [id] — [DeclaredModel.none] when the device is
+  /// not saved or its owner has not answered (design 0066).
+  DeclaredModel declaredFor(String? id) =>
+      id == null ? DeclaredModel.none : deviceFor(id)?.declared ?? DeclaredModel.none;
+
+  /// Persist what the owner says [id] is (design 0066). No-op if the device is
+  /// not saved — §3.7: an unsaved unit has no row to write into, which is why
+  /// the entrance is on saved rows only.
+  ///
+  /// 🔴 NOT short-circuited on `value == existing.declared`, unlike
+  /// [setProductClass] / [setDisplayLayout]. Those two are called repeatedly by
+  /// the wire and the early-return exists to stop a live frame costing a write
+  /// per second. This one is called once, by a person pressing 儲存, and
+  /// re-submitting an unchanged form must still refresh `declaredAt` — R2's
+  /// "which cohort filled this in" is the whole reason that column exists, and
+  /// "they confirmed it again today" is a different fact from "they typed it in
+  /// August and never looked again".
+  ///
+  /// 🔴 It cannot and must not disturb `productClass`; see [DeviceRepo.setDeclaredModel].
+  Future<void> setDeclaredModel(String id, DeclaredModel value) async {
+    if (deviceFor(id) == null) return;
+    await _repo.setDeclaredModel(id, value);
+    await load();
+  }
+
   /// Forget a saved device, then reload.
   Future<void> remove(String id) async {
     await _repo.deleteSavedDevice(id);

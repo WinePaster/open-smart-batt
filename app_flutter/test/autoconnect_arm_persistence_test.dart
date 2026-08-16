@@ -306,6 +306,13 @@ void main() {
             await db.execute('CREATE TABLE ${Db.tableHistory} ('
                 'id INTEGER PRIMARY KEY AUTOINCREMENT, '
                 'timestamp INTEGER NOT NULL, device_id TEXT)');
+            // …and from v20 it ALTERs `saved_devices` too (design 0066 adds the
+            // seven `declared_*` columns), so that table has to exist for the
+            // same reason. Third time this stub list has grown; the pattern is
+            // that a fixture claiming to be version N must carry every table a
+            // real version-N file had, not merely the ones the assertions read.
+            await db.execute('CREATE TABLE ${Db.tableSavedDevices} ('
+                "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
           },
         ),
       );

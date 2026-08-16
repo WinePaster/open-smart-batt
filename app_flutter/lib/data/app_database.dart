@@ -272,7 +272,41 @@ class Db {
   /// ⚠️ The STORED VALUE is the choice, not the colours. See
   /// `AppSettings.accentThemeId` for why a set of hex triples in this column
   /// would have frozen every early adopter on a palette we later corrected.
-  static const int schemaVersion = 19;
+  /// v20 — design 0066. Seven columns on `saved_devices`, holding what the
+  /// OWNER says a unit is.
+  ///
+  ///   saved_devices.declared_category  TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_model     TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_region    TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_label     TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_capacity  TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_note      TEXT, nullable, NO DEFAULT
+  ///   saved_devices.declared_at    INTEGER, nullable, NO DEFAULT
+  ///
+  /// 🔴 **These are NOT a writable `product_class`.** That column is decided by
+  /// the wire (`0x10 b4`, deterministic since design 0007) and this migration
+  /// does not touch it, read it, or seed anything from it. Design 0066 §3.5 is
+  /// the ruling; `docs/feedback-triage/discipline.md` is the reason — FB-23,
+  /// FB-33 and FB-32 are three separate incidents of one failure, state kept in
+  /// two places and updated in one. The entire value of what these columns
+  /// collect is that a later reader can tell a MEASUREMENT from an OPINION, and
+  /// merging them would destroy exactly that.
+  ///
+  /// 🔴 NULL, not `''`, and for a sharper reason than v18/v19's. Those two are
+  /// about not inventing a choice; here the empty string is a SECOND SPELLING of
+  /// "no answer" that would sit beside NULL in the same column. The day somebody
+  /// counts non-answers with `WHERE declared_capacity IS NULL`, half of them go
+  /// missing and the count reads as a signal. `DeclaredModel.toMap` normalises
+  /// blanks to NULL on the write path for the same reason.
+  ///
+  /// No DEFAULT for the ordinary reason: a default would state that every
+  /// pre-v20 user answered a form they were never shown.
+  ///
+  /// CLAIMING A NUMBER (see the note under v8): 20 was taken after checking
+  /// every local and remote ref on 2026-08-17 — the highest anywhere was 19
+  /// (design 0064, on `main`). design 0066's own plan says v20 and this is the
+  /// registry agreeing with it, not the other way round.
+  static const int schemaVersion = 20;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -717,6 +751,32 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN accent_theme TEXT',
       );
     }
+    if (from < 20) {
+      // design 0066. Seven additive, nullable columns with NO DEFAULT — see
+      // [Db.schemaVersion] v20 for why NULL rather than '' is the whole point,
+      // and for the red line that says none of this may be folded into
+      // `product_class`.
+      //
+      // ⚠️ `product_class` is deliberately NOT read here. A migration that
+      // seeded `declared_category` from the measured class would look helpful
+      // and would be a fabricated fact: it would state that every existing
+      // owner had confirmed what the byte said, when none of them was asked.
+      // Same discipline as v15's deliberately-empty table — an upgrade may add
+      // capability, never evidence.
+      for (final column in const <String>[
+        'declared_category TEXT',
+        'declared_model TEXT',
+        'declared_region TEXT',
+        'declared_label TEXT',
+        'declared_capacity TEXT',
+        'declared_note TEXT',
+        'declared_at INTEGER',
+      ]) {
+        await db.execute(
+          'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN $column',
+        );
+      }
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -817,7 +877,14 @@ class AppDatabase {
       product_class TEXT NOT NULL DEFAULT 'unknown',
       display_layout TEXT,
       mac TEXT,
-      serial TEXT
+      serial TEXT,
+      declared_category TEXT,
+      declared_model TEXT,
+      declared_region TEXT,
+      declared_label TEXT,
+      declared_capacity TEXT,
+      declared_note TEXT,
+      declared_at INTEGER
     )
     ''',
     '''

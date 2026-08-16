@@ -113,6 +113,28 @@ class DeviceRepo {
     );
   }
 
+  /// Persist what the OWNER says [id] is (design 0066). Returns rows affected
+  /// (0 if the device is not saved).
+  ///
+  /// 🔴 Writes ALL SEVEN columns every time, including the null ones — unlike
+  /// [setIdentity], which skips nulls so a serial-only observation cannot clear
+  /// a MAC. The asymmetry is deliberate and comes from what the two write:
+  /// [setIdentity] merges independent OBSERVATIONS arriving at different times,
+  /// whereas this writes one FORM the user just submitted, and a form's cleared
+  /// field is an answer ("I am no longer sure it was orange"). Skip the nulls
+  /// here and a value can only ever be set, never taken back.
+  ///
+  /// 🔴 It touches no other column. `product_class` in particular is not in this
+  /// statement and must never be — design 0066 §3.5.
+  Future<int> setDeclaredModel(String id, DeclaredModel declared) {
+    return _db.update(
+      Db.tableSavedDevices,
+      declared.toMap(),
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
     return _db.delete(

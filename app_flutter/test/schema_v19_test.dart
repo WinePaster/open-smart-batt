@@ -289,15 +289,17 @@ void main() {
       );
     });
 
-    test('both report schema version 19', () async {
+    test('both report the current schema version', () async {
       final upgraded = await upgradeFromV11('v19_ver');
       final fresh = await freshDatabase('v19_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current exact pin — moved here from `schema_v18_test.dart`, which
-        // now asserts a floor. Move it again when v20 lands.
-        expect(Db.schemaVersion, 19);
+        // 🔴 A FLOOR, not a pin — the exact pin moved on to `schema_v20_test`
+        // when design 0066 landed, exactly as the note here instructed. What
+        // this file still has to prove is that a v11 phone reaching v19's
+        // column does not stop reaching it once later versions are appended.
+        expect(Db.schemaVersion, greaterThanOrEqualTo(19));
       }
     });
   });

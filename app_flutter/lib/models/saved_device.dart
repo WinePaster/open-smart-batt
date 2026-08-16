@@ -4,6 +4,7 @@
 /// editable alias, for the device-list quick-reconnect flow (mockup screen 3).
 library;
 
+import 'declared_device_model.dart';
 import 'display_layout.dart';
 import 'product_class.dart';
 
@@ -70,6 +71,24 @@ class SavedDevice {
   /// fabricated), and for classes that carry none (power banks).
   final String? serial;
 
+  /// What the OWNER says this unit is (design 0066), in its own seven columns.
+  ///
+  /// 🔴 **This is not a second opinion about [productClass] and must never be
+  /// read as one.** [productClass] is measured — `0x10 b4`, deterministic since
+  /// design 0007 — and this is typed by a person who may be wrong, may be
+  /// guessing, or may be holding hardware we have never seen. The two live side
+  /// by side so that a reader months from now can tell which is which; design
+  /// 0066 §3.5 records why, and `docs/feedback-triage/discipline.md` records the
+  /// three incidents (FB-23 / FB-33 / FB-32) that make it a rule rather than a
+  /// preference.
+  ///
+  /// ⇒ Nothing in the app may route, gate or label on this value. It exists to
+  /// be collected and exported.
+  ///
+  /// [DeclaredModel.none] for every pre-v20 row and for every unit whose owner
+  /// has not filled the form in.
+  final DeclaredModel declared;
+
   const SavedDevice({
     required this.id,
     required this.alias,
@@ -81,6 +100,7 @@ class SavedDevice {
     this.displayLayout = DisplayLayout.defaults,
     this.mac,
     this.serial,
+    this.declared = DeclaredModel.none,
   });
 
   SavedDevice copyWith({
@@ -94,6 +114,7 @@ class SavedDevice {
     DisplayLayout? displayLayout,
     String? mac,
     String? serial,
+    DeclaredModel? declared,
   }) =>
       SavedDevice(
         id: id ?? this.id,
@@ -106,6 +127,10 @@ class SavedDevice {
         displayLayout: displayLayout ?? this.displayLayout,
         mac: mac ?? this.mac,
         serial: serial ?? this.serial,
+        // Clearing works by passing [DeclaredModel.none], which is a real value
+        // rather than null — so this one field needs none of the `clearX` flags
+        // the settings model has to carry. See `declared_device_model.dart`.
+        declared: declared ?? this.declared,
       );
 
   // Mirrors the v10 `saved_devices` schema. `name`/`stale` were added by the
@@ -132,6 +157,13 @@ class SavedDevice {
         // distinct from "known to be blank".
         'mac': mac,
         'serial': serial,
+        // design 0066 v20 — seven nullable columns, spread from one value
+        // object. 🔴 They are written even when empty, and that is the point of
+        // routing them through `toMap`: `upsertSavedDevice` is an INSERT OR
+        // REPLACE of the WHOLE ROW, so a column left out here is not merely
+        // unsaved — it is erased on the next unrelated write to the record
+        // (the trap `schema_v19_test`'s round-trip case documents).
+        ...declared.toMap(),
       };
 
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
@@ -156,6 +188,10 @@ class SavedDevice {
         // Absent column (pre-v11) or NULL both read back as null — see toMap.
         mac: m['mac'] as String?,
         serial: m['serial'] as String?,
+        // Absent columns (pre-v20) and NULLs both read back as
+        // [DeclaredModel.none] — "the owner has not answered", which is the
+        // truth about every row that existed before this shipped (M7).
+        declared: DeclaredModel.fromMap(m),
       );
 }
 
