@@ -22,11 +22,8 @@ import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/power_flow.dart';
-import '../dashboard/watchfaces.dart';
-import '../util/export_header.dart';
-import '../util/export_naming.dart';
 import '../util/export_scope.dart';
-import '../util/export_share.dart';
+import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
 
 /// Selectable chart/list time range.
@@ -317,147 +314,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // The picker chooses WHICH device to export and HOW MUCH DETAIL; it does
     // not replace the time range already chosen on this screen — the two
     // intersect, and the range is what the sheet's size estimate is scoped by.
+    final since = _sinceFor(_range);
     final target = await chooseExportScope(
       context,
       offerSession: false,
       offerGranularity: true,
-      since: _sinceFor(_range),
+      since: since,
     );
     if (target == null || !mounted) return;
     setState(() => _exporting = true);
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    // Captured now: the label lookup runs after an await, when this screen may
-    // already be gone.
-    final devices = context.read<DeviceController>();
-    // design 0057: the identity cache, captured with everything else. Nullable
-    // lookup — provider yields null where nobody supplied one, and the read
-    // path then behaves exactly as it did before 0057.
-    final facts = context.read<DeviceFactsController?>();
-    final services = context.read<AppServices>();
-    // The live pair, captured with everything else (design 0055 follow-up): a
-    // unit that was never named has no stored class, and without this its
-    // capacitor `0.0 A` would be exported as a measurement. Only the unit on
-    // the link is eligible — see [deviceClassFor].
-    final liveId = context.read<TelemetryController>().recordingDeviceId;
-    final liveClass = context.read<ConnectionController>().resolvedClass;
-    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
-    ProductClass classFor(String? id) => deviceClassFor(
-          devices,
-          id,
-          facts: facts,
-          liveDeviceId: liveId,
-          liveClass: liveClass,
-        );
-    // iPad popover anchor (D.7): capture before any await invalidates context.
-    final origin = sharePositionFromContext(context);
-    // The dashboard layout in force at the MOMENT OF EXPORT (design 0034 §8),
-    // which for a device-scoped or all-devices export alike is this phone's —
-    // the setting is bound to the connected unit, so an offline export honestly
-    // reports that no layout was in force.
-    //
-    // 🔴 FB-68: "the moment of export" is now ONE instant, fixed inside the
-    // target by `chooseExportScope`, and this is the file the field pairs were
-    // half of — the history CSV. Re-reading it here would let this file and the
-    // diagnostic log the same reporter sends seconds later disagree about the
-    // same phone.
-    final layout = target.layout;
-    // Phone-wide, no link to lose, so it is not part of the snapshot.
-    final home = currentExportHomeValue(context);
-    // design 0042 §3.9: unconditional, `off` included — otherwise an empty
-    // `speed` column means both "the feature was off" and "the signal never
-    // arrived", which is the ambiguity FB-32 exists to prevent.
-    // 🔴 EFFECTIVE, not stored (design 0063 §3.0.3). Advanced mode keeps the
-    // user's switches and withholds the features, so the stored value would
-    // describe an intention while the file describes a session — and this is a
-    // file, read months later by whoever received it.
-    final appSettings = context.read<SettingsController>().settings;
-    final mode = appSettings.mode;
-    // design 0064: captured with the rest of the snapshot, before the awaits.
-    final themeMode = appSettings.themeMode;
-    final accent =
-        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
-    final speedDetection = appSettings.speedDetectionEffective;
-    final gMeter = appSettings.gMeterEffective;
-    final since = _sinceFor(_range);
     try {
-      final filename = exportFileName(
-        base: 'opensmartbatt-history',
-        classSlug: target.classSlug,
-        ident: target.ident,
-        stamp: exportStamp(),
-        extension: 'csv',
-      );
-      // design 0061 T7b — before a single row is read. See
-      // [TelemetryController.flushHistoryForExport].
-      await _tele.flushHistoryForExport();
-      final file = await exportTempFile(filename);
-      // design 0061 T4a. What the scope ACTUALLY holds, asked of the database
-      // over the same window the export walks — never assumed. An empty list
-      // means "no rows", which `ExportResolution.forCsv` renders as `n/a`
-      // rather than inventing a granularity for a file with nothing in it.
-      final resolution = ExportResolution.forCsv(
-        target.granularity,
-        await _tele.historyBucketWidths(
-            since: since, deviceId: target.deviceId),
-      );
-      // Streamed straight into the file (design 0030 T4b) and NOT capped at
-      // `_rowCap` (T4c / FB-59): that cap belongs to the list below, which
-      // pages a screen at a time, and passing it here silently threw away
-      // everything past the newest 1,000 rows of whatever range the user had
-      // chosen.
-      final rows = await _tele.exportHistoryCsvToFile(
-        file,
+      // 📦 The writing half moved to `history_csv_export.dart` when design 0065
+      // gave the device detail page a second export button — unchanged, so that
+      // the two surfaces cannot drift into describing one database differently.
+      // What stays here is what is genuinely this screen's: its range, and its
+      // busy flag.
+      await exportHistoryCsv(
+        context,
+        target: target,
         since: since,
-        deviceId: target.deviceId,
-        granularity: target.granularity,
-        labelFor: labelFor,
-        classFor: classFor,
-        header: exportHeaderLines(
-          title: 'OpenSmartBatt history export',
-          exportedAt: DateTime.now(),
-          appBuild: services.appBuild,
-          platform: services.platform,
-          scope: exportScopeLabel(target),
-          window: historyWindowLabel(_range, since),
-          resolution: resolution,
-          // design 0056 follow-up: this file HAS an `ampere` column, so it
-          // states what that column's sign means. See `export_header.dart`.
-          ampereColumn: true,
-          layout: layout,
-          home: home,
-          mode: mode,
-          themeMode: themeMode,
-          accent: accent,
-          speedDetection: speedDetection,
-          gMeter: gMeter,
-        ),
+        window: historyWindowLabel(_range, since),
       );
-      // Row count, not text emptiness: every export carries a provenance
-      // preamble (app build, platform, scope, timestamp), so the file is never
-      // literally empty and testing the text would never fire.
-      if (rows == 0) {
-        // The header-only file is already on disk; delete it rather than leave
-        // a plausible-looking export in the temp directory for a share sheet
-        // (or a file manager) to pick up later.
-        await file.delete().catchError((_) => file);
-        messenger.showSnackBar(SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.commonNoRecordsToExport),
-        ));
-        return;
-      }
-      await shareExportFile(
-        file: file,
-        filename: filename,
-        mimeType: 'text/csv',
-        subject: l10n.historyExportSubject,
-        sharePositionOrigin: origin,
-      );
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(
-          duration: const Duration(milliseconds: 1600),
-          content: Text(l10n.commonExportFailed('$e'))));
     } finally {
       if (mounted) setState(() => _exporting = false);
     }

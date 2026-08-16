@@ -49,6 +49,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../util/export_scope.dart';
+import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
 import 'history_screen.dart';
 
@@ -197,6 +198,7 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
   /// (§6 R5).
   HistoryRange _range = HistoryRange.today;
   bool _warningOnly = false;
+  bool _exporting = false;
   int _visibleRows = kDeviceHistoryInitialRows;
 
   late Future<DeviceHistoryData> _future;
@@ -289,6 +291,44 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
   /// think about.
   void _toggleWarning() => setState(() => _warningOnly = !_warningOnly);
 
+  /// 🔴 The export is pinned to THIS page's unit, connected or not.
+  ///
+  /// Ruled 2026-08-15 (design 0065 §0.6), owner's words: 「只能是該詳情的那個
+  /// 裝置，不管是不是連線他。」 Passing [DeviceHistorySection.deviceId] to
+  /// `chooseExportScope` is the whole of it, and it is not a convenience:
+  /// without it the scope would come from `recordingDeviceId`, so exporting
+  /// from A's page while the phone holds B would produce B's rows under B's
+  /// name in B's filename — and exporting from A's page with nothing connected
+  /// would produce the entire database.
+  ///
+  /// The range is NOT pinned: which unit and how much time are separate
+  /// questions, and only the first one was ruled on.
+  Future<void> _exportCsv() async {
+    if (_exporting) return;
+    final since = historySinceFor(_range);
+    final target = await chooseExportScope(
+      context,
+      // No "this connection" entry: the detail page has no session to scope to
+      // — it can be open on a unit that has never been connected at all.
+      offerSession: false,
+      offerGranularity: true,
+      since: since,
+      deviceId: widget.deviceId,
+    );
+    if (target == null || !mounted) return;
+    setState(() => _exporting = true);
+    try {
+      await exportHistoryCsv(
+        context,
+        target: target,
+        since: since,
+        window: historyWindowLabel(_range, since),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   void _showMore(int remaining) => setState(() =>
       _visibleRows += remaining < kDeviceHistoryRowStep
           ? remaining
@@ -317,6 +357,7 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
       widget.live,
       _range,
       _warningOnly,
+      _exporting,
       _visibleRows,
       tempUnit,
       ov,
@@ -507,6 +548,28 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
                   selected: _warningOnly,
                   onTap: _toggleWarning,
                 ),
+                const SizedBox(width: 7),
+                if (_exporting)
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Center(
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: context.accent.accent),
+                      ),
+                    ),
+                  )
+                else
+                  FilterChip2(
+                    label: l10n.historyExportCsv,
+                    icon: Icons.file_download_outlined,
+                    filled: true,
+                    selected: true,
+                    onTap: _exportCsv,
+                  ),
               ],
             ),
           ),

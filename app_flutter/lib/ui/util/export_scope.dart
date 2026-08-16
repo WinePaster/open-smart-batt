@@ -171,19 +171,28 @@ String? exportDeviceIdent(
   );
 }
 
-/// Builds the [ExportTarget] for the connected unit, or null when offline.
+/// Everything a file will say about ONE named unit, resolved once.
 ///
-/// One resolution of everything a file will say about the unit: class slug,
-/// identity ([exportDeviceIdent]) and the [layout] the caller has already
-/// snapshotted. Called EXACTLY ONCE per export — the session variant is derived
-/// with [ExportTarget.asSession] rather than by calling this again.
-ExportTarget? currentDeviceTarget(
-  BuildContext context, {
+/// 🔴 [isLive] is the whole safety of this function and is NOT derivable here:
+/// it says whether [deviceId] is the unit currently on the link. Two of the
+/// three fields below consult the live wire, and both must consult it ONLY for
+/// the unit the wire is actually about — `deviceClassFor`'s own doc puts it
+/// bluntly: "applying the connected unit's class to another unit's rows is
+/// FB-41 with a different column". A caller that passed `isLive: true`
+/// unconditionally would stamp the connected unit's class and serial onto
+/// another unit's FILENAME.
+///
+/// Two callers, and they differ in exactly one thing — which unit they name:
+/// [currentDeviceTarget] asks the session, and design 0065's detail page states
+/// the unit whose page it is. Sharing this body is what keeps them from
+/// drifting apart in the three fields below.
+ExportTarget _targetFor(
+  BuildContext context,
+  String deviceId, {
+  required bool isLive,
   required String layout,
 }) {
   final tele = context.read<TelemetryController>();
-  final deviceId = tele.recordingDeviceId;
-  if (deviceId == null) return null;
   final devices = context.read<DeviceController>();
   // Looked up as a nullable type (design 0057): provider yields null where
   // nobody supplied a cache, and this then behaves as it did before it existed.
@@ -200,17 +209,41 @@ ExportTarget? currentDeviceTarget(
       devices,
       deviceId,
       facts: facts,
-      liveDeviceId: deviceId,
+      liveDeviceId: isLive ? deviceId : null,
       liveClass: conn.resolvedClass,
     )),
     ident: exportDeviceIdent(
       devices,
       deviceId,
       facts: facts,
-      liveSerial: tele.fullSerial ?? tele.serial,
+      liveSerial: isLive ? (tele.fullSerial ?? tele.serial) : null,
     ),
     layout: layout,
   );
+}
+
+/// Builds the [ExportTarget] for the connected unit, or null when offline.
+///
+/// One resolution of everything a file will say about the unit: class slug,
+/// identity ([exportDeviceIdent]) and the [layout] the caller has already
+/// snapshotted. Called EXACTLY ONCE per export — the session variant is derived
+/// with [ExportTarget.asSession] rather than by calling this again.
+///
+/// ⚠️ AMENDED 2026-08-16 (design 0065 §3.7.2). This is no longer the only way a
+/// target gets built: [chooseExportScope] takes an explicit `deviceId` override
+/// for the device detail page, whose export is pinned to the unit whose page it
+/// is rather than to the unit on the link. Both paths go through [_targetFor],
+/// so the identity ladder is still written once. What is unique to THIS one is
+/// the question it asks first — "which unit is recording" — and the answer that
+/// question has no answer when nothing is connected.
+ExportTarget? currentDeviceTarget(
+  BuildContext context, {
+  required String layout,
+}) {
+  final deviceId = context.read<TelemetryController>().recordingDeviceId;
+  if (deviceId == null) return null;
+  // By construction the recording unit IS the live one.
+  return _targetFor(context, deviceId, isLive: true, layout: layout);
 }
 
 /// The authoritative `# devices:` list for an export (design 0027 §3.1): one
@@ -448,22 +481,55 @@ String formatApproxBytes(int bytes) {
 /// §3.4.1 note 4).
 const int kApproxCsvRowBytes = 134;
 
+/// [deviceId] pins the export to ONE named unit, whatever the link is doing.
+///
+/// 🔴 Ruled 2026-08-15 (design 0065 §0.6), owner's words: 「只能是該詳情的那個
+/// 裝置，不管是不是連線他。」 The device detail page has a concept the History
+/// tab and Settings do not — "the unit you are looking at" — and without this
+/// parameter its export would key off [TelemetryController.recordingDeviceId]
+/// like everything else, which means:
+///
+///  * connected to B while looking at A ⇒ **B's rows, under B's name, in B's
+///    filename**, with nothing on screen to say so;
+///  * offline ⇒ `recordingDeviceId` is null ⇒ the whole database.
+///
+/// And offline is not an edge here: the block that carries this button is shown
+/// offline deliberately, because that is when people want their records.
+///
+/// So the override does not CORRECT the inference — it bypasses it. With it
+/// set, this function never asks who is connected, never reaches the
+/// all-devices fallback, and the sheet withholds the all-devices row
+/// ([_ExportScopeSheet.lockedToDevice]) so the user cannot walk around it
+/// either. Passing null leaves every existing caller byte-for-byte unchanged.
 Future<ExportTarget?> chooseExportScope(
   BuildContext context, {
   required bool offerSession,
   bool offerGranularity = false,
   DateTime? since,
+  String? deviceId,
 }) async {
   // The two halves of the snapshot, taken together. `layout` first because
   // `currentDeviceTarget` takes it: there is no code path that builds a target
   // and then goes looking for a layout.
   final layout = currentExportLayoutValue(context);
-  final current = currentDeviceTarget(context, layout: layout);
   // The size estimate's only input, captured with everything else — it runs
   // after the sheet is up, by which time a `context.read` may be against a
   // screen that is gone.
   final tele = context.read<TelemetryController>();
+  final current = deviceId == null
+      ? currentDeviceTarget(context, layout: layout)
+      // 🔴 `isLive` is asked, never assumed. This unit gets the wire's class and
+      // serial only if it is the unit the wire is about; otherwise the stored
+      // and cached rungs answer, and an unknown stays unknown. Assuming `true`
+      // here would print the CONNECTED unit's identity on THIS unit's file.
+      : _targetFor(context, deviceId,
+          isLive: deviceId == tele.recordingDeviceId, layout: layout);
   if (current == null) {
+    // Only reachable with no `deviceId` override: `_targetFor` always returns
+    // a target, so a pinned export cannot fall through to "all devices" — which
+    // is the half of the 0065 ruling that matters most, since a detail page is
+    // offline exactly when its owner most wants the file.
+    //
     // 🔴 Offline still gets the choice when the caller offers it. Nothing here
     // depends on a link — the rows are already on disk — and short-circuiting
     // would leave "export all data" from a disconnected phone silently pinned
@@ -483,6 +549,7 @@ Future<ExportTarget?> chooseExportScope(
         offerGranularity: true,
         since: since,
         tele: tele,
+        lockedToDevice: false,
       ),
     );
   }
@@ -513,6 +580,10 @@ Future<ExportTarget?> chooseExportScope(
       offerGranularity: offerGranularity,
       since: since,
       tele: tele,
+      // 🔴 DERIVED, never a second parameter of its own. Two flags that can
+      // disagree is a state nobody checks — design 0046 R18 collapsed the same
+      // shape once already.
+      lockedToDevice: deviceId != null,
     ),
   );
 }
@@ -528,7 +599,19 @@ class _ExportScopeSheet extends StatefulWidget {
     required this.offerGranularity,
     required this.since,
     required this.tele,
+    required this.lockedToDevice,
   });
+
+  /// The caller pinned this export to one unit, so the sheet must not offer a
+  /// way out of it (design 0065 §3.7.3).
+  ///
+  /// ⚠️ Adding the `deviceId` override alone would NOT have been enough: the
+  /// all-devices row below is rendered unconditionally, so a user on a pinned
+  /// export could simply tap it and walk straight past the ruling. What remains
+  /// in the sheet is still worth a sheet — the minute/second granularity choice
+  /// is a 60× difference in file size (design 0061 T4c), and deciding it for
+  /// the user is not on offer either.
+  final bool lockedToDevice;
 
   final String layout;
   final ExportTarget? current;
@@ -646,21 +729,22 @@ class _ExportScopeSheetState extends State<_ExportScopeSheet> {
                 title: Text(l10n.exportScopeThisSession),
                 onTap: () => Navigator.of(context).pop(_with(sessionTarget)),
               ),
-            ListTile(
-              leading: const Icon(Icons.all_inclusive_outlined),
-              title: Text(l10n.exportScopeAllDevices),
-              onTap: () => Navigator.of(context).pop(
-                // Carries the snapshot's layout: an all-devices export taken
-                // from a connected phone still has a dashboard to describe, and
-                // it is the same dashboard the device-scoped option would have
-                // named.
-                ExportTarget(
-                  scope: ExportScope.allDevices,
-                  layout: widget.layout,
-                  granularity: _granularity,
+            if (!widget.lockedToDevice)
+              ListTile(
+                leading: const Icon(Icons.all_inclusive_outlined),
+                title: Text(l10n.exportScopeAllDevices),
+                onTap: () => Navigator.of(context).pop(
+                  // Carries the snapshot's layout: an all-devices export taken
+                  // from a connected phone still has a dashboard to describe,
+                  // and it is the same dashboard the device-scoped option
+                  // would have named.
+                  ExportTarget(
+                    scope: ExportScope.allDevices,
+                    layout: widget.layout,
+                    granularity: _granularity,
+                  ),
                 ),
               ),
-            ),
             const SizedBox(height: 8),
           ],
         ),
