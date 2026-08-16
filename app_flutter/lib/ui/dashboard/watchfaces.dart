@@ -155,8 +155,8 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // glance AND the one with something to draw from the first frame. Then the
     // chart, then the numbers, then the class's own card.
     //
-    // 🔴 …EXCEPT the gauge, on a capacitor (owner ruling 2026-08-16, from a
-    // v0.7.21 screenshot of unit `cls`).
+    // 🔴 …EXCEPT the PVLT gauge, which no pack class draws any more
+    // (owner rulings 2026-08-16 capacitor, 2026-08-17 smart battery).
     //
     // A capacitor's PVLT sits in a band a few tenths of a volt wide and stays
     // there: the screenshot's dial reads 12.09 with the needle parked, while
@@ -166,9 +166,13 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // position never moves enough to be the point, and a 244 px instrument that
     // says what the line under it already says is a screenful spent twice.
     //
-    // ⚠️ 0017 §3.2 is not overturned. Its three tests compared PVLT against
-    // SOC and never split battery from capacitor, so "does a capacitor need
-    // it" is a question it did not ask. The battery keeps its dial.
+    // ⚠️ 0017 §3.2 IS overturned by the second ruling, and the doc says so in
+    // place. What fell is its CONCLUSION ("so draw it as a dial"), not its
+    // three tests: those compared PVLT against SOC and still hold. The question
+    // they never asked is the one that decided this — on a page that already
+    // carries a live curve, is a 244 px instrument worth the room? The curve
+    // gives position AND history; the dial gives position. 0017 was right in
+    // July because that page had no curve then.
     //
     // 🔑 PVLT does NOT vanish with it: the same ruling moved PVLT into the
     // readouts grid (`dashboard_cards.dart`), because before this it lived
@@ -180,7 +184,16 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // card out of it because we changed our mind is not ours to do.
     case Watchface.fixed:
       return [
-        if (cls != ProductClass.supercapacitor) gauge,
+        // 🔴 The power bank's SOC arc only. Owner ruling 2026-08-17 extended the
+        // capacitor's removal (08-16) to the smart battery, so NO pack class
+        // draws a PVLT dial on this page any more.
+        //
+        // ⚠️ `unknown` still does, and that is deliberate rather than an
+        // oversight: it is the "we do not know what this is yet" state, and the
+        // dial is the one card that can draw something from the first frame
+        // (design 0051 D2). Taking it away there would leave that page with a
+        // chart that has no points yet.
+        if (cls == ProductClass.powerBank || cls == ProductClass.unknown) gauge,
         DisplayModule.chart,
         DisplayModule.readouts,
         ?extra,

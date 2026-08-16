@@ -239,8 +239,9 @@ void main() {
     // TOP of the page is a waiting card — lands on every user on every connect.
     test('the fixed face is gauge → chart → readouts → class card', () {
       const expected = <ProductClass, List<DisplayModule>>{
+        // 🔴 No instrument either, ruled 2026-08-17 — the capacitor lost its
+        // dial on 08-16 and the battery followed. See the carve-out below.
         ProductClass.smartBattery: [
-          DisplayModule.gaugeVoltage,
           DisplayModule.chart,
           DisplayModule.readouts,
           DisplayModule.cells,
@@ -323,13 +324,28 @@ void main() {
             // asserted to, because they are historical records of what those
             // layouts were — not something this ruling revisited. (Written the
             // wrong way round first, and this test caught it.)
-            cls == ProductClass.supercapacitor && f == Watchface.fixed
+            //
+            // 🔴 Two rulings, one shape: the capacitor lost its PVLT dial on
+            // 2026-08-16 and the battery on 08-17. On `fixed`, an instrument
+            // therefore survives only where it is NOT a PVLT dial (the power
+            // bank's SOC arc) or where the class is not known yet.
+            //
+            // 🔑 `unknown` keeps it deliberately: that is the "we do not know
+            // what this is yet" page, and the dial is the one card that can
+            // draw something from the first frame (design 0051 D2).
+            //
+            // Written as an explicit allow-list, so removing the arc from the
+            // power bank — or the dial from `unknown` — still turns this red.
+            f == Watchface.fixed &&
+                    cls != ProductClass.powerBank &&
+                    cls != ProductClass.unknown
                 ? isFalse
                 : isTrue,
-            reason: cls == ProductClass.supercapacitor &&
-                    f == Watchface.fixed
-                ? '${cls.name}/${f.slug} must NOT carry an instrument '
-                    '(ruled 2026-08-16)'
+            reason: f == Watchface.fixed &&
+                    cls != ProductClass.powerBank &&
+                    cls != ProductClass.unknown
+                ? '${cls.name}/${f.slug} must NOT carry a PVLT dial '
+                    '(ruled 2026-08-16 / 08-17)'
                 : '${cls.name}/${f.slug} has no instrument',
           );
         }
@@ -449,7 +465,7 @@ void main() {
   // design 0046 R3 made the home grid the entry point, and design 0051 gives
   // every user the chart. What is pinned here is the ORDER the ruling named.
   group('the fixed face, on screen', () {
-    testWidgets('battery: gauge → chart → readouts → DVOL → controls',
+    testWidgets('battery: chart → readouts → DVOL → controls（錶盤已移除）',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
@@ -459,8 +475,12 @@ void main() {
 
       expect(s.devices.layoutFor('DEV-A'), DisplayLayout.defaults,
           reason: 'nothing writes this column any more');
-      expect(dy(tester, find.byType(PvltGauge)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
+      // 🔴 The dial is gone from this class too (ruled 2026-08-17). Asserted as
+      // an absence on screen — the expected-list change above is a different
+      // decision point and the two can disagree.
+      expect(find.byType(PvltGauge), findsNothing);
+      // 🔑 …but PVLT itself is still here, in the readouts grid.
+      expect(find.textContaining('PVLT'), findsWidgets);
       expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       expect(dy(tester, find.byType(ReadoutsCard)),
@@ -626,8 +646,15 @@ void main() {
         await feedDvol(tester);
 
         // Every card of the fixed face, in its order.
-        expect(dy(tester, find.byType(PvltGauge)),
-            lessThan(dy(tester, find.byType(TrendChartCard))));
+        // 🔴 No dial on a battery either since 2026-08-17 — asserted as an
+        // ABSENCE on screen, not merely dropped from the expected list above:
+        // `watchfaceModules` and `dashboardCardFor` are two decision points,
+        // and a card no face names could still be drawn by a stray branch.
+        expect(find.byType(PvltGauge), findsNothing,
+            reason: 'the PVLT dial is gone from every pack class');
+        // 🔑 …and PVLT is still on the page, in the readouts grid. Without this
+        // the assertion above would be satisfied by having deleted the number.
+        expect(find.textContaining('PVLT'), findsWidgets);
         expect(dy(tester, find.byType(TrendChartCard)),
             lessThan(dy(tester, find.byType(ReadoutsCard))));
         expect(find.byType(DvolBars), findsOneWidget);
