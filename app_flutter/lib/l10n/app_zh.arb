@@ -254,6 +254,7 @@
   "historyFooter": "{count, plural, other{共 {count} 筆 · 本機 SQLite · 可匯出 CSV / 分享}}",
   "historyRowEventCutOff": "斷電模式已啟動",
   "historyRowEventAntiTheft": "防盜模式已啟動",
+  "historyRowEventCutOffAndAntiTheft": "這一分鐘內斷電與防盜都啟動過",
   "historyRowSoh": "SOH {percent}%",
   "historyRowCurrent": "電流 {amps}A",
   "historyRowCurrentDirected": "電流 {amps}A {direction}",

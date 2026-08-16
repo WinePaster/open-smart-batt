@@ -942,6 +942,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyRowEventAntiTheft => '防盜模式已啟動';
 
   @override
+  String get historyRowEventCutOffAndAntiTheft => '這一分鐘內斷電與防盜都啟動過';
+
+  @override
   String historyRowSoh(int percent) {
     return 'SOH $percent%';
   }

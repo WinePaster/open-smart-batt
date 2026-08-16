@@ -1695,6 +1695,16 @@ class HistoryRow extends StatelessWidget {
   String _subLine(AppLocalizations l10n) {
     switch (status) {
       case HistoryRowStatus.event:
+        // FB-79. A window is a minute and a minute can hold BOTH modes, in
+        // which case `sample.mode` — `MAX(mode)` — names only the cut-off and
+        // the anti-theft leaves no trace on this screen at all. It is the
+        // anti-theft that trips later, on a current spike, so this row is
+        // exactly where an owner reconstructing "what happened at 19:45" needs
+        // to be told both. `row.sawX` are the un-collapsed answer; `status` and
+        // the badge still come from `MAX(mode)` and do not move.
+        if (row.sawAntiTheft && row.sawCutOff) {
+          return l10n.historyRowEventCutOffAndAntiTheft;
+        }
         return sample.mode == ReportedStatus.cutOffActive
             ? l10n.historyRowEventCutOff
             : l10n.historyRowEventAntiTheft;

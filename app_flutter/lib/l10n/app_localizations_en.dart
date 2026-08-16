@@ -996,6 +996,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyRowEventAntiTheft => 'Anti-theft mode activated';
 
   @override
+  String get historyRowEventCutOffAndAntiTheft =>
+      'Cut-off and anti-theft both activated in this minute';
+
+  @override
   String historyRowSoh(int percent) {
     return 'SOH $percent%';
   }

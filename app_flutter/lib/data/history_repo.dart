@@ -10,6 +10,13 @@ import 'package:csv/csv.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
+// FB-79. The one thing this layer knows about the MEANING of a stored byte:
+// which `mode` codes are the two pack events. It was already known here —
+// `queryListBuckets` picks `MAX(mode)` precisely because cut-off outranks
+// anti-theft — but only as prose in a comment. Naming the constants makes that
+// dependency single-sourced instead of a magic number waiting to drift, which
+// is the exact failure the 0/2/4 → 0/1/2 correction was.
+import '../protocol/selectors.dart' show ReportedStatus;
 import 'app_database.dart';
 
 /// One time-bucket of averaged/min/max telemetry for the trend chart.
@@ -124,6 +131,8 @@ class HistoryListRow {
     this.maxPvlt,
     this.minTemp,
     this.maxTemp,
+    this.sawAntiTheft = false,
+    this.sawCutOff = false,
     required this.rows,
     this.samples,
   });
@@ -139,6 +148,18 @@ class HistoryListRow {
   /// Extremes across the window. **The classification reads these.**
   final double? minPvlt, maxPvlt;
   final int? minTemp, maxTemp;
+
+  /// Did EACH pack mode occur anywhere in this window (FB-79)?
+  ///
+  /// [sample]`.mode` is `MAX(mode)` and therefore names only ONE of them: a
+  /// window holding both keeps the cut-off and loses the anti-theft. These
+  /// flags are the un-collapsed answer, and the sub-line is their only reader —
+  /// classification, the status badge and the "warnings only" filter all still
+  /// go through `MAX(mode)` on purpose.
+  ///
+  /// Default false so a row built by hand (tests, and the chart's detail
+  /// panel) means "nothing known", never "both happened".
+  final bool sawAntiTheft, sawCutOff;
 
   /// Stored rows folded into this window (1 for a minute window over legacy
   /// data). Diagnostic; never shown as a sample count.
@@ -700,6 +721,28 @@ class HistoryRepo {
       // cut-off (2) outranks anti-theft (1) outranks normal (0), which is the
       // same precedence `_classify` applies to a single row.
       'MAX(mode) AS mode, '
+      // FB-79. `MAX(mode)` answers "the most serious mode in this window" and
+      // that is the right thing for the badge — but it is a LOSSY answer, and
+      // the direction it loses in matters: a minute holding both modes keeps
+      // the cut-off and drops the anti-theft entirely. Anti-theft is the one
+      // that trips LATER, on a current spike, so a moving vehicle is the case
+      // where "it also went into anti-theft" is worth more than the label it
+      // was collapsed into (`docs/devices/common.md`, 斷電 vs 防盜). These two
+      // flags are what lets the sub-line say both happened; nothing else reads
+      // them, and `mode` above is deliberately left alone so classification,
+      // filtering and the badge do not move.
+      //
+      // CASE WHEN, not `MAX(mode = 1)`. `mode` is nullable and `NULL = 1` is
+      // NULL, so the naive form answers NULL — not 0 — for a window whose rows
+      // all have an unknown mode. ⚠️ Measured: swapping the two forms changes
+      // NOTHING today, because the Dart side below coalesces null to false, and
+      // the null-mode test stays green either way. So this is not a defect
+      // being avoided; it is the SQL answering correctly on its own instead of
+      // leaning on a `??` two hundred lines away.
+      'MAX(CASE WHEN mode = ${ReportedStatus.antiTheftActive} THEN 1 ELSE 0 END)'
+      ' AS sawAntiTheft, '
+      'MAX(CASE WHEN mode = ${ReportedStatus.cutOffActive} THEN 1 ELSE 0 END)'
+      ' AS sawCutOff, '
       // The WORST health bucket seen, for the same reason the thresholds use
       // extremes: a window that dipped is a window that dipped.
       'MIN(soh) AS soh, '
@@ -729,6 +772,8 @@ class HistoryRepo {
               maxPvlt: d(r['maxPvlt']),
               minTemp: i(r['minTemp']),
               maxTemp: i(r['maxTemp']),
+              sawAntiTheft: (i(r['sawAntiTheft']) ?? 0) != 0,
+              sawCutOff: (i(r['sawCutOff']) ?? 0) != 0,
               rows: i(r['n']) ?? 0,
               samples: i(r['samples']),
             ))
