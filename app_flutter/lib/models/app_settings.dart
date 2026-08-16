@@ -173,6 +173,29 @@ class AppSettings {
 
   /// Theme preference (light / dark / auto). DEFAULT [AppThemeMode.light].
   final AppThemeMode themeMode;
+
+  /// The chosen accent set's id (design 0064), or NULL for "never chose".
+  ///
+  /// 🔴 The CHOICE is stored, never the colours. Storing the three hex values
+  /// would weld a user's pick to whatever the palette happened to be that
+  /// week, and the six sets are expected to be re-tuned once they have been
+  /// seen on real screens — after which every early adopter would be frozen on
+  /// the version we corrected, and no column could tell us apart from someone
+  /// who had typed those hexes in by hand. With an id, re-tuning is editing a
+  /// constant.
+  ///
+  /// 🔴 NULL is MEANING, like [homeLayout] and [gCalibration]: "has never
+  /// chosen", which is not the same fact as "chose amber" even though both
+  /// render identically today. `copyWith` therefore cannot express going back
+  /// to it — [clearAccentTheme] is how "restore the default" does it.
+  ///
+  /// ⚠️ Stored WITH a `theme:` prefix (`theme:azure`). The prefix costs six
+  /// characters per row and buys the arbitrary-colour phase a format that does
+  /// not have to guess: design 0064's Phase 2 writes `custom:2E7DF7/6FD8FF`,
+  /// and without a prefix the decoder would have to infer meaning from a
+  /// string's SHAPE — while `F6A821` is simultaneously a legal set id. That is
+  /// the FB-32 mistake (letting shape or absence carry meaning) in a new place.
+  final String? accentThemeId;
   final AppLang lang;
   final TempUnit tempUnit;
 
@@ -344,6 +367,7 @@ class AppSettings {
     // ones land in the same place without a T8a-style split.
     this.mode = AppMode.personal,
     this.themeMode = AppThemeMode.light,
+    this.accentThemeId,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
     this.speedDetection = false,
@@ -376,6 +400,10 @@ class AppSettings {
     bool? speedDetection,
     SpeedUnit? speedUnit,
     bool? gMeterEnabled,
+    // 🔴 Nullable AND meaningful — see the field. `clearAccentTheme` is the
+    // only way back to "never chose".
+    String? accentThemeId,
+    bool clearAccentTheme = false,
     // 🔴 Nullable AND meaningful for the same reason [homeLayout] is: null says
     // "this mount has never been calibrated", so `copyWith` cannot express
     // going back to it — [clearGCalibration] is how "zero the calibration"
@@ -399,6 +427,9 @@ class AppSettings {
         keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
         mode: mode ?? this.mode,
         themeMode: themeMode ?? this.themeMode,
+        accentThemeId: clearAccentTheme
+            ? null
+            : (accentThemeId ?? this.accentThemeId),
         lang: lang ?? this.lang,
         tempUnit: tempUnit ?? this.tempUnit,
         speedDetection: speedDetection ?? this.speedDetection,
@@ -442,6 +473,12 @@ class AppSettings {
         // setting changes".
         'app_mode': mode.name,
         'theme_mode': themeMode.name,
+        // schema v19. NULL when never chosen — the column's own meaning; see
+        // the field. Written on every save for the reason stated above: this
+        // map REPLACES the row. The `theme:` prefix is added HERE and stripped
+        // in `_accentThemeFromMap`, so the field itself stays a bare id and no
+        // caller has to remember the wire format.
+        'accent_theme': encodeAccentTheme(accentThemeId),
         'lang': lang.name,
         'temp_unit': tempUnit.name,
         'speed_detection': speedDetection ? 1 : 0,
@@ -472,6 +509,7 @@ class AppSettings {
             (m['background_monitoring_ios'] as num?)?.toInt() == 1,
         mode: _appModeFromMap(m),
         themeMode: _themeModeFromMap(m),
+        accentThemeId: _accentThemeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],
           orElse: () => AppLang.zhHant,
@@ -538,6 +576,38 @@ class AppSettings {
     }
     return AppMode.personal;
   }
+
+  /// Resolve the accent set's id from a persisted row (schema v19).
+  ///
+  /// 🔴 **Never throws.** It validates the FORMAT only — a missing column
+  /// (pre-v19 row), a NULL, a string without the `theme:` prefix (including
+  /// Phase 2's future `custom:2E7DF7/6FD8FF`, which an older build must not
+  /// mistake for a set name) and an empty id all read as "no choice".
+  ///
+  /// 🔑 It deliberately does NOT check the id against the shipping list. That
+  /// is `AccentTheme.byId`'s job, and splitting them means an id this build
+  /// does not recognise is KEPT rather than erased: a phone downgraded below
+  /// the release that added a set, and then upgraded again, finds its choice
+  /// still there. A decoder that normalised the unknown value to null would
+  /// have spent the setting on the way past, silently. It also keeps this file
+  /// from depending on `theme/`.
+  ///
+  /// ⚠️ What the user SEES in the meantime is amber, with no explanation. That
+  /// is the accepted cost of storing the choice rather than the colours —
+  /// **so do not withdraw an id that has shipped**; re-tune its colours
+  /// instead.
+  static String? _accentThemeFromMap(Map<String, Object?> m) {
+    final raw = m['accent_theme'];
+    if (raw is! String) return null;
+    const prefix = 'theme:';
+    if (!raw.startsWith(prefix)) return null;
+    final id = raw.substring(prefix.length);
+    return id.isEmpty ? null : id;
+  }
+
+  /// Encode an accent set id for storage. Null in, null out.
+  static String? encodeAccentTheme(String? id) =>
+      (id == null || id.isEmpty) ? null : 'theme:$id';
 
   /// Resolve the theme mode from a persisted row.
   ///

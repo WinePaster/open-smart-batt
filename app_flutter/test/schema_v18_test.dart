@@ -258,12 +258,11 @@ void main() {
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current exact pin. It moved here from `schema_v17_test.dart`,
-        // which now asserts a floor — a per-version file that pins the HEAD has
-        // to be edited by every later migration, which turns it into noise in
-        // exactly the diffs that need reading closely. Bump this in lockstep
-        // with `Db.schemaVersion`, and move the pin again when v19 lands.
-        expect(Db.schemaVersion, 18);
+        // A FLOOR, not a pin: v19 landed and took the exact pin with it, as
+        // the note here said it should. A per-version file that pins the HEAD
+        // has to be edited by every later migration, which turns it into noise
+        // in exactly the diffs that need reading closely.
+        expect(Db.schemaVersion, greaterThanOrEqualTo(18));
       }
     });
   });

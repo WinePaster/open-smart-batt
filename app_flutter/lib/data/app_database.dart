@@ -253,7 +253,26 @@ class Db {
   /// every local and remote ref — the highest anywhere was 17. design 0064
   /// (accent colour) also has 18 written into its plan and is NOT yet in any
   /// branch; whoever writes it second takes 19.
-  static const int schemaVersion = 18;
+  ///
+  /// v19 — design 0064. `settings.accent_theme TEXT`, the user's accent set.
+  ///
+  ///   settings.accent_theme  TEXT, **nullable, NO DEFAULT** — the prefixed id
+  ///     of the chosen set (`theme:azure`), or NULL for "never chose".
+  ///
+  /// 🔴 The second half of the note above, playing out exactly as written: 0064
+  /// was drafted against 18, 0063 landed on main first, so 0064 takes 19. The
+  /// registry is the arbiter, not the design doc.
+  ///
+  /// 🔴 NULL is the answer again, and for the SAME reason as v18 — a DEFAULT of
+  /// `theme:amber` would state that every pre-v19 user chose amber, when they
+  /// were never offered anything. It also matters more than it looks: the six
+  /// sets are expected to be re-tuned after field feedback, and "chose amber"
+  /// vs "never chose" is what decides whether that re-tune reaches somebody.
+  ///
+  /// ⚠️ The STORED VALUE is the choice, not the colours. See
+  /// `AppSettings.accentThemeId` for why a set of hex triples in this column
+  /// would have frozen every early adopter on a palette we later corrected.
+  static const int schemaVersion = 19;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -690,6 +709,14 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN app_mode TEXT',
       );
     }
+    if (from < 19) {
+      // design 0064. Same shape and same reasoning as v18's column: additive,
+      // nullable, NO DEFAULT, because the migration must not invent a choice
+      // on the user's behalf.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN accent_theme TEXT',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -814,7 +841,8 @@ class AppDatabase {
       home_layout TEXT,
       g_meter_enabled INTEGER NOT NULL DEFAULT 0,
       g_calibration TEXT,
-      app_mode TEXT
+      app_mode TEXT,
+      accent_theme TEXT
     )
     ''',
     '''

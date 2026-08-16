@@ -298,8 +298,12 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           title: 'OpenSmartBatt',
           debugShowCheckedModeBanner: false,
           // Real light / dark themes (DEFAULT light); `auto` follows the OS.
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
+          // 🔴 These are no longer constant across the app's life: picking an
+          // accent rebuilds both, which is what repaints the tree. That is the
+          // intended cost — a colour change that did not repaint would be a
+          // colour change nobody could see.
+          theme: AppTheme.light(accent: _accentOf(settings)),
+          darkTheme: AppTheme.dark(accent: _accentOf(settings)),
           themeMode: _themeModeOf(settings.themeMode),
           // i18n wiring -------------------------------------------------------
           localizationsDelegates: const [
@@ -333,6 +337,15 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
       ),
     );
   }
+
+  /// The accent set a stored id names (design 0064).
+  ///
+  /// 🔑 An unknown or absent id resolves to amber, and that one fallback
+  /// carries the whole upgrade story: a phone that has never seen the setting,
+  /// and a phone holding a set some future build withdrew, both land on the
+  /// look they already had rather than on an error.
+  static AccentTheme _accentOf(SettingsController s) =>
+      AccentTheme.byId(s.settings.accentThemeId) ?? AccentTheme.amber;
 
   /// Maps the persisted [AppThemeMode] to Flutter's [ThemeMode].
   static ThemeMode _themeModeOf(AppThemeMode m) => switch (m) {
