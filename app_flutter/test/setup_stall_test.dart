@@ -193,7 +193,7 @@ void main() {
 
       expect(s.connection.setupFailures, 3);
       expect(s.connection.isSetupStalled, isTrue);
-      expect(s.connection.lastError, 'gatt_setup_stalled');
+      expect(s.connection.lastErrorUnattributed, 'gatt_setup_stalled');
     });
 
     testWidgets('tapping connect again on the SAME unit does not reset it',
@@ -347,7 +347,7 @@ void main() {
       expect(s.connection.setupFailures, 0,
           reason: 'an attempt we cut short never got to say nothing');
       expect(s.connection.isSetupStalled, isFalse);
-      expect(s.connection.lastError, isNot('gatt_setup_stalled'));
+      expect(s.connection.lastErrorUnattributed, isNot('gatt_setup_stalled'));
     });
 
     testWidgets('nor does the user pressing disconnect mid-setup',
@@ -404,7 +404,7 @@ void main() {
 
       expect(s.connection.setupFailures, 3);
       expect(s.connection.isSetupStalled, isTrue);
-      expect(s.connection.lastError, 'gatt_setup_stalled');
+      expect(s.connection.lastErrorUnattributed, 'gatt_setup_stalled');
       expect(s.connection.isRetrying, isFalse);
     });
 

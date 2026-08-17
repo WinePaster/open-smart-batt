@@ -324,7 +324,7 @@ void main() {
 
         async.elapse(ConnectionController.autoConnectThawGrace);
 
-        expect(h.conn.lastError, 'autoconnect_timeout',
+        expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout',
             reason: 'and then it converges: the UI gets the one signal it has '
                 'that the hand-off died');
         expect(h.ble.disconnectCalls, 1,
@@ -355,7 +355,7 @@ void main() {
         final h = _Harness();
         Duration? firedAt;
         h.conn.addListener(() {
-          if (h.conn.lastError == 'autoconnect_timeout') {
+          if (h.conn.lastErrorUnattributed == 'autoconnect_timeout') {
             firedAt ??= async.elapsed;
           }
         });
@@ -375,7 +375,7 @@ void main() {
             reason: 'settled at the first opportunity plus the grace — the '
                 '4,132 s before it were not the app deciding to wait, they '
                 'were the app not existing');
-        expect(h.conn.lastError, 'autoconnect_timeout');
+        expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout');
         expect(h.ble.disconnectCalls, 1,
             reason: 'the pending connect is cancelled — an hour after the '
                 'moment that decision was supposed to be made, which is the '
@@ -413,7 +413,7 @@ void main() {
         final h = _Harness();
         Duration? firedAt;
         h.conn.addListener(() {
-          if (h.conn.lastError == 'autoconnect_timeout') {
+          if (h.conn.lastErrorUnattributed == 'autoconnect_timeout') {
             firedAt ??= async.elapsed;
           }
         });
@@ -469,10 +469,10 @@ void main() {
         expect(h.gaveUpLines, isEmpty);
 
         async.elapse(const Duration(seconds: 119)); // resumed, t = 179 s
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
 
         async.elapse(const Duration(seconds: 2)); // t = 181 s
-        expect(h.conn.lastError, 'autoconnect_timeout');
+        expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout');
         expect(h.gaveUpLines, hasLength(1));
 
         h.dispose();
@@ -544,7 +544,7 @@ void main() {
                 'hand-off delivering `connected` cancels it"');
         expect(h.ble.disconnectCalls, 0,
             reason: 'the recovered link is not dropped');
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
 
         h.dispose();
       });
@@ -588,7 +588,7 @@ void main() {
             reason: 'this is the whole fix: the late verdict has NOT acted yet. '
                 'Before FB-66 the `_ble.disconnect()` happened right here, and '
                 'that is the `link: disconnecting` in the capture');
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
 
         // 4 ms later, the OS delivers the connection it has been holding.
         h.ble.emitLink(BleLinkState.connected);
@@ -603,7 +603,7 @@ void main() {
                 'must not appear in this sequence again');
         expect(h.gaveUpLines, isEmpty,
             reason: 'and no timeout is reported for a hand-off that succeeded');
-        expect(h.conn.lastError, isNull,
+        expect(h.conn.lastErrorUnattributed, isNull,
             reason: 'nor does the UI show a failure over a live link');
         expect(h.conn.linkState, BleLinkState.connected,
             reason: 'the link survives — what happens to a `connected` that '
@@ -728,7 +728,7 @@ void main() {
         final notesAtDeath = logs.notes.length;
 
         final next = _Harness(logs: logs); // cold start, same store
-        expect(next.conn.lastError, isNull,
+        expect(next.conn.lastErrorUnattributed, isNull,
             reason: 'DEFECT: `autoconnect_timeout` is never reported for the '
                 'episode that was in flight when the process died');
         expect(next.conn.isRetrying, isFalse);
@@ -779,7 +779,7 @@ void main() {
         expect(next.gaveUpLines, isEmpty,
             reason: 'DEFECT: the abandoned hand-off to AA is never closed out, '
                 'not even by the user connecting to AA again');
-        expect(next.conn.lastError, isNull);
+        expect(next.conn.lastErrorUnattributed, isNull);
 
         next.dispose();
       });

@@ -130,8 +130,21 @@ class _StateConn extends ConnectionController {
   String? error;
   bool stalledLatch = false;
 
+  /// Whose error it is (FB-86). Null means RADIO-LEVEL — true of every unit —
+  /// which is the default these copy tests want: they are about what a code
+  /// draws, not about which unit it belongs to.
+  String? errorDeviceId;
+
   @override
-  String? get lastError => error;
+  String? lastErrorFor(String? deviceId) {
+    final e = error;
+    return e == null
+        ? null
+        : ConnectionError(e, deviceId: errorDeviceId).codeFor(deviceId);
+  }
+
+  @override
+  String? get lastErrorUnattributed => error;
 
   @override
   bool get isSetupStalled => stalledLatch;

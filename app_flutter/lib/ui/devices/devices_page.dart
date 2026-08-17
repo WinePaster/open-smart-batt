@@ -211,7 +211,7 @@ class _DevicesPageState extends State<DevicesPage>
       // success when the controller has no complaint to make.
       if (!mounted) return;
       setState(() => _connectingId = null);
-      if (conn.lastError != null) _showError();
+      if (conn.lastErrorUnattributed != null) _showError();
     } catch (_) {
       if (mounted) {
         setState(() => _connectingId = null);
@@ -233,7 +233,7 @@ class _DevicesPageState extends State<DevicesPage>
       await conn.connect(d.id);
       if (!mounted) return;
       // Same as _connectSaved: a refused connect returns instead of throwing.
-      if (conn.lastError != null) {
+      if (conn.lastErrorUnattributed != null) {
         setState(() => _connectingId = null);
         _showError();
         return;
@@ -265,9 +265,17 @@ class _DevicesPageState extends State<DevicesPage>
   /// `autoconnect_timeout`) keep the generic line on purpose: a wrong specific
   /// instruction is worse than a vague correct one, and this is the branch that
   /// catches everything we have not classified yet.
+  ///
+  /// 🔴 THE ONE PLACE ON THIS PAGE THAT READS THE ERROR UNATTRIBUTED (FB-86),
+  /// and the two callers above with it. This snackbar is not about a row — it is
+  /// about the connect the user just asked for and this method just awaited, and
+  /// on the saved path the id that connect actually dialled may have been
+  /// REBOUND (`connectToSaved` → `rebindSavedDeviceId`), so the id in hand is
+  /// not the id the failure was filed under. The rows themselves are scoped:
+  /// see `lastErrorFor` at the two badge call sites.
   void _showError() {
     final l10n = AppLocalizations.of(context);
-    final code = context.read<ConnectionController>().lastError;
+    final code = context.read<ConnectionController>().lastErrorUnattributed;
     final message = switch (code) {
       'bluetooth_off' => l10n.devicesConnectFailedBluetoothOff,
       'bluetooth_unauthorized' =>
@@ -547,7 +555,12 @@ class _DevicesPageState extends State<DevicesPage>
                 isOnline: conn.isOnline,
                 working: working || _connectingId == d.id,
                 setupStalled: conn.isSetupStalled,
-                lastError: conn.lastError,
+                // FB-86: this row's OWN error, not whatever the controller last
+                // recorded. `isCurrentDevice` above already returns 未連線 for
+                // a row that is not the current unit, so nothing on screen
+                // changes — but the value reaching this badge is now scoped by
+                // the controller rather than by the guard beside it.
+                lastError: conn.lastErrorFor(d.id),
               ),
               onOpenDetail: () =>
                   unawaited(_openDetail(d.id, fallbackName: d.name)),
@@ -621,7 +634,7 @@ class _DevicesPageState extends State<DevicesPage>
               isOnline: conn.isOnline,
               working: working || _connectingId == pinnedId,
               setupStalled: conn.isSetupStalled,
-              lastError: conn.lastError,
+              lastError: conn.lastErrorFor(pinnedId),
             ),
             onOpenDetail: () => unawaited(_openDetail(pinnedId,
                 fallbackName: conn.connectedDeviceName)),

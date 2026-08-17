@@ -69,11 +69,14 @@ const gaveUpCodes = <String>{
 /// nearby and powered, then try again — or scan for it below" — is three
 /// instructions that cannot work with the radio down, and the last of them
 /// sends the user to a scan that will fail for the same reason.
-const radioCodes = <String>{
-  'bluetooth_off',
-  'bluetooth_unauthorized',
-  'permission_denied',
-};
+///
+/// 🔴 FB-86: THE SET ITSELF MOVED to [radioLevelErrorCodes], in the controller,
+/// and this is now an alias of it. The controller needs the same three codes to
+/// decide attribution — a radio that is off is true of every unit, so it is
+/// filed under none — and a second copy kept by hand here is the drift
+/// `gaveUpCodes` already paid for once. The name stays because the hint above is
+/// what this file uses it for.
+const radioCodes = radioLevelErrorCodes;
 
 /// The four strings a screen needs to report one connection state.
 ///
@@ -235,10 +238,15 @@ enum ConnectionBadge { connected, connecting, notAnswering, failed, offline }
 /// and the FB-44 snackbar work each fixed once already.
 ///
 /// [isCurrentDevice] is what keeps the controller's SINGULAR fields from
-/// leaking onto every row: `lastError` belongs to whichever unit the controller
-/// last worked on, so a row that is not that unit reports only 未連線 rather
-/// than borrowing another device's failure. (Design 0046 §3.2 keeps this true
-/// by construction in 交付二, when those fields go per-device.)
+/// leaking onto every row: a row that is not that unit reports only 未連線
+/// rather than borrowing another device's [isOnline], spinner or stall latch.
+///
+/// ⚠️ AMENDED (FB-86, 2026-08-17). It used to say the same about `lastError`,
+/// and that is no longer where the error's attribution comes from: the caller
+/// now passes [ConnectionController.lastErrorFor]`(this row's id)`, which is
+/// already scoped. The parameter stays REQUIRED regardless — the other three
+/// inputs are still singular, and a required parameter that has to be answered
+/// is the reason this function was never the one that forgot.
 ConnectionBadge connectionBadgeFor({
   required bool isCurrentDevice,
   required bool isOnline,

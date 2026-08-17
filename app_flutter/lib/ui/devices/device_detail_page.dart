@@ -86,6 +86,10 @@ String? autoConnectBlocker({
   required bool isBusy,
   required bool isRetrying,
   required bool isAutoConnectArmed,
+  // 🔴 THIS UNIT'S error, and the only value the app can now supply is one:
+  // [ConnectionController.lastErrorFor] is the sole per-unit reader and it will
+  // not answer without an id. FB-86 is what this parameter's caller got wrong
+  // for as long as the controller had a bare `lastError` getter to pass in.
   required String? lastError,
   required bool isSetupStalled,
   required bool isAdapterOn,
@@ -336,7 +340,14 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       isBusy: conn.isBusy,
       isRetrying: conn.isRetrying,
       isAutoConnectArmed: conn.isAutoConnectArmed,
-      lastError: conn.lastError,
+      // 🔴 FB-86, AND THE WHOLE OF IT. This line used to read the controller's
+      // single error field with no attribution at all, three hundred lines above
+      // an `_OfflineBody` that gated the same field on `mine` — so a failed
+      // connect to A blocked THIS page from ever trying B, while B's own failure
+      // card was correctly suppressed and the screen said nothing but "not
+      // connected". The controller now answers per unit and there is no way to
+      // ask it otherwise; see [ConnectionController.lastErrorFor].
+      lastError: conn.lastErrorFor(widget.deviceId),
       isSetupStalled: conn.isSetupStalled,
       isAdapterOn: conn.isAdapterOn,
     );
@@ -349,6 +360,23 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       // FB-82 Q4: and for two of the nine, say it on the SCREEN as well. The
       // log is for whoever reads an export afterwards; this is for the person
       // in front of the phone right now, who was promised an automatic connect.
+      //
+      // 🔴 STILL NO `mine` GATE, RE-JUDGED UNDER FB-86 (2026-08-17) — the
+      // question FB-86 required to be re-opened, because Q4's stated reason for
+      // omitting one was "in the cross-device case there is no failure card, so
+      // this notice is the only explanation", and FB-86 removes that case.
+      //
+      //   * The `lastError` notice no longer NEEDS a gate: its trigger is now
+      //     `lastErrorFor(this unit)` — the very same value `_OfflineBody` reads
+      //     for the card — so notice and card cannot disagree about whose
+      //     failure this is. Adding `mine` on top would be strictly worse: it
+      //     would hide the notice on a page that IS showing a radio-level card
+      //     while the controller's target is another unit.
+      //   * The `setupStalled` notice still MUST NOT have one. `isSetupStalled`
+      //     is still a singular field (FB-86 fixed the error, not the latch), so
+      //     A's stall can still block B's page — and there Q4's original
+      //     argument survives word for word: the card is gated on `mine`, so
+      //     this notice is the only thing on screen that explains the silence.
       _skipNotice = _attemptSeen ? null : autoConnectSkipNotice(blocker);
       return;
     }
@@ -402,7 +430,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     }
     // A refused connect RETURNS rather than throws (bluetooth_off and friends
     // are answers, not exceptions) — so the error is checked, not just caught.
-    if (!mounted || conn.lastError != null) return;
+    if (!mounted || conn.lastErrorFor(widget.deviceId) != null) return;
     await promptAndSaveDevice(context, widget.deviceId);
   }
 
@@ -686,14 +714,29 @@ class _OfflineBody extends StatelessWidget {
     final retrying = conn.isRetrying;
     final working = conn.isBusy || retrying;
 
-    // The controller's error/stall state belongs to whichever unit it last
+    // The controller's stall/busy state belongs to whichever unit it last
     // worked on. Attributing it to a row the user merely opened would put
     // another device's failure under this one's name, so the copy falls back to
     // the plain idle state unless this IS that unit.
+    //
+    // ⚠️ AMENDED (FB-86): `lastError` is NO LONGER one of them. It used to be
+    // gated here by hand — `mine ? conn.lastError : null` — and that hand-gate,
+    // correct as it was, is exactly what the automatic-connect gate above did
+    // not copy. The scoping moved into the controller, so this line asks for
+    // this unit's error and gets this unit's error. The remaining `mine &&`
+    // guards below are the fields that are still singular.
+    //
+    // 📌 ONE VISIBLE CONSEQUENCE, and it is intended: a RADIO-level code
+    // (`bluetooth_off` and friends — [radioLevelErrorCodes]) belongs to no unit
+    // and so now reaches this page even when the controller's target is another
+    // one. The old hand-gate hid it, which meant a page that was refusing to
+    // auto-connect BECAUSE the radio is off — that gate never distinguished
+    // either — said only "not connected". Reporting the radio on any unit's page
+    // is not FB-41/FB-42's mistake: the radio is not one of the units.
     final mine = conn.connectedDeviceId == deviceId;
     final copy = connectionFailureCopy(
       l10n: l10n,
-      lastError: mine ? conn.lastError : null,
+      lastError: conn.lastErrorFor(deviceId),
       working: mine && working,
       isBusy: mine && conn.isBusy,
       isRetrying: mine && retrying,

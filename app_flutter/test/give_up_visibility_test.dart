@@ -124,8 +124,21 @@ class _ErrorConn extends ConnectionController {
   /// test.
   bool stalledLatch = false;
 
+  /// Whose error it is (FB-86). Null means RADIO-LEVEL — true of every unit —
+  /// which is the default these copy tests want: they are about what a code
+  /// draws, not about which unit it belongs to.
+  String? errorDeviceId;
+
   @override
-  String? get lastError => error;
+  String? lastErrorFor(String? deviceId) {
+    final e = error;
+    return e == null
+        ? null
+        : ConnectionError(e, deviceId: errorDeviceId).codeFor(deviceId);
+  }
+
+  @override
+  String? get lastErrorUnattributed => error;
 
   @override
   bool get isSetupStalled => stalledLatch;
@@ -151,14 +164,17 @@ const _controllerSource = 'lib/state/connection_controller.dart';
 ///
 /// So the source is the input. Two shapes carry a code:
 ///
-///   1. `_lastError = '<code>'` — the direct assignments.
-///   2. `connectFailureError`'s own `return` literals, which reach `_lastError`
-///      through the three `_lastError = connectFailureError(...)` call sites.
+///   1. `_setError('<code>')` — the direct assignments. ⚠️ FB-86 renamed this
+///      shape: it used to be `_lastError = '<code>'`, and the field is now
+///      written only through that one method, which is also what decides
+///      whether the code is filed under a unit or under the radio.
+///   2. `connectFailureError`'s own `return` literals, which reach the field
+///      through the three `_setError(reason, …)` call sites.
 ///
 /// Comment lines are stripped first: prose in this file is full of apostrophes
 /// and a pair of them would read as a string literal.
 ///
-/// NOT covered, deliberately: `_lastError = e.toString()` in [startScan]'s
+/// NOT covered, deliberately: `_setError(e.toString())` in [startScan]'s
 /// generic catch. That one is an arbitrary platform string by construction, and
 /// the screen's refusal to render arbitrary strings is a separate, deliberate
 /// rule with its own test ("the branch is still a set, not a catch-all").
@@ -173,9 +189,15 @@ Set<String> controllerErrorCodes() {
       .join('\n');
 
   final codes = <String>{};
-  for (final m in RegExp("_lastError\\s*=\\s*'([a-z_]+)'").allMatches(src)) {
+  for (final m in RegExp("_setError\\(\\s*'([a-z_]+)'").allMatches(src)) {
     codes.add(m.group(1)!);
   }
+  // The scan is only as good as its ability to find anything: an empty result
+  // here means the ASSIGNMENT SHAPE changed again and this test went quietly
+  // vacuous, which is worse than the hand-written list it replaced.
+  expect(codes, isNotEmpty,
+      reason: 'no direct `_setError(\'<code>\')` assignment found in '
+          '$_controllerSource — the shape this scan looks for has moved');
 
   const signature = 'static String? connectFailureError({';
   final start = src.indexOf(signature);
@@ -758,7 +780,7 @@ void main() {
 
       // The whole chain: plugin exception → typed classifier → `lastError` →
       // a branch on this screen. Every link of it was missing.
-      expect(s.connection.lastError, 'device_unreachable');
+      expect(s.connection.lastErrorUnattributed, 'device_unreachable');
       expect(tester.takeException(), isNull,
           reason: 'the tap handler absorbs the rethrow — deliberately, and now '
               'without cost, because the screen shows the reason');
@@ -819,7 +841,7 @@ void main() {
       });
       await tester.pump();
 
-      expect(s.connection.lastError, 'connect_failed');
+      expect(s.connection.lastErrorUnattributed, 'connect_failed');
       expect(s.connection.isRetrying, isFalse,
           reason: 'R3: a first connect that never landed does not get the '
               'ladder, so the card is the ONLY thing left to say it failed');

@@ -182,7 +182,7 @@ void main() {
 
         expect(ble.connectCalls, 0,
             reason: 'no BLE call means no platform exception to leak');
-        expect(conn.lastError, 'bluetooth_off');
+        expect(conn.lastErrorUnattributed, 'bluetooth_off');
       });
 
       test('and the log says so, without the word that means something else',

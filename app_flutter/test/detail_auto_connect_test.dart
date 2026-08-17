@@ -129,8 +129,21 @@ class _CountingConn extends ConnectionController {
   @override
   bool get isAdapterOn => adapterOn;
 
+  /// Whose error it is (FB-86). Null means RADIO-LEVEL — true of every unit —
+  /// which is the default these copy tests want: they are about what a code
+  /// draws, not about which unit it belongs to.
+  String? errorDeviceId;
+
   @override
-  String? get lastError => error;
+  String? lastErrorFor(String? deviceId) {
+    final e = error;
+    return e == null
+        ? null
+        : ConnectionError(e, deviceId: errorDeviceId).codeFor(deviceId);
+  }
+
+  @override
+  String? get lastErrorUnattributed => error;
 
   /// 🔴 COUNTED, and that counter is the only host-independent way to pin
   /// FB-82 Q2 (see A11/A12). `Platform.isIOS` is false on this host, so the
@@ -270,7 +283,15 @@ void main() {
   testWidgets('A4: never on top of a failure the user is reading', (
     tester,
   ) async {
-    await boot(tester, configure: (c) => c.error = 'device_unreachable');
+    // FB-86: and the failure has to BE this unit's, which is now stated rather
+    // than assumed. Leaving `errorDeviceId` null would say "the radio", which
+    // is true of every unit and would pass for the wrong reason.
+    await boot(
+      tester,
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..errorDeviceId = 'DEV-A',
+    );
 
     expect(
       conn.connectToSavedCalls,
@@ -797,5 +818,86 @@ void main() {
 
     expect(conn.connectToSavedCalls, 1);
     expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+  });
+
+  // ── FB-86: the error is per-unit, so ANOTHER unit's is not in the way ────
+  //
+  // 🔴 This is the gate that had no attribution at all. `lastError` was read
+  // straight off the controller — one slot belonging to whichever unit it last
+  // worked on — three hundred lines above an `_OfflineBody` that gated the very
+  // same field on `mine`. So A's failed connect blocked B's page from trying,
+  // B's own failure card was correctly suppressed, and what the user got was a
+  // clean "not connected" on a page that had deliberately made no attempt.
+  //
+  // ⚠️ `current` is DEV-A here as well as `errorDeviceId`, because that is the
+  // reported situation: `_desiredDeviceId` is only cleared by a user-initiated
+  // disconnect, so after a failed connect to A the controller still names A.
+
+  testWidgets('A33: another unit\'s failure does not block this one', (
+    tester,
+  ) async {
+    await boot(
+      tester,
+      deviceId: 'DEV-A',
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..errorDeviceId = 'DEV-B'
+        ..current = 'DEV-B',
+    );
+
+    expect(
+      conn.connectToSavedCalls,
+      1,
+      reason:
+          'FB-86: DEV-B failed, not this unit — refusing to try would be the '
+          'app silently declining to do the one thing opening this page '
+          'promises, with nothing on screen saying so',
+    );
+    expect(conn.lastTargetId, 'DEV-A');
+  });
+
+  testWidgets('A34: ...and it is not reported under this one\'s name either', (
+    tester,
+  ) async {
+    // The other half, and the reason A33 is not enough on its own: the fix must
+    // not buy the attempt back by leaking DEV-B's failure onto DEV-A's page.
+    // FB-41/FB-42 is that mistake in the history table; this is it on screen.
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      deviceId: 'DEV-A',
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..errorDeviceId = 'DEV-B'
+        ..current = 'DEV-B',
+    );
+
+    expect(find.text(en.devicesConnectFailedUnreachable), findsNothing);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing,
+        reason: 'nothing was skipped — the attempt was made');
+  });
+
+  testWidgets('A35: a RADIO failure still blocks, and still explains itself', (
+    tester,
+  ) async {
+    // The line FB-86 does not cross. `bluetooth_off` belongs to no unit because
+    // it is true of all of them, so it must keep blocking every unit's page —
+    // and now, unlike before, the card underneath says which radio it is
+    // waiting on rather than showing the plain idle copy.
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      deviceId: 'DEV-A',
+      configure: (c) => c
+        ..error = 'bluetooth_off'
+        ..errorDeviceId = null
+        ..current = 'DEV-B',
+    );
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(find.text(en.devicesConnectFailedBluetoothOff), findsOneWidget);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsOneWidget,
+        reason: 'FB-82 Q4 — the visit made no attempt, and this notice needs '
+            'no `mine` gate now that its trigger is already per-unit');
   });
 }
