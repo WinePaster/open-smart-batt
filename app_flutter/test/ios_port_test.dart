@@ -275,6 +275,37 @@ void main() {
       );
       expect(id, 'UUID-STALE');
     });
+
+    test('iOS refuses to guess between duplicate advertised names', () {
+      // 🔴 Moved here by FB-82 Q2 (2026-08-17), and the move is the point. This
+      // was pinned through the detail page's scan-visibility gate, which that
+      // ruling removed — but the safety was never IN that gate. It is this
+      // function's unique-match rule, and `connectToSaved` still applies it on
+      // every automatic and manual connect alike.
+      //
+      // Two distinct power banks really do both advertise 'RCE_RSPB-01'
+      // (2026-07-29 field capture, confirmed in the vendor app's own scan
+      // list). Returning whichever entry the map happened to yield would file
+      // one unit's telemetry under the other's alias — silent, and
+      // indistinguishable afterwards.
+      final id = rebindSavedDeviceId(
+        savedId: 'UUID-STALE',
+        savedName: 'RCE_RSPB-01',
+        candidates: const {'UUID-ONE': 'RCE_RSPB-01', 'UUID-TWO': 'RCE_RSPB-01'},
+        useNameKey: true,
+      );
+      expect(id, 'UUID-STALE');
+    });
+
+    test('a unique name match wins even beside an unrelated candidate', () {
+      final id = rebindSavedDeviceId(
+        savedId: 'UUID-STALE',
+        savedName: 'RCE-SCAP_II',
+        candidates: const {'UUID-NEW': 'RCE-SCAP_II', 'OTHER': 'RCE_RSPB-01'},
+        useNameKey: true,
+      );
+      expect(id, 'UUID-NEW');
+    });
   });
 
   group('D.3 stale marking (SavedDevice.fromMap)', () {

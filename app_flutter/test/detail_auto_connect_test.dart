@@ -14,15 +14,18 @@
 //   * a page showing a failure report with a retry button on it must not retry
 //     by itself (A4).
 //
-// 🔴 A10–A14 are the iOS half, and they are the reason `autoConnectTargetVisible`
-// is a pure top-level function: `Platform.isIOS` is false on the host that runs
-// this suite, so the branch WITH the failure mode would otherwise be the one
-// branch no test could reach. Opening this page stops the scan, and iOS resolves
-// a saved unit by re-binding its per-install NSUUID against live scan results —
-// so coming in from a home tile can leave nothing to resolve against. Connecting
-// anyway would replace today's honest "not connected + a button" with a spinner
-// that ends in `device_unreachable`: the exact direction FB-52 and FB-53 were
-// fixed away from.
+// 🔴 THE SCAN-VISIBILITY GATE IS GONE (FB-82 Q2, ruled 2026-08-17), and A11–A15
+// now pin its ABSENCE. It used to refuse whenever the saved unit was not in the
+// current scan results, which on iOS meant: opening this page stops the scan, so
+// a page opened before the list had discovered anything never connected on that
+// trip — the owner's own report on v0.7.22. It was retired because the retry
+// button on this same screen never had it, because iOS resolves a saved
+// remoteId through `retrievePeripheralsWithIdentifiers` and needs no scan, and
+// because the FB-52/FB-53 regression it guarded against is bounded on both ends
+// (an id iOS does not know fails immediately; a failed FIRST connect starts no
+// ladder). The duplicate-name safety that used to be tested through it did not
+// live in it — it is `rebindSavedDeviceId`'s unique-match rule, pinned in
+// `ios_port_test.dart`.
 //
 // CLEAN-ROOM: expectations derive from this project's own source and field
 // captures.
@@ -120,8 +123,20 @@ class _CountingConn extends ConnectionController {
   @override
   String? get lastError => error;
 
+  /// 🔴 COUNTED, and that counter is the only host-independent way to pin
+  /// FB-82 Q2 (see A11/A12). `Platform.isIOS` is false on this host, so the
+  /// gate that was removed would have PASSED here whatever the scan list held
+  /// — a test asserting "empty list and it still connected" would stay green
+  /// with the gate put back. What cannot stay green is the page touching this
+  /// getter at all: the old call site built its candidate map from it eagerly,
+  /// before any platform check.
+  int scanReads = 0;
+
   @override
-  List<DiscoveredDevice> get scanResults => results;
+  List<DiscoveredDevice> get scanResults {
+    scanReads++;
+    return results;
+  }
 
   @override
   Future<void> connectToSaved(SavedDevice device) async {
@@ -368,74 +383,44 @@ void main() {
     );
   });
 
-  // ── the iOS half ────────────────────────────────────────────────────────
+  // ── FB-82 Q2: nothing scanned is no longer a reason not to connect ───────
 
-  test('A11: Android never blocks — its MAC needs no resolving', () {
+  testWidgets('A11: NOTHING scanned and it still connects — the owner\'s own '
+      'report (iPhone, v0.7.22)', (tester) async {
+    // `scanResults` is empty here, which is the real state of this page on
+    // iOS: opening it stops the scan (W-3), and a page opened straight after
+    // launch never had results to begin with. Before FB-82 Q2 this was the one
+    // gate that refused, and it refused silently.
+    await boot(tester, configure: (c) => c.results = const []);
+
+    expect(conn.connectToSavedCalls, 1);
+    expect(conn.skips, isEmpty);
     expect(
-      autoConnectTargetVisible(
-        useNameKey: false,
-        savedId: 'AA:BB:CC:DD:EE:FF',
-        savedName: 'RCE-SCAP_II',
-        candidates: const {},
-      ),
-      isTrue,
+      conn.scanReads,
+      0,
+      reason: 'this page no longer asks what is visible before connecting — '
+          'and the reading, not the answer, is what a non-iOS host can see',
     );
   });
 
-  test('A12: iOS with nothing scanned does NOT connect', () {
-    expect(
-      autoConnectTargetVisible(
-        useNameKey: true,
-        savedId: 'NSUUID-OLD',
-        savedName: 'RCE-SCAP_II',
-        candidates: const {},
-      ),
-      isFalse,
-      reason:
-          'opening this page stops the scan, so arriving from a home tile '
-          'can leave an empty candidate set — connecting anyway buys a '
-          'device_unreachable in place of an honest button',
+  testWidgets('A12: the page hands over the SAVED RECORD and lets the '
+      'controller resolve it', (tester) async {
+    // The page deliberately does not pre-resolve the id against the scan list
+    // any more. `connectToSaved` re-binds a stale iOS NSUUID itself — and it is
+    // also where the refusal to guess between two units advertising the same
+    // name lives (`rebindSavedDeviceId`, unique match only). Splitting that
+    // decision across two places is how one power bank's telemetry ends up
+    // under the other's alias.
+    await boot(
+      tester,
+      configure: (c) => c.results = const [
+        DiscoveredDevice(id: 'SOMEONE-ELSE', name: 'RCE_RSPB-01', rssi: -60),
+      ],
     );
-  });
 
-  test('A13: iOS with the saved id still visible connects', () {
-    expect(
-      autoConnectTargetVisible(
-        useNameKey: true,
-        savedId: 'NSUUID-A',
-        savedName: 'RCE-SCAP_II',
-        candidates: const {'NSUUID-A': 'RCE-SCAP_II'},
-      ),
-      isTrue,
-    );
-  });
-
-  test('A14: iOS rebinds on a UNIQUE name match', () {
-    expect(
-      autoConnectTargetVisible(
-        useNameKey: true,
-        savedId: 'NSUUID-OLD',
-        savedName: 'RCE-SCAP_II',
-        candidates: const {'NSUUID-NEW': 'RCE-SCAP_II', 'OTHER': 'RCE_RSPB-01'},
-      ),
-      isTrue,
-    );
-  });
-
-  test('A15: iOS refuses to guess between duplicate advertised names', () {
-    expect(
-      autoConnectTargetVisible(
-        useNameKey: true,
-        savedId: 'NSUUID-OLD',
-        savedName: 'RCE_RSPB-01',
-        candidates: const {'ONE': 'RCE_RSPB-01', 'TWO': 'RCE_RSPB-01'},
-      ),
-      isFalse,
-      reason:
-          'two power banks really do both advertise RCE_RSPB-01 '
-          '(2026-07-29 capture); filing one unit\'s telemetry under the '
-          'other\'s alias is silent and unrecoverable',
-    );
+    expect(conn.connectToSavedCalls, 1);
+    expect(conn.lastTargetId, 'DEV-A');
+    expect(conn.scanReads, 0);
   });
 
   // ── FB-82, on the page itself ───────────────────────────────────────────
@@ -512,7 +497,6 @@ void main() {
     String? lastError,
     bool isSetupStalled = false,
     bool isAdapterOn = true,
-    bool targetVisible = true,
   }) =>
       autoConnectBlocker(
         isSaved: isSaved,
@@ -524,7 +508,6 @@ void main() {
         lastError: lastError,
         isSetupStalled: isSetupStalled,
         isAdapterOn: isAdapterOn,
-        targetVisible: targetVisible,
       );
 
   test('A16: nothing in the way ⇒ no blocker, i.e. it connects', () {
@@ -542,22 +525,32 @@ void main() {
       blockerWith(lastError: 'bluetooth_off')!,
       blockerWith(isSetupStalled: true)!,
       blockerWith(isAdapterOn: false)!,
-      blockerWith(targetVisible: false)!,
     ];
     expect(reasons.toSet(), hasLength(reasons.length),
         reason: 'two gates sharing one sentence would send the reader of an '
             'export to the wrong place — the whole point of FB-82');
   });
 
-  test('A18: the iOS gate says WHAT to do about it — nothing was scanned', () {
-    // The owner's own report (2026-08-17, iPhone): opened a saved unit's page
-    // straight after launching, before the devices tab had scanned anything.
-    expect(
-      blockerWith(targetVisible: false),
-      allOf(contains('scanned'), contains('iOS')),
-      reason: 'the fix is a scan, not a retry — a line that only said '
-          '"could not connect" would send the reader to the radio',
-    );
+  test('A18: no gate is about scanning any more (FB-82 Q2)', () {
+    // The counterpart to A11, one level down: the tenth gate was removed, not
+    // merely stopped from firing. A re-added visibility check would show up
+    // here as a tenth sentence, and on a phone it would show up as the owner's
+    // original report — a page that quietly never connects.
+    final reasons = <String>[
+      blockerWith(isSaved: false)!,
+      blockerWith(autoReconnect: false)!,
+      blockerWith(isOnline: true)!,
+      blockerWith(isBusy: true)!,
+      blockerWith(isRetrying: true)!,
+      blockerWith(isAutoConnectArmed: true)!,
+      blockerWith(lastError: 'bluetooth_off')!,
+      blockerWith(isSetupStalled: true)!,
+      blockerWith(isAdapterOn: false)!,
+    ];
+    expect(reasons, hasLength(9));
+    for (final r in reasons) {
+      expect(r, isNot(contains('scan')));
+    }
   });
 
   test('A19: the error CODE travels, not just the word "error"', () {
@@ -584,7 +577,7 @@ void main() {
     // Reordering would change which sentence a given phone writes, and the
     // first match is the one the reader acts on.
     expect(
-      blockerWith(isSaved: false, isAdapterOn: false, targetVisible: false),
+      blockerWith(isSaved: false, isAdapterOn: false, isSetupStalled: true),
       blockerWith(isSaved: false),
     );
     // ...and the setting outranks every state gate below it, because "the user

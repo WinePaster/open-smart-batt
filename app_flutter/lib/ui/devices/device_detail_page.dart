@@ -16,7 +16,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -31,38 +30,6 @@ import '../widgets/one_screen_report.dart';
 import 'connection_failure.dart';
 import 'save_device_flow.dart';
 
-/// May FB-75's automatic connect resolve [savedId] to something we can see?
-///
-/// A top-level function, and a pure one, because the platform is the whole
-/// question: on the host that runs the tests `Platform.isIOS` is false, so a
-/// method that read it directly would make the iOS branch — the only branch
-/// with a failure mode — the one branch no test could reach.
-///
-/// [useNameKey] is `Platform.isIOS` at the call site, and carries the same
-/// meaning it has in [rebindSavedDeviceId]: iOS hands out a per-install NSUUID
-/// that has to be matched against live scan results, Android keeps a stable MAC
-/// that needs no resolving at all.
-@visibleForTesting
-bool autoConnectTargetVisible({
-  required bool useNameKey,
-  required String savedId,
-  required String savedName,
-  required Map<String, String> candidates,
-}) {
-  if (!useNameKey) return true;
-  final target = rebindSavedDeviceId(
-    savedId: savedId,
-    savedName: savedName,
-    candidates: candidates,
-    useNameKey: true,
-  );
-  // 🔴 Not "did rebinding return something": it FALLS BACK to the saved id when
-  // it cannot resolve, so a bare null-check would pass on exactly the case this
-  // guard exists for. The question is whether the id it returned belongs to a
-  // unit that is in front of us right now.
-  return candidates.containsKey(target);
-}
-
 /// Why FB-75's automatic connect did not fire, or null when nothing blocks it.
 ///
 /// 🔴 FB-82. This exists because the feature used to fail SILENTLY: the owner
@@ -70,6 +37,34 @@ bool autoConnectTargetVisible({
 /// nothing — not the screen, not the diagnostic log — could say which of the
 /// gates below had refused. The report was answerable only by reading source
 /// and guessing at a platform, which is the state this function ends.
+///
+/// 🔴 THE TENTH GATE IS GONE (FB-82 Q2, ruled 2026-08-17). It asked whether the
+/// saved unit was in the CURRENT scan results, and on iOS it was the gate that
+/// blocked the owner's report: opening this page stops the scan, so a page
+/// entered before the list had discovered anything could never connect on that
+/// trip. Three findings retired it, and all three are worth keeping written
+/// down because the gate was added deliberately:
+///
+///   * the RETRY BUTTON on this very screen — and the connect button on the
+///     saved list (`devices_page._connectSaved`) — never had this gate. Automatic
+///     connection was refusing on a ground the button beside it ignores;
+///   * a scan is not what iOS needs to connect. `flutter_blue_plus_darwin`
+///     resolves a remoteId through `retrievePeripheralsWithIdentifiers`
+///     (`FlutterBluePlusPlugin.m`, "check the devices iOS knowns about"), so a
+///     still-valid NSUUID connects with nothing scanned at all — which is how
+///     this app's own cold-start adoption and reconnect ladder already work;
+///   * the feared FB-52/FB-53 regression — a spinner that ends in
+///     `device_unreachable` — is bounded on both ends now. An id iOS no longer
+///     knows fails IMMEDIATELY ("Peripheral not found"), and a failed FIRST
+///     connect starts no ladder (FB-53: the ladder needs `reachedConnected` or
+///     a prior attempt), so the worst case is one connect timeout ending in the
+///     same honest failure card a user tap would have produced.
+///
+/// ⚠️ What did NOT move: refusing to guess between two units advertising the
+/// same name. That safety never lived here — it is [rebindSavedDeviceId]'s
+/// unique-match rule, and `connectToSaved` still applies it, so an ambiguous
+/// name still falls back to the saved id rather than filing one power bank's
+/// telemetry under the other's alias.
 ///
 /// The gate ORDER is behaviour, not presentation: it is the order
 /// [_DeviceDetailPageState._maybeAutoConnect] applied before this function
@@ -80,9 +75,9 @@ bool autoConnectTargetVisible({
 /// three answers on purpose — "the link is busy" and "an iOS hand-off is still
 /// outstanding" send whoever reads the log to different places.
 ///
-/// Top-level and pure for [autoConnectTargetVisible]'s reason: the branch with
-/// the failure mode (iOS) is the one branch a widget test on this host cannot
-/// reach.
+/// Top-level and pure so that a unit test can state each gate directly: the
+/// page reaches it from `didChangeDependencies`, where only a widget test with
+/// a whole provider tree can arrive.
 @visibleForTesting
 String? autoConnectBlocker({
   required bool isSaved,
@@ -94,7 +89,6 @@ String? autoConnectBlocker({
   required String? lastError,
   required bool isSetupStalled,
   required bool isAdapterOn,
-  required bool targetVisible,
 }) {
   if (!isSaved) return 'device not saved';
   if (!autoReconnect) return 'auto-connect setting off';
@@ -108,10 +102,6 @@ String? autoConnectBlocker({
   if (lastError != null) return 'last error not cleared: $lastError';
   if (isSetupStalled) return 'setup stalled';
   if (!isAdapterOn) return 'bluetooth adapter not on';
-  // 🔴 iOS only — see [autoConnectTargetVisible]. Named for what a reader has
-  // to DO about it: the unit was never scanned on this trip through the page,
-  // and opening the page is itself what stopped the scan.
-  if (!targetVisible) return 'saved id not resolvable — nothing scanned (iOS)';
   return null;
 }
 
@@ -240,6 +230,14 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   ///   * `lastError != null` means the user is looking at a failure report with
   ///     a retry button on it. Retrying it for them, without being asked, is
   ///     how a page starts arguing with the person reading it.
+  ///
+  /// 🔴 FB-82 Q2 (ruled 2026-08-17): what it does NOT gate on any more is
+  /// whether the unit is in the current scan results. That gate is the one that
+  /// blocked the owner's own report on an iPhone, and it made this feature
+  /// stricter than the retry button beside it. See [autoConnectBlocker] for the
+  /// three findings that retired it. The rule this leaves is simple and is the
+  /// ruling itself: **automatic connection does exactly what a user tap does**
+  /// — one attempt, the same `connectToSaved`, the same failure card.
   void _maybeAutoConnect() {
     // Neither of these two is a REFUSAL, so neither is logged: the first says
     // the attempt already happened (whoever wanted the story has `connect → X`
@@ -265,11 +263,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       lastError: conn.lastError,
       isSetupStalled: conn.isSetupStalled,
       isAdapterOn: conn.isAdapterOn,
-      // 🔴 Short-circuited, because Dart evaluates named arguments eagerly and
-      // this one needs a non-null `saved`. `isSaved` is checked first inside
-      // [autoConnectBlocker], so the `true` fed in here for an unsaved unit can
-      // never be the answer that is returned.
-      targetVisible: saved == null || _resolvableOnThisPlatform(conn, saved),
     );
     if (blocker != null) {
       // FB-82: say so, once per distinct reason. Before this the page simply
@@ -290,27 +283,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       unawaited(conn.connectToSaved(saved!).catchError((Object _) {}));
     });
   }
-
-  /// 🔴 The iOS half of FB-75, and the reason this feature is not simply "call
-  /// connect on open".
-  ///
-  /// Opening this page STOPS the scan ([ConnectionController.setDetailVisible],
-  /// W-3), while iOS identifies peripherals by a per-install NSUUID that has to
-  /// be re-bound against live scan results ([rebindSavedDeviceId]). Come in from
-  /// a home tile rather than from the devices list and that candidate set can be
-  /// empty — so an unconditional auto-connect would replace today's honest
-  /// "not connected + a button" with a spinner that ends in
-  /// `device_unreachable`. That is precisely the direction FB-52 and FB-53 were
-  /// fixed away from, and it would be a regression bought with a convenience.
-  ///
-  /// Android keeps a stable MAC, so there is nothing to resolve there.
-  bool _resolvableOnThisPlatform(ConnectionController conn, SavedDevice saved) =>
-      autoConnectTargetVisible(
-        useNameKey: Platform.isIOS,
-        savedId: saved.id,
-        savedName: saved.name,
-        candidates: {for (final r in conn.scanResults) r.id: r.name},
-      );
 
   @override
   void dispose() {
