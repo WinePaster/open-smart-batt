@@ -364,6 +364,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '接下來不會再自動重試。請先把上面說的藍牙問題處理好 —— 在那之前，連線和掃描都一樣不會成功。';
 
   @override
+  String get disconnectedWrongDeviceHint =>
+      '這筆儲存的紀錄指到了另一台同名的裝置。請重新掃描並選擇正確的那一台，或把這筆紀錄移除後重新加入。';
+
+  @override
   String quickPickLastValue(String value) {
     return '上次 $value V';
   }
@@ -550,6 +554,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get devicesConnectFailedUnreachable => '找不到這台裝置，請確認它在附近並已開機';
+
+  @override
+  String get devicesConnectFailedWrongDevice => '連上的不是你儲存的那一台（硬體位址對不上），已中斷連線';
 
   @override
   String get devicesRemoveTitle => '移除裝置';

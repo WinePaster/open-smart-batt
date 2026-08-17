@@ -14,6 +14,9 @@ import 'dart:io' show Platform;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
+// For [PlatformException] — the shape the darwin plugin's "id unknown" answer
+// arrives in. See [ConnectionController.isUnknownPeripheralError].
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show
         BluetoothAdapterState,
@@ -77,7 +80,7 @@ const radioLevelErrorCodes = <String>{
 /// "every other live reading", and the one FB-41/FB-42 were about.
 @immutable
 class ConnectionError {
-  const ConnectionError(this.code, {required this.deviceId});
+  const ConnectionError(this.code, {required this.deviceId, this.requestedId});
 
   /// The code a screen branches on (`device_unreachable`, `bluetooth_off`, …).
   final String code;
@@ -86,16 +89,42 @@ class ConnectionError {
   /// and therefore true of all of them. See [radioLevelErrorCodes].
   final String? deviceId;
 
+  /// The id the USER asked for, when it is not the one we dialled.
+  ///
+  /// 🔴 FB-87 ①. An iOS rebind dials a different id than the saved record holds
+  /// ([ConnectionController.connectToSaved]), and every screen is keyed by the
+  /// SAVED id — the detail page by `widget.deviceId`, the list row by `d.id`,
+  /// and nothing anywhere writes the new id back onto the record (design 0057
+  /// forbids re-keying: `history.device_id` holds BLE ids). So an error filed
+  /// only under the dialled id answers `null` on every screen the user can
+  /// actually be looking at, which is FB-86's symptom returning by another door.
+  ///
+  /// Both ids answer, deliberately. The failure is a fact about the attempt, and
+  /// the attempt had two names.
+  final String? requestedId;
+
   /// The code, but ONLY if it is a fact about [unitId].
   ///
   /// A radio-level error ([deviceId] null) answers for every unit, including a
   /// caller that has no unit at all (`unitId == null`) — the dashboard's own
   /// disconnected state is such a caller.
+  /// ⚠️ `requestedId != null` first, and it is not defensive noise: without it
+  /// a caller passing null — the dashboard's unattributed placeholder does —
+  /// would match a null [requestedId] and be handed another unit's failure,
+  /// which is the exact bug this class exists to prevent.
   String? codeFor(String? unitId) =>
-      deviceId == null || deviceId == unitId ? code : null;
+      deviceId == null ||
+              deviceId == unitId ||
+              (requestedId != null && requestedId == unitId)
+          ? code
+          : null;
 
   @override
-  String toString() => deviceId == null ? code : '$code@$deviceId';
+  String toString() {
+    if (deviceId == null) return code;
+    final asked = requestedId == null ? '' : '←$requestedId';
+    return '$code@$deviceId$asked';
+  }
 }
 
 /// Live BLE connection + scan state for the UI.
@@ -631,6 +660,27 @@ class ConnectionController extends ChangeNotifier {
   /// answer, and a code added to [radioLevelErrorCodes] reclassifies every site
   /// at once.
   ConnectionError? _lastError;
+
+  /// The MAC the SAVED RECORD we were asked to dial says this unit has — the
+  /// yardstick [_verifyIdentity] measures the wire's `0x38` against.
+  ///
+  /// 🔴 design 0068 (C). Null in the two cases where there is nothing to check:
+  /// the target has no saved record, or the record has never seen a `0x38` (its
+  /// FIRST connect). **This mechanism cannot protect a first connection**, and
+  /// that limit is inherent — the yardstick is learned from the wire.
+  String? _expectedMac;
+
+  /// The SAVED record's id, when it is not the id we actually dialled.
+  ///
+  /// Non-null only after an iOS rebind ([connectToSaved]). It is what the user
+  /// asked for and what every screen is keyed by, so it is the id a failure has
+  /// to be reported under — see [_verifyIdentity] and [ConnectionError].
+  String? _requestedDeviceId;
+
+  /// One identity report per connection: the check runs on every telemetry
+  /// sample (~5 Hz) and the answer cannot change within one link.
+  bool _identityMismatch = false;
+
   bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
 
   /// A device page is covering whatever asked for the scan ([setDetailVisible]).
@@ -770,6 +820,11 @@ class ConnectionController extends ChangeNotifier {
   /// not evidence it has ended. Only `ready` is (see [_onLinkState]).
   String? _setupFailuresDeviceId;
 
+  /// The saved record's id for that run, when a rebind made it differ from
+  /// [_setupFailuresDeviceId] (FB-87 ①). Written and cleared in the same breath
+  /// as the field above, so the pair cannot drift.
+  String? _setupFailuresRequestedId;
+
   /// Consecutive failed setups before the app stops trying and says so.
   ///
   /// Three, not one. A single `gatt setup failed` happens on healthy hardware —
@@ -811,7 +866,18 @@ class ConnectionController extends ChangeNotifier {
   /// rather than a fix. There is also no radio-level case to model: a stall is a
   /// fact about a unit, always.
   bool isSetupStalledFor(String? deviceId) =>
-      _setupFailuresDeviceId == deviceId && _stalledRun;
+      _ownsStallRun(deviceId) && _stalledRun;
+
+  /// Is the run being counted [deviceId]'s?
+  ///
+  /// FB-87 ①: the run belongs to the unit we DIALLED, and after an iOS rebind
+  /// that is not the id the user's screen is keyed by — so the id they asked
+  /// for owns it too. Same rule, same reason, as [ConnectionError.requestedId];
+  /// the `!= null` guard is there for the same reason as well.
+  bool _ownsStallRun(String? deviceId) =>
+      _setupFailuresDeviceId == deviceId ||
+      (_setupFailuresRequestedId != null &&
+          _setupFailuresRequestedId == deviceId);
 
   /// How many consecutive setups have failed FOR [deviceId] — shown to the user,
   /// so that "we really did try" is a number and not a claim.
@@ -820,7 +886,7 @@ class ConnectionController extends ChangeNotifier {
   /// latch are one pair, and a screen that took the latch from one unit and the
   /// number from another would print "3 attempts" under the wrong name.
   int setupFailuresFor(String? deviceId) =>
-      _setupFailuresDeviceId == deviceId ? _setupFailuresSinceReady : 0;
+      _ownsStallRun(deviceId) ? _setupFailuresSinceReady : 0;
 
   /// The stall latch and its count, for a caller that is about NO unit.
   ///
@@ -1010,21 +1076,66 @@ class ConnectionController extends ChangeNotifier {
   /// back either way (`connectFailureError` returns `bluetooth_off` for a radio
   /// that went down mid-connect and `device_unreachable` for a unit that never
   /// answered), so a site cannot know which kind it is producing.
-  void _setError(String code, {String? deviceId}) {
+  void _setError(String code, {String? deviceId, String? requestedId}) {
+    final radio = radioLevelErrorCodes.contains(code);
     _lastError = ConnectionError(
       code,
-      deviceId: radioLevelErrorCodes.contains(code) ? null : deviceId,
+      deviceId: radio ? null : deviceId,
+      // FB-87 ①: only for a unit-level failure, and only when the two ids
+      // actually differ. A radio-level code already answers for everyone, so a
+      // second id would be noise.
+      requestedId: radio || requestedId == deviceId ? null : requestedId,
     );
   }
 
   /// Forget the failure entirely — for every unit.
   ///
-  /// Clearing stays GLOBAL although recording is per-unit, and the asymmetry is
-  /// deliberate: every clear site is an event that makes the old error stale
-  /// whoever it belonged to (a fresh connect, a `ready`, a scan that worked).
-  /// Keeping another unit's error alive across one of those would resurrect a
-  /// failure the user has no way to act on.
+  /// ⛔ SUPERSEDED REASONING, kept because it was wrong in an instructive way
+  /// (FB-87 ③, ruled 2026-08-17): *"every clear site is an event that makes the
+  /// old error stale whoever it belonged to (a fresh connect, a `ready`, a scan
+  /// that worked)"*. That is false for the connect site and provably so —
+  /// connecting to B does not make A's failure stale, and because this clear is
+  /// global it erases A's failure card and unblocks A's automatic connect. It is
+  /// FB-86's cross-device leak with the sign flipped: instead of another unit's
+  /// failure BLOCKING this page, another unit's connect SILENTLY FORGETS this
+  /// one's.
+  ///
+  /// 🔑 The behaviour is unchanged all the same, and deliberately: the fix is
+  /// not a narrower clear, it is failure state that can hold more than one unit
+  /// at a time (FB-87 ④). Narrowing the clear without that would leave errors
+  /// from long-dead attempts alive in a single slot with no event able to reach
+  /// them. Recorded here so the next reader does not re-derive the old
+  /// justification and conclude there is nothing to fix.
   void _clearError() => _lastError = null;
+
+  /// Forget everything this controller remembers about [deviceId]'s failures.
+  ///
+  /// 🔴 FB-87 ② (ruled 2026-08-17, "照你的"). Called when a saved record is
+  /// DELETED. Until this existed the controller was never told, so the error and
+  /// the stall latch outlived the record they were about: the dashboard's
+  /// disconnected placeholder reads the unattributed accessors and would go on
+  /// reporting a failure for a device that no longer appears anywhere in the
+  /// app, until some unrelated connect happened to clear it.
+  ///
+  /// ⚠️ Deliberately NOT what a manual disconnect does. A user who unplugs from
+  /// a unit has not said the unit is fine, and the failure card they are looking
+  /// at has a retry button on it; a user who deletes the record has said they do
+  /// not want to hear about it again.
+  void forgetDevice(String deviceId) {
+    var changed = false;
+    if (_lastError?.codeFor(deviceId) != null &&
+        _lastError?.deviceId != null) {
+      _clearError();
+      changed = true;
+    }
+    if (_ownsStallRun(deviceId)) {
+      _setupFailuresSinceReady = 0;
+      _setupFailuresDeviceId = null;
+      _setupFailuresRequestedId = null;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 
   /// Saved devices for the quick-select list (delegates to [DeviceController]).
   List<SavedDevice> get savedDevices => _devices?.devices ?? const [];
@@ -1470,8 +1581,15 @@ class ConnectionController extends ChangeNotifier {
     return FbpErrorCode.values[code];
   }
 
+  /// Connect to [deviceId].
+  ///
+  /// [requestedId] is the SAVED record's id when [deviceId] is not it — i.e. an
+  /// iOS rebind ([connectToSaved]). Two things hang off it, both design 0068:
+  /// the identity yardstick ([_expectedMac]) is read from the record the USER
+  /// asked for rather than from the id we happened to dial, and a failure is
+  /// filed under that id as well ([ConnectionError.requestedId], FB-87).
   Future<void> connect(String deviceId,
-      {Duration? timeout, ProductClass? seedClass}) async {
+      {Duration? timeout, ProductClass? seedClass, String? requestedId}) async {
     _reconnectTimer?.cancel();
     // FB-53: a manual connect supersedes an armed autoConnect and its deadline
     // — the user has just restated, by hand, what they want to be connected to.
@@ -1492,8 +1610,20 @@ class ConnectionController extends ChangeNotifier {
       _setupFailuresSinceReady = 0;
       _setupFailuresDeviceId = deviceId;
     }
+    // FB-87 ①: in the same breath, always — including when the id did not
+    // change, because the same unit can be reached with and without a rebind
+    // and a leftover requested id would attribute this run to a page the user
+    // is no longer on.
+    _setupFailuresRequestedId = requestedId == deviceId ? null : requestedId;
     _manualDisconnect = false;
     _desiredDeviceId = deviceId;
+    // design 0068 (C): who we were ASKED for, and what that record says this
+    // unit's address is. Read from the requested record and not from
+    // `deviceId`, because on a rebind the record still lives under the old id —
+    // the same reason `seedClass` exists two lines below.
+    _requestedDeviceId = requestedId == deviceId ? null : requestedId;
+    _expectedMac = _devices?.deviceFor(requestedId ?? deviceId)?.mac;
+    _identityMismatch = false;
     // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
     // chosen while the link is still coming up, and on a stale iOS NSUUID that
     // can take ~10 s. `seedClass` covers a rebound id whose record still lives
@@ -1512,7 +1642,8 @@ class ConnectionController extends ChangeNotifier {
     _event('connect → ${shortDeviceHash(deviceId)}', deviceId: deviceId);
     final ok = await _ble.ensurePermissions();
     if (!ok) {
-      _setError('permission_denied', deviceId: deviceId);
+      _setError('permission_denied',
+          deviceId: deviceId, requestedId: _requestedDeviceId);
       _event('connect aborted: permission denied', deviceId: deviceId);
       notifyListeners();
       return;
@@ -1531,7 +1662,9 @@ class ConnectionController extends ChangeNotifier {
       // unauthorized and the classifier answers both — but not asserted with
       // `!`: a crash would be a worse way to learn otherwise than a blank line.
       final code = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
-      if (code != null) _setError(code, deviceId: deviceId);
+      if (code != null) {
+        _setError(code, deviceId: deviceId, requestedId: _requestedDeviceId);
+      }
       _event('connect aborted: $code', deviceId: deviceId);
       notifyListeners();
       return;
@@ -1547,7 +1680,10 @@ class ConnectionController extends ChangeNotifier {
       // cancelled ourselves, and there the canceller's own reason stands.
       final reason = connectFailureError(
           adapter: _adapter, isIOS: Platform.isIOS, error: e);
-      if (reason != null) _setError(reason, deviceId: deviceId);
+      // FB-87 ①: under BOTH names when a rebind gave the attempt two.
+      if (reason != null) {
+        _setError(reason, deviceId: deviceId, requestedId: _requestedDeviceId);
+      }
       _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
       rethrow;
@@ -1573,60 +1709,159 @@ class ConnectionController extends ChangeNotifier {
     await connect(target, seedClass: seed);
   }
 
-  /// Connect to a previously-saved device.
+  /// The exact message the darwin plugin returns when iOS does not recognise a
+  /// peripheral id — `FlutterBluePlusPlugin.m`, the `retrievePeripheralsWith
+  /// Identifiers` lookup that precedes every connect.
   ///
-  /// D.3: on iOS the saved NSUUID is install-scoped and may be stale, so we
-  /// rebind it to a freshly-discovered device advertising the same name before
-  /// connecting. If neither the saved id nor a name match is currently visible,
-  /// the connect surfaces a `device_stale` error (no infinite retry — D.4 caps
-  /// the reconnect loop). Android keeps using the stable MAC unchanged.
-  Future<void> connectToSaved(SavedDevice device) async {
-    final targetId = rebindSavedDeviceId(
+  /// 🔴 A STRING, AND THAT IS A KNOWN DEBT. FB-44's rule is that a
+  /// human-readable description is not an API, and it was learned the hard way:
+  /// a message match told ten `CBManagerStatePoweredOff` episodes that their
+  /// hardware no longer existed. It is broken here because there is no
+  /// alternative — the plugin raises this one as a plain `PlatformException`
+  /// with no `FbpErrorCode` behind it, and `FbpErrorCode` has no member that
+  /// means "unknown peripheral" (checked against flutter_blue_plus 1.36.8).
+  ///
+  /// What makes it tolerable is the direction it fails in. If a plugin upgrade
+  /// reworded this, [isUnknownPeripheralError] stops saying yes, and a rebind
+  /// that never happens costs the user one manual re-add. The opposite mistake
+  /// — mistaking some other failure for "id unknown" — is the one that connects
+  /// to the wrong machine, and it would take the plugin actively renaming a
+  /// different error to this. `identity_verification_test.dart` pins the string
+  /// verbatim so the upgrade shows up as a red test rather than as silence.
+  static const unknownPeripheralMessage = 'Peripheral not found';
+
+  /// Does [error] mean "iOS has never heard of this id"?
+  ///
+  /// This is the ONLY evidence that a saved id has actually gone stale. Design
+  /// 0068 §1: three independent observations say the identifier is stable for a
+  /// given phone and unit (the vendor's own app shows the same UUIDs we do; the
+  /// units advertise public static addresses; one saved id survived eleven days
+  /// across sessions in `2026.08.14/004`), so "stale" is rare and everything
+  /// else that used to trigger a rebind was something else wearing its clothes.
+  static bool isUnknownPeripheralError(Object? error) =>
+      error is PlatformException &&
+      error.code == 'connect' &&
+      (error.message ?? '').contains(unknownPeripheralMessage);
+
+  /// The id to retry [device] on after its own id was refused, or null for
+  /// "do not rebind".
+  ///
+  /// Everything about WHEN to rebind lives here; [rebindSavedDeviceId] decides
+  /// only which candidate, given that we are rebinding at all.
+  ///
+  /// 🔴 Pure, and [isIOS] is a parameter for the reason FB-75's
+  /// `autoConnectTargetVisible` is: the host that runs the tests reports
+  /// `Platform.isIOS == false`, so a branch that reads the real thing is the one
+  /// branch the suite cannot reach — and it is the only branch with a failure
+  /// mode.
+  static String? rebindTargetFor({
+    required SavedDevice device,
+    required Object error,
+    required Map<String, String> candidates,
+    required Iterable<String> savedNames,
+    required bool isIOS,
+  }) {
+    if (!isIOS) return null;
+    if (!isUnknownPeripheralError(error)) return null;
+    final target = rebindSavedDeviceId(
       savedId: device.id,
       savedName: device.name,
-      candidates: {for (final r in _scanResults) r.id: r.name},
-      useNameKey: Platform.isIOS,
+      candidates: candidates,
+      savedNames: savedNames,
+      useNameKey: true,
     );
-    if (targetId != device.id) {
-      _event('rebound saved id ${shortDeviceHash(device.id)} → '
-          '${shortDeviceHash(targetId)} (name=${device.name})');
-    }
+    return target == device.id ? null : target;
+  }
+
+  String? _rebindTargetFor(SavedDevice device, Object error) => rebindTargetFor(
+        device: device,
+        error: error,
+        candidates: {for (final r in _scanResults) r.id: r.name},
+        // The OTHER saved records — two of the user's own units sharing a name
+        // is the case this refuses to guess at (design 0068 §4).
+        savedNames: [
+          for (final d in savedDevices)
+            if (d.id != device.id) d.name,
+        ],
+        isIOS: Platform.isIOS,
+      );
+
+  /// Connect to a previously-saved device.
+  ///
+  /// D.3 / design 0068 (B): the saved id is dialled FIRST, always. Only if iOS
+  /// answers that it does not know that id — the one failure that actually
+  /// proves it is stale — do we look for a unit advertising the same name and
+  /// try that instead. Android keeps using the stable MAC unchanged, as it
+  /// always has.
+  ///
+  /// 🔴 What this replaced: the rebind used to happen BEFORE the connect,
+  /// triggered by the saved id being absent from the current scan. That test
+  /// catches "the unit is out of range" and "we are connected to it" far more
+  /// often than it catches a stale id — `2026.08.14/004` §5 S1 is the app
+  /// rebinding a perfectly valid id, two seconds after four connects to it, and
+  /// landing on a different physical capacitor.
+  Future<void> connectToSaved(SavedDevice device) async {
     try {
-      await connect(targetId, seedClass: device.productClass);
+      await connect(device.id, seedClass: device.productClass);
+      return;
     } catch (e) {
-      // iOS: a failed connect to a saved record usually means the NSUUID is
-      // stale — flag it so the UI can prompt a re-pick instead of spinning.
-      //
-      // FB-44: "usually" is doing real work in that sentence, and the code used
-      // to ignore it. The same classifier the preflight uses decides here too,
-      // so a failure that arrives with the radio down is never labelled stale —
-      // including the residual case the preflight cannot catch, where the
-      // adapter state has not caught up with the radio yet. The `(stale?)`
-      // marker travels with the label rather than with the platform, because
-      // that marker is what the stale-NSUUID counts are grepped from.
-      //
-      // FB-53: and the exception itself now gets a vote. Passing it is what
-      // keeps `(stale?)` off the line — and out of the counts — for a unit that
-      // was merely out of range, which the timeout says in so many words.
-      //
-      // A count discontinuity comes with that: on iOS a stale NSUUID ALSO
-      // surfaces as this same timeout (CoreBluetooth never answers either
-      // way), so out-of-range and stale are indistinguishable here and both
-      // now land in `device_unreachable`. `(stale?)` therefore all but
-      // vanishes from field logs at this version — a falling count means the
-      // label moved, not that stale ids stopped happening.
-      final reason = connectFailureError(
-          adapter: _adapter, isIOS: Platform.isIOS, error: e);
-      final stale = reason == 'device_stale';
-      // FB-86: against the REBOUND id, which is the one [connect] was given and
-      // the one [connectedDeviceId] now reports. Filing it under the saved
-      // record's id instead would put the failure on a unit the app never
-      // dialled, and hide it from the page that is showing the attempt.
-      if (reason != null) _setError(reason, deviceId: targetId);
-      _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');
-      notifyListeners();
-      rethrow;
+      final target = _rebindTargetFor(device, e);
+      if (target == null) {
+        _reportSavedConnectFailure(device.id, e, requestedId: null);
+        rethrow;
+      }
+      _event('rebound saved id ${shortDeviceHash(device.id)} → '
+          '${shortDeviceHash(target)} (name=${device.name}) — iOS does not '
+          'know the saved id');
+      try {
+        await connect(target,
+            seedClass: device.productClass, requestedId: device.id);
+      } catch (e2) {
+        _reportSavedConnectFailure(target, e2, requestedId: device.id);
+        rethrow;
+      }
     }
+  }
+
+  /// Classify and record a failed connect to a SAVED unit.
+  ///
+  /// [deviceId] is the id we dialled; [requestedId] the saved record's id when
+  /// they differ (FB-87 ①).
+  void _reportSavedConnectFailure(String deviceId, Object e,
+      {required String? requestedId}) {
+    // iOS: a failed connect to a saved record usually means the NSUUID is
+    // stale — flag it so the UI can prompt a re-pick instead of spinning.
+    //
+    // FB-44: "usually" is doing real work in that sentence, and the code used
+    // to ignore it. The same classifier the preflight uses decides here too,
+    // so a failure that arrives with the radio down is never labelled stale —
+    // including the residual case the preflight cannot catch, where the
+    // adapter state has not caught up with the radio yet. The `(stale?)`
+    // marker travels with the label rather than with the platform, because
+    // that marker is what the stale-NSUUID counts are grepped from.
+    //
+    // FB-53: and the exception itself now gets a vote. Passing it is what
+    // keeps `(stale?)` off the line — and out of the counts — for a unit that
+    // was merely out of range, which the timeout says in so many words.
+    //
+    // A count discontinuity comes with that: on iOS a stale NSUUID ALSO
+    // surfaces as this same timeout (CoreBluetooth never answers either
+    // way), so out-of-range and stale are indistinguishable here and both
+    // now land in `device_unreachable`. `(stale?)` therefore all but
+    // vanishes from field logs at this version — a falling count means the
+    // label moved, not that stale ids stopped happening.
+    final reason = connectFailureError(
+        adapter: _adapter, isIOS: Platform.isIOS, error: e);
+    final stale = reason == 'device_stale';
+    // FB-86: against the id [connect] was given and [connectedDeviceId] now
+    // reports. FB-87 ①: and against the saved record's id as well when a rebind
+    // made them differ — that second id is the one every screen is keyed by, so
+    // filing only under the first hides the failure from the page showing it.
+    if (reason != null) {
+      _setError(reason, deviceId: deviceId, requestedId: requestedId);
+    }
+    _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');
+    notifyListeners();
   }
 
   /// User-initiated disconnect (suppresses auto-reconnect).
@@ -2521,6 +2756,9 @@ class ConnectionController extends ChangeNotifier {
     // Every frame proves the unit is still alive, so last-seen advances with
     // the data rather than sitting at the connect time.
     _observeLiveMac(s);
+    // design 0068 (C): before anything is attributed to this link, ask whether
+    // it is the link we were asked for.
+    _verifyIdentity(s);
     final id = _ble.connectedDeviceId;
     if (id != null) {
       // The sample is right here, so the stored value and the stored age come
@@ -2626,6 +2864,62 @@ class ConnectionController extends ChangeNotifier {
     final mac = s.mac;
     if (mac == null || mac.isEmpty || mac == _liveMac) return;
     _liveMac = mac;
+    notifyListeners();
+  }
+
+  /// Two MACs, one machine? Compared case-insensitively and trimmed, because
+  /// the two sides reach us by different routes — one off the wire now, one out
+  /// of SQLite from an earlier build — and `0x38` is ASCII text (§8.2.3), not
+  /// bytes.
+  static bool sameMac(String a, String b) =>
+      a.trim().toUpperCase() == b.trim().toUpperCase();
+
+  /// Is the unit that just answered the unit the user asked for? (design 0068 C)
+  ///
+  /// 🔴 WHY THIS EXISTS. On iOS the saved id can be REBOUND to another unit
+  /// advertising the same name, and same-name units are not hypothetical: two
+  /// capacitors both advertise `RCE-SCAP_II` and `2026.08.14/004` §5 S1 is a
+  /// wire-level capture of the app connecting to the wrong one of them, three
+  /// times, reaching `ready` each time. `saved_device.dart` states the cost of
+  /// that in its own comment — *"silent, and indistinguishable afterwards"*.
+  /// This is what stops it being silent.
+  ///
+  /// 🔑 The check has to live HERE and not in the scan, and that is the whole
+  /// shape of design 0068: iOS hands an app no MAC before a connection and the
+  /// advertisement carries no identity at all — no serial, no address, just a
+  /// name that does not distinguish two units and five bytes of live
+  /// measurement (`docs/knowledges/advertisement-payload.md`, two captures, six
+  /// units). `0x38` is the first moment identity exists, so it is the first
+  /// moment it can be checked.
+  ///
+  /// ⚠️ It cannot protect a FIRST connect: with no stored MAC there is no
+  /// yardstick, only something to learn. That is a property of the problem.
+  ///
+  /// The drop goes through [disconnect] rather than `_ble.disconnect()` on
+  /// purpose: that one sets `_manualDisconnect` and clears the desired id, so
+  /// the ladder and the iOS autoConnect hand-off do not immediately reconnect
+  /// us to the very unit we just rejected. It leaves [_lastError] standing —
+  /// which is the behaviour FB-87 ② deliberately keeps.
+  void _verifyIdentity(TelemetrySample s) {
+    if (_identityMismatch) return;
+    final expected = _expectedMac;
+    final actual = s.mac;
+    if (expected == null || expected.isEmpty) return;
+    if (actual == null || actual.isEmpty) return;
+    if (sameMac(expected, actual)) return;
+    _identityMismatch = true;
+    // Filed under what the USER asked for — the saved record's id, which is the
+    // id their screen is keyed by. Filing it under the id we dialled would put
+    // the report on a unit they never chose (FB-87 ①).
+    final asked = _requestedDeviceId ?? _desiredDeviceId;
+    // Both addresses hashed, like every other id in this log: the export path
+    // hashes MACs (design 0027 §3.1) and a diagnostic line is exported material.
+    _event(
+        'identity mismatch: saved record says ${shortDeviceHash(expected)}, '
+        'wire says ${shortDeviceHash(actual)} — dropping the link',
+        deviceId: asked);
+    _setError('wrong_device', deviceId: asked);
+    unawaited(disconnect().catchError((Object _) {}));
     notifyListeners();
   }
 

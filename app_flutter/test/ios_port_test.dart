@@ -213,6 +213,7 @@ void main() {
         savedId: 'AA:BB:CC:DD:EE:FF',
         savedName: 'RCE-SCAP_II',
         candidates: const {'11:22:33:44:55:66': 'RCE-SCAP_II'},
+        savedNames: const [],
         useNameKey: false,
       );
       expect(id, 'AA:BB:CC:DD:EE:FF');
@@ -226,6 +227,7 @@ void main() {
           'UUID-OLD': 'RCE-SCAP_II',
           'UUID-OTHER': 'RCE-SCAP_I',
         },
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-OLD');
@@ -239,6 +241,7 @@ void main() {
           'UUID-FRESH': 'RCE-SCAP_II',
           'UUID-OTHER': 'RCE-SCAP_I',
         },
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-FRESH');
@@ -250,6 +253,7 @@ void main() {
         savedId: 'UUID-STALE',
         savedName: 'RCE-SCAP_II',
         candidates: const {'UUID-OTHER': 'RCE-SCAP_I'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-STALE');
@@ -261,6 +265,7 @@ void main() {
         savedId: 'UUID-STALE',
         savedName: '',
         candidates: const {'UUID-FRESH': 'RCE-SCAP_II'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-STALE');
@@ -271,6 +276,7 @@ void main() {
         savedId: 'UUID-STALE',
         savedName: '',
         candidates: const {'UUID-FRESH': ''},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-STALE');
@@ -292,6 +298,7 @@ void main() {
         savedId: 'UUID-STALE',
         savedName: 'RCE_RSPB-01',
         candidates: const {'UUID-ONE': 'RCE_RSPB-01', 'UUID-TWO': 'RCE_RSPB-01'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-STALE');
@@ -302,6 +309,7 @@ void main() {
         savedId: 'UUID-STALE',
         savedName: 'RCE-SCAP_II',
         candidates: const {'UUID-NEW': 'RCE-SCAP_II', 'OTHER': 'RCE_RSPB-01'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'UUID-NEW');

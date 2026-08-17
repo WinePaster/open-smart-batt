@@ -201,21 +201,45 @@ class SavedDevice {
 /// On platforms where the remote id is stable ([useNameKey] == false, i.e.
 /// Android MAC) this is identity: always use [savedId].
 ///
-/// On iOS ([useNameKey] == true) the saved NSUUID is volatile, so we rebind:
+/// On iOS ([useNameKey] == true) the saved NSUUID may be one iOS no longer
+/// knows, so we rebind:
 ///   1. if [savedId] is still present among [candidates] (id → advertised
 ///      name), keep it (the OS is reusing the same UUID this session);
-///   2. otherwise pick the freshly-discovered candidate whose advertised name
+///   2. refuse outright if [savedNames] — the names of the user's OTHER saved
+///      records — already contains [savedName]. See below;
+///   3. otherwise pick the freshly-discovered candidate whose advertised name
 ///      equals [savedName];
-///   3. otherwise fall back to [savedId] (caller surfaces a stale error if the
+///   4. otherwise fall back to [savedId] (caller surfaces a stale error if the
 ///      connect then fails).
+///
+/// 🔴 WHEN this runs changed in design 0068 (B), and that matters more than
+/// anything in here: it used to be consulted BEFORE the connect, on the test
+/// "is the saved id in the current scan?" — and a saved unit drops out of a scan
+/// for reasons that have nothing to do with its id, the commonest being that we
+/// are connected to it (a peripheral does not advertise while connected). In
+/// `2026.08.14/004` §5 S1 that is exactly what happened: four connects to the
+/// unit, a scan two seconds after the last one dropped, the unit not in it, and
+/// the app rebound to the OTHER capacitor of the same name and reached `ready`
+/// on it. The caller now dials the saved id FIRST and only asks this function
+/// anything if the platform says it does not know that id.
+///
+/// 🔑 [savedNames] is rule 2 and it is the other half of the same capture. The
+/// uniqueness check below is against what is VISIBLE, so "the saved unit is out
+/// of range and its twin is not" passes it every time — `matches.length == 1` is
+/// then true by construction. Two saved records sharing a name means the user
+/// owns two units this function cannot tell apart, so it does not try.
 String rebindSavedDeviceId({
   required String savedId,
   required String savedName,
   required Map<String, String> candidates,
+  required Iterable<String> savedNames,
   required bool useNameKey,
 }) {
   if (!useNameKey || savedName.isEmpty) return savedId;
   if (candidates.containsKey(savedId)) return savedId;
+  // Rule 2. Counted rather than `contains`-ed: the caller passes the names of
+  // the OTHER records, so one hit is already one too many.
+  if (savedNames.any((n) => n == savedName)) return savedId;
   // Rebind only on a UNIQUE name match. Duplicate advertised names are real,
   // not hypothetical: two distinct power banks both advertise 'RCE_RSPB-01'
   // (a 2026-07-29 field capture, confirmed in the vendor app's own scan list).

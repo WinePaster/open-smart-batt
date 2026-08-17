@@ -301,6 +301,7 @@ void main() {
         savedId: d.id,
         savedName: d.name,
         candidates: const {'new-nsuuid': 'RCE-SCAP_II'},
+        savedNames: const [],
         useNameKey: true, // iOS
       );
       expect(rebound, 'new-nsuuid');

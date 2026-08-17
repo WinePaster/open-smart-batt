@@ -680,6 +680,12 @@ abstract class AppLocalizations {
   /// **'Nothing more happens on its own from here. Sort out the Bluetooth problem above first — connecting and scanning will both keep failing until it is fixed.'**
   String get disconnectedGaveUpRadioHint;
 
+  /// Advice card for wrong_device (design 0068 C). The standing hint says 'check it is nearby and powered', which is the wrong instruction here: the unit answered, it was simply not this one.
+  ///
+  /// In en, this message translates to:
+  /// **'The saved entry is pointing at another unit with the same name. Scan again and pick the right one, or remove this entry and add it back.'**
+  String get disconnectedWrongDeviceHint;
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:
@@ -997,6 +1003,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This device could not be found. Check it is nearby and switched on'**
   String get devicesConnectFailedUnreachable;
+
+  /// No description provided for @devicesConnectFailedWrongDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'That is a different unit — its address does not match the one you saved. Disconnected'**
+  String get devicesConnectFailedWrongDevice;
 
   /// No description provided for @devicesRemoveTitle.
   ///
