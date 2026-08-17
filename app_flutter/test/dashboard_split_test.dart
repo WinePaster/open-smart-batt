@@ -25,6 +25,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
+import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
 import 'package:open_smart_batt/ui/dashboard/status_controls.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -323,6 +324,50 @@ void main() {
       expect(find.byType(BatteryView), findsOneWidget);
       // Same register, different class → shown here, hidden on the capacitor.
       expect(find.text('MAIN CURRENT'), findsOneWidget);
+    });
+  });
+
+  group('readout precision follows the register, not the layout (FB-81)', () {
+    testWidgets('voltages carry two decimals, current keeps one',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      s.connection.setPackLabelOverride(ProductClass.smartBattery);
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
+      await tester.runAsync(() async {
+        // 13.28 is the owner's own 2026-08-17 sighting: the chart track above
+        // the grid drew 13.28 while the grid rounded it to 13.3.
+        fakeBle.emit(TelemetrySample(
+          timestamp: DateTime.now(),
+          pvlt: 13.28,
+          svlt: 13.11,
+          current: -35,
+        ));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+
+      // `findRichText`: a readout's value and unit share one `Text.rich`, so a
+      // plain-text finder sees the label and nothing else.
+      Finder inGrid(String s) => find.descendant(
+            of: find.byType(ReadoutsCard),
+            matching: find.textContaining(s, findRichText: true),
+          );
+
+      // `0x19` / `0x37` are `u16/100`, so both digits are measured.
+      expect(inGrid('13.28'), findsOneWidget);
+      expect(inGrid('13.11'), findsOneWidget);
+      expect(inGrid('13.3'), findsNothing);
+
+      // `0x2E` is `512 - u16` — integer amps. The magnitude is shown (the sign
+      // is spent on the direction badge, design 0056), and the lone decimal
+      // stays as it was: widening it would invent a precision, and this test
+      // exists to keep the FB-81 sweep from taking the current cell with it.
+      expect(inGrid('35.0'), findsOneWidget);
     });
   });
 }

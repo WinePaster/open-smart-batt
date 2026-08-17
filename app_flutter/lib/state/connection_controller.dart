@@ -2901,9 +2901,14 @@ String formatStaleMonitorBody(String body, DateTime? at) {
 /// Units only (V / % / °C), no translated words, so it needs no l10n and stays
 /// correct in any language. Absent fields are dropped rather than shown as a
 /// placeholder — a capacitor sends no SOC, and "—%" reads as a fault.
+///
+/// Two decimals on the voltage, same ruling as the readouts grid (FB-81,
+/// 2026-08-17). This line is the easiest of the four sites to forget, and it is
+/// the worst one to leave behind: the notification sits beside the app rather
+/// than inside it, so a mismatch here shows both numbers at once.
 String formatMonitorBody(TelemetrySample s) {
   final parts = <String>[
-    if (s.pvlt != null) '${s.pvlt!.toStringAsFixed(1)} V',
+    if (s.pvlt != null) '${s.pvlt!.toStringAsFixed(2)} V',
     if (s.socPercent != null) '${s.socPercent}%',
     if (s.temperatureC != null) '${s.temperatureC}°C',
   ];

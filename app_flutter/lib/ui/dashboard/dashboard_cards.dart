@@ -388,16 +388,30 @@ Widget? dashboardCardFor(
           // order directly above it. Two surfaces on one screen listing the
           // same three quantities in different orders is a reading error
           // waiting to happen.
+          //
+          // 🔴 TWO decimals on the voltages (FB-81, owner's 2026-08-17 ruling).
+          // The paragraph above aligned the ORDER with the chart track directly
+          // overhead and stopped there, so the same screen printed 13.28 on the
+          // curve and 13.3 in the cell — the reading error it was written to
+          // prevent, one line further down. `0x19`/`0x37` decode as `u16/100`,
+          // so the second decimal is measured, not interpolated, and rounding
+          // it away costs up to 0.05 V — five times the 10 mV quantum.
+          //
+          // The CURRENT cell below deliberately keeps one decimal: `0x2E` is
+          // `512 - u16`, integer amps, so its `.0` is typography either way and
+          // widening it would only claim a precision the wire does not carry
+          // (design 0067 §3.1). Same ruling, opposite answer, because the
+          // question is what the register can support — not what looks tidy.
           Readout(
             icon: Icons.bolt,
             label: l10n.gaugePvltLabel,
-            value: _fmt1(tele.pvlt),
+            value: _fmt2(tele.pvlt),
             unit: 'V',
           ),
           Readout(
             icon: Icons.bolt,
             label: l10n.dashboardReadoutSvltLabel,
-            value: _fmt1(tele.svlt),
+            value: _fmt2(tele.svlt),
             unit: 'V',
           ),
           Readout(
@@ -528,3 +542,8 @@ Widget? dashboardCardFor(
 
 String _fmtInt(double? v) => v == null ? '--' : v.round().toString();
 String _fmt1(double? v) => v == null ? '--' : v.toStringAsFixed(1);
+
+/// Voltages only. Kept beside [_fmt1] rather than replacing it: the two now
+/// mean different things — "as fine as the register goes" and "one decimal
+/// because that is the house style for a quantity whose register has none".
+String _fmt2(double? v) => v == null ? '--' : v.toStringAsFixed(2);

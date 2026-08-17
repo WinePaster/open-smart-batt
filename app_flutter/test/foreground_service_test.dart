@@ -377,7 +377,7 @@ void main() {
       ble.emitTelemetry(sampleAt(pvlt: 13.4, soc: 85, tempC: 26));
       await settle();
       expect(monitor.posted.last.title, 'LIVE');
-      expect(monitor.posted.last.body, '13.4 V · 85% · 26°C');
+      expect(monitor.posted.last.body, '13.40 V · 85% · 26°C');
 
       final before = monitor.calls.length;
       health.set(stalled: true, at: DateTime(2026, 8, 5, 14, 32));
@@ -386,7 +386,7 @@ void main() {
       expect(monitor.calls.length, greaterThan(before),
           reason: 'a state change must not wait out the 5 s throttle');
       expect(monitor.posted.last.title, 'STALE');
-      expect(monitor.posted.last.body, '13.4 V · 85% · 26°C (14:32)');
+      expect(monitor.posted.last.body, '13.40 V · 85% · 26°C (14:32)');
     });
 
     test('recovery goes back to "monitoring" immediately', () async {
@@ -541,14 +541,17 @@ void main() {
 
   group('formatMonitorBody', () {
     test('renders voltage, charge and temperature', () {
+      // Two decimals (FB-81): `0x19` decodes as `u16/100`, so 13.42 is a value
+      // the register can hold, and the old one-decimal form printed it as 13.4
+      // while the dashboard beside it said 13.42.
       expect(formatMonitorBody(sampleAt(pvlt: 13.42, soc: 85, tempC: 26)),
-          '13.4 V · 85% · 26°C');
+          '13.42 V · 85% · 26°C');
     });
 
     test('drops fields the unit does not send', () {
       // A super-capacitor reports no SOC at all. Showing "—%" for it would read
       // as a fault rather than as "not applicable".
-      expect(formatMonitorBody(sampleAt(pvlt: 13.0)), '13.0 V');
+      expect(formatMonitorBody(sampleAt(pvlt: 13.0)), '13.00 V');
       expect(formatMonitorBody(sampleAt()), '');
     });
   });
