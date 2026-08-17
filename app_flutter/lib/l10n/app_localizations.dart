@@ -3062,6 +3062,24 @@ abstract class AppLocalizations {
   /// **'Save it to put it on the home page and keep its history.'**
   String get devicesUnsavedBody;
 
+  /// FB-82 Q4. Shown UNDER the connection failure report on a saved unit's page, never instead of it. It reports that THIS VISIT made no automatic attempt — not why a connection failed, which the card above already answers.
+  ///
+  /// In en, this message translates to:
+  /// **'No automatic connection this time'**
+  String get devicesAutoConnectSkippedTitle;
+
+  /// FB-82 Q4, the `last error not cleared` gate. The error code is deliberately not repeated here — it is already in the card above, turned into an instruction.
+  ///
+  /// In en, this message translates to:
+  /// **'The previous connection problem has not been cleared, so opening this page made no attempt of its own. Use the button below to connect now.'**
+  String get devicesAutoConnectSkippedLastError;
+
+  /// FB-82 Q4, the `setup stalled` gate (FB-50: linked but never ready).
+  ///
+  /// In en, this message translates to:
+  /// **'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.'**
+  String get devicesAutoConnectSkippedStalled;
+
   /// No description provided for @devicesSave.
   ///
   /// In en, this message translates to:

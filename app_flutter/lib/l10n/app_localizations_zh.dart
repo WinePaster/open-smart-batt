@@ -1713,6 +1713,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesUnsavedBody => '儲存後才會出現在主頁，並記住它的歷史。';
 
   @override
+  String get devicesAutoConnectSkippedTitle => '這次沒有自動連線';
+
+  @override
+  String get devicesAutoConnectSkippedLastError =>
+      '上一次的連線問題還沒有清除，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
+
+  @override
+  String get devicesAutoConnectSkippedStalled =>
+      '上一次的連線還卡在設定階段沒有完成，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
+
+  @override
   String get devicesSave => '儲存';
 
   @override

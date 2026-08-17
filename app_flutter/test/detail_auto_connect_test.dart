@@ -40,6 +40,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations_en.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
@@ -101,6 +102,14 @@ class _CountingConn extends ConnectionController {
   bool adapterOn = true;
   String? error;
   List<DiscoveredDevice> results = const [];
+
+  /// Whose error/stall the controller's singular fields belong to. `_OfflineBody`
+  /// gates the whole failure report on this matching the page's unit, so a test
+  /// about a card that must STAY on screen (A27/A28) has to set it.
+  String? current;
+
+  @override
+  String? get connectedDeviceId => current;
 
   @override
   bool get isOnline => online;
@@ -586,5 +595,207 @@ void main() {
       blockerWith(autoReconnect: false, isOnline: true, isSetupStalled: true),
       blockerWith(autoReconnect: false),
     );
+  });
+
+  // ── FB-82 Q4: two of the nine are also said ON SCREEN ───────────────────
+  //
+  // 🔴 What these pin is NARROWER than it looks, and the distinction is the
+  // ruling itself. When these two gates fire, the screen is ALREADY showing a
+  // specific failure card — the stalled copy with "close the app fully", or the
+  // give-up copy branched on the error code. The user is not staring at
+  // nothing. What no part of the app said, until now, is that THIS VISIT made
+  // no attempt at all: FB-75 promised an automatic connect, the previous
+  // attempt's `lastError` / stall latch was never cleared, and so the card on
+  // screen is an OLD one. The notice reports that, and only that — a notice
+  // reading "could not connect, because…" would be the card above said twice.
+
+  test('A26: exactly two gates are loud, and they are the two that were ruled '
+      'loud', () {
+    // The gatekeeper, in `give_up_visibility_test.dart`'s spirit: it derives the
+    // sentences from `autoConnectBlocker` itself, so rewording a gate cannot
+    // silently drop its notice, and adding a notice to one of the silent seven
+    // cannot pass unnoticed. Seven of nine staying quiet IS the ruling —
+    // `already online` / `link busy` / `reconnect already pending` /
+    // `autoconnect hand-off armed` describe a screen that is visibly doing
+    // something; `device not saved` is design 0055's manual flow;
+    // `bluetooth adapter not on` has its own prompt. `auto-connect setting off`
+    // was left blank ON PURPOSE (a product judgement, reserved as its own
+    // future line) — if it ever gains a notice, this test is where it is
+    // declared, not somewhere it slipped in.
+    final loud = <String, AutoConnectSkipNotice?>{
+      for (final r in <String>[
+        blockerWith(isSaved: false)!,
+        blockerWith(autoReconnect: false)!,
+        blockerWith(isOnline: true)!,
+        blockerWith(isBusy: true)!,
+        blockerWith(isRetrying: true)!,
+        blockerWith(isAutoConnectArmed: true)!,
+        blockerWith(lastError: 'device_stale')!,
+        blockerWith(isSetupStalled: true)!,
+        blockerWith(isAdapterOn: false)!,
+      ])
+        r: autoConnectSkipNotice(r),
+    };
+
+    expect(loud, hasLength(9));
+    expect(
+      loud.values.where((n) => n != null).toList(),
+      hasLength(2),
+      reason: 'the ruling was two, not nine — nine notices is a page that '
+          'nags about states the user can already see',
+    );
+    expect(
+      autoConnectSkipNotice(blockerWith(lastError: 'device_stale')),
+      AutoConnectSkipNotice.lastError,
+    );
+    expect(
+      autoConnectSkipNotice(blockerWith(isSetupStalled: true)),
+      AutoConnectSkipNotice.setupStalled,
+    );
+    // The one gate whose sentence VARIES: it carries the code, so the mapping
+    // has to be a prefix and every code has to land on the same notice.
+    for (final code in <String>[
+      'device_unreachable',
+      'bluetooth_off',
+      'gatt_setup_stalled',
+      'connect_failed',
+    ]) {
+      expect(
+        autoConnectSkipNotice(blockerWith(lastError: code)),
+        AutoConnectSkipNotice.lastError,
+        reason: 'the code varies, the notice does not',
+      );
+    }
+    // Nothing in the way ⇒ nothing to say.
+    expect(autoConnectSkipNotice(blockerWith()), isNull);
+  });
+
+  testWidgets('A27: a stale error blocks the attempt, and the page SAYS so — '
+      'without touching the failure card', (tester) async {
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..current = 'DEV-A',
+    );
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsOneWidget);
+    expect(find.text(en.devicesAutoConnectSkippedLastError), findsOneWidget);
+
+    // 🔴 THE OTHER HALF, and the reason the notice is a separate widget rather
+    // than a different `connectionFailureCopy` branch. The gate that produced
+    // it exists because "the page is showing a failure report WITH a retry
+    // button; pressing it for the user is the page arguing with them" — so a
+    // notice that REPLACED that report would be doing the very thing the gate
+    // was written to prevent, only in words instead of in radio traffic.
+    expect(find.text(en.disconnectedGaveUpTitle), findsOneWidget);
+    expect(find.text(en.devicesConnectFailedUnreachable), findsOneWidget);
+    expect(find.text(en.disconnectedGaveUpHint), findsOneWidget);
+    expect(find.text(en.disconnectedStalledRetry), findsOneWidget);
+  });
+
+  testWidgets('A28: the stalled gate gets its OWN sentence, over the stalled '
+      'card', (tester) async {
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      configure: (c) => c
+        ..stalled = true
+        ..current = 'DEV-A',
+    );
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(find.text(en.devicesAutoConnectSkippedStalled), findsOneWidget);
+    // Not the other one: FB-50's "linked but never ready" and "the last attempt
+    // failed" send the reader to different places, exactly as the gates do.
+    expect(find.text(en.devicesAutoConnectSkippedLastError), findsNothing);
+    // The card underneath is untouched, hint and all.
+    expect(find.text(en.disconnectedStalledTitle), findsOneWidget);
+    expect(find.text(en.disconnectedStalledHint), findsOneWidget);
+  });
+
+  testWidgets('A29: the silent seven stay silent — the radio being off says '
+      'nothing here', (tester) async {
+    final en = AppLocalizationsEn();
+    await boot(tester, configure: (c) => c.adapterOn = false);
+
+    expect(conn.connectToSavedCalls, 0);
+    // It is still WRITTEN (A22) — the log and the screen are different
+    // audiences, and that split is the whole shape of this ruling.
+    expect(conn.skips.single, contains('adapter'));
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+  });
+
+  testWidgets('A30: a page that DID connect says nothing about not connecting',
+      (tester) async {
+    final en = AppLocalizationsEn();
+    await boot(tester);
+
+    expect(conn.connectToSavedCalls, 1);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+  });
+
+  testWidgets('A31: the notice does not come BACK after the user retried by '
+      'hand', (tester) async {
+    // 🔴 The failure mode that needs a latch of its own. A manual retry clears
+    // `lastError`, so the gate opens; if the retry then fails, the gate closes
+    // again and "this visit made no automatic attempt" is still literally true
+    // — and completely wrong to show. The user pressed a button and is looking
+    // at its result; telling them nothing was tried reads as the screen denying
+    // what they just did.
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..current = 'DEV-A',
+    );
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsOneWidget);
+
+    // The retry: `connect()` clears the error and the link goes busy.
+    conn
+      ..error = null
+      ..busy = true
+      ..bump();
+    await tester.pump();
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+
+    // ...and it fails, putting the very same gate back in the way.
+    conn
+      ..busy = false
+      ..error = 'device_unreachable'
+      ..bump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+    expect(find.text(en.disconnectedGaveUpTitle), findsOneWidget,
+        reason: 'the failure report is still the answer to "what happened"');
+  });
+
+  testWidgets('A32: the notice is recomputed, not latched — a gate that clears '
+      'takes its sentence with it', (tester) async {
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      configure: (c) => c
+        ..error = 'device_unreachable'
+        ..current = 'DEV-A',
+    );
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsOneWidget);
+
+    // Whatever cleared it — switching device, a `ready` elsewhere — the one-shot
+    // latch has not been spent, so the automatic connect now happens. The claim
+    // "no automatic attempt was made" stops being true at that instant.
+    conn
+      ..error = null
+      ..bump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 1);
+    expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
   });
 }
