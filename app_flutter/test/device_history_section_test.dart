@@ -723,4 +723,102 @@ void main() {
     });
   });
 
+  // ==========================================================================
+  // FB-85 — a curve it cannot draw must not withhold the numbers.
+  //
+  // 🔴 Found while fixing this file's own time-zone flakiness (2026-08-17): the
+  // stats strip was the LAST CHILD of `HistoryTrendCard.build`, below a
+  // `buckets.length < 2` early return, so a unit holding a whole night of
+  // readings could show one sentence and no number at all. A chart point is
+  // `historyChartBucketMs` wide; `HistoryStats` is one aggregate over the range
+  // and needs no bucket — two different questions that shared one guard.
+  // ==========================================================================
+  group('FB-85 — too short to chart still reports what it has', () {
+    testWidgets('rows inside ONE bucket: no curve, but the numbers are there',
+        (tester) async {
+      // Reachable at any hour — a link that came up seconds ago. (The other way
+      // in is the first minute after LOCAL midnight, when "today" is shorter
+      // than the 1-minute bucket floor; that one needs the clock, this one does
+      // not, and both run the same code path.)
+      await boot(tester);
+      await tester.runAsync(() async {
+        final now = DateTime.now();
+        for (var i = 0; i < 3; i++) {
+          await services.historyRepo.insertSample(
+            TelemetrySample(
+              timestamp: now.subtract(Duration(milliseconds: 300 * i)),
+              pvlt: 13.42,
+              temperatureC: 30,
+              mode: ReportedStatus.normal,
+            ),
+            deviceId: 'A',
+          );
+        }
+      });
+      await pumpSection(tester, deviceId: 'A', live: false);
+
+      // It still says the curve is not drawable — that part was never wrong.
+      expect(find.textContaining('chart'), findsWidgets);
+      // 🔑 And this is FB-85: the aggregate it already had is on screen.
+      expect(showsVoltage(13.42), isTrue,
+          reason: 'a night of readings withheld because the curve could not be '
+              'drawn is the defect — the strip needs no bucket');
+      expect(find.textContaining('30°C'), findsWidgets);
+    });
+
+    testWidgets('but a card with NOTHING shows no strip of dashes', (
+      tester,
+    ) async {
+      // The guard is `stats.count`, not `buckets.isEmpty` — otherwise the fix
+      // above would paint "--  --  --" at every never-recorded unit, which is
+      // worse than the sentence alone.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: const Scaffold(
+          body: HistoryTrendCard(
+            buckets: [],
+            stats: HistoryStats.empty,
+            tempUnit: TempUnit.celsius,
+            multiDay: false,
+            bucketMs: 60000,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.textContaining('--'), findsNothing);
+    });
+
+    testWidgets('the copy no longer claims a record count it does not mean', (
+      tester,
+    ) async {
+      // 🔴 It read "need at least 2 records", which is false: at second
+      // resolution three minutes is ~180 rows and it still cannot chart. What
+      // is short is the SPAN, and telling someone to go and collect more
+      // readings is the wrong instruction — the same defect class as FB-44's
+      // "connection failed, please try again".
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: const Scaffold(
+          body: HistoryTrendCard(
+            buckets: [],
+            stats: HistoryStats.empty,
+            tempUnit: TempUnit.celsius,
+            multiDay: false,
+            bucketMs: 60000,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.textContaining('records'), findsNothing);
+      expect(find.textContaining('span'), findsOneWidget);
+    });
+  });
 }

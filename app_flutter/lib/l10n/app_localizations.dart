@@ -1661,7 +1661,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyChartInsufficientData.
   ///
   /// In en, this message translates to:
-  /// **'Not enough data to chart (need at least 2 records)'**
+  /// **'Too short a span to chart yet'**
   String get historyChartInsufficientData;
 
   /// No description provided for @settingsConnectionHeading.

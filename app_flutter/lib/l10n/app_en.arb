@@ -750,7 +750,7 @@
   },
   "historyRowThresholdWarning": "Protection threshold warning",
   "historyStatusEvent": "Event",
-  "historyChartInsufficientData": "Not enough data to chart (need at least 2 records)",
+  "historyChartInsufficientData": "Too short a span to chart yet",
   "settingsConnectionHeading": "Connection",
   "settingsAutoReconnectLabel": "Auto-reconnect",
   "settingsAutoReconnectSub": "Automatically attempt to reconnect when the connection drops",

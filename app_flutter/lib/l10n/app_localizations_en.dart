@@ -1021,8 +1021,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyStatusEvent => 'Event';
 
   @override
-  String get historyChartInsufficientData =>
-      'Not enough data to chart (need at least 2 records)';
+  String get historyChartInsufficientData => 'Too short a span to chart yet';
 
   @override
   String get settingsConnectionHeading => 'Connection';
