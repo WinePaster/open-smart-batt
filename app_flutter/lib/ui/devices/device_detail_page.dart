@@ -63,6 +63,58 @@ bool autoConnectTargetVisible({
   return candidates.containsKey(target);
 }
 
+/// Why FB-75's automatic connect did not fire, or null when nothing blocks it.
+///
+/// 🔴 FB-82. This exists because the feature used to fail SILENTLY: the owner
+/// reported on v0.7.22 that opening a saved unit's page did not connect, and
+/// nothing — not the screen, not the diagnostic log — could say which of the
+/// gates below had refused. The report was answerable only by reading source
+/// and guessing at a platform, which is the state this function ends.
+///
+/// The gate ORDER is behaviour, not presentation: it is the order
+/// [_DeviceDetailPageState._maybeAutoConnect] applied before this function
+/// existed, and the first match is what gets reported. Reordering it would
+/// change which reason a given phone logs.
+///
+/// The busy/retrying/armed trio, which used to share one `if`, is split into
+/// three answers on purpose — "the link is busy" and "an iOS hand-off is still
+/// outstanding" send whoever reads the log to different places.
+///
+/// Top-level and pure for [autoConnectTargetVisible]'s reason: the branch with
+/// the failure mode (iOS) is the one branch a widget test on this host cannot
+/// reach.
+@visibleForTesting
+String? autoConnectBlocker({
+  required bool isSaved,
+  required bool autoReconnect,
+  required bool isOnline,
+  required bool isBusy,
+  required bool isRetrying,
+  required bool isAutoConnectArmed,
+  required String? lastError,
+  required bool isSetupStalled,
+  required bool isAdapterOn,
+  required bool targetVisible,
+}) {
+  if (!isSaved) return 'device not saved';
+  if (!autoReconnect) return 'auto-connect setting off';
+  if (isOnline) return 'already online';
+  if (isBusy) return 'link busy';
+  if (isRetrying) return 'reconnect already pending';
+  if (isAutoConnectArmed) return 'autoconnect hand-off armed';
+  // The CODE travels, not just the word: `bluetooth_off` and `device_stale`
+  // send a reader to different places, and this line is often the only record
+  // that the page saw an error at all.
+  if (lastError != null) return 'last error not cleared: $lastError';
+  if (isSetupStalled) return 'setup stalled';
+  if (!isAdapterOn) return 'bluetooth adapter not on';
+  // 🔴 iOS only — see [autoConnectTargetVisible]. Named for what a reader has
+  // to DO about it: the unit was never scanned on this trip through the page,
+  // and opening the page is itself what stopped the scan.
+  if (!targetVisible) return 'saved id not resolvable — nothing scanned (iOS)';
+  return null;
+}
+
 /// The per-device page, pushed from the devices tab.
 ///
 /// 🔴 Stateful for ONE reason (design 0046 Step 8c): it has to tell
@@ -144,6 +196,16 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// or theme rebuild would be a connect loop, not a convenience.
   bool _autoConnectTried = false;
 
+  /// Which skip reasons this page instance has already written (FB-82).
+  ///
+  /// 🔴 Not a counter and not "log every time": [didChangeDependencies] re-runs
+  /// on every notification from the two controllers this page watches, so an
+  /// unguarded line would write the same sentence tens of times per visit and
+  /// bury the one that matters. At most one line per DISTINCT reason keeps the
+  /// output bounded by the gate list (ten), while still recording a gate that
+  /// only starts blocking part-way through the visit.
+  final Set<String> _loggedSkips = <String>{};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -179,6 +241,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   ///     a retry button on it. Retrying it for them, without being asked, is
   ///     how a page starts arguing with the person reading it.
   void _maybeAutoConnect() {
+    // Neither of these two is a REFUSAL, so neither is logged: the first says
+    // the attempt already happened (whoever wanted the story has `connect → X`
+    // to read), the second only occurs before this page has dependencies at all.
     if (_autoConnectTried) return;
     final conn = _conn;
     if (conn == null) return;
@@ -187,28 +252,42 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // nobody has named, and design 0055 gives unsaved ones an explicit
     // connect-then-name flow that must stay user-driven.
     final saved = context.read<DeviceController>().deviceFor(widget.deviceId);
-    if (saved == null) return;
-    // The user turned automatic connection off. That the setting is named for
-    // RE-connection is exactly the confusion this feature came from, so it is
-    // read as the one switch that governs "the app may connect on its own".
-    if (!context.read<SettingsController>().autoReconnect) return;
-    if (conn.isOnline ||
-        conn.isBusy ||
-        conn.isRetrying ||
-        conn.isAutoConnectArmed) {
+    final blocker = autoConnectBlocker(
+      isSaved: saved != null,
+      // The user turned automatic connection off. That the setting is named for
+      // RE-connection is exactly the confusion this feature came from, so it is
+      // read as the one switch that governs "the app may connect on its own".
+      autoReconnect: context.read<SettingsController>().autoReconnect,
+      isOnline: conn.isOnline,
+      isBusy: conn.isBusy,
+      isRetrying: conn.isRetrying,
+      isAutoConnectArmed: conn.isAutoConnectArmed,
+      lastError: conn.lastError,
+      isSetupStalled: conn.isSetupStalled,
+      isAdapterOn: conn.isAdapterOn,
+      // 🔴 Short-circuited, because Dart evaluates named arguments eagerly and
+      // this one needs a non-null `saved`. `isSaved` is checked first inside
+      // [autoConnectBlocker], so the `true` fed in here for an unsaved unit can
+      // never be the answer that is returned.
+      targetVisible: saved == null || _resolvableOnThisPlatform(conn, saved),
+    );
+    if (blocker != null) {
+      // FB-82: say so, once per distinct reason. Before this the page simply
+      // did nothing, and no export could tell which gate had refused.
+      if (_loggedSkips.add(blocker)) {
+        conn.noteAutoConnectSkipped(blocker, deviceId: widget.deviceId);
+      }
       return;
     }
-    if (conn.lastError != null) return;
-    if (conn.isSetupStalled) return;
-    if (!conn.isAdapterOn) return;
-    if (!_resolvableOnThisPlatform(conn, saved)) return;
 
     _autoConnectTried = true;
     // Post-frame for `_setVisible`'s reason: this notifies listeners, and
     // `didChangeDependencies` runs inside the build phase.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(conn.connectToSaved(saved).catchError((Object _) {}));
+      // `saved!` is safe: a null blocker is only reachable with `isSaved: true`,
+      // which is this object being non-null.
+      unawaited(conn.connectToSaved(saved!).catchError((Object _) {}));
     });
   }
 

@@ -129,6 +129,16 @@ class _CountingConn extends ConnectionController {
     lastTargetId = device.id;
   }
 
+  /// FB-82. Captured rather than written: the real one goes to the diagnostic
+  /// log, which this suite has no `LogRepo` for — and the question these tests
+  /// ask is whether the PAGE decided to say something, not whether sqlite
+  /// stored it.
+  final List<String> skips = <String>[];
+
+  @override
+  void noteAutoConnectSkipped(String reason, {String? deviceId}) =>
+      skips.add(reason);
+
   /// Make the page's `didChangeDependencies` run again, which is what the
   /// one-shot latch has to survive.
   void bump() => notifyListeners();
@@ -425,6 +435,163 @@ void main() {
           'two power banks really do both advertise RCE_RSPB-01 '
           '(2026-07-29 capture); filing one unit\'s telemetry under the '
           'other\'s alias is silent and unrecoverable',
+    );
+  });
+
+  // ── FB-82, on the page itself ───────────────────────────────────────────
+
+  testWidgets('A22: a blocked page WRITES the reason (it used to say nothing)',
+      (tester) async {
+    await boot(tester, configure: (c) => c.adapterOn = false);
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(conn.skips, hasLength(1));
+    expect(conn.skips.single, contains('adapter'));
+  });
+
+  testWidgets('A23: a page that DID connect writes no skip line', (
+    tester,
+  ) async {
+    await boot(tester);
+
+    expect(conn.connectToSavedCalls, 1);
+    expect(conn.skips, isEmpty,
+        reason: 'the successful path already has `connect → X`; a second '
+            'sentence about the same event is noise in the file a user exports');
+  });
+
+  testWidgets('A24: the same reason is written ONCE, however often the page '
+      'is rebuilt', (tester) async {
+    // 🔴 This is the defect the de-duplication exists for, and it produces no
+    // error and nothing on screen: `didChangeDependencies` re-runs on every
+    // notification from the two controllers this page watches, so an unguarded
+    // line buries the one that matters under tens of copies of itself.
+    await boot(tester, configure: (c) => c.adapterOn = false);
+    for (var i = 0; i < 20; i++) {
+      conn.bump();
+      await tester.pump();
+    }
+
+    expect(conn.skips, hasLength(1));
+  });
+
+  testWidgets('A25: a gate that starts blocking LATER is still recorded', (
+    tester,
+  ) async {
+    // The counterpart to A24: de-duplication is per REASON, not "log once and
+    // stop". A page that arrives with the radio off and later picks up a stale
+    // error has two different things to say.
+    await boot(tester, configure: (c) => c.adapterOn = false);
+    conn
+      ..adapterOn = true
+      ..error = 'device_stale'
+      ..bump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(conn.skips, hasLength(2));
+    expect(conn.skips.last, contains('device_stale'));
+  });
+
+  // ── FB-82: the gate that refused has to be sayable ──────────────────────
+  //
+  // 🔴 Why these exist. The owner reported on v0.7.22 that opening a saved
+  // unit's page did not connect. Every gate above returned silently, so the
+  // report could not be answered from an export — only by reading source and
+  // guessing which platform the phone was. A2–A15 pin the DECISIONS; these pin
+  // that the decision is legible afterwards.
+
+  /// Everything open. Each test below flips exactly one input.
+  String? blockerWith({
+    bool isSaved = true,
+    bool autoReconnect = true,
+    bool isOnline = false,
+    bool isBusy = false,
+    bool isRetrying = false,
+    bool isAutoConnectArmed = false,
+    String? lastError,
+    bool isSetupStalled = false,
+    bool isAdapterOn = true,
+    bool targetVisible = true,
+  }) =>
+      autoConnectBlocker(
+        isSaved: isSaved,
+        autoReconnect: autoReconnect,
+        isOnline: isOnline,
+        isBusy: isBusy,
+        isRetrying: isRetrying,
+        isAutoConnectArmed: isAutoConnectArmed,
+        lastError: lastError,
+        isSetupStalled: isSetupStalled,
+        isAdapterOn: isAdapterOn,
+        targetVisible: targetVisible,
+      );
+
+  test('A16: nothing in the way ⇒ no blocker, i.e. it connects', () {
+    expect(blockerWith(), isNull);
+  });
+
+  test('A17: every gate names ITSELF, and no two share a sentence', () {
+    final reasons = <String>[
+      blockerWith(isSaved: false)!,
+      blockerWith(autoReconnect: false)!,
+      blockerWith(isOnline: true)!,
+      blockerWith(isBusy: true)!,
+      blockerWith(isRetrying: true)!,
+      blockerWith(isAutoConnectArmed: true)!,
+      blockerWith(lastError: 'bluetooth_off')!,
+      blockerWith(isSetupStalled: true)!,
+      blockerWith(isAdapterOn: false)!,
+      blockerWith(targetVisible: false)!,
+    ];
+    expect(reasons.toSet(), hasLength(reasons.length),
+        reason: 'two gates sharing one sentence would send the reader of an '
+            'export to the wrong place — the whole point of FB-82');
+  });
+
+  test('A18: the iOS gate says WHAT to do about it — nothing was scanned', () {
+    // The owner's own report (2026-08-17, iPhone): opened a saved unit's page
+    // straight after launching, before the devices tab had scanned anything.
+    expect(
+      blockerWith(targetVisible: false),
+      allOf(contains('scanned'), contains('iOS')),
+      reason: 'the fix is a scan, not a retry — a line that only said '
+          '"could not connect" would send the reader to the radio',
+    );
+  });
+
+  test('A19: the error CODE travels, not just the word "error"', () {
+    expect(blockerWith(lastError: 'device_stale'), contains('device_stale'));
+    expect(blockerWith(lastError: 'bluetooth_off'), contains('bluetooth_off'));
+  });
+
+  test('A20: busy / retrying / armed are three answers, not one', () {
+    // They shared a single `if` before FB-82. "The link is busy" and "an iOS
+    // hand-off is still outstanding" are three minutes apart in real time and
+    // send whoever reads the log to different places.
+    expect(
+      {
+        blockerWith(isBusy: true),
+        blockerWith(isRetrying: true),
+        blockerWith(isAutoConnectArmed: true),
+      },
+      hasLength(3),
+    );
+  });
+
+  test('A21: gate ORDER is behaviour — an offline unsaved unit reports '
+      'unsaved, not adapter', () {
+    // Reordering would change which sentence a given phone writes, and the
+    // first match is the one the reader acts on.
+    expect(
+      blockerWith(isSaved: false, isAdapterOn: false, targetVisible: false),
+      blockerWith(isSaved: false),
+    );
+    // ...and the setting outranks every state gate below it, because "the user
+    // switched this off" is never something to go and debug.
+    expect(
+      blockerWith(autoReconnect: false, isOnline: true, isSetupStalled: true),
+      blockerWith(autoReconnect: false),
     );
   });
 }

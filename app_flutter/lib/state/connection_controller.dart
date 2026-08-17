@@ -387,6 +387,26 @@ class ConnectionController extends ChangeNotifier {
     ));
   }
 
+  /// Record that the detail page's one-shot auto-connect (FB-75) did NOT fire,
+  /// and which gate refused (FB-82).
+  ///
+  /// 🔴 The one place the UI may write to the diagnostic log, and it is narrow
+  /// on purpose: [_event] stays private because a general "log this" handed to
+  /// widgets is how a per-frame `build` starts writing rows. The caller owns
+  /// the de-duplication — see `_DeviceDetailPageState._loggedSkips`.
+  ///
+  /// [deviceId] is the unit whose PAGE this is, which is deliberately not
+  /// necessarily the unit in [session]: the interesting case is opening B's
+  /// page while A is connected, and filing that line under A would say the
+  /// opposite of what happened. [_event]'s override drops the session id for a
+  /// foreign unit, which is correct here — no session of B's has begun.
+  ///
+  /// Deliberately does NOT notify listeners: nothing on screen changes, and
+  /// notifying from inside `didChangeDependencies` would mark widgets dirty
+  /// during the build phase.
+  void noteAutoConnectSkipped(String reason, {String? deviceId}) =>
+      _event('detail auto-connect skipped: $reason', deviceId: deviceId);
+
   /// Build that is RECORDING, stamped on every row.
   ///
   /// Per row, not per export: `diag_log` and `history` accumulate for months
