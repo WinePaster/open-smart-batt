@@ -88,11 +88,33 @@ class _ErrorConn extends ConnectionController {
   String? error;
   bool stalledLatch = false;
 
-  @override
-  String? get lastError => error;
+  /// Whose error it is (FB-86). Null means RADIO-LEVEL — true of every unit —
+  /// which is the default these copy tests want: they are about what a code
+  /// draws, not about which unit it belongs to.
+  String? errorDeviceId;
 
   @override
-  bool get isSetupStalled => stalledLatch;
+  String? lastErrorFor(String? deviceId) {
+    final e = error;
+    return e == null
+        ? null
+        : ConnectionError(e, deviceId: errorDeviceId).codeFor(deviceId);
+  }
+
+  @override
+  String? get lastErrorUnattributed => error;
+
+  /// FB-86 (second half): whose stall it is. Null — the default — means the
+  /// latch belongs to no unit in particular, which is what the tests about
+  /// COPY want; a test about attribution states it.
+  String? stalledDeviceId;
+
+  @override
+  bool isSetupStalledFor(String? deviceId) =>
+      stalledLatch && stalledDeviceId == deviceId;
+
+  @override
+  bool get isSetupStalledUnattributed => stalledLatch;
 
   void setError(String? e) {
     error = e;
@@ -241,13 +263,20 @@ void main() {
 
   testWidgets('another unit\'s failure is not shown under this one\'s name',
       (tester) async {
-    // Design 0046 §6 R-3. `lastError` is one slot belonging to whichever unit
-    // the controller last worked on, and this page is reached by tapping ANY
-    // row. Attributing that slot to the row the user merely opened would put
-    // one device's failure under another's name — the FB-41/FB-42 shape, in the
-    // UI rather than in the history table.
+    // Design 0046 §6 R-3. The error is a fact about ONE unit, and this page is
+    // reached by tapping ANY row. Showing it under the row the user merely
+    // opened would put one device's failure under another's name — the
+    // FB-41/FB-42 shape, in the UI rather than in the history table.
+    //
+    // ⚠️ AMENDED (FB-86): the page no longer decides this. It used to gate the
+    // whole report on `connectedDeviceId == deviceId` by hand; the error now
+    // arrives already scoped from [ConnectionController.lastErrorFor], so what
+    // this test states is the ATTRIBUTION — DEV-A's failure — and asserts that
+    // DEV-B's page never sees it. Leaving `errorDeviceId` null would say
+    // something else entirely: null is the radio, which is true of every unit.
     await boot(tester);
     final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    conn.errorDeviceId = 'DEV-A';
     conn.setError('device_unreachable');
     await tester.pump();
 

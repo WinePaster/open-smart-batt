@@ -183,17 +183,17 @@ void main() {
       await tester.runAsync(() => s.connection.connect('AA'));
 
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 1);
-      expect(s.connection.isSetupStalled, isFalse,
+      expect(s.connection.setupFailuresUnattributed, 1);
+      expect(s.connection.isSetupStalledUnattributed, isFalse,
           reason: 'one failure is ordinary — 5 of 51 in the corpus recovered '
               'on the next attempt, so firing here would cry wolf');
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
 
-      expect(s.connection.setupFailures, 3);
-      expect(s.connection.isSetupStalled, isTrue);
-      expect(s.connection.lastError, 'gatt_setup_stalled');
+      expect(s.connection.setupFailuresUnattributed, 3);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
+      expect(s.connection.lastErrorUnattributed, 'gatt_setup_stalled');
     });
 
     testWidgets('tapping connect again on the SAME unit does not reset it',
@@ -209,14 +209,14 @@ void main() {
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
 
       await tester.runAsync(() => s.connection.connect('AA')); // user retries
-      expect(s.connection.setupFailures, 2,
+      expect(s.connection.setupFailuresUnattributed, 2,
           reason: 'a retry of the thing that just failed is not a clean slate');
 
       await failedSetup(tester, s);
-      expect(s.connection.isSetupStalled, isTrue);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
     });
 
     testWidgets('nor does the give-up card\'s own retry button', (tester) async {
@@ -234,15 +234,15 @@ void main() {
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
 
       await tester.runAsync(() => s.connection.reconnectCurrent());
-      expect(s.connection.setupFailures, 2,
+      expect(s.connection.setupFailuresUnattributed, 2,
           reason: 'design 0031 G3: the same unit, reconnected by hand, is the '
               'user retrying the thing that just failed twice');
 
       await failedSetup(tester, s);
-      expect(s.connection.isSetupStalled, isTrue);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
     });
 
     testWidgets('nor a manual disconnect followed by a manual connect',
@@ -260,7 +260,7 @@ void main() {
       await tester.runAsync(() => s.connection.disconnect());
       await tester.runAsync(() => s.connection.connect('AA'));
 
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
     });
 
     testWidgets('reaching ready clears it', (tester) async {
@@ -271,12 +271,12 @@ void main() {
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
 
       await goodSetup(tester, s);
-      expect(s.connection.setupFailures, 0,
+      expect(s.connection.setupFailuresUnattributed, 0,
           reason: 'coming up is the only evidence the run has ended');
-      expect(s.connection.isSetupStalled, isFalse);
+      expect(s.connection.isSetupStalledUnattributed, isFalse);
     });
 
     testWidgets('switching to a different unit clears it', (tester) async {
@@ -287,18 +287,18 @@ void main() {
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
 
       await tester.runAsync(() => s.connection.connect('BB'));
-      expect(s.connection.setupFailures, 0,
+      expect(s.connection.setupFailuresUnattributed, 0,
           reason: 'the run belongs to the unit, not to the app');
 
       // And the ownership does not stick to the first unit ever seen: a
       // failure under BB, then back to AA, is a different unit again.
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 1);
+      expect(s.connection.setupFailuresUnattributed, 1);
       await tester.runAsync(() => s.connection.connect('AA'));
-      expect(s.connection.setupFailures, 0);
+      expect(s.connection.setupFailuresUnattributed, 0);
     });
 
     testWidgets('a connect that never lands is NOT counted here',
@@ -321,8 +321,8 @@ void main() {
         await tester.pump();
       }
 
-      expect(s.connection.setupFailures, 0);
-      expect(s.connection.isSetupStalled, isFalse);
+      expect(s.connection.setupFailuresUnattributed, 0);
+      expect(s.connection.isSetupStalledUnattributed, isFalse);
     });
   });
 
@@ -344,10 +344,10 @@ void main() {
       await setupCutShortByOurOwnConnect(tester, s);
       await setupCutShortByOurOwnConnect(tester, s);
 
-      expect(s.connection.setupFailures, 0,
+      expect(s.connection.setupFailuresUnattributed, 0,
           reason: 'an attempt we cut short never got to say nothing');
-      expect(s.connection.isSetupStalled, isFalse);
-      expect(s.connection.lastError, isNot('gatt_setup_stalled'));
+      expect(s.connection.isSetupStalledUnattributed, isFalse);
+      expect(s.connection.lastErrorUnattributed, isNot('gatt_setup_stalled'));
     });
 
     testWidgets('nor does the user pressing disconnect mid-setup',
@@ -376,8 +376,8 @@ void main() {
         await tester.runAsync(() => s.connection.connect('AA'));
       }
 
-      expect(s.connection.setupFailures, 0);
-      expect(s.connection.isSetupStalled, isFalse);
+      expect(s.connection.setupFailuresUnattributed, 0);
+      expect(s.connection.isSetupStalledUnattributed, isFalse);
     });
 
     testWidgets('a REAL stall still trips it after those taps', (tester) async {
@@ -393,7 +393,7 @@ void main() {
       await setupCutShortByOurOwnConnect(tester, s);
       await setupCutShortByOurOwnConnect(tester, s);
       await setupCutShortByOurOwnConnect(tester, s);
-      expect(s.connection.setupFailures, 0);
+      expect(s.connection.setupFailuresUnattributed, 0);
 
       // `GATT setup timed out` — discovery burns its 8 s and the teardown
       // emits a bare `disconnected`, with no `disconnecting` before it because
@@ -402,9 +402,9 @@ void main() {
       await failedSetup(tester, s);
       await failedSetup(tester, s);
 
-      expect(s.connection.setupFailures, 3);
-      expect(s.connection.isSetupStalled, isTrue);
-      expect(s.connection.lastError, 'gatt_setup_stalled');
+      expect(s.connection.setupFailuresUnattributed, 3);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
+      expect(s.connection.lastErrorUnattributed, 'gatt_setup_stalled');
       expect(s.connection.isRetrying, isFalse);
     });
 
@@ -421,16 +421,16 @@ void main() {
 
       await failedSetup(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 2);
+      expect(s.connection.setupFailuresUnattributed, 2);
 
       await setupCutShortByOurOwnConnect(tester, s);
-      expect(s.connection.setupFailures, 2,
+      expect(s.connection.setupFailuresUnattributed, 2,
           reason: 'the run belongs to the unit; our own teardown says nothing '
               'about it, in either direction');
 
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 3);
-      expect(s.connection.isSetupStalled, isTrue);
+      expect(s.connection.setupFailuresUnattributed, 3);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
     });
 
     testWidgets('the excuse does not leak into the next attempt',
@@ -445,7 +445,7 @@ void main() {
 
       await setupCutShortByOurOwnConnect(tester, s);
       await failedSetup(tester, s);
-      expect(s.connection.setupFailures, 1,
+      expect(s.connection.setupFailuresUnattributed, 1,
           reason: 'the very next genuine failure is counted');
     });
   });
@@ -506,7 +506,7 @@ void main() {
       await failedSetup(tester, s);
       await failedSetup(tester, s);
 
-      expect(s.connection.isSetupStalled, isTrue);
+      expect(s.connection.isSetupStalledUnattributed, isTrue);
       expect(s.connection.isRetrying, isFalse,
           reason: 'another forty minutes of this buys nothing');
     });

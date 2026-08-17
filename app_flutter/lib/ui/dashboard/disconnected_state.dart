@@ -56,15 +56,22 @@ class DisconnectedState extends StatelessWidget {
 
     // The branch order, the code sets and every string below are
     // `connection_failure.dart`'s — see that file for why each one is there.
+    //
+    // 🔴 UNATTRIBUTED, and this is one of the two places allowed to be (FB-86).
+    // This screen is not about a unit: it is the dashboard's own empty state,
+    // shown when nothing is connected, and the only failure it can report is the
+    // last one there was. A per-unit read would need a unit, and the whole point
+    // of this screen is that there is not one. The per-device report is
+    // `DeviceDetailPage`, which does scope it.
     final copy = connectionFailureCopy(
       l10n: l10n,
-      lastError: conn.lastError,
+      lastError: conn.lastErrorUnattributed,
       working: working,
       isBusy: conn.isBusy,
       isRetrying: retrying,
       autoConnectArmed: conn.isAutoConnectArmed,
-      setupStalled: conn.isSetupStalled,
-      setupFailures: conn.setupFailures,
+      setupStalled: conn.isSetupStalledUnattributed,
+      setupFailures: conn.setupFailuresUnattributed,
       reconnectAttempts: conn.reconnectAttempts,
     );
 

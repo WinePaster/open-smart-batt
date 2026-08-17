@@ -499,7 +499,7 @@ void main() {
       h.ble.emitLink(BleLinkState.disconnected);
       await tester.pump();
 
-      expect(h.conn.lastError, 'reconnect_exhausted');
+      expect(h.conn.lastErrorUnattributed, 'reconnect_exhausted');
       expect(
           h.logs.notes.where((n) => n.startsWith('auto-reconnect gave up')),
           hasLength(1));
@@ -540,10 +540,10 @@ void main() {
       expect(h.ble.disconnectCalls, 0,
           reason: 'a peripheral that comes back after two minutes should be '
               'picked up seamlessly, which is the whole point of the hand-off');
-      expect(h.conn.lastError, isNull);
+      expect(h.conn.lastErrorUnattributed, isNull);
 
       await tester.pump(const Duration(seconds: 2));
-      expect(h.conn.lastError, 'autoconnect_timeout',
+      expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout',
           reason: 'not the ladder\'s code. `reconnect_exhausted` is a count, '
               'and this is one 180 s hand-off to the OS during which no '
               'attempt of ours was made — so "several attempts went by" would '
@@ -634,7 +634,7 @@ void main() {
       await tester.pump();
       expect(h.conn.isRetrying, isFalse);
       expect(h.conn.reconnectAttempts, 0);
-      expect(h.conn.lastError, 'autoconnect_timeout');
+      expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout');
     });
 
     testWidgets('the hand-off delivering `connected` cancels it',
@@ -654,7 +654,7 @@ void main() {
               'FB-51/FB-52 territory, not a stale deadline\'s. Firing here '
               'would drop a link mid-setup, or double-report a failure the '
               'ladder already reported.');
-      expect(h.conn.lastError, isNull);
+      expect(h.conn.lastErrorUnattributed, isNull);
     });
 
     testWidgets('a hand-off that arrives LATE un-gives-up', (tester) async {
@@ -672,7 +672,7 @@ void main() {
       h.conn.armAutoConnect();
       await tester.pump(ConnectionController.autoConnectWatchdog +
           const Duration(seconds: 1));
-      expect(h.conn.lastError, 'autoconnect_timeout');
+      expect(h.conn.lastErrorUnattributed, 'autoconnect_timeout');
 
       // Late, and only as far as `connected`.
       h.ble.emitLink(BleLinkState.connected);
@@ -700,7 +700,7 @@ void main() {
       await tester.pump(ConnectionController.autoConnectWatchdog +
           const Duration(seconds: 1));
       expect(h.ble.disconnectCalls, 0);
-      expect(h.conn.lastError, isNull);
+      expect(h.conn.lastErrorUnattributed, isNull);
     });
 
     testWidgets('a manual connect cancels it', (tester) async {
@@ -717,7 +717,7 @@ void main() {
       expect(h.ble.disconnectCalls, 0,
           reason: 'the user has said what they want; a stale deadline must '
               'not drop the link they are now waiting on');
-      expect(h.conn.lastError, isNull);
+      expect(h.conn.lastErrorUnattributed, isNull);
     });
 
     testWidgets('a manual disconnect cancels it', (tester) async {
@@ -733,7 +733,7 @@ void main() {
       await tester.pump(ConnectionController.autoConnectWatchdog +
           const Duration(seconds: 1));
       expect(h.ble.disconnectCalls, drops);
-      expect(h.conn.lastError, isNull);
+      expect(h.conn.lastErrorUnattributed, isNull);
     });
   });
 

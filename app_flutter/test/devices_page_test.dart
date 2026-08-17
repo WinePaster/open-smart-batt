@@ -130,11 +130,33 @@ class _StateConn extends ConnectionController {
   String? error;
   bool stalledLatch = false;
 
-  @override
-  String? get lastError => error;
+  /// Whose error it is (FB-86). Null means RADIO-LEVEL — true of every unit —
+  /// which is the default these copy tests want: they are about what a code
+  /// draws, not about which unit it belongs to.
+  String? errorDeviceId;
 
   @override
-  bool get isSetupStalled => stalledLatch;
+  String? lastErrorFor(String? deviceId) {
+    final e = error;
+    return e == null
+        ? null
+        : ConnectionError(e, deviceId: errorDeviceId).codeFor(deviceId);
+  }
+
+  @override
+  String? get lastErrorUnattributed => error;
+
+  /// FB-86 (second half): whose stall it is. Null — the default — means the
+  /// latch belongs to no unit in particular, which is what the tests about
+  /// COPY want; a test about attribution states it.
+  String? stalledDeviceId;
+
+  @override
+  bool isSetupStalledFor(String? deviceId) =>
+      stalledLatch && stalledDeviceId == deviceId;
+
+  @override
+  bool get isSetupStalledUnattributed => stalledLatch;
 
   void state({String? error, bool stalled = false}) {
     this.error = error;
@@ -427,6 +449,7 @@ void main() {
             conn.state(error: 'connect_failed');
           case 'Not answering':
             ble.connectedId = 'DEV-A';
+            conn.stalledDeviceId = 'DEV-A';
             conn.state(error: 'gatt_setup_stalled', stalled: true);
           case 'Connected':
             ble.connectedId = 'DEV-A';

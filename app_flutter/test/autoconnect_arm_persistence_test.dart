@@ -531,7 +531,7 @@ void main() {
         expect(h.logs.notes, isEmpty);
         expect(h.arms.clears, 0);
         expect(h.arms.writes, 0);
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
         expect(h.ble.connectCalls, 0);
         h.dispose();
       });
@@ -619,7 +619,7 @@ void main() {
 
         // 🔴 And NO UI, which is the 2026-08-13 ruling: no gaveUp code, no
         // error, no notification. This assertion is the ruling.
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
         h.dispose();
       });
     });
@@ -718,7 +718,7 @@ void main() {
             reason: 'the adoption (Phase 2) and then the user\'s own connect. '
                 'The point is that neither one interferes with the other');
         expect(h.ble.disconnectCalls, 0);
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
 
         async.elapse(ConnectionController.coldReconcileGrace);
         expect(h.coldLines, hasLength(1),
@@ -789,7 +789,7 @@ void main() {
         expect(
             h.logs.notes.where((n) => n.contains('autoConnect gave up')), isEmpty,
             reason: 'no give-up, because nothing was armed to give up');
-        expect(h.conn.lastError, isNull);
+        expect(h.conn.lastErrorUnattributed, isNull);
         expect(h.ble.disconnectCalls, 0,
             reason: 'and nothing cancels the pending connect the OS is holding '
                 '— that cancellation is exactly what FB-67 must stop doing');
@@ -835,7 +835,7 @@ void main() {
         async.flushMicrotasks();
 
         expect(restoreLines(h).last, contains('failed:'));
-        expect(h.conn.lastError, isNull,
+        expect(h.conn.lastErrorUnattributed, isNull,
             reason: 'still no UI — a failed adoption is reported to the log and '
                 'to nobody else');
 

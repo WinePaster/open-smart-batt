@@ -35,6 +35,69 @@ import 'session_context.dart';
 import 'settings_controller.dart';
 import 'telemetry_health.dart';
 
+/// The error codes that are facts about the PHONE'S RADIO, not about any one
+/// unit.
+///
+/// They are the reason [ConnectionError] has a NULLABLE device: a radio that is
+/// off is equally true of every device on the list, so filing one of these under
+/// the unit that happened to be the connect target would make it disappear from
+/// every other unit's screen — which is the opposite of the FB-86 defect, and
+/// just as wrong.
+///
+/// 🔴 This is the SAME set the failure copy calls `radioCodes` (that name is now
+/// an alias of this one). It lives here because the controller is what produces
+/// the codes and now has to classify them, and two hand-kept copies of a code
+/// set is precisely the drift `gaveUpCodes` already paid for once.
+const radioLevelErrorCodes = <String>{
+  'bluetooth_off',
+  'bluetooth_unauthorized',
+  'permission_denied',
+};
+
+/// A connection error TOGETHER WITH the unit it is a fact about (FB-86).
+///
+/// 🔴 WHY THIS TYPE EXISTS. The controller used to hold the error as a bare
+/// `String?`, and attribution was a rule each consumer applied by hand: the
+/// failure card passed `mine ? conn.lastError : null`, the row badge made
+/// `isCurrentDevice` a required parameter — and the automatic-connect gate,
+/// added later and three hundred lines away in the same file, simply forgot. A
+/// connect to A that failed then blocked B's page from ever trying, while B's
+/// own failure card was correctly suppressed, so the screen said "not connected"
+/// and the app had deliberately not tried. That is FB-86, and it is what a rule
+/// enforced by self-discipline produces the moment a fourth consumer is written.
+///
+/// So the attribution moved INTO the value. There is no way to read the code out
+/// of [ConnectionController] without naming a unit ([ConnectionController
+/// .lastErrorFor]) — the bare `lastError` getter is gone — and the one
+/// unattributed accessor left is named [ConnectionController
+/// .lastErrorUnattributed], whose call sites `last_error_attribution_test.dart`
+/// pins to an allowlist.
+///
+/// The rule this encodes is the one `liveMac`'s comment already stated for
+/// "every other live reading", and the one FB-41/FB-42 were about.
+@immutable
+class ConnectionError {
+  const ConnectionError(this.code, {required this.deviceId});
+
+  /// The code a screen branches on (`device_unreachable`, `bluetooth_off`, …).
+  final String code;
+
+  /// The unit this is a fact about, or null when it is a fact about the RADIO
+  /// and therefore true of all of them. See [radioLevelErrorCodes].
+  final String? deviceId;
+
+  /// The code, but ONLY if it is a fact about [unitId].
+  ///
+  /// A radio-level error ([deviceId] null) answers for every unit, including a
+  /// caller that has no unit at all (`unitId == null`) — the dashboard's own
+  /// disconnected state is such a caller.
+  String? codeFor(String? unitId) =>
+      deviceId == null || deviceId == unitId ? code : null;
+
+  @override
+  String toString() => deviceId == null ? code : '$code@$deviceId';
+}
+
 /// Live BLE connection + scan state for the UI.
 class ConnectionController extends ChangeNotifier {
   ConnectionController(
@@ -559,7 +622,15 @@ class ConnectionController extends ChangeNotifier {
   /// Without this flag the act of giving up would immediately start trying
   /// again, which is the opposite of what it was for.
   bool _autoConnectGaveUp = false;
-  String? _lastError;
+
+  /// The last connection error AND the unit it belongs to (FB-86).
+  ///
+  /// 🔴 Written only through [_setError] / [_clearError]. That is not style: the
+  /// choice between "this is about the unit" and "this is about the radio" is
+  /// made in ONE place there, so a new failure path cannot invent a third
+  /// answer, and a code added to [radioLevelErrorCodes] reclassifies every site
+  /// at once.
+  ConnectionError? _lastError;
   bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
 
   /// A device page is covering whatever asked for the scan ([setDetailVisible]).
@@ -710,16 +781,58 @@ class ConnectionController extends ChangeNotifier {
   /// on the fourth consecutive try, this number is wrong and should move.
   static const int maxSetupFailures = 3;
 
-  /// Whether this link has connected repeatedly without ever coming up.
+  /// Whether the run currently being counted has stalled, WHOEVER it belongs to.
+  ///
+  /// 🔴 Private, and that is FB-86's second half. This is the raw predicate; the
+  /// three callers below are all inside the controller, where "the run" and "the
+  /// unit we are working on" are the same thing by construction — [connect]
+  /// writes [_desiredDeviceId] and [_setupFailuresDeviceId] in the same breath
+  /// and zeroes the count whenever they would differ. Outside the controller
+  /// that guarantee does not hold, which is why nothing outside can ask this.
+  bool get _stalledRun => _setupFailuresSinceReady >= maxSetupFailures;
+
+  /// Whether [deviceId] has connected repeatedly without ever coming up.
   ///
   /// The UI uses this to draw a failure that STAYS, and [_scheduleReconnect]
   /// uses it to stop. Spinning for another forty minutes buys nothing: the field
   /// capture ran fourteen and never once recovered on its own.
-  bool get isSetupStalled => _setupFailuresSinceReady >= maxSetupFailures;
+  ///
+  /// 🔴 FB-86 (second half). The unattributed `isSetupStalled` getter this
+  /// replaced was the LAST per-unit fact the automatic-connect gate read
+  /// globally: `lastError` had just been scoped, and the very next line still
+  /// asked "has setup stalled?" without saying whose — so A's stall went on
+  /// blocking B's page while B's own stalled card was suppressed by hand. Same
+  /// defect, same screen, one line down.
+  ///
+  /// ⚖️ NO `ConnectionError`-STYLE VALUE TYPE HERE, deliberately. The error
+  /// needed one because it had no owner at all; the stall already has
+  /// [_setupFailuresDeviceId] — the same field that decides when the count
+  /// resets — so a second copy of the owner would be a new source of drift
+  /// rather than a fix. There is also no radio-level case to model: a stall is a
+  /// fact about a unit, always.
+  bool isSetupStalledFor(String? deviceId) =>
+      _setupFailuresDeviceId == deviceId && _stalledRun;
 
-  /// How many consecutive setups have failed — shown to the user, so that
-  /// "we really did try" is a number and not a claim.
-  int get setupFailures => _setupFailuresSinceReady;
+  /// How many consecutive setups have failed FOR [deviceId] — shown to the user,
+  /// so that "we really did try" is a number and not a claim.
+  ///
+  /// Zero for anyone else, for [isSetupStalledFor]'s reason: the count and the
+  /// latch are one pair, and a screen that took the latch from one unit and the
+  /// number from another would print "3 attempts" under the wrong name.
+  int setupFailuresFor(String? deviceId) =>
+      _setupFailuresDeviceId == deviceId ? _setupFailuresSinceReady : 0;
+
+  /// The stall latch and its count, for a caller that is about NO unit.
+  ///
+  /// ⛔ THE ESCAPE HATCH, on [lastErrorUnattributed]'s terms and pinned by the
+  /// same allowlist in `last_error_attribution_test.dart`. One legitimate
+  /// caller: the dashboard's disconnected placeholder, which is the empty state
+  /// of the app rather than a page about a unit, and therefore has no id to
+  /// pass. Anything drawn PER UNIT must use [isSetupStalledFor].
+  bool get isSetupStalledUnattributed => _stalledRun;
+
+  /// The count that goes with [isSetupStalledUnattributed], same terms.
+  int get setupFailuresUnattributed => _setupFailuresSinceReady;
 
   /// True once this attempt got as far as `connected`. Distinguishes a setup
   /// that failed from a connect that never landed — the latter is already
@@ -855,8 +968,63 @@ class ConnectionController extends ChangeNotifier {
   /// exports it — the export path hashes the MAC (design 0027 §3.1).
   String? get liveMac => _liveMac;
 
-  /// Last connection error message (cleared on a successful connect).
-  String? get lastError => _lastError;
+  /// The last connection error, IF it is a fact about [deviceId] (cleared on a
+  /// successful connect).
+  ///
+  /// 🔴 FB-86. The unattributed `lastError` getter this replaced is GONE, on
+  /// purpose: it was a live reading of whichever unit the controller last worked
+  /// on, and three consumers each decided for themselves whether to gate it —
+  /// until the one added last did not, and A's failure silently blocked B's page
+  /// from connecting. Naming the unit is now the only way to ask, so a consumer
+  /// written tomorrow cannot forget to; passing the id it is already drawing is
+  /// the whole of the discipline.
+  ///
+  /// A radio-level code (`bluetooth_off` and friends — [radioLevelErrorCodes])
+  /// comes back for ANY id, because it is true of any id. See [ConnectionError].
+  String? lastErrorFor(String? deviceId) => _lastError?.codeFor(deviceId);
+
+  /// The last error whatever unit it belongs to.
+  ///
+  /// ⛔ THE ESCAPE HATCH, and it is deliberately unpleasant to type. It is
+  /// legitimate for exactly two kinds of caller, both of which are about "the
+  /// attempt the app just made" rather than about a unit on screen:
+  ///
+  ///   * the device list's snackbar, which reports the connect the user just
+  ///     asked for — and whose target may have been REBOUND to another id
+  ///     (`connectToSaved`), so the id the caller knows is not the id the error
+  ///     was filed under;
+  ///   * the dashboard's disconnected placeholder, which is not about a unit at
+  ///     all: it is the empty state of the app, and the only failure it can
+  ///     report is the last one there was.
+  ///
+  /// Anything drawn PER UNIT must use [lastErrorFor]. `last_error_attribution
+  /// _test.dart` pins the call sites of this getter to those two files and goes
+  /// red on a third, which is the guard FB-86 did not have.
+  String? get lastErrorUnattributed => _lastError?.code;
+
+  /// Record a failure against the unit it happened to — or against none, when
+  /// the code says it is about the radio ([radioLevelErrorCodes]).
+  ///
+  /// 🔴 The classification is BY CODE, not by call site, and it has to be: three
+  /// of the sites below hand the classifier a platform exception that may come
+  /// back either way (`connectFailureError` returns `bluetooth_off` for a radio
+  /// that went down mid-connect and `device_unreachable` for a unit that never
+  /// answered), so a site cannot know which kind it is producing.
+  void _setError(String code, {String? deviceId}) {
+    _lastError = ConnectionError(
+      code,
+      deviceId: radioLevelErrorCodes.contains(code) ? null : deviceId,
+    );
+  }
+
+  /// Forget the failure entirely — for every unit.
+  ///
+  /// Clearing stays GLOBAL although recording is per-unit, and the asymmetry is
+  /// deliberate: every clear site is an event that makes the old error stale
+  /// whoever it belonged to (a fresh connect, a `ready`, a scan that worked).
+  /// Keeping another unit's error alive across one of those would resurrect a
+  /// failure the user has no way to act on.
+  void _clearError() => _lastError = null;
 
   /// Saved devices for the quick-select list (delegates to [DeviceController]).
   List<SavedDevice> get savedDevices => _devices?.devices ?? const [];
@@ -1131,7 +1299,9 @@ class ConnectionController extends ChangeNotifier {
       {Duration timeout = const Duration(seconds: 15)}) async {
     final ok = await _ble.ensurePermissions();
     if (!ok) {
-      _lastError = 'permission_denied';
+      // No `deviceId`: a scan is not about a unit, and the code is radio-level
+      // anyway (see [_setError]).
+      _setError('permission_denied');
       _event('scan aborted: permission denied');
       notifyListeners();
       return;
@@ -1140,15 +1310,16 @@ class ConnectionController extends ChangeNotifier {
     _event('scan start');
     try {
       await _ble.startScan(timeout: timeout);
-      _lastError = null;
+      _clearError();
     } on FlutterBluePlusException catch (e) {
-      _lastError = _adapter == BluetoothAdapterState.unauthorized
+      final code = _adapter == BluetoothAdapterState.unauthorized
           ? 'bluetooth_unauthorized'
           : 'bluetooth_off';
-      _event('scan failed ($_lastError): ${e.description ?? e.code}');
+      _setError(code);
+      _event('scan failed ($code): ${e.description ?? e.code}');
       notifyListeners();
     } catch (e) {
-      _lastError = e.toString();
+      _setError(e.toString());
       _event('scan failed: $e');
       notifyListeners();
     }
@@ -1332,7 +1503,7 @@ class ConnectionController extends ChangeNotifier {
     _seedSource = seedClass != null
         ? 'explicit'
         : (looked != null && looked != ProductClass.unknown ? 'saved' : 'none');
-    _lastError = null;
+    _clearError();
     notifyListeners();
 
     // The id is hashed in the TEXT but kept raw in the `deviceId` column: the
@@ -1341,7 +1512,7 @@ class ConnectionController extends ChangeNotifier {
     _event('connect → ${shortDeviceHash(deviceId)}', deviceId: deviceId);
     final ok = await _ble.ensurePermissions();
     if (!ok) {
-      _lastError = 'permission_denied';
+      _setError('permission_denied', deviceId: deviceId);
       _event('connect aborted: permission denied', deviceId: deviceId);
       notifyListeners();
       return;
@@ -1356,8 +1527,12 @@ class ConnectionController extends ChangeNotifier {
     // permission branch directly above; the device sheet already shows a
     // "Bluetooth is off" note driven by [isAdapterOn].
     if (adapterBlocksConnect(_adapter)) {
-      _lastError = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
-      _event('connect aborted: $_lastError', deviceId: deviceId);
+      // Non-null by construction — the guard above means the adapter is off or
+      // unauthorized and the classifier answers both — but not asserted with
+      // `!`: a crash would be a worse way to learn otherwise than a blank line.
+      final code = connectFailureError(adapter: _adapter, isIOS: Platform.isIOS);
+      if (code != null) _setError(code, deviceId: deviceId);
+      _event('connect aborted: $code', deviceId: deviceId);
       notifyListeners();
       return;
     }
@@ -1372,7 +1547,7 @@ class ConnectionController extends ChangeNotifier {
       // cancelled ourselves, and there the canceller's own reason stands.
       final reason = connectFailureError(
           adapter: _adapter, isIOS: Platform.isIOS, error: e);
-      if (reason != null) _lastError = reason;
+      if (reason != null) _setError(reason, deviceId: deviceId);
       _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
       rethrow;
@@ -1443,7 +1618,11 @@ class ConnectionController extends ChangeNotifier {
       final reason = connectFailureError(
           adapter: _adapter, isIOS: Platform.isIOS, error: e);
       final stale = reason == 'device_stale';
-      if (reason != null) _lastError = reason;
+      // FB-86: against the REBOUND id, which is the one [connect] was given and
+      // the one [connectedDeviceId] now reports. Filing it under the saved
+      // record's id instead would put the failure on a unit the app never
+      // dialled, and hide it from the page that is showing the attempt.
+      if (reason != null) _setError(reason, deviceId: targetId);
       _event('saved connect failed${stale ? ' (stale?)' : ''}: $e');
       notifyListeners();
       rethrow;
@@ -1697,7 +1876,7 @@ class ConnectionController extends ChangeNotifier {
     }
 
     if (s == BleLinkState.ready) {
-      _lastError = null;
+      _clearError();
       _reconnectAttempts = 0; // healthy link clears the backoff counter
       // FB-53: the link came up, so whatever was waiting for it can stand down
       // — including an armed autoConnect's deadline, whose whole job was to
@@ -1784,14 +1963,20 @@ class ConnectionController extends ChangeNotifier {
             '(count stays $_setupFailuresSinceReady)');
       } else if (reachedConnected && _readyAt == null) {
         _setupFailuresSinceReady++;
-        if (isSetupStalled) {
+        if (_stalledRun) {
           // Cancel the retry the PREVIOUS failure already armed. Refusing to
           // schedule a new one is not enough — the backoff timer from round two
           // is still pending when round three decides to stop, so without this
           // the app fires one more attempt after telling the user it had given
           // up, and `isRetrying` keeps the spinner on top of the message.
           _reconnectTimer?.cancel();
-          _lastError = 'gatt_setup_stalled';
+          // FB-86: whose stall it is. [connectedDeviceId] and not
+          // `_ble.connectedDeviceId` — the link has just gone, so only the
+          // desired id is left — and not `_setupFailuresDeviceId` either,
+          // although that is the run's own key: [connectedDeviceId] is what the
+          // screens compared against when this gating was still theirs to do,
+          // so using it here is what makes the move exactly behaviour-neutral.
+          _setError('gatt_setup_stalled', deviceId: connectedDeviceId);
           // A greppable line, because the copy this drives is meant to become
           // rare: if the disconnect added by FB-51 (e) works, the user stops
           // seeing the message and we lose the only way to count how often the
@@ -1818,7 +2003,7 @@ class ConnectionController extends ChangeNotifier {
       // and log volume to learn nothing. The user gets a button instead.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
-          !isSetupStalled &&
+          !_stalledRun &&
           !_autoConnectGaveUp &&
           _desiredDeviceId != null) {
         if (wasOnline && Platform.isIOS) {
@@ -1920,14 +2105,16 @@ class ConnectionController extends ChangeNotifier {
     // give-up card at the end of the ladder has something true to show.
     final reason =
         connectFailureError(adapter: _adapter, isIOS: Platform.isIOS, error: error);
-    if (reason != null) _lastError = reason;
+    // FB-86: `id` is the unit the arm was for, and this method's own guard
+    // below re-reads it against `_desiredDeviceId` for the same reason.
+    if (reason != null) _setError(reason, deviceId: id);
     _event('auto-reconnect: autoConnect could not be armed '
         '(${reason ?? 'cancelled'}) — falling back to the backoff ladder: $error');
     // The same guards the call site applies, re-read: this runs a microtask
     // later and the user may have moved on.
     if (!_manualDisconnect &&
         _settings.autoReconnect &&
-        !isSetupStalled &&
+        !_stalledRun &&
         !_autoConnectGaveUp &&
         _desiredDeviceId == id) {
       _scheduleReconnect();
@@ -2027,7 +2214,7 @@ class ConnectionController extends ChangeNotifier {
     //
     // ⚠️ This does NOT re-open FB-52. "Came up and never said anything" is
     // still bounded, by a different instrument: `_setupFailuresSinceReady` /
-    // [isSetupStalled], which counts connections that reached `connected` and
+    // [isSetupStalledFor], which counts connections that reached `connected` and
     // left without `ready` and stops the ladder at [maxSetupFailures]. Standing
     // down here hands the episode to that counter, which is exactly what the
     // `connected` branch of [_onLinkState] already does deliberately. What must
@@ -2053,7 +2240,8 @@ class ConnectionController extends ChangeNotifier {
     // two different diagnoses into one string in the field logs — the ladder
     // exhausting says the device refused five connects, the watchdog expiring
     // says the device never advertised at all.
-    _lastError = 'autoconnect_timeout';
+    // FB-86: the unit the hand-off was for. Same id the watchdog armed on.
+    _setError('autoconnect_timeout', deviceId: connectedDeviceId);
     // FB-66 acceptance criterion ③: the MEASURED wait, not the constant. This
     // line used to interpolate `autoConnectWatchdog.inSeconds` and so reported
     // `gave up after 180s` for a wait of 935 s — the only instrument this
@@ -2276,8 +2464,10 @@ class ConnectionController extends ChangeNotifier {
       // rung there is no armed timer for the guard above to see. One episode,
       // one line: `ready` and a manual connect are the only things that clear
       // `reconnect_exhausted`, so within an episode the sentinel is exact.
-      if (_lastError != 'reconnect_exhausted') {
-        _lastError = 'reconnect_exhausted';
+      // The sentinel is read per-unit too: `id` is the ladder's target, and the
+      // "one episode, one line" guarantee below is about THAT unit's episode.
+      if (lastErrorFor(id) != 'reconnect_exhausted') {
+        _setError('reconnect_exhausted', deviceId: id);
         _event('auto-reconnect gave up after $_reconnectAttempts attempts '
             '(stale device?)');
         notifyListeners();
