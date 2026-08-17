@@ -123,15 +123,67 @@ void main() {
     });
   }
 
-  /// Rows are minutes apart so each lands in its own display window.
+  /// Seed [count] rows for [deviceId], spread backwards across the part of
+  /// TODAY that has already happened, the newest of them at slot [startSlot].
+  ///
+  /// 🔴 **The spacing is not a fixed minute, and the reason is the only
+  /// interesting thing in this helper.** It used to be
+  /// `now.subtract(Duration(minutes: fromMinute + i))`, with the comment "rows
+  /// are minutes apart so each lands in its own display window" — true while the
+  /// ROW LIST was the observable, because a list window is a fixed
+  /// [kHistoryListBucketMs]. The list was removed on 2026-08-16, and with it the
+  /// only place a stored number reached the screen at minute granularity. What
+  /// renders a number now is the stats strip, and that strip lives INSIDE
+  /// [HistoryTrendCard] — *after* its `buckets.length < 2` early return. So what
+  /// every `showsVoltage` / `30°C` assertion in this file really needs is TWO
+  /// CHART POINTS, and a chart point is [historyChartBucketMs] wide:
+  /// `(now − LOCAL midnight) / 180`, clamped to [1 min, 24 h].
+  ///
+  /// That width is a function of how far into the **local** day it is, so a
+  /// fixed minute of spacing made this file's outcome depend on the tester's
+  /// time zone and wall clock. Measured 2026-08-17 with three rows one minute
+  /// apart: **3** chart points at 03:42 UTC (bucket 74 s), **2** at 11:42 in
+  /// Asia/Taipei (bucket 234 s), **1** at 20:42 in America/Los_Angeles (bucket
+  /// 414 s) — and one point renders "not enough data to chart" with no stats
+  /// strip under it, so the assertions flipped with the zone and, in the middle
+  /// band, with the minute. Nothing was wrong with the app: aligning buckets to
+  /// the viewer's local midnight is FB-71 Q6, ruled 2026-08-14 and landed.
+  ///
+  /// Spreading the rows over the elapsed part of today instead makes their span
+  /// scale with the very quantity the bucket width is derived from, so they
+  /// out-span their bucket in every zone at every hour — and, by construction,
+  /// every row still lands at or after local midnight, which a fixed offset did
+  /// not guarantee either (`now - 3 min` is yesterday at 00:01).
+  ///
+  /// ⚠️ **One residual, measured rather than assumed** (2026-08-17, by pinning
+  /// the local hour with a fixed-offset `TZ`): the file is green at every local
+  /// hour tried — 00:01:30, 00:05, 00:45, 03:30, 12:00, 18:00, 23:58 — and red
+  /// only inside roughly **the first 90 seconds after local midnight** (00:00:30
+  /// ⇒ 12 red, 00:01:00 ⇒ 4 red). That is not a seeding bug and no spacing can
+  /// close it: "today" is then shorter than [kHistoryListBucketMs], so the chart
+  /// genuinely cannot have two points and the block draws
+  /// `historyChartInsufficientData` with no stats strip beneath it.
+  ///
+  /// 🔑 Which is worth reading twice, because it is also what a USER sees at
+  /// 00:00:30 — a unit that has been recording all night shows one sentence and
+  /// no numbers, because the strip is inside the chart's early return even
+  /// though `historyStats` never needed a bucket. Closing that is a UI change on
+  /// two surfaces (the History tab renders the same card), so it is left for a
+  /// ruling rather than smuggled in with a test fix.
   Future<void> addRows(WidgetTester tester, String deviceId, double pvlt,
-          {int count = 3, int? temp = 30, int? mode, int fromMinute = 1}) =>
+          {int count = 3, int? temp = 30, int? mode, int startSlot = 1}) =>
       tester.runAsync(() async {
         final now = DateTime.now();
+        // 🔴 The block's own derivation of "today", not a second one — the same
+        // cut-off the query will be run with (§6 R5).
+        final since = historySinceFor(HistoryRange.today)!;
+        final slots = startSlot + count;
+        final step = Duration(
+            microseconds: now.difference(since).inMicroseconds ~/ slots);
         for (var i = 0; i < count; i++) {
           await services.historyRepo.insertSample(
             TelemetrySample(
-              timestamp: now.subtract(Duration(minutes: fromMinute + i)),
+              timestamp: now.subtract(step * (startSlot + i)),
               pvlt: pvlt,
               temperatureC: temp,
               mode: mode ?? ReportedStatus.normal,
@@ -474,10 +526,12 @@ void main() {
     await pumpSection(tester, deviceId: unitA, live: false);
     expect(showsVoltage(vA), isTrue);
 
-    // 🔴 A minute of its own. A row sharing a display window with an existing
+    // 🔴 A window of its own. A row sharing a display window with an existing
     // one would be AVERAGED into it, and neither voltage would appear — which
-    // would make this test pass for the wrong reason.
-    await addRows(tester, unitA, 9.87, count: 1, fromMinute: 30);
+    // would make this test pass for the wrong reason. A far slot rather than
+    // "30 minutes ago" because the window's WIDTH moves with the local hour;
+    // see `addRows`.
+    await addRows(tester, unitA, 9.87, count: 1, startSlot: 30);
 
     // 🔴 And the widget really has to be DESTROYED, not merely rebuilt.
     // Re-pumping the same tree keeps the State — and therefore the already
@@ -632,13 +686,13 @@ void main() {
     testWidgets('R1: it re-queries and picks up rows written since mount',
         (tester) async {
       await boot(tester);
-      await addRows(tester, 'A', 12.6, count: 3, fromMinute: 1);
+      await addRows(tester, 'A', 12.6, count: 3, startSlot: 1);
       await pumpSection(tester, deviceId: 'A', live: false);
       final before = debugDeviceHistoryQueries;
       expect(before, greaterThan(0), reason: 'it queried once on mount');
 
       // A row lands while the user is looking at the page.
-      await addRows(tester, 'A', 12.4, count: 3, fromMinute: 30);
+      await addRows(tester, 'A', 12.4, count: 3, startSlot: 30);
       await tester.pump();
       expect(debugDeviceHistoryQueries, before,
           reason: 'nothing re-queries on its own — this is the gap R1 closes');
@@ -659,7 +713,7 @@ void main() {
       // `visualDensity` change would shrink it silently and nothing else here
       // would notice.
       await boot(tester);
-      await addRows(tester, 'A', 12.6, count: 2, fromMinute: 1);
+      await addRows(tester, 'A', 12.6, count: 2, startSlot: 1);
       await pumpSection(tester, deviceId: 'A', live: false);
       final size = tester.getSize(find.ancestor(
           of: find.byIcon(Icons.refresh),
