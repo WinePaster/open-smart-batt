@@ -98,8 +98,14 @@ class _StalledConn extends ConnectionController {
   Duration? get pendingFor =>
       kClassPendingTimeout + const Duration(seconds: 1);
 
+  /// FB-86 (second half): stalled whoever asks. This suite is about LAYOUT —
+  /// that the report fits one screen — so the unit the latch belongs to is not
+  /// a variable in it.
   @override
-  bool get isSetupStalled => true;
+  bool isSetupStalledFor(String? deviceId) => true;
+
+  @override
+  bool get isSetupStalledUnattributed => true;
 }
 
 void main() {

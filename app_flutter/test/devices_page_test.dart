@@ -146,8 +146,17 @@ class _StateConn extends ConnectionController {
   @override
   String? get lastErrorUnattributed => error;
 
+  /// FB-86 (second half): whose stall it is. Null — the default — means the
+  /// latch belongs to no unit in particular, which is what the tests about
+  /// COPY want; a test about attribution states it.
+  String? stalledDeviceId;
+
   @override
-  bool get isSetupStalled => stalledLatch;
+  bool isSetupStalledFor(String? deviceId) =>
+      stalledLatch && stalledDeviceId == deviceId;
+
+  @override
+  bool get isSetupStalledUnattributed => stalledLatch;
 
   void state({String? error, bool stalled = false}) {
     this.error = error;
@@ -440,6 +449,7 @@ void main() {
             conn.state(error: 'connect_failed');
           case 'Not answering':
             ble.connectedId = 'DEV-A';
+            conn.stalledDeviceId = 'DEV-A';
             conn.state(error: 'gatt_setup_stalled', stalled: true);
           case 'Connected':
             ble.connectedId = 'DEV-A';

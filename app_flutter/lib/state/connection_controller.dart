@@ -781,16 +781,58 @@ class ConnectionController extends ChangeNotifier {
   /// on the fourth consecutive try, this number is wrong and should move.
   static const int maxSetupFailures = 3;
 
-  /// Whether this link has connected repeatedly without ever coming up.
+  /// Whether the run currently being counted has stalled, WHOEVER it belongs to.
+  ///
+  /// 🔴 Private, and that is FB-86's second half. This is the raw predicate; the
+  /// three callers below are all inside the controller, where "the run" and "the
+  /// unit we are working on" are the same thing by construction — [connect]
+  /// writes [_desiredDeviceId] and [_setupFailuresDeviceId] in the same breath
+  /// and zeroes the count whenever they would differ. Outside the controller
+  /// that guarantee does not hold, which is why nothing outside can ask this.
+  bool get _stalledRun => _setupFailuresSinceReady >= maxSetupFailures;
+
+  /// Whether [deviceId] has connected repeatedly without ever coming up.
   ///
   /// The UI uses this to draw a failure that STAYS, and [_scheduleReconnect]
   /// uses it to stop. Spinning for another forty minutes buys nothing: the field
   /// capture ran fourteen and never once recovered on its own.
-  bool get isSetupStalled => _setupFailuresSinceReady >= maxSetupFailures;
+  ///
+  /// 🔴 FB-86 (second half). The unattributed `isSetupStalled` getter this
+  /// replaced was the LAST per-unit fact the automatic-connect gate read
+  /// globally: `lastError` had just been scoped, and the very next line still
+  /// asked "has setup stalled?" without saying whose — so A's stall went on
+  /// blocking B's page while B's own stalled card was suppressed by hand. Same
+  /// defect, same screen, one line down.
+  ///
+  /// ⚖️ NO `ConnectionError`-STYLE VALUE TYPE HERE, deliberately. The error
+  /// needed one because it had no owner at all; the stall already has
+  /// [_setupFailuresDeviceId] — the same field that decides when the count
+  /// resets — so a second copy of the owner would be a new source of drift
+  /// rather than a fix. There is also no radio-level case to model: a stall is a
+  /// fact about a unit, always.
+  bool isSetupStalledFor(String? deviceId) =>
+      _setupFailuresDeviceId == deviceId && _stalledRun;
 
-  /// How many consecutive setups have failed — shown to the user, so that
-  /// "we really did try" is a number and not a claim.
-  int get setupFailures => _setupFailuresSinceReady;
+  /// How many consecutive setups have failed FOR [deviceId] — shown to the user,
+  /// so that "we really did try" is a number and not a claim.
+  ///
+  /// Zero for anyone else, for [isSetupStalledFor]'s reason: the count and the
+  /// latch are one pair, and a screen that took the latch from one unit and the
+  /// number from another would print "3 attempts" under the wrong name.
+  int setupFailuresFor(String? deviceId) =>
+      _setupFailuresDeviceId == deviceId ? _setupFailuresSinceReady : 0;
+
+  /// The stall latch and its count, for a caller that is about NO unit.
+  ///
+  /// ⛔ THE ESCAPE HATCH, on [lastErrorUnattributed]'s terms and pinned by the
+  /// same allowlist in `last_error_attribution_test.dart`. One legitimate
+  /// caller: the dashboard's disconnected placeholder, which is the empty state
+  /// of the app rather than a page about a unit, and therefore has no id to
+  /// pass. Anything drawn PER UNIT must use [isSetupStalledFor].
+  bool get isSetupStalledUnattributed => _stalledRun;
+
+  /// The count that goes with [isSetupStalledUnattributed], same terms.
+  int get setupFailuresUnattributed => _setupFailuresSinceReady;
 
   /// True once this attempt got as far as `connected`. Distinguishes a setup
   /// that failed from a connect that never landed — the latter is already
@@ -1921,7 +1963,7 @@ class ConnectionController extends ChangeNotifier {
             '(count stays $_setupFailuresSinceReady)');
       } else if (reachedConnected && _readyAt == null) {
         _setupFailuresSinceReady++;
-        if (isSetupStalled) {
+        if (_stalledRun) {
           // Cancel the retry the PREVIOUS failure already armed. Refusing to
           // schedule a new one is not enough — the backoff timer from round two
           // is still pending when round three decides to stop, so without this
@@ -1961,7 +2003,7 @@ class ConnectionController extends ChangeNotifier {
       // and log volume to learn nothing. The user gets a button instead.
       if (!_manualDisconnect &&
           _settings.autoReconnect &&
-          !isSetupStalled &&
+          !_stalledRun &&
           !_autoConnectGaveUp &&
           _desiredDeviceId != null) {
         if (wasOnline && Platform.isIOS) {
@@ -2072,7 +2114,7 @@ class ConnectionController extends ChangeNotifier {
     // later and the user may have moved on.
     if (!_manualDisconnect &&
         _settings.autoReconnect &&
-        !isSetupStalled &&
+        !_stalledRun &&
         !_autoConnectGaveUp &&
         _desiredDeviceId == id) {
       _scheduleReconnect();
@@ -2172,7 +2214,7 @@ class ConnectionController extends ChangeNotifier {
     //
     // ⚠️ This does NOT re-open FB-52. "Came up and never said anything" is
     // still bounded, by a different instrument: `_setupFailuresSinceReady` /
-    // [isSetupStalled], which counts connections that reached `connected` and
+    // [isSetupStalledFor], which counts connections that reached `connected` and
     // left without `ready` and stops the ladder at [maxSetupFailures]. Standing
     // down here hands the episode to that counter, which is exactly what the
     // `connected` branch of [_onLinkState] already does deliberately. What must

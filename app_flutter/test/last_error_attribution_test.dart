@@ -1,4 +1,5 @@
-// FB-86 — the connection error is a fact about ONE unit, and the type says so.
+// FB-86 — the connection error AND the stall latch are facts about ONE unit,
+// and the API says so.
 //
 // The defect: `ConnectionController` held the error as a bare `String?` and
 // every consumer decided for itself whether to check who it belonged to. Two of
@@ -21,8 +22,15 @@
 //     have, and the reason this file exists rather than one more assertion in
 //     `detail_auto_connect_test.dart`.
 //
-// The gate's own behaviour — B connects while A's failure stands — is A33/A34
-// in `detail_auto_connect_test.dart`, where the rest of the gate list lives.
+// 🔁 THE SAME TREATMENT, TWICE. The first pass scoped `lastError` and left
+// `isSetupStalled` global — one line further down the very same gate — so A's
+// stall went on blocking B's page after A's error had stopped doing so. That is
+// why the guards below are written over a MAP of accessors rather than over one
+// name: the next singular field to be scoped joins the table, and until it does
+// the table says out loud which ones are still global.
+//
+// The gate's own behaviour — B connects while A's failure or stall stands — is
+// A33/A34/A36 in `detail_auto_connect_test.dart`, where the gate list lives.
 //
 // CLEAN-ROOM: expectations derive from this project's own source.
 import 'dart:io';
@@ -83,6 +91,8 @@ class _StubBle extends BleService {
   Future<void> disconnect() async {}
 
   void emitAdapter(BluetoothAdapterState s) => _adapterOut.add(s);
+
+  void emitLink(BleLinkState s) => _linkOut.add(s);
 
   @override
   Future<void> dispose() async {
@@ -212,48 +222,141 @@ void main() {
     });
   });
 
-  group('E3 — forgetting attribution cannot be cheap', () {
-    test('nothing in lib/ reads a bare `lastError`', () {
-      // The getter is gone, so this cannot compile today; the guard is against
-      // it coming BACK. Re-adding it is a one-line change and every consumer
-      // written afterwards would inherit the FB-86 defect by default.
-      final offenders = <String>[];
-      // The enum member `AutoConnectSkipNotice.lastError` is a different thing
-      // wearing the same word — it names WHICH GATE refused, and carries no
-      // code. Excluded by name rather than by loosening the pattern.
-      final bare =
-          RegExp(r'(?<!AutoConnectSkipNotice)\.lastError\b(?!For|Unattributed)');
-      libSourcesWithoutComments().forEach((path, src) {
-        if (bare.hasMatch(src)) offenders.add(path);
-      });
-      expect(offenders, isEmpty,
-          reason: 'an unattributed read of the connection error is what FB-86 '
-              'was: use `lastErrorFor(<the unit being drawn>)`');
+  group('E3 — the stall latch is one unit\'s too', () {
+    late AppDatabase db;
+    late AppServices services;
+    late _StubBle ble;
+
+    setUp(() async {
+      db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      ble = _StubBle();
+      services = await AppServices.create(appDatabase: db, ble: ble);
+      ble.emitAdapter(BluetoothAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
     });
 
-    test('the escape hatch has exactly the two call sites that were ruled', () {
-      // 🔴 THE POINT OF THIS FILE. `lastErrorUnattributed` is legitimate for a
-      // caller reporting the attempt the app just made — the device list's
-      // snackbar, whose target may have been rebound to another id, and the
-      // dashboard's empty state, which is about no unit at all. Anything drawn
-      // PER UNIT has an id in hand and must pass it.
+    tearDown(() async => services.dispose());
+
+    /// One connection that reaches `connected` and leaves without `ready` —
+    /// FB-52's silent setup, which is what the latch counts.
+    Future<void> silentSetup() async {
+      ble.emitLink(BleLinkState.connecting);
+      await Future<void>.delayed(Duration.zero);
+      ble.emitLink(BleLinkState.connected);
+      await Future<void>.delayed(Duration.zero);
+      ble.emitLink(BleLinkState.disconnected);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+
+    test('🔴 FB-86 second half: A\'s stall is not B\'s stall', () async {
+      final conn = services.connection;
+      await conn.connect('DEV-A');
+      for (var i = 0; i < ConnectionController.maxSetupFailures; i++) {
+        await silentSetup();
+      }
+
+      expect(conn.isSetupStalledUnattributed, isTrue,
+          reason: 'three silent connections is the latch, by definition');
+      expect(conn.isSetupStalledFor('DEV-A'), isTrue);
+      expect(conn.setupFailuresFor('DEV-A'),
+          ConnectionController.maxSetupFailures);
+
+      expect(conn.isSetupStalledFor('DEV-B'), isFalse,
+          reason: 'THE SECOND HALF OF FB-86 — this is what went on blocking '
+              'B\'s automatic connect after A\'s error had stopped');
+      expect(conn.setupFailuresFor('DEV-B'), 0,
+          reason: 'the count and the latch are one pair; taking the number '
+              'from another unit would print "3 attempts" under this name');
+    });
+
+    test('a stall is never radio-level — there is no every-unit case', () {
+      // The one place the two halves differ, and it is deliberate: an error can
+      // be about the phone, a stall cannot. Nothing has connected yet here, so
+      // no unit is stalled — including the caller with no unit at all.
+      final conn = services.connection;
+      for (final id in <String?>['DEV-A', null]) {
+        expect(conn.isSetupStalledFor(id), isFalse);
+      }
+    });
+  });
+
+  group('E4 — forgetting attribution cannot be cheap', () {
+    /// Every per-unit fact the controller holds, and the bare read that used to
+    /// be available for it.
+    ///
+    /// 🔴 A TABLE, not two assertions, because FB-86 happened TWICE: the first
+    /// pass scoped `lastError` and left `isSetupStalled` global one line away in
+    /// the same gate. The next field to be scoped is a row here; a field that
+    /// is still global is visibly absent.
+    const scoped = <String, String>{
+      'lastError': r'(?<!AutoConnectSkipNotice)\.lastError\b(?!For|Unattributed)',
+      'isSetupStalled': r'\.isSetupStalled\b(?!For|Unattributed)',
+      'setupFailures': r'\.setupFailures\b(?!For|Unattributed)',
+    };
+
+    test('nothing in lib/ reads any of them unattributed by accident', () {
+      // The bare getters are gone, so none of this compiles today; the guard is
+      // against them coming BACK. Re-adding one is a one-line change and every
+      // consumer written afterwards would inherit the FB-86 defect by default.
       //
-      // A third file appearing here is not automatically wrong; it is
-      // automatically a DECISION, to be made here rather than in passing.
-      const allowed = <String>{
-        // The declaration itself.
-        'lib/state/connection_controller.dart',
-        'lib/ui/dashboard/disconnected_state.dart',
-        'lib/ui/devices/devices_page.dart',
-      };
-      final found = <String>{};
-      libSourcesWithoutComments().forEach((path, src) {
-        if (src.contains('lastErrorUnattributed')) found.add(path);
+      // ⚠️ `AutoConnectSkipNotice.lastError` is a different thing wearing the
+      // same word — it names WHICH GATE refused and carries no code — so it is
+      // excluded by name rather than by loosening the pattern.
+      final sources = libSourcesWithoutComments();
+      scoped.forEach((name, pattern) {
+        final bare = RegExp(pattern);
+        final offenders = <String>[
+          for (final e in sources.entries)
+            if (bare.hasMatch(e.value)) e.key,
+        ];
+        expect(offenders, isEmpty,
+            reason: 'an unattributed read of `$name` is what FB-86 was, both '
+                'times: ask for it with the id of the unit being drawn');
       });
-      expect(found, allowed,
-          reason: 'every OTHER screen is about one unit and must ask '
-              '`lastErrorFor(that unit)` — FB-86 is what the third consumer '
-              'reading this getter did to the second');
+    });
+
+    test('the escape hatches have exactly the call sites that were ruled', () {
+      // 🔴 THE POINT OF THIS FILE. The `…Unattributed` accessors are legitimate
+      // for a caller that is not about a unit:
+      //
+      //   * `lastErrorUnattributed` — the device list's snackbar, reporting the
+      //     connect the user just asked for, whose target may have been REBOUND
+      //     to another id; and the dashboard's empty state;
+      //   * `isSetupStalledUnattributed` / `setupFailuresUnattributed` — the
+      //     dashboard's empty state only. It is the app's own idle screen, not a
+      //     page about a unit, so it has no id to pass.
+      //
+      // Anything drawn PER UNIT has an id in hand and must pass it. A new file
+      // appearing here is not automatically wrong; it is automatically a
+      // DECISION, to be made here rather than in passing.
+      const allowed = <String, Set<String>>{
+        'lastErrorUnattributed': {
+          'lib/state/connection_controller.dart', // the declaration itself
+          'lib/ui/dashboard/disconnected_state.dart',
+          'lib/ui/devices/devices_page.dart',
+        },
+        'isSetupStalledUnattributed': {
+          'lib/state/connection_controller.dart',
+          'lib/ui/dashboard/disconnected_state.dart',
+        },
+        'setupFailuresUnattributed': {
+          'lib/state/connection_controller.dart',
+          'lib/ui/dashboard/disconnected_state.dart',
+        },
+      };
+      final sources = libSourcesWithoutComments();
+      allowed.forEach((accessor, files) {
+        final found = <String>{
+          for (final e in sources.entries)
+            if (e.value.contains(accessor)) e.key,
+        };
+        expect(found, files,
+            reason: 'every OTHER screen is about one unit — FB-86 is what the '
+                'consumer that reached for `$accessor` instead did twice');
+      });
     });
   });
 }

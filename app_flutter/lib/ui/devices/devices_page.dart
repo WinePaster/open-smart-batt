@@ -554,7 +554,7 @@ class _DevicesPageState extends State<DevicesPage>
                 isCurrentDevice: connectedId == d.id,
                 isOnline: conn.isOnline,
                 working: working || _connectingId == d.id,
-                setupStalled: conn.isSetupStalled,
+                setupStalled: conn.isSetupStalledFor(d.id),
                 // FB-86: this row's OWN error, not whatever the controller last
                 // recorded. `isCurrentDevice` above already returns 未連線 for
                 // a row that is not the current unit, so nothing on screen
@@ -633,7 +633,7 @@ class _DevicesPageState extends State<DevicesPage>
               isCurrentDevice: true,
               isOnline: conn.isOnline,
               working: working || _connectingId == pinnedId,
-              setupStalled: conn.isSetupStalled,
+              setupStalled: conn.isSetupStalledFor(pinnedId),
               lastError: conn.lastErrorFor(pinnedId),
             ),
             onOpenDetail: () => unawaited(_openDetail(pinnedId,

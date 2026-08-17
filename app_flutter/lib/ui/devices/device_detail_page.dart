@@ -91,6 +91,10 @@ String? autoConnectBlocker({
   // not answer without an id. FB-86 is what this parameter's caller got wrong
   // for as long as the controller had a bare `lastError` getter to pass in.
   required String? lastError,
+  // 🔴 THIS UNIT'S stall, on the same terms and for the same reason
+  // ([ConnectionController.isSetupStalledFor]). It was the line the first half
+  // of FB-86 left behind: `lastError` was scoped, this was not, and one global
+  // input is all it takes for the gate to refuse on another unit's account.
   required bool isSetupStalled,
   required bool isAdapterOn,
 }) {
@@ -301,7 +305,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   ///     ⇒ hence the latch plus `isBusy` / `isRetrying` / `isAutoConnectArmed`;
   ///   * a unit that cannot finish setup (FB-50: 42.4 % of connections in one
   ///     capture never reached `ready`) would otherwise get a fresh doomed
-  ///     attempt every time its page is opened ⇒ hence `isSetupStalled`;
+  ///     attempt every time its page is opened ⇒ hence `isSetupStalledFor`;
   ///   * `lastError != null` means the user is looking at a failure report with
   ///     a retry button on it. Retrying it for them, without being asked, is
   ///     how a page starts arguing with the person reading it.
@@ -348,7 +352,13 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       // connected". The controller now answers per unit and there is no way to
       // ask it otherwise; see [ConnectionController.lastErrorFor].
       lastError: conn.lastErrorFor(widget.deviceId),
-      isSetupStalled: conn.isSetupStalled,
+      // 🔴 FB-86, SECOND HALF — and the line that proves the first half was not
+      // enough. When `lastError` above was scoped, this one was left global, so
+      // A's stall went on doing exactly what A's error had stopped doing:
+      // blocking THIS unit's automatic connect while this unit's own stalled
+      // card was suppressed. The latch has always known whose run it is
+      // (`_setupFailuresDeviceId`); it just could not be asked.
+      isSetupStalled: conn.isSetupStalledFor(widget.deviceId),
       isAdapterOn: conn.isAdapterOn,
     );
     if (blocker != null) {
@@ -361,22 +371,36 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       // log is for whoever reads an export afterwards; this is for the person
       // in front of the phone right now, who was promised an automatic connect.
       //
-      // 🔴 STILL NO `mine` GATE, RE-JUDGED UNDER FB-86 (2026-08-17) — the
-      // question FB-86 required to be re-opened, because Q4's stated reason for
-      // omitting one was "in the cross-device case there is no failure card, so
-      // this notice is the only explanation", and FB-86 removes that case.
+      // 🔴 STILL NO `mine` GATE — RE-JUDGED TWICE UNDER FB-86 (2026-08-17), and
+      // the reason is no longer the one Q4 gave.
       //
-      //   * The `lastError` notice no longer NEEDS a gate: its trigger is now
-      //     `lastErrorFor(this unit)` — the very same value `_OfflineBody` reads
-      //     for the card — so notice and card cannot disagree about whose
-      //     failure this is. Adding `mine` on top would be strictly worse: it
-      //     would hide the notice on a page that IS showing a radio-level card
-      //     while the controller's target is another unit.
-      //   * The `setupStalled` notice still MUST NOT have one. `isSetupStalled`
-      //     is still a singular field (FB-86 fixed the error, not the latch), so
-      //     A's stall can still block B's page — and there Q4's original
-      //     argument survives word for word: the card is gated on `mine`, so
-      //     this notice is the only thing on screen that explains the silence.
+      // ⛔ SUPERSEDED, recorded so it is not re-derived: Q4 omitted the gate
+      // because "in the cross-device case there is no failure card, so this
+      // notice is the only explanation on screen". That premise is GONE. It
+      // depended on the card being suppressed while the gate still refused, and
+      // both halves of that — `lastError`, then the stall latch — are now scoped
+      // to the unit, so the gate no longer refuses on another unit's account at
+      // all. An intermediate re-judgement kept the sentence alive for the stall
+      // branch alone; that too is now obsolete.
+      //
+      // 🔑 THE STANDING REASON. Both notices key off [autoConnectBlocker]'s
+      // answer, and both of its per-unit inputs are read for THIS page's unit —
+      // `lastErrorFor(deviceId)` and `isSetupStalledFor(deviceId)`, the very
+      // same two values `_OfflineBody` passes to [connectionFailureCopy]. So
+      // whenever either notice fires, the matching card is already on screen BY
+      // CONSTRUCTION, rather than because two widgets independently remembered
+      // to apply the same rule. Adding `mine` could therefore do only one thing:
+      // hide a notice whose card is showing. Two reachable cases where it would:
+      //
+      //   * a RADIO-level code, which belongs to no unit — `mine` says nothing
+      //     about it, and the card renders it whatever the controller's target;
+      //   * a stall on a unit the controller no longer targets. `disconnect()`
+      //     nulls `_desiredDeviceId`, but the latch is deliberately kept until a
+      //     `ready` (it is the unit's fact, not the link's), so the card shows
+      //     and `mine` is false.
+      //
+      // ⇒ no gate, on either branch. A26–A32 are unchanged by this reasoning;
+      // A36 pins the second case.
       _skipNotice = _attemptSeen ? null : autoConnectSkipNotice(blocker);
       return;
     }
@@ -714,17 +738,23 @@ class _OfflineBody extends StatelessWidget {
     final retrying = conn.isRetrying;
     final working = conn.isBusy || retrying;
 
-    // The controller's stall/busy state belongs to whichever unit it last
-    // worked on. Attributing it to a row the user merely opened would put
-    // another device's failure under this one's name, so the copy falls back to
-    // the plain idle state unless this IS that unit.
+    // The controller's LINK state belongs to whichever unit it last worked on.
+    // Attributing it to a row the user merely opened would put another device's
+    // failure under this one's name, so the copy falls back to the plain idle
+    // state unless this IS that unit.
     //
-    // ⚠️ AMENDED (FB-86): `lastError` is NO LONGER one of them. It used to be
-    // gated here by hand — `mine ? conn.lastError : null` — and that hand-gate,
-    // correct as it was, is exactly what the automatic-connect gate above did
-    // not copy. The scoping moved into the controller, so this line asks for
-    // this unit's error and gets this unit's error. The remaining `mine &&`
-    // guards below are the fields that are still singular.
+    // ⚠️ AMENDED (FB-86): `lastError` and the STALL LATCH are no longer among
+    // them. Both used to be gated here by hand — `mine ? conn.lastError : null`
+    // and `mine && conn.isSetupStalled` — and those hand-gates, correct as they
+    // were, are exactly what the automatic-connect gate above did not copy. The
+    // scoping moved into the controller, so these lines ask for this unit's
+    // error and this unit's stall and get this unit's.
+    //
+    // What `mine` still guards is the SINGLE LINK: busy, retrying, armed. Those
+    // are not per-unit facts being borrowed — `BleService._links` holds 0 or 1,
+    // so there is one connect in flight in the whole app and the only question
+    // is whether it is this unit's. They stop being singular the day design 0046
+    // 交付二 lands, and not before.
     //
     // 📌 ONE VISIBLE CONSEQUENCE, and it is intended: a RADIO-level code
     // (`bluetooth_off` and friends — [radioLevelErrorCodes]) belongs to no unit
@@ -741,8 +771,8 @@ class _OfflineBody extends StatelessWidget {
       isBusy: mine && conn.isBusy,
       isRetrying: mine && retrying,
       autoConnectArmed: mine && conn.isAutoConnectArmed,
-      setupStalled: mine && conn.isSetupStalled,
-      setupFailures: conn.setupFailures,
+      setupStalled: conn.isSetupStalledFor(deviceId),
+      setupFailures: conn.setupFailuresFor(deviceId),
       reconnectAttempts: conn.reconnectAttempts,
     );
 

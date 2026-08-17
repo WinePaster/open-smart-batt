@@ -70,8 +70,8 @@ class DisconnectedState extends StatelessWidget {
       isBusy: conn.isBusy,
       isRetrying: retrying,
       autoConnectArmed: conn.isAutoConnectArmed,
-      setupStalled: conn.isSetupStalled,
-      setupFailures: conn.setupFailures,
+      setupStalled: conn.isSetupStalledUnattributed,
+      setupFailures: conn.setupFailuresUnattributed,
       reconnectAttempts: conn.reconnectAttempts,
     );
 

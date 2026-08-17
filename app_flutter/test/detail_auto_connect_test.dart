@@ -123,8 +123,17 @@ class _CountingConn extends ConnectionController {
   @override
   bool get isAutoConnectArmed => armed;
 
+  /// Whose stall it is (FB-86, second half) — stated for the same reason
+  /// [errorDeviceId] is: the gate now asks per unit, so a test that leaves this
+  /// null is asserting about a latch belonging to nobody.
+  String? stalledDeviceId;
+
   @override
-  bool get isSetupStalled => stalled;
+  bool isSetupStalledFor(String? deviceId) =>
+      stalled && stalledDeviceId == deviceId;
+
+  @override
+  bool get isSetupStalledUnattributed => stalled;
 
   @override
   bool get isAdapterOn => adapterOn;
@@ -303,7 +312,14 @@ void main() {
   });
 
   testWidgets('A5: never once setup has stalled (FB-50)', (tester) async {
-    await boot(tester, configure: (c) => c.stalled = true);
+    // FB-86 (second half): and the stall has to BE this unit's, stated rather
+    // than assumed — exactly as A4 states the error's owner.
+    await boot(
+      tester,
+      configure: (c) => c
+        ..stalled = true
+        ..stalledDeviceId = 'DEV-A',
+    );
 
     expect(
       conn.connectToSavedCalls,
@@ -724,6 +740,7 @@ void main() {
       tester,
       configure: (c) => c
         ..stalled = true
+        ..stalledDeviceId = 'DEV-A'
         ..current = 'DEV-A',
     );
 
@@ -899,5 +916,61 @@ void main() {
     expect(find.text(en.devicesAutoConnectSkippedTitle), findsOneWidget,
         reason: 'FB-82 Q4 — the visit made no attempt, and this notice needs '
             'no `mine` gate now that its trigger is already per-unit');
+  });
+
+  testWidgets('A36: another unit\'s STALL does not block this one either', (
+    tester,
+  ) async {
+    // 🔴 FB-86's SECOND HALF, and the reason A33 was not the end of it. When the
+    // error was scoped, this gate one line below still read the stall latch
+    // globally — so the identical defect survived on the identical screen: DEV-B
+    // stalls, the user opens DEV-A, DEV-A never tries, and DEV-A's own stalled
+    // card is not on screen to say why.
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      deviceId: 'DEV-A',
+      configure: (c) => c
+        ..stalled = true
+        ..stalledDeviceId = 'DEV-B'
+        ..current = 'DEV-B',
+    );
+
+    expect(
+      conn.connectToSavedCalls,
+      1,
+      reason:
+          'the run of silent connections belongs to DEV-B — refusing here is '
+          'the FB-50 gate firing on a unit it has no evidence about',
+    );
+    // And the other half, as A34 is to A33: not borrowed onto this page either.
+    expect(find.text(en.disconnectedStalledTitle), findsNothing);
+    expect(find.text(en.devicesAutoConnectSkippedStalled), findsNothing);
+  });
+
+  testWidgets('A37: a stall on a unit the controller no longer targets still '
+      'reports — notice AND card', (tester) async {
+    // The case the FB-82 Q4 re-judgement turns on. `disconnect()` nulls the
+    // desired id but the latch is deliberately kept until a `ready`, so `mine`
+    // is false while the stall is still this unit's fact. The card is scoped to
+    // the unit now, not to `mine`, so it renders — and a `mine` gate on the
+    // notice would have hidden the sentence explaining the card beside it.
+    final en = AppLocalizationsEn();
+    await boot(
+      tester,
+      deviceId: 'DEV-A',
+      configure: (c) => c
+        ..stalled = true
+        ..stalledDeviceId = 'DEV-A'
+        ..current = null,
+    );
+
+    expect(conn.connectToSavedCalls, 0);
+    expect(find.text(en.disconnectedStalledTitle), findsOneWidget,
+        reason: 'the unit HAS stalled; `mine` being false is a fact about the '
+            'link, not about whose run this was');
+    expect(find.text(en.devicesAutoConnectSkippedStalled), findsOneWidget,
+        reason: 'FB-82 Q4 re-judged: the notice explains the card above it, so '
+            'gating it on `mine` could only hide the explanation');
   });
 }

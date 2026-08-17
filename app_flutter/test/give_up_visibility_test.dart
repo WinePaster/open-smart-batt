@@ -140,8 +140,17 @@ class _ErrorConn extends ConnectionController {
   @override
   String? get lastErrorUnattributed => error;
 
+  /// FB-86 (second half): whose stall it is. Null — the default — means the
+  /// latch belongs to no unit in particular, which is what the tests about
+  /// COPY want; a test about attribution states it.
+  String? stalledDeviceId;
+
   @override
-  bool get isSetupStalled => stalledLatch;
+  bool isSetupStalledFor(String? deviceId) =>
+      stalledLatch && stalledDeviceId == deviceId;
+
+  @override
+  bool get isSetupStalledUnattributed => stalledLatch;
 
   void setError(String? e) {
     error = e;
