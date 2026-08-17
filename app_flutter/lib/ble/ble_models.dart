@@ -20,16 +20,34 @@ enum BleLinkState { disconnected, connecting, connected, ready, disconnecting }
 
 /// A device found while scanning on the vendor service UUID (mockup screen 3).
 class DiscoveredDevice {
-  /// Platform remote id (Android: MAC; iOS: an install-scoped NSUUID). On
-  /// Android this is globally stable; on iOS it is volatile (changes on
-  /// reinstall / differs per phone), so [SavedDevice] rebinds it against the
-  /// stable advertised [name] on each fresh discovery (D.3). Used by
-  /// [BleService.connect].
+  /// Platform remote id (Android: MAC; iOS: an OS-assigned NSUUID).
+  ///
+  /// 🔴 CORRECTED 2026-08-17 (design 0068 §1). This used to read *"on iOS it is
+  /// volatile (changes on reinstall / differs per phone), so [SavedDevice]
+  /// rebinds it against the stable advertised name on each fresh discovery"* —
+  /// and the whole rebind mechanism was built on that sentence. Three
+  /// independent observations say otherwise:
+  ///
+  ///   * it is NOT per-app: the vendor's own iOS app displays the same UUIDs
+  ///     this app printed on the same phone the same day, character for
+  ///     character (`docs/feedback-attachments/vendor-app.md`);
+  ///   * the units advertise PUBLIC static addresses (`addr_type=0` on all five
+  ///     in the 2026-08-04 capture, against random addresses on other vendors'
+  ///     devices in the same capture), so the mapping's input does not move;
+  ///   * one saved id survived eleven days and many sessions on one phone
+  ///     (`feedback_log/2026.08.14/004`, iOS 26.6).
+  ///
+  /// What is still true: it is not a MAC, and it is not the same string on
+  /// another phone. What is NOT established either way is whether it can change
+  /// at all for one phone and one unit — this project has never observed it. So
+  /// "stale" is a rare case to be proven, not the default assumption, which is
+  /// why the rebind now runs only when iOS itself says it does not know the id
+  /// (design 0068 §4).
   final String id;
 
   /// Advertised local name (may be empty — the protocol does not filter by
-  /// name). On iOS this is the STABLE secondary key used to rebind a volatile
-  /// NSUUID (D.3).
+  /// name). On iOS this is the secondary key a rebind uses (D.3) — ⚠️ stable,
+  /// but NOT unique: two capacitors both advertise `RCE-SCAP_II` (FB-25).
   final String name;
 
   /// Signal strength (dBm); larger (closer to 0) is stronger.

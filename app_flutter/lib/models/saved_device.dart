@@ -13,18 +13,27 @@ class SavedDevice {
   /// BLE device id (platform remote id).
   ///
   /// Android: the hardware MAC — globally stable, a fine long-term key.
-  /// iOS: an OS-assigned, install-scoped NSUUID — it changes on reinstall and
-  /// differs per phone for the same physical battery. On iOS this field is
-  /// therefore treated as a volatile binding that is re-resolved against the
-  /// stable [name] on each fresh discovery (see [rebindSavedDeviceId], D.3).
+  /// iOS: an OS-assigned NSUUID — not a MAC, and different on another phone for
+  /// the same physical battery.
+  ///
+  /// 🔴 CORRECTED 2026-08-17 (design 0068 §1): this used to add *"it changes on
+  /// reinstall … therefore treated as a volatile binding"*, and that claim has
+  /// no observation behind it while three observations point the other way. See
+  /// [DiscoveredDevice.id] for them. The binding is re-resolved against [name]
+  /// (see [rebindSavedDeviceId], D.3) only when iOS says it does not know this
+  /// id — not on every fresh discovery, which is what let a valid id be rebound
+  /// to a different physical unit (`2026.08.14/004` §5 S1).
   final String id;
 
   /// User-editable display alias (e.g. "電容 #1（前車）").
   final String alias;
 
   /// Advertised local name captured when the device was saved (e.g.
-  /// "RCE-SCAP_II"). Used as the STABLE secondary key to rebind a volatile iOS
-  /// NSUUID on reinstall / a fresh scan. May be empty for older saved records
+  /// "RCE-SCAP_II"). The secondary key used to rebind an iOS id that the OS no
+  /// longer recognises. ⚠️ It is NOT unique — two capacitors both advertise
+  /// `RCE-SCAP_II` — which is why rebinding refuses to guess whenever it could
+  /// mean two units (FB-25, design 0068 §4). May be empty for older saved
+  /// records
   /// (then rebinding falls back to the raw [id]).
   ///
   /// NOTE: persisting this requires the `name` column added by the data-layer
