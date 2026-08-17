@@ -23,7 +23,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #     `--build-number="$(tool/build_number.sh)"` 帶入；`+0` 只是「沒帶旗標」
 #     時的後備值，會產生 versionCode 0 的 APK —— 它裝不到任何已發布版本之上，
 #     等於明確標示「這是開發建置，不可散佈」。
-version: 0.7.22+0
+version: 0.7.23+0
 
 environment:
   sdk: ^3.12.2
