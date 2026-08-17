@@ -80,6 +80,7 @@ void main() {
         savedId: 'AA',
         savedName: 'RCE_RSPB-01',
         candidates: {'AA': 'RCE_RSPB-01', 'BB': 'RCE_RSPB-01'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'AA');
@@ -92,6 +93,7 @@ void main() {
         savedId: 'OLD',
         savedName: 'RCE-SCAP_II',
         candidates: {'NEW': 'RCE-SCAP_II', 'OTHER': 'Some Headphones'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'NEW');
@@ -106,6 +108,7 @@ void main() {
         savedId: 'GONE',
         savedName: 'RCE_RSPB-01',
         candidates: {'0F70900B': 'RCE_RSPB-01', '58711753': 'RCE_RSPB-01'},
+        savedNames: const [],
         useNameKey: true,
       );
       expect(id, 'GONE');
@@ -117,6 +120,7 @@ void main() {
           savedId: 'OLD',
           savedName: '',
           candidates: {'NEW': '', 'OTHER': ''},
+          savedNames: const [],
           useNameKey: true,
         ),
         'OLD',
@@ -132,6 +136,7 @@ void main() {
           savedId: 'OLD',
           savedName: 'RCE-SCAP_II',
           candidates: {'A': '', 'B': ''},
+          savedNames: const [],
           useNameKey: true,
         ),
         'OLD',

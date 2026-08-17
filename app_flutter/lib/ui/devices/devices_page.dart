@@ -288,6 +288,9 @@ class _DevicesPageState extends State<DevicesPage>
       // nothing. Telling them to go and check it is nearby and switched on is
       // an instruction that can actually succeed.
       'device_unreachable' => l10n.devicesConnectFailedUnreachable,
+      // design 0068 (C): we connected, read the unit's own address off the wire
+      // and it was somebody else's. Same wording as the failure card.
+      'wrong_device' => l10n.devicesConnectFailedWrongDevice,
       _ => l10n.devicesConnectFailed,
     };
     ScaffoldMessenger.of(context).showSnackBar(
@@ -372,6 +375,12 @@ class _DevicesPageState extends State<DevicesPage>
     if (conn.connectedDeviceId == d.id) {
       await conn.disconnect();
     }
+    // FB-87 ②: and tell the controller the record is going, or its error and
+    // stall latch outlive it — the dashboard's placeholder reads them
+    // unattributed and would keep reporting a device that is no longer in the
+    // app. `disconnect()` above deliberately does not do this: dropping a link
+    // is not the same statement as deleting the device.
+    conn.forgetDevice(d.id);
     await devices.remove(d.id);
     // Re-scan so the just-removed device pops back into the nearby list once it
     // resumes advertising (a just-disconnected device needs a few seconds).

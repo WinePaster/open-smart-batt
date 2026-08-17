@@ -251,6 +251,10 @@
   "@disconnectedGaveUpRadioHint": {
     "description": "Advice card for bluetooth_off / bluetooth_unauthorized / permission_denied. The standing hint sends the user to check the device and to scan, and neither can work with the radio down."
   },
+  "disconnectedWrongDeviceHint": "The saved entry is pointing at another unit with the same name. Scan again and pick the right one, or remove this entry and add it back.",
+  "@disconnectedWrongDeviceHint": {
+    "description": "Advice card for wrong_device (design 0068 C). The standing hint says 'check it is nearby and powered', which is the wrong instruction here: the unit answered, it was simply not this one."
+  },
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {
@@ -415,6 +419,7 @@
   "devicesConnectFailedPermission": "Bluetooth permission is missing. Grant it in Settings",
   "devicesConnectFailedStale": "This unit could not be found — scan again, then reconnect",
   "devicesConnectFailedUnreachable": "This device could not be found. Check it is nearby and switched on",
+  "devicesConnectFailedWrongDevice": "That is a different unit — its address does not match the one you saved. Disconnected",
   "devicesRemoveTitle": "Remove device",
   "devicesRemoveBody": "Remove \"{alias}\" from your saved list? (The device itself is unaffected.)",
   "@devicesRemoveBody": {

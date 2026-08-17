@@ -211,7 +211,7 @@ Future<bool> promptAndDeclareModel(
 ///
 /// The chain is advertised name → id, and the second half is platform-shaped:
 /// on Android [id] IS the MAC and worth showing in full; on iOS it is an
-/// install-scoped NSUUID that is neither a MAC nor stable across a reinstall
+/// OS-assigned NSUUID that is not a MAC and means nothing on another phone
 /// ([DiscoveredDevice.id]), so it is shortened to the same head…tail form the
 /// list uses. Both beat a blank.
 ///

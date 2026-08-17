@@ -55,6 +55,11 @@ const gaveUpCodes = <String>{
   // The autoConnect watchdog. Split out of `reconnect_exhausted`, which is a
   // count and belongs to the ladder — this one made no attempts to count.
   'autoconnect_timeout',
+  // design 0068 (C): the link came up and the unit on the other end was not the
+  // one asked for, so we dropped it. It belongs here and not among the
+  // "retrying" states because nothing is going to try again — and because the
+  // whole point of the check is that this stops being silent.
+  'wrong_device',
   // The three that never reach BLE at all. They are refusals, not failures:
   // `connect()` returns without throwing, so the quick-pick tap handler sees a
   // clean future and there is nothing anywhere else to report them.
@@ -178,11 +183,21 @@ ConnectionFailureCopy connectionFailureCopy({
         // a single manual tap that failed once did not make several attempts —
         // R3 is precisely the change that stopped it from making them.
         'connect_failed' => l10n.devicesConnectFailed,
+        // design 0068 (C). Same string as the device list's snackbar, for the
+        // reason the radio codes above are: one code, one wording, wherever it
+        // surfaces.
+        'wrong_device' => l10n.devicesConnectFailedWrongDevice,
         _ => l10n.disconnectedGaveUpBody,
       },
-      adviceHint: radioCodes.contains(lastError)
-          ? l10n.disconnectedGaveUpRadioHint
-          : l10n.disconnectedGaveUpHint,
+      adviceHint: switch (lastError) {
+        // The unit answered — it was simply not this one. "Check it is nearby
+        // and powered" is the wrong instruction, and "scan for it below" is
+        // only half of the remedy.
+        'wrong_device' => l10n.disconnectedWrongDeviceHint,
+        _ => radioCodes.contains(lastError)
+            ? l10n.disconnectedGaveUpRadioHint
+            : l10n.disconnectedGaveUpHint,
+      },
     );
   }
   if (isRetrying) {

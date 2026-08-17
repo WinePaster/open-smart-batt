@@ -380,6 +380,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Nothing more happens on its own from here. Sort out the Bluetooth problem above first — connecting and scanning will both keep failing until it is fixed.';
 
   @override
+  String get disconnectedWrongDeviceHint =>
+      'The saved entry is pointing at another unit with the same name. Scan again and pick the right one, or remove this entry and add it back.';
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }
@@ -582,6 +586,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get devicesConnectFailedUnreachable =>
       'This device could not be found. Check it is nearby and switched on';
+
+  @override
+  String get devicesConnectFailedWrongDevice =>
+      'That is a different unit — its address does not match the one you saved. Disconnected';
 
   @override
   String get devicesRemoveTitle => 'Remove device';
