@@ -105,6 +105,57 @@ String? autoConnectBlocker({
   return null;
 }
 
+/// The two refusals that are also said ON SCREEN (FB-82 Q4, ruled 2026-08-17).
+///
+/// 🔴 Seven of the nine gates stay SILENT, and that is the ruling, not an
+/// omission. `already online` / `link busy` / `reconnect already pending` /
+/// `autoconnect hand-off armed` describe a screen that is visibly already doing
+/// something; `device not saved` is design 0055's deliberate manual flow;
+/// `bluetooth adapter not on` has its own prompt already. `auto-connect setting
+/// off` was left blank ON PURPOSE — whether to remind someone of a switch they
+/// themselves turned off is a product judgement, and the ruling reserved it as
+/// its own future line rather than letting it ride in on this one.
+///
+/// ⚠️ What these two say is NOT "why the connection failed" — the screen has
+/// already answered that. When either fires, [connectionFailureCopy] is already
+/// drawing a specific card: the stalled title with "close the app fully and
+/// reopen it", or the give-up card branched on the error code. The gap is
+/// narrower and it is about THIS VISIT: the user opened the page expecting
+/// FB-75's automatic connect, and because the PREVIOUS attempt's `lastError` or
+/// stall latch was never cleared, no attempt was made at all. What they are
+/// looking at is an OLD failure, with nothing anywhere saying so.
+///
+/// Keyed off [autoConnectBlocker]'s own answer rather than re-deriving the gate
+/// state, so the screen and the diagnostic log can never disagree about which
+/// gate refused. `A26` pins every gate against this mapping for that reason.
+@visibleForTesting
+enum AutoConnectSkipNotice {
+  /// `last error not cleared: <code>` — the code itself is deliberately NOT
+  /// repeated to the user. It is already in the card above, branched into an
+  /// instruction; a bare `device_unreachable` under it would be the same fact
+  /// twice, once in a form nobody can act on.
+  lastError,
+
+  /// `setup stalled`.
+  setupStalled,
+}
+
+/// Which on-screen notice, if any, one [autoConnectBlocker] answer earns.
+///
+/// Top-level and pure for [autoConnectBlocker]'s reason: the page reaches it
+/// from `didChangeDependencies`, and a unit test can state the gate directly.
+@visibleForTesting
+AutoConnectSkipNotice? autoConnectSkipNotice(String? blocker) {
+  if (blocker == null) return null;
+  // A PREFIX, because that gate carries the error code with it ("last error not
+  // cleared: device_stale") and the code is the part that varies.
+  if (blocker.startsWith('last error not cleared')) {
+    return AutoConnectSkipNotice.lastError;
+  }
+  if (blocker == 'setup stalled') return AutoConnectSkipNotice.setupStalled;
+  return null;
+}
+
 /// The per-device page, pushed from the devices tab.
 ///
 /// 🔴 Stateful for ONE reason (design 0046 Step 8c): it has to tell
@@ -196,6 +247,26 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// only starts blocking part-way through the visit.
   final Set<String> _loggedSkips = <String>{};
 
+  /// The refusal this visit has to SAY, or null (FB-82 Q4). See
+  /// [AutoConnectSkipNotice] for why only two of the nine qualify.
+  ///
+  /// Recomputed on every [_maybeAutoConnect], not latched: the whole claim is
+  /// "no automatic attempt was made on this visit", and the moment the gate
+  /// clears and the attempt fires, that sentence stops being true. Assigning it
+  /// from `didChangeDependencies` needs no `setState` — a build always follows.
+  AutoConnectSkipNotice? _skipNotice;
+
+  /// Whether ANY connection attempt has been seen while this page instance was
+  /// up — ours, or the user's own press of the retry button.
+  ///
+  /// 🔴 It exists to stop the notice from coming BACK. A manual retry clears
+  /// `lastError`, so the gate opens, and if that retry then fails the gate
+  /// closes again — at which point "this visit made no automatic attempt" is
+  /// still literally true and completely wrong to show: the user pressed a
+  /// button and is looking at its result. Telling them nothing was tried reads
+  /// as the screen denying what they just did.
+  bool _attemptSeen = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -246,6 +317,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final conn = _conn;
     if (conn == null) return;
 
+    // FB-82 Q4: an attempt is under way, or was. See [_attemptSeen] — this is
+    // read before the gates because `isBusy` is itself one of them, and the
+    // answer wanted here is "something is being tried", not "which gate won".
+    if (conn.isBusy || conn.isRetrying) _attemptSeen = true;
+
     // Saved units only: there is no "the device you asked for" for a unit
     // nobody has named, and design 0055 gives unsaved ones an explicit
     // connect-then-name flow that must stay user-driven.
@@ -270,9 +346,15 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       if (_loggedSkips.add(blocker)) {
         conn.noteAutoConnectSkipped(blocker, deviceId: widget.deviceId);
       }
+      // FB-82 Q4: and for two of the nine, say it on the SCREEN as well. The
+      // log is for whoever reads an export afterwards; this is for the person
+      // in front of the phone right now, who was promised an automatic connect.
+      _skipNotice = _attemptSeen ? null : autoConnectSkipNotice(blocker);
       return;
     }
 
+    _skipNotice = null;
+    _attemptSeen = true;
     _autoConnectTried = true;
     // Post-frame for `_setVisible`'s reason: this notifies listeners, and
     // `didChangeDependencies` runs inside the build phase.
@@ -469,6 +551,10 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               deviceId: deviceId,
               fallbackName: widget.fallbackName,
               onConnectUnsaved: _connectAndName,
+              // FB-82 Q4. Passed DOWN rather than re-derived here: whether this
+              // visit made an automatic attempt is a fact about the page's own
+              // one-shot latch, and nothing in the controller records it.
+              skipNotice: _skipNotice,
             ),
     );
   }
@@ -573,10 +659,15 @@ class _OfflineBody extends StatelessWidget {
     required this.deviceId,
     required this.onConnectUnsaved,
     this.fallbackName = '',
+    this.skipNotice,
   });
 
   final String deviceId;
   final String fallbackName;
+
+  /// "This visit made no automatic attempt", when that is worth saying (FB-82
+  /// Q4). Null for the other seven gates and whenever an attempt was made.
+  final AutoConnectSkipNotice? skipNotice;
 
   /// Connect a unit with no saved record, then ask for its name — owned by the
   /// page's State because a successful connect unmounts this widget. See
@@ -684,6 +775,17 @@ class _OfflineBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 26),
+        // 🔴 FB-82 Q4 — ADDED TO the report, never in place of it. The gate that
+        // produces this notice is the one whose own comment reads "the page is
+        // showing a failure report WITH a retry button; pressing it for the user
+        // is the page arguing with them", and swapping that report out for this
+        // sentence would be doing precisely what the gate exists to avoid. It
+        // sits between the failure copy and the way out of it: what happened,
+        // then what did NOT happen this time, then the button.
+        if (skipNotice != null) ...[
+          _AutoConnectSkipNotice(notice: skipNotice!),
+          const SizedBox(height: 22),
+        ],
         if (copy.hasAdvice) ...[
           ConnectionAdviceCard(
             hint: copy.adviceHint!,
@@ -713,6 +815,75 @@ class _OfflineBody extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// "This visit did not try by itself, and here is why" (FB-82 Q4).
+///
+/// 🔴 Deliberately QUIETER than everything around it — no accent, no button, no
+/// warning frame. It is a footnote to the failure report above it, and the
+/// moment it competes with that report for attention it has become the thing
+/// FB-75's `lastError` gate was written to prevent (see [autoConnectBlocker]).
+/// The one action stays where it already was: the advice card's retry, or the
+/// plain connect button, immediately below this.
+///
+/// Not a SnackBar, for [ConnectionAdviceCard]'s reason — the state it describes
+/// lasts as long as the user stays on the page, and a 3.2 s toast shown once is
+/// worth nothing to someone still reading at minute two.
+class _AutoConnectSkipNotice extends StatelessWidget {
+  const _AutoConnectSkipNotice({required this.notice});
+
+  final AutoConnectSkipNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return ConstrainedBox(
+      // Same 320 as [ConnectionAdviceCard], which is the widget directly under
+      // it in the common case. Two stacked cards of different widths would read
+      // as two unrelated things.
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          color: context.colors.panel2,
+          border: Border.all(color: context.colors.line),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              l10n.devicesAutoConnectSkippedTitle,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.5,
+                fontWeight: FontWeight.w700,
+                color: context.colors.text,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              // One sentence per gate, and the difference between them is the
+              // only part worth reading — the same principle as
+              // [connectionFailureCopy]'s "one title, three reasons".
+              switch (notice) {
+                AutoConnectSkipNotice.lastError =>
+                  l10n.devicesAutoConnectSkippedLastError,
+                AutoConnectSkipNotice.setupStalled =>
+                  l10n.devicesAutoConnectSkippedStalled,
+              },
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.6,
+                color: context.colors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

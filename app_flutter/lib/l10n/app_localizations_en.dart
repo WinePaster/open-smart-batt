@@ -1812,6 +1812,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Save it to put it on the home page and keep its history.';
 
   @override
+  String get devicesAutoConnectSkippedTitle =>
+      'No automatic connection this time';
+
+  @override
+  String get devicesAutoConnectSkippedLastError =>
+      'The previous connection problem has not been cleared, so opening this page made no attempt of its own. Use the button below to connect now.';
+
+  @override
+  String get devicesAutoConnectSkippedStalled =>
+      'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.';
+
+  @override
   String get devicesSave => 'Save';
 
   @override
