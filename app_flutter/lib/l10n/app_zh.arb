@@ -260,7 +260,7 @@
   "historyRowCurrentDirected": "電流 {amps}A {direction}",
   "historyRowThresholdWarning": "保護門檻警告",
   "historyStatusEvent": "事件",
-  "historyChartInsufficientData": "資料不足以繪圖（需至少 2 筆）",
+  "historyChartInsufficientData": "時間跨度還不夠，畫不出曲線",
   "settingsConnectionHeading": "連線",
   "settingsAutoReconnectLabel": "自動重連",
   "settingsAutoReconnectSub": "連線中斷時自動嘗試重連",

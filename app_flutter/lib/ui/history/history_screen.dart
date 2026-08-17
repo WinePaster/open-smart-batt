@@ -907,12 +907,41 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     final buckets = widget.buckets;
     final hasTemp = _hasTemp;
     if (buckets.length < 2) {
-      return SizedBox(
-        height: 120,
-        child: Center(
-          child: Text(l10n.historyChartInsufficientData,
-              style: TextStyle(fontSize: 12, color: context.colors.muted)),
-        ),
+      // 🔴 FB-85. The strip used to be skipped with the chart, and the two are
+      // not the same question: a chart point is [historyChartBucketMs] wide,
+      // but [HistoryStats] is one aggregate over the whole range and needs no
+      // bucket at all. So a unit could hold a night's readings and show NO
+      // NUMBER — the min/avg/max it already had, withheld because the curve
+      // could not be drawn.
+      //
+      // 🔑 Not a rare edge. `historyChartBucketMs` is `(now − local midnight) /
+      // 180`, clamped to a 1-minute floor, so for the whole first minute after
+      // LOCAL MIDNIGHT "today" is shorter than one bucket and no amount of data
+      // can make two points. A device recording all night hits this every night.
+      // (It is also reachable at any hour by a unit whose rows all fall inside
+      // one bucket — a link that came up seconds ago.)
+      //
+      // `stats.count` rather than `buckets.isEmpty` is the gate: it is the
+      // question being asked — "is there anything to report" — and the callers
+      // that draw their own empty state (`device_history_section`) check rows,
+      // which can disagree with buckets by exactly the case above.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: widget.stats.count > 0 ? 64 : 120,
+            child: Center(
+              child: Text(l10n.historyChartInsufficientData,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: context.colors.muted)),
+            ),
+          ),
+          if (widget.stats.count > 0) ...[
+            const SizedBox(height: 10),
+            _StatsStrip(
+                stats: widget.stats, tempUnit: widget.tempUnit, hasTemp: hasTemp),
+          ],
+        ],
       );
     }
     return Column(

@@ -966,7 +966,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyStatusEvent => '事件';
 
   @override
-  String get historyChartInsufficientData => '資料不足以繪圖（需至少 2 筆）';
+  String get historyChartInsufficientData => '時間跨度還不夠，畫不出曲線';
 
   @override
   String get settingsConnectionHeading => '連線';
