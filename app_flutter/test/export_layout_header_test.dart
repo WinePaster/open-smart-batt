@@ -51,6 +51,9 @@ void main() {
         speedDetection: speedDetection,
         gMeter: gMeter,
         resolution: ExportResolution.none,
+              // design 0070 stage two: the parameter lost its default, so this
+        // header has to say what it names. Nothing here declares a unit.
+        devices: const [],
       );
 
   group('T10 constraint 1+6: last, and exactly one line', () {

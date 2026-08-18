@@ -181,7 +181,21 @@ List<String> exportHeaderLines({
   bool ampereColumn = false,
   int? connections,
   bool? rawPacketLog,
-  List<ExportDeviceIdentity> devices = const [],
+  // design 0070 stage two. NO DEFAULT, on purpose.
+  //
+  // This parameter used to be `= const []`, and that default is the whole
+  // reason design 0070 exists: both history-CSV call sites simply never named
+  // it, so every CSV ever exported carried no `devices:` block and a
+  // `declared: count=0` that recorded which function wrote the file rather
+  // than anything a user had done — while `conventions/export-header.md`
+  // states a reading rule that turns that zero into "nobody filled one in".
+  // The omission compiled, ran, and shipped, silently, for three releases.
+  //
+  // 🔑 An empty list is still a perfectly good ANSWER; what is not acceptable
+  // is not being asked. `required` makes the compiler ask, which is the same
+  // device `mode` already uses two lines of this signature away (design 0063:
+  // "a `required` param, so every direct caller has to name it").
+  required List<ExportDeviceIdentity> devices,
 }) {
   final scopeLine = StringBuffer('scope: $scope');
   if (connections != null) scopeLine.write('  connections=$connections');

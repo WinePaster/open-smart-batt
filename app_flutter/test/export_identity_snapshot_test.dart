@@ -312,6 +312,9 @@ void main() {
             speedDetection: false,
             gMeter: false,
             resolution: ExportResolution.none,
+                      // design 0070 stage two: the parameter lost its default, so this
+            // header has to say what it names. Nothing here declares a unit.
+            devices: const [],
           );
       final csv = headerFor('OpenSmartBatt history export');
       final log = headerFor('OpenSmartBatt diagnostic log');

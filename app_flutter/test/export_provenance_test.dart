@@ -81,6 +81,9 @@ void main() {
         accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
+              // design 0070 stage two: the parameter lost its default, so this
+        // header has to say what it names. Nothing here declares a unit.
+        devices: const [],
       );
       expect(lines.first, 'OpenSmartBatt history export');
       expect(lines, contains('exported: ${at.toIso8601String()}'));
@@ -104,6 +107,9 @@ void main() {
         accent: AccentTheme.amber,
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
+              // design 0070 stage two: the parameter lost its default, so this
+        // header has to say what it names. Nothing here declares a unit.
+        devices: const [],
       );
       expect(lines.any((l) => l.contains('connections')), isFalse);
     });
@@ -156,6 +162,9 @@ void main() {
         speedDetection: false, gMeter: false,
         resolution: ExportResolution.none,
         connections: 2,
+              // design 0070 stage two: the parameter lost its default, so this
+        // header has to say what it names. Nothing here declares a unit.
+        devices: const [],
       );
       expect(lines, <String>[
         'OpenSmartBatt diagnostic log',
@@ -221,6 +230,9 @@ void main() {
         gMeter: false,
         resolution:
             ExportResolution.forCsv(HistoryGranularity.second, const [1, 60]),
+              // design 0070 stage two: the parameter lost its default, so this
+        // header has to say what it names. Nothing here declares a unit.
+        devices: const [],
       );
       expect(lines, <String>[
         'OpenSmartBatt history export',

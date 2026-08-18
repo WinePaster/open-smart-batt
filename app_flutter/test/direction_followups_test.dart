@@ -414,6 +414,9 @@ void main() {
           gMeter: false,
           resolution: ExportResolution.forCsv(
               HistoryGranularity.minute, const [60]),
+                  // design 0070 stage two: the parameter lost its default, so this
+          // header has to say what it names. Nothing here declares a unit.
+          devices: const [],
         );
 
     test('X1 the CSV header states BOTH conventions and the blank case', () {

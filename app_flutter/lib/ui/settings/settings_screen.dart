@@ -660,6 +660,15 @@ class _DataCardState extends State<_DataCard> {
       // three times over, which is the same defect as the History screen's cap
       // seen from the other side: one lost rows silently, this one fell over
       // silently. Both now stream page by page (design 0030 T4b).
+      // design 0070. The identity list this file has been missing since the
+      // block existed: `exportHeaderLines` builds BOTH `devices:` and
+      // `declared:` out of it, so omitting it made a CSV claim zero declared
+      // units while the log exported seconds later named three.
+      // 🔑 Computed per export path rather than threaded, matching
+      // `_exportLog` and `exportHistoryCsv` — each asks the same question of
+      // the same snapshotted `target`, so the three answers cannot drift.
+      final identities =
+          await exportDeviceIdentities(devices, tele, target, facts: facts);
       final rows = await tele.exportHistoryCsvToFile(
         file,
         deviceId: target.deviceId,
@@ -687,6 +696,8 @@ class _DataCardState extends State<_DataCard> {
           accent: accent,
           speedDetection: speedDetection,
           gMeter: gMeter,
+          // design 0070 — see the note on `identities` above.
+          devices: identities,
         ),
       );
       // Row count, not text emptiness: the preamble means the file is never
