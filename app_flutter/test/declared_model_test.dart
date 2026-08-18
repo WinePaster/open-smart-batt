@@ -171,18 +171,22 @@ void main() {
         '6.0A', '6.0B', '9.0A', //
         '5.0Ah-B', '7.5Ah-B', '10.0Ah-B', //
         '5.0Ah-A', '7.5Ah-A', '10.0Ah-A', '12.5Ah-A', '17.5Ah-A', //
-        'retrofit-lid',
       ]);
+      // 🔴 design 0069: the lid is NOT a model. If it comes back into this list
+      // it is mutually exclusive with a catalogue model again, which is the
+      // whole defect that change removed.
+      expect(declaredModelsFor(DeclaredCategory.motorcycleBattery),
+          isNot(contains(kRetrofitLidModel)));
     });
 
-    test("the bike battery's four branches are separate and exclusive", () {
+    test("the bike battery's three branches are separate and exclusive", () {
       // 🔑 Why they must not be flattened: `9.0A` (old catalogue) and `7.5Ah-A`
       // (new catalogue) are THE SAME PHYSICAL BATTERY renamed, with the nominal
       // Ah revised DOWN. A flat list puts both in front of a user who owns one
       // of them and asks them to know that.
       final groups = declaredModelGroups(DeclaredCategory.motorcycleBattery);
       expect(groups.map((g) => g.id).toList(),
-          ['oldGen', 'newGenB', 'newGenA', 'retrofit']);
+          ['oldGen', 'newGenB', 'newGenA']);
 
       final seen = <String>{};
       for (final g in groups) {
@@ -240,34 +244,95 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('M3: 改智慧上蓋 gives a countable slug and a free text box',
+    testWidgets('M3: 改智慧上蓋 is countable AND leaves the model list free',
         (tester) async {
-      // §3.2's ruling in one test. A plain note cannot be counted (people write
-      // 改上蓋 / 智慧上蓋 / 上蓋H2 and every other spelling), and a model list
-      // would be wrong because the thing has no catalogue slot — it is somebody
-      // else's battery under our lid. So it has to be BOTH, and the two halves
-      // regress separately.
+      // §3.2's ruling, as amended by design 0069 Q1 (owner, 2026-08-19).
+      //
+      // The countable half is unchanged and still load-bearing: a plain note
+      // cannot be counted, because people write 改上蓋 / 智慧上蓋 / 上蓋H2 and
+      // every other spelling. What changed is where the count lives — its own
+      // column instead of `declared_model` — and the reason is this test's
+      // second half: the battery UNDER the lid is a separate question, and the
+      // v20 form could only ever record one of the two answers.
+      late DeclaredModel? out;
+      await tester.pumpWidget(_Harness(onDone: (v) => out = v));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('declared-retrofit')), findsNothing,
+          reason: 'the lid belongs to a category, not to the empty form');
+
+      await tapKey(tester, 'declared-category-motorcycle-battery');
+      expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing,
+          reason: 'the box belongs to the answer, not to the category');
+
+      // 🔑 THE POINT OF 0069: both answers, one form, neither displacing the
+      // other.
+      await tapKey(tester, 'declared-model-7.5Ah-A');
+      await tapKey(tester, 'declared-retrofit');
+
+      final box = find.byKey(const ValueKey('declared-retrofit-note'));
+      expect(box, findsOneWidget,
+          reason: 'a flag alone loses the detail; a note alone cannot be counted');
+      expect(find.byKey(const ValueKey('declared-note')), findsNothing,
+          reason: 'ONE note column ⇒ never two boxes writing it');
+      await tester.enterText(box, 'stock 7 Ah underneath');
+      await tapKey(tester, 'declared-save');
+
+      expect(out!.retrofitLid, isTrue,
+          reason: 'THE COUNTABLE HALF: `WHERE declared_retrofit = 1` has to work');
+      expect(out!.model, '7.5Ah-A',
+          reason: '🔴 0069: the lid must not eat the model answer');
+      expect(out!.note, 'stock 7 Ah underneath', reason: 'the free half');
+      expect(out!.category, DeclaredCategory.motorcycleBattery);
+      // …and all three survive a database round trip together.
+      final back = DeclaredModel.fromMap(out!.toMap());
+      expect(back.retrofitLid, isTrue);
+      expect(back.model, '7.5Ah-A');
+      expect(back.note, 'stock 7 Ah underneath');
+    });
+
+    testWidgets('M3b: the lid is offered only under 機車電池, and does not '
+        'survive a category change', (tester) async {
+      // Owner ruling 2026-08-19 (scope) plus the rule `region` / `label` already
+      // follow: a flag left over from a category the user moved away from is an
+      // artefact of the form, not something anybody said.
       late DeclaredModel? out;
       await tester.pumpWidget(_Harness(onDone: (v) => out = v));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
       await tapKey(tester, 'declared-category-motorcycle-battery');
-      expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing,
-          reason: 'the box belongs to the branch, not to the category');
+      await tapKey(tester, 'declared-retrofit');
+      await tapKey(tester, 'declared-category-car-battery');
 
-      await tapKey(tester, 'declared-model-retrofit-lid');
-      final box = find.byKey(const ValueKey('declared-retrofit-note'));
-      expect(box, findsOneWidget,
-          reason: 'a slug alone loses the detail; a note alone cannot be counted');
-      await tester.enterText(box, 'stock 7 Ah underneath');
+      expect(find.byKey(const ValueKey('declared-retrofit')), findsNothing,
+          reason: 'not offered outside 機車電池');
       await tapKey(tester, 'declared-save');
+      expect(out!.retrofitLid, isFalse,
+          reason: 'and it did not follow the user across');
+      expect(out!.category, DeclaredCategory.carBattery);
+    });
 
-      expect(out!.model, kRetrofitLidModel,
-          reason: 'THE COUNTABLE HALF: `SELECT count(*) WHERE declared_model = '
-              "'retrofit-lid'` has to work");
-      expect(out!.note, 'stock 7 Ah underneath', reason: 'the free half');
-      expect(out!.category, DeclaredCategory.motorcycleBattery);
+    testWidgets('M3c: tapping the lid again retracts it', (tester) async {
+      // Every other chip in this form retracts on a second tap (§3.1 — a user
+      // must be able to un-say something without cancelling), and a checkbox
+      // that only latches ON would be the one exception.
+      late DeclaredModel? out;
+      await tester.pumpWidget(_Harness(onDone: (v) => out = v));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tapKey(tester, 'declared-category-motorcycle-battery');
+      await tapKey(tester, 'declared-retrofit');
+      await tapKey(tester, 'declared-retrofit');
+
+      expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing);
+      expect(find.byKey(const ValueKey('declared-note')), findsOneWidget,
+          reason: 'the general note comes back when the lid is retracted');
+      await tapKey(tester, 'declared-save');
+      expect(out!.retrofitLid, isFalse);
     });
 
     testWidgets('M4: the capacity field takes a non-numeric string',
@@ -709,6 +774,13 @@ void main() {
       // content. We were learning that a unit was a retrofit and nothing about
       // what the retrofit was.
       //
+      // 🔵 design 0069 softened that last paragraph without touching this test:
+      // a retrofit CAN now carry a model too, because the model list answers
+      // "which battery is under the lid" and that battery is often one of ours.
+      // The note is still the only place a battery that is NOT one of ours can
+      // be named, so it is still the branch's only content in exactly the cases
+      // that made this ruling.
+      //
       // CATCHES: a well-meaning revert to `note=yes`, and a note whose newline
       // ends the header line early — the `_token` collapse is what stops the
       // rest of a multi-line note from being read as a new key.
@@ -739,6 +811,55 @@ void main() {
       ]);
       final line = lines.firstWhere((l) => l.startsWith('declared: hash='));
       expect(line, contains('capacity=40_B19L'));
+    });
+
+    test('🔴 the retrofit lid is its own token, beside the model', () {
+      // design 0069. The v20 spelling was `model=retrofit-lid`, which could not
+      // coexist with a catalogue model — so every export written between
+      // v0.7.22 and v0.7.24 answers only one of the two questions.
+      //
+      // CATCHES: a revert to the sentinel (two spellings of one fact in the
+      // corpus), and a `retrofit=no` on every line — the export-side twin of the
+      // `0` that `toMap` refuses to write.
+      final lines = header(devices: [
+        const ExportDeviceIdentity(
+          deviceId: 'AA',
+          declared: DeclaredModel(
+            category: DeclaredCategory.motorcycleBattery,
+            model: '7.5Ah-A',
+            retrofitLid: true,
+            note: 'someone else 12Ah',
+          ),
+        ),
+        const ExportDeviceIdentity(
+          deviceId: 'BB',
+          declared: DeclaredModel(
+              category: DeclaredCategory.motorcycleBattery, model: '9.0A'),
+        ),
+      ]);
+      final line = lines.firstWhere((l) => l.contains('retrofit='));
+      expect(line, contains('retrofit=yes'));
+      expect(line, contains('model=7.5Ah-A'),
+          reason: 'both answers on one line — the point of 0069');
+      expect(line, isNot(contains('retrofit-lid')),
+          reason: 'the sentinel must not come back');
+      // Order: a reader wants the shape of the thing before its part number.
+      expect(line.indexOf('retrofit='), lessThan(line.indexOf('model=')));
+      // …and the unit without a lid says nothing about one.
+      expect(lines.firstWhere((l) => l.contains('model=9.0A')),
+          isNot(contains('retrofit=')));
+    });
+
+    test('a lid on its own is still a declaration', () {
+      // `isEmpty` decides whether a unit contributes a line AND the count. A
+      // user whose only answer is "it is a retrofit" has answered.
+      const only = DeclaredModel(retrofitLid: true);
+      expect(only.isEmpty, isFalse);
+      expect(only.exportValue, 'retrofit=yes');
+      final lines = header(devices: [
+        const ExportDeviceIdentity(deviceId: 'AA', declared: only),
+      ]);
+      expect(lines, contains('declared: count=1'));
     });
   });
 }

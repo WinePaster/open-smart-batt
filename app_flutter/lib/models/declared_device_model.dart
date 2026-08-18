@@ -71,10 +71,11 @@ enum DeclaredCategory {
 
 /// One second-level group of model options (design 0066 §3.2).
 ///
-/// A GROUP rather than a flat list because the motorcycle battery line has four
-/// of them and they are mutually exclusive answers to "which catalogue are you
-/// holding": old naming, new naming B (65 mm), new naming A (87 mm), retrofit
-/// lid. Flattening them would put `9.0A` and `7.5Ah-A` side by side, and those
+/// A GROUP rather than a flat list because the motorcycle battery line has three
+/// of them (~~four~~ — the retrofit lid left the list in design 0069) and they
+/// are mutually exclusive answers to "which catalogue are you holding": old
+/// naming, new naming B (65 mm), new naming A (87 mm).
+/// Flattening them would put `9.0A` and `7.5Ah-A` side by side, and those
 /// two are THE SAME PHYSICAL BATTERY under two catalogue revisions — the owner
 /// explicitly rejected showing both names at once (§4), because a user holding
 /// one of them would first have to learn that fact.
@@ -91,12 +92,28 @@ class DeclaredModelGroup {
 
 /// The retrofit smart lid — a bike battery somebody fitted our lid to.
 ///
-/// 🔑 A BRANCH with a slug of its own, not a free-text note (design 0066 §3.2).
-/// A note cannot be counted: field reports spell it 改上蓋 / 智慧上蓋 / 上蓋H2,
-/// and a `SELECT count(*)` over free text finds none of them reliably. As a slug
-/// it is countable, and the free-text box that appears NEXT TO it still carries
-/// the detail. It gets no model list because it has no catalogue slot to have
-/// one — it is somebody else's battery under our lid.
+/// 🔴 **NO LONGER A MODEL SLUG (design 0069, owner ruling 2026-08-19).** It is
+/// now [DeclaredModel.retrofitLid], a flag of its own, and this constant
+/// survives for exactly two jobs: the v21 migration recognises it as the OLD
+/// spelling, and the UI reuses it as a widget key suffix. Nothing writes it into
+/// `declared_model` any more.
+///
+/// The original reasoning is kept verbatim below because the half of it that
+/// mattered is still true — countability — and only the half about the model
+/// list was wrong:
+///
+/// > 🔑 A BRANCH with a slug of its own, not a free-text note (design 0066 §3.2).
+/// > A note cannot be counted: field reports spell it 改上蓋 / 智慧上蓋 / 上蓋H2,
+/// > and a `SELECT count(*)` over free text finds none of them reliably. As a slug
+/// > it is countable, and the free-text box that appears NEXT TO it still carries
+/// > the detail. It gets no model list because it has no catalogue slot to have
+/// > one — it is somebody else's battery under our lid.
+///
+/// 🔑 **What that last sentence got wrong**: "it has no catalogue slot" is a
+/// statement about the LID, and the question the model list asks is about the
+/// BATTERY UNDER it — which very often IS one of ours. Making the lid one of the
+/// model options meant a user with our 7.5Ah-A under our lid could record either
+/// fact and never both, and the form silently decided which one we lost.
 const String kRetrofitLidModel = 'retrofit-lid';
 
 /// Capacitor generations, shared by the bike and car capacitor lines.
@@ -130,7 +147,9 @@ List<DeclaredModelGroup> declaredModelGroups(DeclaredCategory category) {
           id: 'newGenA',
           models: ['5.0Ah-A', '7.5Ah-A', '10.0Ah-A', '12.5Ah-A', '17.5Ah-A'],
         ),
-        DeclaredModelGroup(id: 'retrofit', models: [kRetrofitLidModel]),
+        // 🔴 A fourth group `retrofit` stood here until design 0069. It is gone
+        // because the lid is not a model — see [kRetrofitLidModel] and
+        // [DeclaredModel.retrofitLid].
       ];
     case DeclaredCategory.carBattery:
     case DeclaredCategory.powerBank:
@@ -236,8 +255,8 @@ DeclaredMismatch? declaredWireMismatch({
   return null;
 }
 
-/// What the user said about one unit — the seven columns of design 0066 §3.1,
-/// carried as one value.
+/// What the user said about one unit — the seven columns of design 0066 §3.1
+/// plus design 0069's eighth, carried as one value.
 ///
 /// 🔴 ONE OBJECT rather than seven fields on [SavedDevice], and the reason is
 /// `copyWith`. Every field here is nullable and every one of them must be
@@ -254,6 +273,7 @@ class DeclaredModel {
     this.label,
     this.capacity,
     this.note,
+    this.retrofitLid = false,
     this.declaredAt,
   });
 
@@ -283,6 +303,17 @@ class DeclaredModel {
   /// start disagreeing.
   final String? note;
 
+  /// The owner says our smart lid is fitted to somebody else's battery
+  /// (design 0069). INDEPENDENT of [model] — both may be set, either may be.
+  ///
+  /// 🔑 **A `bool`, but stored as `1` / NULL, never `0`.** `false` here means
+  /// "this form has nothing to say about a lid", which is the same state as an
+  /// unanswered question, and writing a literal 0 for it would put a fabricated
+  /// answer in every row — see [toMap] and `[Db.schemaVersion]` v21. It is not
+  /// nullable in Dart because a tri-state would have to be rendered as a
+  /// three-way control, and there is no third thing to show the user.
+  final bool retrofitLid;
+
   /// When the form was last saved. R2's handle on "which cohort filled this in".
   final DateTime? declaredAt;
 
@@ -294,6 +325,7 @@ class DeclaredModel {
   /// in the export count.
   bool get isEmpty =>
       category == null &&
+      !retrofitLid &&
       (model == null || model!.isEmpty) &&
       (region == null || region!.isEmpty) &&
       (label == null || label!.isEmpty) &&
@@ -314,6 +346,7 @@ class DeclaredModel {
     String? label,
     String? capacity,
     String? note,
+    bool? retrofitLid,
     DateTime? declaredAt,
   }) =>
       DeclaredModel(
@@ -323,10 +356,14 @@ class DeclaredModel {
         label: label ?? this.label,
         capacity: capacity ?? this.capacity,
         note: note ?? this.note,
+        // 🔴 The one field where `?? this.x` IS the right reading: `false` is a
+        // value the caller can pass, so "clear it" needs no separate spelling.
+        retrofitLid: retrofitLid ?? this.retrofitLid,
         declaredAt: declaredAt ?? this.declaredAt,
       );
 
-  /// The seven `saved_devices` columns (schema v20).
+  /// The eight `saved_devices` columns (schema v20, plus `declared_retrofit`
+  /// from v21).
   ///
   /// 🔴 Empty strings are normalised to NULL on the way in. A user who focuses
   /// the capacity field, types nothing and saves must leave NULL behind: "" and
@@ -340,6 +377,11 @@ class DeclaredModel {
         'declared_label': _blankToNull(label),
         'declared_capacity': _blankToNull(capacity),
         'declared_note': _blankToNull(note),
+        // 🔴 `1` or NULL — never `0`. Same rule as the blank strings above, one
+        // step further: a 0 in every unanswered row would read as "the owner
+        // told us there is no lid", and `WHERE declared_retrofit IS NULL` would
+        // then count nobody. See `[Db.schemaVersion]` v21.
+        'declared_retrofit': retrofitLid ? 1 : null,
         'declared_at': declaredAt?.millisecondsSinceEpoch,
       };
 
@@ -351,6 +393,11 @@ class DeclaredModel {
         label: _blankToNull(m['declared_label'] as String?),
         capacity: _blankToNull(m['declared_capacity'] as String?),
         note: _blankToNull(m['declared_note'] as String?),
+        // Anything that is not 1 reads as false, including the `0` a
+        // hand-written row or a future downgrade might leave behind. A row this
+        // build cannot interpret must degrade to "no answer", never throw — the
+        // rule the whole of this class already follows.
+        retrofitLid: (m['declared_retrofit'] as num?)?.toInt() == 1,
         declaredAt: m['declared_at'] == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(
@@ -369,6 +416,15 @@ class DeclaredModel {
   /// follows. Never localized; the reader is whoever receives the file.
   String get exportValue => [
         if (category != null) 'category=${category!.storageKey}',
+        // 🔑 Before `model=`, and emitted ONLY when true (design 0069). A reader
+        // wants the shape of the thing before its part number, and a
+        // `retrofit=no` on every line would be the export-side twin of the `0`
+        // that [toMap] refuses to write.
+        //
+        // ⚠️ Files from v0.7.22–v0.7.24 spell this `model=retrofit-lid` and mean
+        // the same thing — `docs/feedback-index/conventions/export-header.md`
+        // carries the reading rule.
+        if (retrofitLid) 'retrofit=yes',
         if (model != null && model!.isNotEmpty) 'model=$model',
         if (region != null && region!.isNotEmpty) 'region=$region',
         if (label != null && label!.isNotEmpty) 'label=$label',
@@ -411,11 +467,13 @@ class DeclaredModel {
       other.label == label &&
       other.capacity == capacity &&
       other.note == note &&
+      other.retrofitLid == retrofitLid &&
       other.declaredAt == declaredAt;
 
   @override
   int get hashCode =>
-      Object.hash(category, model, region, label, capacity, note, declaredAt);
+      Object.hash(category, model, region, label, capacity, note, retrofitLid,
+          declaredAt);
 
   @override
   String toString() => 'DeclaredModel(${exportValue.isEmpty ? '-' : exportValue})';

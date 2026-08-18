@@ -1919,7 +1919,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get declaredGroupNewGenA => 'New catalogue · A (87 mm case)';
 
   @override
-  String get declaredGroupRetrofit => 'Retrofit smart lid';
+  String get declaredSectionRetrofit => 'Retrofit';
 
   @override
   String get declaredModelRetrofitLid => 'Retrofit smart lid';

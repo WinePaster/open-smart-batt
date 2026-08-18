@@ -1280,7 +1280,7 @@
   "declaredGroupOldGen": "Old catalogue",
   "declaredGroupNewGenB": "New catalogue · B (65 mm case)",
   "declaredGroupNewGenA": "New catalogue · A (87 mm case)",
-  "declaredGroupRetrofit": "Retrofit smart lid",
+  "declaredSectionRetrofit": "Retrofit",
   "declaredModelRetrofitLid": "Retrofit smart lid",
   "declaredRetrofitNoteLabel": "Which battery is under the lid?",
   "declaredRetrofitNoteHint": "e.g. the stock 7 Ah, or a brand name",
