@@ -18,6 +18,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 /// Whether the displayed speed is being measured, held, or is gone.
 ///
@@ -87,7 +88,43 @@ class SpeedEstimatorConfig {
     // ⚠️ This value is coupled to `GeolocatorSpeedSource.speedSamplingPeriod`:
     // τ is measured in SAMPLES, so changing the period changes the lag without
     // touching this line.
-    this.alpha = 0.5,
+    //
+    // 🔴 Raised again 2026-08-19, from 0.5 to 1 − e⁻¹ (design 0071 §3.3, ruled).
+    // This one is NOT a retune: it is the price of [displaySpeedMpsAt].
+    //
+    // Until 0071 the card jumped to `v_k` the instant a sample landed and sat
+    // there for a whole period, so the lag a rider saw averaged
+    // `0.5·T + T(1−α)/α` = 1.50 s at α=0.5. Drawing the same EWMA as a RAMP
+    // instead of a step replaces the 0.5·T half-step with the curve's own mean,
+    // `τ = T / ln(1/(1−α))`, giving `0.5·T + τ` — 1.94 s at α=0.5, i.e. 0.44 s
+    // WORSE. Setting τ = T buys that back exactly:
+    //
+    //     0.5 + τ/T = 1.5  ⇒  τ = T  ⇒  ln(1/(1−α)) = 1  ⇒  α = 1 − e⁻¹
+    //
+    // So the continuous reading lags the same 1.50 s the stepped one did; what
+    // changed is only that it sweeps there instead of hopping. ⚠️ It does NOT
+    // make the reading as quick as a DISCRETE filter at α=0.632 would be
+    // (1.08 s) — smoothing between samples always costs something, and this
+    // constant is what stops it costing the rider anything (0071 G2).
+    //
+    // ⚠️ The FB-56 note above still applies with more force: a higher α is a
+    // twitchier number in traffic. 0071 §3.3 argues the twitch now arrives as a
+    // sweep rather than as an integer hop, which is a claim only the road test
+    // can settle (0071 §7 Q2, ruled "ship 0.632, revisit after the ride").
+    // 📌 The RULED value is the three-digit 0.632, not `1 - 1/e`
+    // (0.6321205588…). The difference is τ = 1.00033 T instead of 1.00000 T —
+    // 0.3 ms of lag on a reading that updates every second — and a literal is
+    // what the ruling says, what the road test will be told, and what a future
+    // retune will overwrite. Spelling it as an expression would invite the next
+    // reader to "correct" the ruling into arithmetic.
+    this.alpha = 0.632,
+    // The length of the display ramp (design 0071 §3.1). It must MIRROR
+    // `GeolocatorSpeedSource.speedSamplingPeriod`, and it is a second copy of
+    // that number for the same reason `alpha` is not over in
+    // `gps_speed_controller.dart`: this file imports nothing but `dart:async`
+    // and `dart:math`, and is not going to acquire a plugin import for a
+    // constant. The mirror note lives beside `speedSamplingPeriod`.
+    this.displayRampPeriod = const Duration(seconds: 1),
     // 3.0 km/h. Ruled 2026-08-07, raised from the 1.0 km/h the design doc
     // first named. The doc's own justification says stationary GNSS jitter
     // reads 1–3 km/h and calls a red light showing 2 km/h "an error the user
@@ -113,6 +150,16 @@ class SpeedEstimatorConfig {
 
   /// EWMA weight of the newest sample. Higher = twitchier.
   final double alpha;
+
+  /// How long [SpeedEstimator.displaySpeedMpsAt]'s curve takes to walk one
+  /// EWMA step (design 0071 §3.1). Must equal the SAMPLING period.
+  ///
+  /// 🔴 Getting this wrong is silent in both directions. Too short and the
+  /// curve arrives early and then sits still — the old stepped behaviour with
+  /// extra arithmetic. Too long and the curve never reaches `v_k` before the
+  /// next sample re-anchors it, so the reading permanently undershoots and no
+  /// test of a single step would notice.
+  final Duration displayRampPeriod;
 
   /// Below this the displayed speed is clamped to exactly 0 (m/s).
   ///
@@ -307,6 +354,31 @@ class SpeedEstimator {
   DateTime? _holdingSince;
   SpeedEstimate? _current;
 
+  // ---- design 0071: the three numbers the display curve is drawn from ------
+  //
+  // 🔴 None of them is read by [_estimateAt], and that is the whole point.
+  // They exist only for [displaySpeedMpsAt]; the RECORDED series
+  // ([estimates], which feeds design 0044 and design 0061) is produced by
+  // exactly the code that produced it before 0071 (0071 §3.5 pin 2).
+
+  /// Where the curve starts: the smoothed value BEFORE the newest sample was
+  /// folded in — except on a re-seed, where it is the sample itself (pin 4).
+  double? _prevSmoothed;
+
+  /// Where the curve is heading: the newest RAW sample `z_k`.
+  ///
+  /// The curve aims at the measurement, not at `_ewma`, because that is what
+  /// makes `v_disp(t_k + T)` come out equal to `v_k` — see [displaySpeedMpsAt].
+  double? _lastRaw;
+
+  /// When the curve started, **on our own clock**.
+  ///
+  /// 🔴 Deliberately not `fix.timestamp` (0071 §3.1). M2 below measured 2.1 s
+  /// of delivery latency between the GNSS chip and this isolate; anchoring on
+  /// the platform stamp would mean the curve is already finished the moment it
+  /// is created, which is the stepped behaviour this feature exists to replace.
+  DateTime? _anchorAt;
+
   /// Timestamped smoothed samples. Broadcast: the controller forwards it to the
   /// UI while design 0044's acceleration estimator listens in parallel.
   Stream<SpeedEstimate> get estimates => _estimates.stream;
@@ -316,6 +388,97 @@ class SpeedEstimator {
 
   /// The newest estimate, or null while no fix has ever been accepted.
   SpeedEstimate? get current => _current;
+
+  /// The speed to DRAW at [at] — the same EWMA, read as a curve instead of as
+  /// a staircase (design 0071 §3.1).
+  ///
+  /// ```
+  /// v_disp(t) = z_k + (v_{k−1} − z_k)·(1−α)^( min(t − t_k, T) / T )
+  /// ```
+  ///
+  /// with `z_k` the newest raw sample, `v_{k−1}` the smoothed value before it,
+  /// `t_k` the moment it arrived on OUR clock, and `T` [config.displayRampPeriod].
+  /// Three properties, all three load-bearing:
+  ///
+  ///  1. at `t = t_k` it equals `v_{k−1}` — the curve starts where the previous
+  ///     one ended, so a sample landing does not make the digits jump;
+  ///  2. at `t = t_k + T` it equals `α·z_k + (1−α)·v_{k−1}` — which IS `v_k`,
+  ///     because `(1−α)^1 = 1−α`. So on every sampling instant this agrees with
+  ///     [SpeedEstimate.vSmoothMps] to the last bit. That equality is the whole
+  ///     of 0071's answer to 0042 G2: this is not a new estimate and not a
+  ///     prediction, it is the filter's own trajectory between two points it
+  ///     already occupied. `speed_estimator_test.dart` pins it.
+  ///  3. past `t_k + T` the exponent is clamped, so the curve STOPS. Nothing
+  ///     moves without a new measurement, a freeze freezes at exactly the value
+  ///     the old code froze at, and a late sample simply spends its overrun
+  ///     parked — which is the pre-0071 behaviour.
+  ///
+  /// 🔴 Pure read. It emits nothing, mutates nothing, and is not consulted by
+  /// [_estimateAt]: the RECORDED series is untouched by everything in here
+  /// (0071 §3.5 pin 2, G3). Design 0044 differentiates [estimates] and design
+  /// 0061 stores it; both must see the series they saw before this method
+  /// existed.
+  ///
+  /// Only [SpeedState.live] gets a curve (pin 1). Holding, lost, and "no fix
+  /// yet" answer with the frozen [SpeedEstimate.vSmoothMps], which is what the
+  /// card showed for them before 0071 and what 0042 §3.2 requires: a held
+  /// number must not move, in either direction, for any reason.
+  ///
+  /// Returns null only when no fix has ever been accepted (or after a
+  /// [reset]) — see the body.
+  ///
+  /// The still-clamp is applied on the way out, in the same order as
+  /// [_estimateAt] applies it (pin 3): curve first, then clamp, then the
+  /// caller's `formatSpeed`. So sweeping down through 3 km/h still lands on a
+  /// hard 0 rather than trailing decimals at a red light.
+  /// Whether [displaySpeedMpsAt] would still be MOVING at [at].
+  ///
+  /// The card's per-frame loop is armed and disarmed by this rather than by
+  /// watching the value stop changing, and the difference is not cosmetic: a
+  /// value-watching loop cannot tell "the curve has arrived" from "no time has
+  /// passed between these two frames", so it shuts itself off the first time a
+  /// frame is cheap — and then nothing restarts it until the next sample.
+  ///
+  /// False once the curve is clamped at `t_k + T`, and false in every state but
+  /// [SpeedState.live], because those do not have a curve at all (§3.5 pin 1).
+  /// After that only a new sample can move the reading, and a new sample makes
+  /// the controller notify — so there is nothing to draw and no reason to hold
+  /// a vsync callback open (0042 G4).
+  bool displayRampActiveAt(DateTime at) {
+    if (_state != SpeedState.live) return false;
+    final anchor = _anchorAt;
+    if (anchor == null || _ewma == null) return false;
+    return at.difference(anchor) < config.displayRampPeriod;
+  }
+
+  double? displaySpeedMpsAt(DateTime at) {
+    final smoothed = _ewma;
+    // 🔴 Null, not 0.0. "This estimator has no series to draw" and "the vehicle
+    // is stopped" are different facts, and returning 0.0 for the first is the
+    // same mistake `SpeedFix.speedMps` was made nullable to stop: a number
+    // nobody measured, indistinguishable from one somebody did. The caller
+    // renders whatever it was already rendering (`SpeedCardBody` falls back to
+    // [SpeedEstimate.vSmoothMps]) instead of a zero this method invented.
+    if (smoothed == null) return null;
+    final frozen = _clampStill(smoothed);
+    if (_state != SpeedState.live) return frozen;
+
+    final anchor = _anchorAt;
+    final from = _prevSmoothed;
+    final target = _lastRaw;
+    if (anchor == null || from == null || target == null) return frozen;
+
+    final period = config.displayRampPeriod.inMicroseconds;
+    if (period <= 0) return frozen;
+    var elapsed = at.difference(anchor).inMicroseconds;
+    // Asked about a moment before the anchor (a caller with its own clock, or
+    // a clock stepped backwards): the curve had not started, so its start is
+    // the honest answer. Never a negative exponent, which would OVERSHOOT.
+    if (elapsed < 0) elapsed = 0;
+    if (elapsed > period) elapsed = period; // property 3
+    final v = target + (from - target) * math.pow(1 - config.alpha, elapsed / period);
+    return _clampStill(v);
+  }
 
   /// Feed one location sample.
   ///
@@ -349,6 +512,12 @@ class SpeedEstimator {
       // belong to the last real speed MEASUREMENT and stay exactly as they are
       // — no decay toward zero, which 0042 §3.2 forbids for the same reason it
       // forbids a decay animation.
+      //
+      // 🔴 The display curve is not re-anchored here either (0071 §3.5 pin 4),
+      // and it is the easiest line in this file to add by accident. Nothing
+      // entered the smoother, so the curve's TARGET has not changed — moving
+      // `_anchorAt` would replay the last step of a ramp that already finished,
+      // i.e. make a parked scooter's reading crawl once a second forever.
       _lastFixAt = fix.timestamp;
       _lastAccuracyM = fix.horizontalAccuracyM;
       _holdingSince = null;
@@ -364,11 +533,30 @@ class SpeedEstimator {
     // would show a number that was never measured, at the exact moment the user
     // is looking to see whether the reading came back (0042 §3.2).
     final resuming = _state != null && _state != SpeedState.live;
-    if (_ewma == null || resuming) {
+    final previousSmoothed = _ewma;
+    if (previousSmoothed == null || resuming) {
       _ewma = fix.speedMps!;
+      // 🔴 0071 §3.5 pin 5. A re-seed gets a FLAT curve — start and end are
+      // both the new sample — because the general rule (sweep from
+      // `previousSmoothed` to `v_k`) would spend the first second after a
+      // tunnel walking the reading down from the speed the rider was doing
+      // BEFORE the tunnel. That is the exact number 0042 §3.2 forbids blending
+      // in, and drawing it instead of averaging it in is not a loophole.
+      //
+      // Note this is the same branch that re-seeds `_ewma`, on purpose: the two
+      // decisions are one decision ("this sample starts a new series"), and
+      // splitting them is how they would drift apart.
+      _prevSmoothed = fix.speedMps!;
     } else {
-      _ewma = config.alpha * fix.speedMps! + (1 - config.alpha) * _ewma!;
+      _ewma = config.alpha * fix.speedMps! + (1 - config.alpha) * previousSmoothed;
+      _prevSmoothed = previousSmoothed;
     }
+    _lastRaw = fix.speedMps!;
+    // On OUR clock, for the reason in [_anchorAt]. `at` is read once and used
+    // for both the anchor and the estimate's `t` so the two cannot disagree by
+    // the microseconds a second `now()` call would cost.
+    final at = now();
+    _anchorAt = at;
 
     _lastFixAt = fix.timestamp;
     _lastAccuracyM = fix.horizontalAccuracyM;
@@ -390,7 +578,7 @@ class SpeedEstimator {
     // The fix's own timestamp is still what ages it — see [_ageAt] — because
     // "how stale is this reading" is a question about when it was MEASURED.
     // `t` answers a different one: when did this app learn it.
-    final estimate = _estimateAt(now());
+    final estimate = _estimateAt(at);
     _current = estimate;
 
     // No transition is emitted for the very first fix: there is no prior state
@@ -471,6 +659,13 @@ class SpeedEstimator {
     _lastSpeedAccuracyMps = null;
     _holdingSince = null;
     _current = null;
+    // The display curve goes with it. Leaving these set would let
+    // [displaySpeedMpsAt] answer with the previous session's speed while
+    // [current] is already null — the card would be drawing a number it is
+    // simultaneously reporting it does not have (design 0071 §5 #5).
+    _prevSmoothed = null;
+    _lastRaw = null;
+    _anchorAt = null;
     // Nothing to leave if the series never started, and `from` is non-nullable.
     if (previous != null && previous != SpeedState.lost) {
       _transitions.add(SpeedStateTransition(
@@ -571,11 +766,15 @@ class SpeedEstimator {
     return SpeedSignalQuality.poor;
   }
 
+  /// The still-clamp, in one place so the recorded value and the drawn value
+  /// cannot disagree about where zero starts (0071 §3.5 pin 3).
+  double _clampStill(double v) => v < config.vStillMps ? 0.0 : v;
+
   SpeedEstimate _estimateAt(DateTime at) {
     final v = _ewma ?? 0.0;
     return SpeedEstimate(
       t: at,
-      vSmoothMps: v < config.vStillMps ? 0.0 : v,
+      vSmoothMps: _clampStill(v),
       state: _state!,
       quality: _qualityAt(at),
       speedAccuracyMps: _lastSpeedAccuracyMps,
