@@ -253,7 +253,10 @@ void main() {
         'AA:BB:CC:DD:EE:FF',
         DeclaredModel(
           category: DeclaredCategory.motorcycleBattery,
-          model: kRetrofitLidModel,
+          // 🔵 Was `kRetrofitLidModel` until design 0069 took the lid out of the
+          // model list. A catalogue slug is what this column carries now, and
+          // writing the retired sentinel here would assert the opposite.
+          model: '7.5Ah-A',
           capacity: '', // a focused-but-untouched field
           note: '   ', // …and one holding only whitespace the UI trimmed away
           declaredAt: DateTime.fromMillisecondsSinceEpoch(1755300000000),
@@ -261,13 +264,13 @@ void main() {
       );
       final row = (await db.db.query('saved_devices')).single;
       expect(row['declared_category'], 'motorcycle-battery');
-      expect(row['declared_model'], 'retrofit-lid');
+      expect(row['declared_model'], '7.5Ah-A');
       expect(row['declared_capacity'], isNull);
       expect(row['declared_at'], 1755300000000);
 
       final back = (await repo.getDevice('AA:BB:CC:DD:EE:FF'))!.declared;
       expect(back.category, DeclaredCategory.motorcycleBattery);
-      expect(back.model, kRetrofitLidModel);
+      expect(back.model, '7.5Ah-A');
       expect(back.capacity, isNull);
       expect(back.declaredAt,
           DateTime.fromMillisecondsSinceEpoch(1755300000000));
@@ -306,18 +309,17 @@ void main() {
       );
     });
 
-    test('both report schema version 20', () async {
+    test('both report the current schema version', () async {
       final upgraded = await upgradeFromV11('v20_ver');
       final fresh = await freshDatabase('v20_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current EXACT pin — inherited from `schema_v19_test.dart`, which
-        // now asserts a floor. Move it again when v21 lands; the registry in
-        // `Db.schemaVersion`'s doc comment is the arbiter, and this line is what
-        // makes two branches claiming one number collide here rather than on a
-        // user's phone.
-        expect(Db.schemaVersion, 20);
+        // 🔴 A FLOOR, not a pin — the exact pin moved on to `schema_v21_test`
+        // when design 0069 landed, exactly as the note here instructed. What
+        // this file still has to prove is that a v11 phone reaching v20's seven
+        // columns does not stop reaching them once later versions are appended.
+        expect(Db.schemaVersion, greaterThanOrEqualTo(20));
       }
     });
   });

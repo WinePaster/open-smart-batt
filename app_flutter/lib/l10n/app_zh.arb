@@ -528,7 +528,7 @@
   "declaredGroupOldGen": "舊代",
   "declaredGroupNewGenB": "新代 · B 款（厚 65mm）",
   "declaredGroupNewGenA": "新代 · A 款（厚 87mm）",
-  "declaredGroupRetrofit": "改智慧上蓋",
+  "declaredSectionRetrofit": "改裝",
   "declaredModelRetrofitLid": "改智慧上蓋",
   "declaredRetrofitNoteLabel": "上蓋底下那顆電池是什麼？",
   "declaredRetrofitNoteHint": "例如：原廠 7Ah、或某個牌子",

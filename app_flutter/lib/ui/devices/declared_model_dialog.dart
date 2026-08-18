@@ -101,6 +101,9 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
   // in [_submit].
   late DeclaredCategory? _category = widget.initial.category;
   late String? _model = widget.initial.model;
+  // design 0069. INDEPENDENT of [_model] — the whole point of the change is that
+  // an owner can answer both "which battery" and "under our lid?" at once.
+  late bool _retrofit = widget.initial.retrofitLid;
   late String? _region = widget.initial.region;
   late String? _label = widget.initial.label;
   late final TextEditingController _capacity =
@@ -116,7 +119,12 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
   }
 
   bool get _isCarBattery => _category == DeclaredCategory.carBattery;
-  bool get _isRetrofit => _model == kRetrofitLidModel;
+  /// 🔴 Was `_model == kRetrofitLidModel` until design 0069. The lid is its own
+  /// answer now, and gated on the category for the same reason `region` and
+  /// `label` are: a flag left over from a category the user moved away from is
+  /// an artefact of the form, not something anybody said.
+  bool get _isRetrofit =>
+      _retrofit && _category == DeclaredCategory.motorcycleBattery;
 
   /// The declaration as it currently stands, WITHOUT a timestamp — what the
   /// live mismatch hint is computed from.
@@ -136,6 +144,7 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
         // answer exists, and only one of them is ever tested.
         capacity: _isCarBattery ? _blank(_capacity.text) : null,
         note: _blank(_note.text),
+        retrofitLid: _isRetrofit,
       );
 
   static String? _blank(String s) {
@@ -157,6 +166,7 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
       _model = null;
       _region = null;
       _label = null;
+      _retrofit = false;
       _capacity.clear();
     });
   }
@@ -167,6 +177,7 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
       _model = null;
       _region = null;
       _label = null;
+      _retrofit = false;
       _capacity.clear();
       _note.clear();
     });
@@ -237,7 +248,8 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
         'oldGen' => l10n.declaredGroupOldGen,
         'newGenB' => l10n.declaredGroupNewGenB,
         'newGenA' => l10n.declaredGroupNewGenA,
-        'retrofit' => l10n.declaredGroupRetrofit,
+        // 🔴 `'retrofit'` was a fourth group here until design 0069; the lid is
+        // a checkbox of its own now, below the model list.
         _ => null,
       };
 
@@ -364,11 +376,38 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
                           ),
                         ],
                       ],
-                      // §3.2: the retrofit lid is a COUNTABLE branch AND a free
-                      // text box. The slug is what makes "how many are there"
-                      // answerable; the box is where the detail that has no slug
-                      // goes. Q1 is still open (do we ask which battery is under
-                      // it?), so the box asks and accepts silence.
+                      // 🔑 design 0069, and it is the whole change: the lid is
+                      // its OWN question, sitting beside the model list rather
+                      // than inside it. One chip, one column, still countable —
+                      // what it stopped being is mutually exclusive with
+                      // "which battery is this".
+                      //
+                      // Only under 機車電池 (owner ruling 2026-08-19): every lid
+                      // report to date is a bike battery (`08.08/004`, unit
+                      // 300051), and offering it under 行動電源 would collect
+                      // combinations that mean nothing.
+                      if (_category == DeclaredCategory.motorcycleBattery) ...[
+                        const SizedBox(height: 14),
+                        _SectionLabel(l10n.declaredSectionRetrofit,
+                            optional: l10n.declaredOptional),
+                        Wrap(
+                          spacing: 7,
+                          runSpacing: 7,
+                          children: [
+                            _Chip(
+                              key: const ValueKey('declared-retrofit'),
+                              label: l10n.declaredModelRetrofitLid,
+                              selected: _retrofit,
+                              onTap: () =>
+                                  setState(() => _retrofit = !_retrofit),
+                            ),
+                          ],
+                        ),
+                      ],
+                      // §3.2's free text box, kept and re-aimed by 0069 Q1: the
+                      // battery under the lid is very often NOT one of ours, so
+                      // the model list above cannot always answer it. Both may
+                      // be filled, either may be left alone.
                       if (_isRetrofit) ...[
                         const SizedBox(height: 12),
                         _SectionLabel(l10n.declaredRetrofitNoteLabel,

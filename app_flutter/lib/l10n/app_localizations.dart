@@ -3260,11 +3260,11 @@ abstract class AppLocalizations {
   /// **'New catalogue · A (87 mm case)'**
   String get declaredGroupNewGenA;
 
-  /// No description provided for @declaredGroupRetrofit.
+  /// No description provided for @declaredSectionRetrofit.
   ///
   /// In en, this message translates to:
-  /// **'Retrofit smart lid'**
-  String get declaredGroupRetrofit;
+  /// **'Retrofit'**
+  String get declaredSectionRetrofit;
 
   /// No description provided for @declaredModelRetrofitLid.
   ///

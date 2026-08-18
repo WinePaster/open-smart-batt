@@ -1815,7 +1815,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get declaredGroupNewGenA => '新代 · A 款（厚 87mm）';
 
   @override
-  String get declaredGroupRetrofit => '改智慧上蓋';
+  String get declaredSectionRetrofit => '改裝';
 
   @override
   String get declaredModelRetrofitLid => '改智慧上蓋';

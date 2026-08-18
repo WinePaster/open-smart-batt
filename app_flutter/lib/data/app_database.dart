@@ -306,7 +306,40 @@ class Db {
   /// every local and remote ref on 2026-08-17 — the highest anywhere was 19
   /// (design 0064, on `main`). design 0066's own plan says v20 and this is the
   /// registry agreeing with it, not the other way round.
-  static const int schemaVersion = 20;
+  ///
+  /// v21 — design 0069. ONE column on `saved_devices`, and the first migration
+  /// in this file that REWRITES existing rows.
+  ///
+  ///   saved_devices.declared_retrofit  INTEGER, nullable, NO DEFAULT — `1` when
+  ///     the owner says our smart lid is fitted to somebody else's battery, NULL
+  ///     when they have not said so. Never `0`.
+  ///
+  /// 🔑 WHY IT EXISTS. v20 put "which catalogue model" and "is this a retrofit
+  /// lid" in ONE column (`declared_model`, with the sentinel `retrofit-lid`), so
+  /// the two answers were mutually exclusive — an owner running our 7.5Ah-A
+  /// under our lid could record either fact and never both, and the form chose
+  /// for them. One column, two questions; the fix is a second column.
+  ///
+  /// 🔴 IT REWRITES ROWS, which v18/v19/v20 deliberately never did, so the line
+  /// between this and the thing those migrations refuse to do has to be exact:
+  ///
+  ///   UPDATE saved_devices SET declared_retrofit = 1, declared_model = NULL
+  ///     WHERE declared_model = 'retrofit-lid'
+  ///
+  /// That is not an upgrade inventing evidence. `declared_model = 'retrofit-lid'`
+  /// is an answer THIS USER ALREADY GAVE, in the only spelling v0.7.22–v0.7.24
+  /// had for it; the statement moves it, one to one, losing nothing and adding
+  /// nothing. The forbidden move — seeding `declared_category` from
+  /// `product_class` — would have manufactured an answer nobody gave, and this
+  /// migration still does not do it. Rows whose `declared_model` is anything
+  /// else, NULL included, are not touched at all.
+  ///
+  /// 🔴 NULL, not `0`, and the reason is one step past v20's. There the empty
+  /// string was a second spelling of "no answer"; here `0` is a POSITIVE
+  /// statement — "the owner told us there is no lid" — that no one made. Write 0
+  /// across the table and `WHERE declared_retrofit IS NULL` counts nobody, while
+  /// `= 0` counts everybody who has never opened the form.
+  static const int schemaVersion = 21;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -777,6 +810,31 @@ class AppDatabase {
         );
       }
     }
+    if (from < 21) {
+      // design 0069. One additive, nullable column — and then, uniquely in this
+      // file, an UPDATE. See [Db.schemaVersion] v21 for why moving an answer the
+      // user already gave is not the same act as inventing one, and why the
+      // absent value is NULL rather than 0.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN declared_retrofit INTEGER',
+      );
+      // ⚠️ Both halves in ONE statement, deliberately. Split across two and a
+      // process killed between them leaves a row that is a retrofit lid AND a
+      // catalogue model named `retrofit-lid` — the exact double-bookkeeping this
+      // whole change exists to end, made permanent because the `WHERE` no longer
+      // matches on the next launch.
+      //
+      // 🔑 The sentinel is spelled out here rather than imported from
+      // `kRetrofitLidModel`, for the same reason `schema_v20_test` hand-writes
+      // the old DDL: a migration is a statement about what WAS on disk, and it
+      // must keep meaning that after the constant is renamed or deleted. Tying
+      // it to today's source is how a migration silently stops matching.
+      await db.rawUpdate(
+        'UPDATE ${Db.tableSavedDevices} '
+        'SET declared_retrofit = 1, declared_model = NULL '
+        "WHERE declared_model = 'retrofit-lid'",
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -884,7 +942,8 @@ class AppDatabase {
       declared_label TEXT,
       declared_capacity TEXT,
       declared_note TEXT,
-      declared_at INTEGER
+      declared_at INTEGER,
+      declared_retrofit INTEGER
     )
     ''',
     '''
