@@ -105,6 +105,9 @@ List<String> _header(AppSettings s) => exportHeaderLines(
       speedDetection: s.speedDetectionEffective,
       gMeter: s.gMeterEffective,
       resolution: ExportResolution.none,
+          // design 0070 stage two: the parameter lost its default, so this
+      // header has to say what it names. Nothing here declares a unit.
+      devices: const [],
     );
 
 void main() {
