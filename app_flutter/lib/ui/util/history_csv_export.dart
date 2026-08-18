@@ -107,6 +107,15 @@ Future<void> exportHistoryCsv(
       target.granularity,
       await tele.historyBucketWidths(since: since, deviceId: target.deviceId),
     );
+    // design 0070. The same identity list the diagnostic log has always
+    // carried, so `devices:` and `declared:` say the same thing in both files a
+    // reporter sends. Computed HERE rather than taken as a parameter, for the
+    // reason stated at the top of this file: everything a history CSV states
+    // about itself is decided here, so its two call sites cannot start
+    // describing the same database differently. A parameter would hand them
+    // exactly that freedom.
+    final identities =
+        await exportDeviceIdentities(devices, tele, target, facts: facts);
     // Streamed straight into the file (design 0030 T4b) and NOT capped at the
     // list's row cap (T4c / FB-59).
     final rows = await tele.exportHistoryCsvToFile(
@@ -134,6 +143,11 @@ Future<void> exportHistoryCsv(
         accent: accent,
         speedDetection: speedDetection,
         gMeter: gMeter,
+        // design 0070. Without this the block was silently `count=0` in every
+        // CSV ever exported, while the log written seconds later said `count=3`
+        // — and `conventions/export-header.md` reads a zero as "nobody filled
+        // one in".
+        devices: identities,
       ),
     );
     // Row count, not text emptiness: every export carries a provenance
