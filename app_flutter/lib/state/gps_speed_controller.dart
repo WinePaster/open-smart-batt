@@ -119,6 +119,13 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
   /// or a clear sky cycles live → holding → lost forever — which is precisely
   /// what the plugin's own 5 s default did. `SpeedEstimatorConfig`'s doc
   /// comment carries the mirror of this note.
+  ///
+  /// 🔴 Since design 0071 there is a THIRD place this number appears:
+  /// `SpeedEstimatorConfig.displayRampPeriod`, the length of the curve the card
+  /// sweeps between two samples. Change this one and that one must move with
+  /// it, or the reading either arrives early and sits still (ramp too short) or
+  /// never arrives at all (ramp too long) — neither of which looks like a bug
+  /// while you are staring at it.
   static const Duration speedSamplingPeriod = Duration(seconds: 1);
 
   /// The settings actually handed to the plugin. Exposed so a test can assert
@@ -316,6 +323,33 @@ class GpsSpeedController extends ChangeNotifier {
   /// Newest estimate, or null when no fix has been accepted since the stream
   /// last opened — the card's "waiting for a fix" state.
   SpeedEstimate? get current => _estimator.current;
+
+  /// The speed to DRAW right now — [SpeedEstimator.displaySpeedMpsAt] read on
+  /// this controller's clock (design 0071 §3.6).
+  ///
+  /// The card asks for it once per frame. It deliberately does not take a
+  /// `DateTime`: a widget reaching for `DateTime.now()` would put a SECOND
+  /// clock in the speed feature, and the one thing every timing bug in this
+  /// module has had in common (M2, the throttle above) is two time bases in one
+  /// series. Tests drive the injected clock instead.
+  ///
+  /// Null while this controller's estimator has no series — which is also how
+  /// a test double that overrides [current] without owning an estimator gets
+  /// the right answer: the card falls back to the estimate it was given rather
+  /// than to a 0 the empty estimator would otherwise have handed it.
+  ///
+  /// 🔴 Read-only. It publishes nothing and notifies nobody, so calling it 60
+  /// times a second costs the recorded series exactly nothing (0071 G3).
+  double? displaySpeedMpsNow() => _estimator.displaySpeedMpsAt(_now());
+
+  /// Whether the curve is still sweeping — the card's ticker asks this to
+  /// decide whether the next frame has anything to draw (design 0071 §3.7).
+  bool displayRampActiveNow() => _estimator.displayRampActiveAt(_now());
+
+  /// The same value at an arbitrary instant. Exposed for tests and for the road
+  /// test's diagnosis; production reads [displaySpeedMpsNow].
+  @visibleForTesting
+  double? displaySpeedMpsAt(DateTime at) => _estimator.displaySpeedMpsAt(at);
 
   SpeedPermissionState get permission => _permission;
 

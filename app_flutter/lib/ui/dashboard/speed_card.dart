@@ -33,6 +33,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -117,10 +118,46 @@ class SpeedCard extends StatefulWidget {
   State<SpeedCard> createState() => _SpeedCardState();
 }
 
-class _SpeedCardState extends State<SpeedCard> {
+class _SpeedCardState extends State<SpeedCard>
+    with SingleTickerProviderStateMixin {
   /// Captured rather than read in [dispose]: by then this element is detached
   /// and `context.read` is no longer legal.
   GpsSpeedController? _gps;
+
+  /// Design 0071 §3.7. A vsync [Ticker] rather than [AlignedTicker]: this
+  /// reading has no boundary to align to, and — the half that matters — a
+  /// `Timer` keeps firing while the app is not drawing, whereas a Ticker
+  /// created through [SingleTickerProviderStateMixin] is muted by `TickerMode`
+  /// the moment this subtree stops being visible. That is 0042 G4's battery
+  /// budget getting the benefit for free.
+  ///
+  /// 🔴 Built eagerly in [initState] and disposed in [dispose]. `late final … =
+  /// createTicker(…)` would be evaluated on first USE, and `devices_page.dart`
+  /// has already paid for that mistake once: if the first use is inside
+  /// `dispose()` the ticker is created against a deactivated element.
+  late final Ticker _ticker;
+
+  /// The string [build] last rendered, and the only thing a frame is allowed to
+  /// rebuild for.
+  ///
+  /// 🔑 Design 0071 §3.7: compute every frame, rebuild only when
+  /// [formatSpeed]'s OUTPUT changes. At 3 m/s² the integer digits move ~11
+  /// times a second while the ticker fires 60–120 times, so comparing the
+  /// formatted string is what turns a per-frame computation back into a handful
+  /// of rebuilds. Comparing the double instead would rebuild on every frame,
+  /// for pixels that are identical.
+  String? _displayText;
+
+  /// The unit the comparison above is made in. Refreshed in [build], where the
+  /// `context.select` that owns it lives — a ticker callback is not a place to
+  /// read an InheritedWidget.
+  SpeedUnit _unit = SpeedUnit.kmh;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onFrame);
+  }
 
   @override
   void didChangeDependencies() {
@@ -131,8 +168,47 @@ class _SpeedCardState extends State<SpeedCard> {
 
   @override
   void dispose() {
+    // 🔴 R4. `aligned_ticker.dart` carries the same warning for the same
+    // reason: a ticker that outlives its State holds a closure over a defunct
+    // element and calls `setState` on it for the life of the process.
+    _ticker.dispose();
     _setFaceWantsSpeed(false);
     super.dispose();
+  }
+
+  /// One frame of the display curve.
+  ///
+  /// Compute every frame; rebuild only when the DIGITS change (§3.7). Then hand
+  /// the loop back as soon as the curve is clamped at `t_k + T`, because past
+  /// that point only a new sample can move the reading — and a new sample makes
+  /// the controller notify, which rebuilds, which re-arms the ticker. Nothing
+  /// is missed by stopping.
+  void _onFrame(Duration _) {
+    final gps = _gps;
+    if (gps == null) return;
+    final next = gps.displaySpeedMpsNow();
+    if (next != null && formatSpeed(next, _unit) != _displayText) {
+      // `build` re-reads the value itself, so an empty `setState` is the whole
+      // of "draw the next step". The ~90 % of frames whose digits did not move
+      // fall through here without touching the element tree, which is the
+      // entire point of comparing the formatted string.
+      setState(() {});
+    }
+    if (next == null || !gps.displayRampActiveNow()) _ticker.stop();
+  }
+
+  /// Start or stop the per-frame loop.
+  ///
+  /// The curve only moves while the reading is [SpeedState.live] (§3.5 pin 1)
+  /// and while there is an estimator behind it, so that is the only case worth
+  /// burning frames on. Called from [build], i.e. on every `notifyListeners` —
+  /// one per fix and one per tick.
+  void _syncTicker({required bool wants}) {
+    if (wants) {
+      if (!_ticker.isActive) _ticker.start();
+    } else if (_ticker.isActive) {
+      _ticker.stop();
+    }
   }
 
   /// Deferred to the end of the frame, and that is not defensive noise:
@@ -157,12 +233,24 @@ class _SpeedCardState extends State<SpeedCard> {
     final gps = context.watch<GpsSpeedController>();
     final unit = context.select<SettingsController, SpeedUnit>(
         (s) => s.settings.speedUnit);
+    _unit = unit;
+    final estimate = gps.current;
+    // Read the curve HERE rather than caching what the ticker computed: this
+    // build may have been triggered by a fix or by the 1 Hz tick, both of which
+    // land between frames, and the freshest read is also the correct one. The
+    // ticker's only job is to make a build happen at all.
+    final display = estimate != null && estimate.state == SpeedState.live
+        ? gps.displaySpeedMpsNow()
+        : null;
+    _syncTicker(wants: display != null);
+    _displayText = display == null ? null : formatSpeed(display, unit);
     return IndustrialCard(
       child: SpeedCardBody(
         permission: gps.permission,
-        estimate: gps.current,
+        estimate: estimate,
         accel: gps.currentAccel,
         unit: unit,
+        displaySpeedMps: display,
         onOpenSystemSettings: gps.openSystemSettings,
       ),
     );
@@ -188,6 +276,7 @@ class SpeedCardBody extends StatelessWidget {
     required this.estimate,
     required this.accel,
     required this.unit,
+    this.displaySpeedMps,
     this.onOpenSystemSettings,
   });
 
@@ -195,6 +284,19 @@ class SpeedCardBody extends StatelessWidget {
 
   /// The reading, or null for "no fix yet".
   final SpeedEstimate? estimate;
+
+  /// The number to DRAW, or null to draw [SpeedEstimate.vSmoothMps] (design
+  /// 0071 §3.6).
+  ///
+  /// Optional so that every caller which hands in sample data — the home
+  /// editor's preview, the watchface previews — keeps working unchanged and
+  /// keeps rendering the same pixels: those have no estimator behind them and
+  /// nothing to sweep between. Only the live [SpeedCard] passes it.
+  ///
+  /// It differs from `estimate.vSmoothMps` only DURING a sweep, and only while
+  /// the state is [SpeedState.live]; on every sampling instant the two are the
+  /// same number (`speed_estimator.dart`, `displaySpeedMpsAt` property 2).
+  final double? displaySpeedMps;
 
   /// The RAW acceleration estimate. [accelReadoutFor] decides whether it is
   /// drawn — deliberately here rather than at the caller, so the editor's
@@ -244,11 +346,25 @@ class SpeedCardBody extends StatelessWidget {
       );
     }
     final shownAccel = accelReadoutFor(e.state, accel);
+    // 🔴 `holding` and `lost` are given the frozen value, never the curve.
+    // `displaySpeedMpsAt` would answer with `vSmoothMps` for both anyway (its
+    // pin 1), so this is belt and braces — but it is the belt that stops a
+    // future caller passing a swept value into a state whose whole meaning is
+    // "this number is not moving because nobody is measuring it" (0042 G2).
+    final live = displaySpeedMps;
     return switch (e.state) {
-      SpeedState.live =>
-        _Reading(estimate: e, unit: unit, held: false, accel: shownAccel),
-      SpeedState.holding =>
-        _Reading(estimate: e, unit: unit, held: true, accel: shownAccel),
+      SpeedState.live => _Reading(
+          estimate: e,
+          unit: unit,
+          held: false,
+          accel: shownAccel,
+          speedMps: live ?? e.vSmoothMps),
+      SpeedState.holding => _Reading(
+          estimate: e,
+          unit: unit,
+          held: true,
+          accel: shownAccel,
+          speedMps: e.vSmoothMps),
       SpeedState.lost => _LostState(estimate: e, unit: unit),
     };
   }
@@ -260,11 +376,18 @@ class _Reading extends StatelessWidget {
     required this.estimate,
     required this.unit,
     required this.held,
+    required this.speedMps,
     this.accel,
   });
 
   final SpeedEstimate estimate;
   final SpeedUnit unit;
+
+  /// The number in the big digits. Equal to `estimate.vSmoothMps` except while
+  /// a live reading is mid-sweep (design 0071) — everything else on this card
+  /// (the ±, the quality pill, the held badge) still comes from [estimate],
+  /// because they describe the SAMPLE, not the animation.
+  final double speedMps;
 
   /// [SpeedState.holding]: the number is the last one MEASURED, not the current
   /// one. Rendered muted with a badge — the visual difference is the whole
@@ -309,7 +432,7 @@ class _Reading extends StatelessWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      formatSpeed(estimate.vSmoothMps, unit),
+                      formatSpeed(speedMps, unit),
                       maxLines: 1,
                       softWrap: false,
                       style: TextStyle(
