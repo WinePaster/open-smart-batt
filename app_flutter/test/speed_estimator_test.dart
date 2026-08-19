@@ -711,6 +711,14 @@ void main() {
   // 0.5 to 0.632 in the same change to buy it back (§3.3). Test #7 is that
   // trade, made executable; test #6(b) is the guard that the RECORDED series
   // design 0044 and design 0061 consume did not move as a side effect.
+  //
+  // 🔴 THEN THE RIDE HAPPENED. The 2026-08-19 field check on v0.7.25 came back
+  // with the decimal below 10 km/h reading well (`formatSpeed` untouched) and
+  // the number STILL FEELING SLOW — so α went again, 0.632 ⇒ 0.85 (0071 §7 Q2's
+  // "revisit after the ride"). Matching the pre-0071 MEAN lag was never the same
+  // as matching what a rider notices, which is the leading edge of the response;
+  // `SpeedEstimatorConfig.alpha` has the arithmetic. Tests #0 and #7 carry the
+  // new numbers, #6(b) is untouched because it pins α at 0.5 by hand.
   group('design 0071: the display curve', () {
     const T = Duration(seconds: 1);
 
@@ -719,7 +727,7 @@ void main() {
     SpeedEstimatorConfig cfgWithAlpha(double alpha) =>
         SpeedEstimatorConfig(alpha: alpha);
 
-    test('#0 the shipped α is the ruled 0.632, not the pre-0071 0.5', () {
+    test('#0 the shipped α is 0.85, the value the road test asked for', () {
       // Pinned because NOTHING ELSE IN THIS SUITE PINS IT. Every existing
       // smoothing assertion is a `greaterThan`/`lessThan` on a monotone ramp or
       // a `closeTo` on a converged value, all of which hold for any α in
@@ -727,8 +735,19 @@ void main() {
       // all and the suite would have stayed green. It is an input to design
       // 0044's slope and to design 0061's stored series; it does not get to
       // move silently.
-      expect(const SpeedEstimatorConfig().alpha, 0.632,
-          reason: 'design 0071 §3.3 / §7 Q2, ruled 2026-08-19');
+      //
+      // WHERE 0.85 COMES FROM. Not a formula — 0.632 was the formula (it is the
+      // α that makes the swept mean lag equal the pre-0071 stepped one), and
+      // the ride said the formula answered the wrong question. 0.85 is chosen
+      // against the LEADING EDGE: of one sampling step, the fraction visible
+      // 0.3 s in is `1 − (1−α)^0.3`, which is 26 % at 0.632 and 43 % at 0.85.
+      // The mean lag `0.5 + τ/T` comes down 1.50 s ⇒ 1.03 s with it (τ = T /
+      // ln(1/(1−α)) = 0.527 s), so both measures move the right way — test #7.
+      // It stops at 0.85 because the 0.5·T in that formula is the 1 Hz
+      // zero-order-hold floor: α = 0.9 is worth another 0.09 s, α = 1 (no
+      // filter at all) still lags 0.5 s, and all of it is paid in jitter.
+      expect(const SpeedEstimatorConfig().alpha, 0.85,
+          reason: 'design 0071 §7 Q2 revisited, 2026-08-19 field check (FB-89)');
       expect(const SpeedEstimatorConfig().displayRampPeriod, T,
           reason: 'must mirror GeolocatorSpeedSource.speedSamplingPeriod');
     });
@@ -812,8 +831,8 @@ void main() {
       // version of this test reads 0 either way and proves nothing.
       //
       // The setup instead straddles the clamp: the average is 2.0 m/s when a
-      // 0.1 m/s sample lands, so the curve sweeps 2.0 → 0.799 (0.632·0.1 +
-      // 0.368·2.0), i.e. from 7.2 km/h on screen down through the 3 km/h floor
+      // 0.1 m/s sample lands, so the curve sweeps 2.0 → 0.385 (0.85·0.1 +
+      // 0.15·2.0), i.e. from 7.2 km/h on screen down through the 3 km/h floor
       // to a clamped 0. A null-speed fix arriving after that must NOT restart
       // the sweep — nothing entered the smoother, so the target has not moved,
       // and re-anchoring would make a stationary scooter's reading jump back to
@@ -950,11 +969,22 @@ void main() {
       });
     });
 
-    test('#7 🔴 the lag budget does not get worse (G2), and α is why', () {
+    test('#7 🔴 the lag budget, and why α moved twice', () {
       // 0071 G2 made executable: "the average lag after this change must not be
-      // greater than it was before it". Three readings of the same synthetic
-      // ride are compared, and the middle one is the whole argument for
+      // greater than it was before it". Four readings of the same synthetic
+      // ride are compared, and the middle ones are the whole argument for
       // touching α at all.
+      //
+      // 🔴 The 2026-08-19 field check moved the target. G2 asked for PARITY
+      // with the pre-0071 card, α = 0.632 delivered exactly that (kept below as
+      // `parity`, because it is the number every comment in this file derives),
+      // and the owner rode it and said it still felt slow. So the assertion is
+      // no longer "not worse" — it is a value, computed in
+      // `SpeedEstimatorConfig.alpha`, that has to come out where the arithmetic
+      // there says it does. ⛔ If this goes red, recompute it; do not widen the
+      // tolerance. Every figure here is a closed form, so a drift of more than
+      // the quadrature error means the curve changed, not that the test was
+      // strict.
       //
       // The ride: constant 2 m/s² (a brisk scooter launch), 1 Hz samples that
       // report the true speed exactly. Lag is integrated over seconds 20–30 by
@@ -1009,24 +1039,60 @@ void main() {
         return sum / n;
       }
 
+      // Every comment is `a·(0.5 + τ/T)` with a = 2 and τ = T/ln(1/(1−α)).
       final before = steppedLag(0.5); // 2·(0.5 + 1.000) = 3.000 m/s
       final naive = sweptLag(0.5); // 2·(0.5 + 1.443) = 3.885 m/s
-      final shipped = sweptLag(0.632); // 2·(0.5 + 1.000) = 3.001 m/s
+      final parity = sweptLag(0.632); // 2·(0.5 + 1.000) = 3.001 m/s
+      final shipped = sweptLag(0.85); // 2·(0.5 + 0.527) = 2.054 m/s
 
       expect(before, closeTo(3.0, 0.01));
       expect(naive, closeTo(3.885, 0.01));
-      expect(shipped, closeTo(3.001, 0.01));
+      expect(parity, closeTo(3.001, 0.01));
+      expect(shipped, closeTo(2.054, 0.01),
+          reason: 'τ at α=0.85 is 1/ln(1/0.15) = 0.527 s, so the mean lag is '
+              '1.03 s and at 2 m/s² that is 2.054 m/s of speed difference');
 
       // R1, and the reason §3.3 is not optional: shipping the sweep on its own
       // would have made the reading ~0.44 s SLOWER, which is the other half of
       // what the user complained about.
       expect(naive, greaterThan(before * 1.2),
           reason: 'a continuous curve at the OLD α is a regression, not a fix');
-      // G2 itself. The 0.1 % allowance is the ruled α being the three-digit
-      // 0.632 rather than 1 − e⁻¹ = 0.63212…, which leaves τ 0.033 % long —
-      // 0.3 ms of lag. See `SpeedEstimatorConfig.alpha`.
-      expect(shipped, lessThanOrEqualTo(before * 1.001),
-          reason: '0071 G2: the sweep must not cost the rider any lag');
+      // What 0.632 bought and what it did not: parity with the stepped card, to
+      // within the 0.1 % that the three-digit literal costs against 1 − e⁻¹
+      // (τ 0.033 % long ⇒ 0.3 ms of lag).
+      expect(parity, lessThanOrEqualTo(before * 1.001),
+          reason: '0071 G2 as originally ruled: the sweep must not cost lag');
+      // And what the ride asked for on top: a mean lag materially BELOW the
+      // pre-0071 card, not merely level with it. 1.03 s against 1.50 s.
+      expect(shipped, lessThan(before * 0.72),
+          reason: 'α=0.85 must be an improvement on the stepped card, not a '
+              'draw with it');
+
+      // 🔴 The measure the RIDE was actually about, and the one G2 does not
+      // capture: the LEADING EDGE. Mean lag is an integral over a whole period;
+      // a rider opening the throttle is watching the first third of a second.
+      // Parity on the integral is what let 0.632 satisfy G2 while the complaint
+      // survived — so the fraction of one step that is on screen at +0.3 s is
+      // pinned here, or the next retune has nothing to aim at.
+      double travelledAt(double alpha, Duration d) {
+        final clock = _Clock(t0);
+        final est = SpeedEstimator(
+          config: cfgWithAlpha(alpha),
+          now: () => clock.t,
+        );
+        est.addFix(_fix(clock.t, 10.0)); // seeds; the re-seed curve is flat
+        clock.advance(T);
+        final anchor = clock.t;
+        est.addFix(_fix(anchor, 20.0)); // a 10 m/s step to walk
+        return (est.displaySpeedMpsAt(anchor.add(d))! - 10.0) / 10.0;
+      }
+
+      const edge = Duration(milliseconds: 300);
+      expect(travelledAt(0.632, edge), closeTo(0.259, 0.002),
+          reason: '1 − 0.368^0.3 — what the owner rode and called slow');
+      expect(travelledAt(0.85, edge), closeTo(0.434, 0.002),
+          reason: '1 − 0.15^0.3: two thirds again as much of the step visible '
+              'in the same 0.3 s, which is the whole point of the change');
     });
 
     test('#8 🔴 coming out of a tunnel does not sweep the old speed', () {

@@ -972,17 +972,195 @@ class TelemetryController extends ChangeNotifier
   /// so "detection off ⇒ nothing recorded" needs no check of its own here.
   void bindSpeedEstimates(Stream<SpeedEstimate> estimates) {
     _speedSub?.cancel();
-    _speedSub = estimates.listen(_onSpeedEstimate);
+    // A rebind is a new stream and therefore a new series: intervals measured
+    // across the seam would span whatever gap the rebind covered.
+    _resetSpeedTiming();
+    _speedSub = estimates.listen(_onSpeedEstimate,
+        onDone: _resetSpeedTiming, onError: (_) => _resetSpeedTiming());
   }
 
   StreamSubscription<SpeedEstimate>? _speedSub;
 
   void _onSpeedEstimate(SpeedEstimate e) {
+    _foldSpeedTiming(e);
     // Held and lost readings are the value from BEFORE the signal went, marked
     // as such on screen. Averaging one into a recorded minute would strip the
     // mark and leave a number claiming to be a measurement.
     if (e.state != SpeedState.live) return;
     foldSpeedSample(speedMps: e.vSmoothMps);
+  }
+
+  // ---- GNSS delivery timing (design 0071 follow-up, FB-89) ----------------
+  //
+  // 🔑 **What this measures and why it is worth a log line.** `SpeedEstimator`'s
+  // M2 note records a delivery latency of **2.1 s** between the GNSS chipset and
+  // this isolate — observed ONCE, while chasing a different bug, and never
+  // characterised since. Every lag figure design 0071 argues about (§3.3's
+  // 1.50 s, the 1.03 s α = 0.85 now buys) is measured from the moment the
+  // sample reaches US. If the delivery in front of that is routinely a second
+  // or more, then α is being tuned against the small half of the problem and
+  // the ceiling is somewhere else entirely — and nobody can tell which without
+  // a number. So: measure first, tune second.
+  //
+  // It also settles a second open question for free. 0071 §2.2 asserts iOS
+  // delivers ~1 Hz, sourced to a code comment and explicitly marked 未實測 —
+  // `dt_med` is that measurement.
+  //
+  // 🔴 **Why here and not in the estimator or the controller that owns the
+  // plugin.** `speed_estimator.dart` imports `dart:async` and `dart:math` and
+  // nothing else, on purpose; `GpsSpeedController` has no log repo. This
+  // controller already receives every [SpeedEstimate] and already holds a
+  // [LogRepo], so the whole feature is arithmetic over data that was already
+  // arriving here — zero new dependencies, zero new subscriptions.
+  //
+  // 🔴 **G5 (design 0042's privacy red line) is why this reads exactly two
+  // fields.** [SpeedEstimate] cannot carry a coordinate, but it does carry a
+  // speed, and a log of speeds against timestamps IS a journey. Nothing below
+  // touches [SpeedEstimate.vSmoothMps]; the line that gets written contains
+  // durations and counts and nothing else. Rechecked deliberately: the emitted
+  // string has no speed, no accuracy, no state, no device id.
+
+  /// One line per full window; a window closes at whichever comes first.
+  static const int _speedTimingMaxSamples = 60;
+  static const Duration _speedTimingMaxSpan = Duration(seconds: 60);
+
+  /// Below this a window is dropped without a line. A median over three points
+  /// is not a measurement of anything, and a stream that only ever delivers
+  /// three samples before stopping would otherwise fill the log with them.
+  static const int _speedTimingMinSamples = 5;
+
+  final List<int> _speedLagUs = <int>[];
+  final List<int> _speedDtUs = <int>[];
+
+  /// `lastLiveAt` of the previous estimate — the discriminator for "is this a
+  /// new sample". See [_foldSpeedTiming].
+  DateTime? _speedTimingLastLiveAt;
+
+  /// `t` of the previous NEW sample, for the interval. Null also means "the
+  /// chain is broken, do not measure across this gap".
+  DateTime? _speedTimingPrevT;
+
+  /// `t` of the first sample in the open window.
+  DateTime? _speedTimingWindowStart;
+
+  /// Accumulate one estimate's timing, and close the window when it is full.
+  ///
+  /// 🔴 **Only estimates carrying a NEW fix count.** The stream also fires on
+  /// [SpeedEstimator.tick] whenever the state or the quality changes, and those
+  /// carry the previous sample's [SpeedEstimate.lastLiveAt] with a fresh
+  /// [SpeedEstimate.t]. Counting one as a sample would report an interval of
+  /// however long the tick happened to land after the fix — pulling `dt_med`
+  /// below the true sampling period and inventing a receiver faster than the
+  /// one in the phone. `lastLiveAt` changing is what makes it a new sample;
+  /// `t` changing is not, and `state == live` is not either.
+  ///
+  /// 📌 The FB-56 sustain branch (a fix with no Doppler speed, keeping a parked
+  /// scooter's zero alive) DOES move `lastLiveAt` and therefore does count. That
+  /// is correct: a sample arrived from the receiver, which is the event being
+  /// timed. This measures DELIVERY, not how many of the deliveries carried a
+  /// speed.
+  void _foldSpeedTiming(SpeedEstimate e) {
+    // A gap ends the interval chain. `dt` answers "how often does the platform
+    // deliver", and a value spanning a tunnel answers "how long was the
+    // tunnel" — one outlier of 30 s would drag p90 on its own. The window's
+    // accumulated samples are kept: what broke is the link between the sample
+    // before the gap and the one after it, not the ones already measured.
+    if (e.state != SpeedState.live) {
+      _speedTimingPrevT = null;
+      return;
+    }
+    final liveAt = e.lastLiveAt;
+    if (liveAt == null) return;
+    if (_speedTimingLastLiveAt != null &&
+        liveAt.isAtSameMomentAs(_speedTimingLastLiveAt!)) {
+      return; // a tick: same measurement, later `t`
+    }
+    // ⚠️ CHANGED, not merely UNCHANGED-OR-EARLIER. An out-of-order delivery
+    // (the platform handing us a fix stamped before one we already have) is a
+    // new sample and one of the more interesting things this line could
+    // discover, so it is counted rather than dropped as a duplicate. It cannot
+    // corrupt `dt` either, because intervals are measured on `t` — our own
+    // clock — and only `lag` reads the platform's stamp at all.
+    _speedTimingLastLiveAt = liveAt;
+
+    // Delivery lag: our clock at the moment we learned it, minus the platform's
+    // stamp for when it was taken. ⚠️ Recorded SIGNED. Clamping a negative to
+    // zero the way `_ageAt` does would be wrong here: `_ageAt` protects a state
+    // machine from clock skew, whereas skew is one of the things this line
+    // exists to expose. A median that comes out negative means the two clocks
+    // disagree, which is a far more useful thing to read than a floor of 0.00.
+    _speedLagUs.add(e.t.difference(liveAt).inMicroseconds);
+    final prev = _speedTimingPrevT;
+    if (prev != null) _speedDtUs.add(e.t.difference(prev).inMicroseconds);
+    _speedTimingPrevT = e.t;
+    _speedTimingWindowStart ??= e.t;
+
+    if (_speedLagUs.length >= _speedTimingMaxSamples ||
+        e.t.difference(_speedTimingWindowStart!) >= _speedTimingMaxSpan) {
+      _flushSpeedTiming();
+    }
+  }
+
+  /// Write the window's summary, then start a new one.
+  ///
+  /// ⛔ One line per window, never one per sample: at 1 Hz a line per sample is
+  /// 3,600 rows an hour of a log the user is expected to send us, and it would
+  /// push the evidence out of the byte budget (`logTrimBudget`) that the rest
+  /// of `feedback_log` depends on.
+  void _flushSpeedTiming() {
+    final n = _speedLagUs.length;
+    if (n >= _speedTimingMinSamples) {
+      final lags = List<int>.of(_speedLagUs)..sort();
+      final dts = List<int>.of(_speedDtUs)..sort();
+      // `dt` has one fewer sample than `lag` in an unbroken window, and fewer
+      // still when a gap broke the chain — so it is reported with its own
+      // count rather than left for the reader to assume n−1.
+      final dtn = dts.length;
+      _pending.add(_logs.insertLog(
+        LogEntry.event(
+          'speed-timing: n=$n dt_n=$dtn '
+          'dt_med=${_speedTimingSecs(dts, 50)} '
+          'dt_p90=${_speedTimingSecs(dts, 90)} '
+          'lag_med=${_speedTimingSecs(lags, 50)} '
+          'lag_p90=${_speedTimingSecs(lags, 90)}',
+          appBuild: _appBuild,
+        ),
+        maxBytes: _settings.logTrimBudget,
+      ));
+    }
+    _speedLagUs.clear();
+    _speedDtUs.clear();
+    _speedTimingWindowStart = null;
+  }
+
+  /// Nearest-rank percentile of [sorted] (microseconds), as `1.05s`.
+  ///
+  /// Nearest-rank rather than an interpolating definition because every value
+  /// it can print is a value that was actually measured — a median of `1.02s`
+  /// on a stream that only ever delivered 1.00 s and 1.05 s would be an
+  /// artefact of the statistic, and this line exists to be believed literally.
+  static String _speedTimingSecs(List<int> sorted, int p) {
+    if (sorted.isEmpty) return '-';
+    var i = ((p / 100) * sorted.length).ceil() - 1;
+    if (i < 0) i = 0;
+    if (i >= sorted.length) i = sorted.length - 1;
+    return '${(sorted[i] / 1000000).toStringAsFixed(2)}s';
+  }
+
+  /// Drop the window without writing it.
+  ///
+  /// The stream ending is not the end of a measurement, it is the loss of one:
+  /// the samples in hand belong to a session that stopped for reasons
+  /// (lifecycle gate, master switch, a rebind) that have nothing to do with GNSS
+  /// timing, and a short window flushed here would report the phone's sampling
+  /// rate over whatever fraction of a minute the app happened to be in the
+  /// foreground.
+  void _resetSpeedTiming() {
+    _speedLagUs.clear();
+    _speedDtUs.clear();
+    _speedTimingLastLiveAt = null;
+    _speedTimingPrevT = null;
+    _speedTimingWindowStart = null;
   }
 
   /// Subscribe to the acceleration stream (design 0044 §3.5 / Phase 2).
@@ -1103,6 +1281,10 @@ class TelemetryController extends ChangeNotifier
     _historyBatchTimer = null;
     _stallTimer?.cancel();
     _speedSub?.cancel();
+    // Cancelling does not fire `onDone`, so the partial window is dropped here
+    // explicitly — see [_resetSpeedTiming] for why it is dropped and not
+    // flushed.
+    _resetSpeedTiming();
     _accelSub?.cancel();
     _gForceSub?.cancel();
     _telemetrySub?.cancel();
