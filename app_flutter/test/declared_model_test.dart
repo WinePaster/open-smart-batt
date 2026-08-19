@@ -264,18 +264,28 @@ void main() {
           reason: 'the lid belongs to a category, not to the empty form');
 
       await tapKey(tester, 'declared-category-motorcycle-battery');
-      expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing,
-          reason: 'the box belongs to the answer, not to the category');
+      final box = find.byKey(const ValueKey('declared-note'));
+      expect(box, findsOneWidget,
+          reason: 'the note belongs to the category, and never goes away again');
+      final noteHint = _hintOf(tester, box);
 
       // 🔑 THE POINT OF 0069: both answers, one form, neither displacing the
       // other.
       await tapKey(tester, 'declared-model-7.5Ah-A');
       await tapKey(tester, 'declared-retrofit');
 
-      final box = find.byKey(const ValueKey('declared-retrofit-note'));
-      expect(box, findsOneWidget,
-          reason: 'a flag alone loses the detail; a note alone cannot be counted');
-      expect(find.byKey(const ValueKey('declared-note')), findsNothing,
+      // 🔴 Owner, 2026-08-19: ticking the lid must not disturb the note box.
+      // 0069 Q1 re-labelled it in place, which reads as "my note went
+      // somewhere else". The lid question is now a prompt beside its chip.
+      expect(find.byKey(const ValueKey('declared-note')), findsOneWidget,
+          reason: 'ONE note box, and the SAME one before and after the lid');
+      expect(_hintOf(tester, box), noteHint,
+          reason: 'nor does the box get a different prompt under the user');
+      expect(find.text('You can tell us which battery is under the lid in '
+          'the note below.'), findsOneWidget,
+          reason: 'the lid question is still ASKED — beside the chip that '
+              'raised it, where it disturbs nothing');
+      expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing,
           reason: 'ONE note column ⇒ never two boxes writing it');
       await tester.enterText(box, 'stock 7 Ah underneath');
       await tapKey(tester, 'declared-save');
@@ -330,7 +340,7 @@ void main() {
 
       expect(find.byKey(const ValueKey('declared-retrofit-note')), findsNothing);
       expect(find.byKey(const ValueKey('declared-note')), findsOneWidget,
-          reason: 'the general note comes back when the lid is retracted');
+          reason: 'the general note never left');
       await tapKey(tester, 'declared-save');
       expect(out!.retrofitLid, isFalse);
     });
@@ -868,6 +878,14 @@ void main() {
 ///
 /// Its own widget rather than a closure so each test states the wire values it
 /// is asking about right where it asks.
+/// The hint of the text box carrying [box]'s key — the cheapest proof that a
+/// field is the SAME field and not a re-labelled one.
+String _hintOf(WidgetTester tester, Finder box) => tester
+    .widget<TextField>(
+        find.descendant(of: box, matching: find.byType(TextField)))
+    .decoration!
+    .hintText!;
+
 class _Harness extends StatelessWidget {
   const _Harness({
     required this.onDone,

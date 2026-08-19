@@ -403,20 +403,25 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
                             ),
                           ],
                         ),
-                      ],
-                      // §3.2's free text box, kept and re-aimed by 0069 Q1: the
-                      // battery under the lid is very often NOT one of ours, so
-                      // the model list above cannot always answer it. Both may
-                      // be filled, either may be left alone.
-                      if (_isRetrofit) ...[
-                        const SizedBox(height: 12),
-                        _SectionLabel(l10n.declaredRetrofitNoteLabel,
-                            optional: l10n.declaredOptional),
-                        _Field(
-                          key: const ValueKey('declared-retrofit-note'),
-                          controller: _note,
-                          hint: l10n.declaredRetrofitNoteHint,
-                        ),
+                        // 🔴 A PROMPT, NOT A SECOND BOX (owner, 2026-08-19).
+                        // 0069 Q1 answered "which battery is under the lid?" by
+                        // re-labelling the note field the moment the chip was
+                        // ticked — one box, but the section under the user's
+                        // finger changed its title and its hint mid-form, which
+                        // reads as "my note went somewhere else". The question
+                        // is still worth asking, so it is asked HERE, where the
+                        // answer that triggers it lives, and the note below is
+                        // left exactly as it was.
+                        if (_isRetrofit) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            l10n.declaredRetrofitNotePrompt,
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                height: 1.5,
+                                color: context.colors.muted),
+                          ),
+                        ],
                       ],
                       if (_isCarBattery) ...[
                         const SizedBox(height: 14),
@@ -501,11 +506,12 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
                               color: context.colors.muted),
                         ),
                       ],
-                      // The general note. Hidden on the retrofit branch, which
-                      // has already claimed this same column under its own
-                      // prompt — two boxes writing one column is how they start
-                      // disagreeing.
-                      if (_category != null && !_isRetrofit) ...[
+                      // The general note. ONE box, always the same box: it
+                      // does not move, change title or change hint for any
+                      // answer above it (owner, 2026-08-19). Still one column,
+                      // still never two boxes writing it — the lid question is
+                      // a prompt beside its chip, not a second field.
+                      if (_category != null) ...[
                         const SizedBox(height: 14),
                         _SectionLabel(l10n.declaredSectionNote,
                             optional: l10n.declaredOptional),

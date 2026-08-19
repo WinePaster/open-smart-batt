@@ -3272,17 +3272,11 @@ abstract class AppLocalizations {
   /// **'Retrofit smart lid'**
   String get declaredModelRetrofitLid;
 
-  /// No description provided for @declaredRetrofitNoteLabel.
+  /// No description provided for @declaredRetrofitNotePrompt.
   ///
   /// In en, this message translates to:
-  /// **'Which battery is under the lid?'**
-  String get declaredRetrofitNoteLabel;
-
-  /// No description provided for @declaredRetrofitNoteHint.
-  ///
-  /// In en, this message translates to:
-  /// **'e.g. the stock 7 Ah, or a brand name'**
-  String get declaredRetrofitNoteHint;
+  /// **'You can tell us which battery is under the lid in the note below.'**
+  String get declaredRetrofitNotePrompt;
 
   /// No description provided for @declaredNoteHint.
   ///
