@@ -1598,11 +1598,53 @@ abstract class AppLocalizations {
   /// **'Refresh'**
   String get deviceHistoryRefresh;
 
-  /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading.
+  /// Sits above the record list. Storage is per second since design 0061; the list aggregates to a minute so it stays readable, and this line keeps the HH:mm stamps from reading as a single stored reading. Reworded by design 0074 Q5: it used to point at the export, which was the only way to see seconds until the drill-down existed.
   ///
   /// In en, this message translates to:
-  /// **'The list shows one row per minute. Full per-second data is available when you export.'**
+  /// **'The list shows one row per minute. Tap a row to see the seconds inside it.'**
   String get historyListMinuteNote;
+
+  /// Title of the drill-down sheet opened from a history row (design 0074).
+  ///
+  /// In en, this message translates to:
+  /// **'Seconds in {time}'**
+  String historySecondsSheetTitle(String time);
+
+  /// How many seconds of this minute are actually stored. 🔴 The numerator only, never 'n/60' — nothing in the data says how many seconds SHOULD be there (design 0074 R2).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 second recorded} other{{count} seconds recorded}}'**
+  String historySecondsCount(int count);
+
+  /// Total `samples` behind the whole minute. Shown once in the sheet header, never per row (design 0074 Q2).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 telemetry snapshot} other{{count} telemetry snapshots}}'**
+  String historySecondsSamples(int count);
+
+  /// Shown when every row of the minute is bucket_s = 60. 🔴 It must not read as an error or as missing data (design 0074 R3), and the 60 identical seconds must not be invented (design 0061 E3).
+  ///
+  /// In en, this message translates to:
+  /// **'This minute was recorded before the app stored per-second data, so only the minute average exists. Nothing was lost — there simply are no per-second readings for it.'**
+  String get historySecondsLegacyOnly;
+
+  /// Labels the one legacy row inside a MIXED minute (the upgrade minute holds both). It is shown rather than dropped: dropping it would be silent data loss (design 0074 §3.2).
+  ///
+  /// In en, this message translates to:
+  /// **'Minute average — recorded before per-second storage'**
+  String get historySecondsLegacyRow;
+
+  /// The window has not ended yet, so it will keep filling up (design 0074 §3.5).
+  ///
+  /// In en, this message translates to:
+  /// **'This minute is still being recorded.'**
+  String get historySecondsInProgress;
+
+  /// Reachable only if the rows went away between the list query and the tap — a retention purge, or a cleared history.
+  ///
+  /// In en, this message translates to:
+  /// **'No readings stored for this minute.'**
+  String get historySecondsEmpty;
 
   /// The chart's bucket width is dynamic (1 minute to 24 hours) and appeared nowhere on screen before design 0061 T10.
   ///

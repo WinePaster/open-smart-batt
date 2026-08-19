@@ -135,6 +135,7 @@ class HistoryListRow {
     this.sawCutOff = false,
     required this.rows,
     this.samples,
+    this.minBucketS,
   });
 
   /// Window means for display, stamped with the window's start.
@@ -168,6 +169,27 @@ class HistoryListRow {
   /// `SUM(samples)` — telemetry snapshots behind the window, null when no
   /// folded row counted any.
   final int? samples;
+
+  /// `MIN(bucket_s)` over the folded rows — the FINEST granularity this window
+  /// holds. Null means "not asked for" (a row built by hand, or by a query
+  /// that does not select it), never "none".
+  ///
+  /// 🔑 It exists for exactly one question: **can this window be drilled into**
+  /// (design 0074 §3.2). See [hasStoredSeconds].
+  final int? minBucketS;
+
+  /// Does this window hold at least one row finer than a minute?
+  ///
+  /// 🔴 **[rows] cannot answer this and must never be used to.** It is
+  /// `COUNT(*)`, and a minute recorded before design 0061 Phase 4 is also
+  /// several rows whenever a disconnect cut it into segments (design 0048 G2
+  /// leaves those alone) — so `rows > 1` reads "there are seconds to show"
+  /// on a minute that has none, and the drill-down would open on nothing.
+  /// `MIN(bucket_s)` is the only column that answers it.
+  ///
+  /// Unknown ([minBucketS] null) counts as NO: a window that cannot say what
+  /// it holds must not advertise a drill-down it may not be able to fill.
+  bool get hasStoredSeconds => (minBucketS ?? 60) < 60;
 }
 
 /// Range-wide min/max/avg over RAW rows (not bucket-averaged), for the stats
@@ -601,8 +623,17 @@ class HistoryRepo {
   /// can still reach them once the History screen stops showing them. An
   /// opt-out default would put that guarantee one forgotten argument away,
   /// whereas an opt-in one cannot leak into a call site that never asks for it.
+  ///
+  /// [until] is the other end, and it is **half-open**: `timestamp < until`,
+  /// where [since] is inclusive (design 0074 §3.1, T1). One minute's window is
+  /// therefore `[t, t+60s)` and the row written at `14:04:00.000` belongs to
+  /// 14:04 in every reader — the drill-down, the list it drills into, and the
+  /// export all cut the boundary in the same place. A closed upper bound would
+  /// put that one row in BOTH minutes, and nothing would raise an error; the
+  /// second would simply appear twice, in two different windows.
   (String?, List<Object?>?) _scope({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     bool attributedOnly = false,
   }) {
@@ -615,6 +646,10 @@ class HistoryRepo {
     if (since != null) {
       clauses.add('timestamp >= ?');
       args.add(since.millisecondsSinceEpoch);
+    }
+    if (until != null) {
+      clauses.add('timestamp < ?');
+      args.add(until.millisecondsSinceEpoch);
     }
     if (deviceId != null) {
       clauses.add('device_id = ?');
@@ -695,6 +730,7 @@ class HistoryRepo {
   /// a test can pin it. See [bucketExpr] for why it exists at all.
   Future<List<HistoryListRow>> queryListBuckets({
     DateTime? since,
+    DateTime? until,
     required int bucketMs,
     int? limit,
     String? deviceId,
@@ -704,8 +740,11 @@ class HistoryRepo {
     final b = bucketMs < 1000 ? 1000 : bucketMs;
     final off = tzOffsetMs ?? currentTzOffsetMs();
     final bucket = bucketExpr(b, off);
-    final (clause, scopeArgs) =
-        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
+    final (clause, scopeArgs) = _scope(
+        since: since,
+        until: until,
+        deviceId: deviceId,
+        attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final rows = await _db.rawQuery(
       // ⚠️ `$bucket` appears in SELECT and in GROUP BY as the SAME string —
@@ -746,6 +785,11 @@ class HistoryRepo {
       // The WORST health bucket seen, for the same reason the thresholds use
       // extremes: a window that dipped is a window that dipped.
       'MIN(soh) AS soh, '
+      // design 0074 §3.2: the FINEST granularity folded into this window, and
+      // the only honest answer to "is there anything to drill into". MIN, not
+      // MAX: the upgrade minute holds one legacy row and a handful of seconds,
+      // and it does have seconds to show.
+      'MIN(bucket_s) AS minBucketS, '
       'SUM(samples) AS samples, COUNT(*) AS n '
       'FROM ${Db.tableHistory} $where '
       'GROUP BY device_id, $bucket '
@@ -776,9 +820,63 @@ class HistoryRepo {
               sawCutOff: (i(r['sawCutOff']) ?? 0) != 0,
               rows: i(r['n']) ?? 0,
               samples: i(r['samples']),
+              minBucketS: i(r['minBucketS']),
             ))
         .toList(growable: false);
   }
+
+  /// The seconds inside ONE list window — the History list's drill-down
+  /// (design 0074 §3.1).
+  ///
+  /// 🔑 **It is [queryListBuckets] with the window narrowed to a second, and
+  /// that is the whole point.** The obvious implementation — read the stored
+  /// rows of that minute back exactly as they are — is wrong twice:
+  ///
+  ///  * a second can be stored as MORE THAN ONE row. [insertSamples] merges
+  ///    segments of one second in memory, but its own comment says the
+  ///    guarantee is per BATCH, not absolute — a flush landing on a batch
+  ///    boundary leaves two rows for one second, and reading them raw would put
+  ///    `14:03:07` on screen twice;
+  ///  * it would fold them with a second set of arithmetic. The list's numbers
+  ///    come from [_wavg] (`samples`-weighted, and the corpus has measured four
+  ///    times how wrong a bare `AVG` is here); a drill-down that averaged its
+  ///    own way would let the row and the seconds inside it disagree about the
+  ///    same minute — which is FB-74's defect exactly, except this time both
+  ///    numbers would be on screen at once.
+  ///
+  /// So the seconds are display windows too, 1,000 ms wide, produced by the
+  /// same query with the same weighting, the same `MAX(mode)` precedence and
+  /// the same MIN/MAX extremes. Each returned row's own [HistoryListRow.rows]
+  /// says how many stored rows that second folded, and its
+  /// [HistoryListRow.minBucketS] whether it is a real second or the legacy
+  /// minute average sitting at `:00` (design 0074 §3.2).
+  ///
+  /// [from] is the window start (inclusive) and [windowMs] its width; the range
+  /// is HALF-OPEN — see [_scope].
+  ///
+  /// ⚠️ **Pass [deviceId].** The query groups by (device, second), so calling
+  /// it unscoped over a minute two units were both recording returns two rows
+  /// per second with nothing on them to say which unit each belongs to.
+  ///
+  /// Newest-first, the same direction as the list it opens from. A minute reads
+  /// chronologically the other way round, and if that turns out to matter this
+  /// is where to reverse it — but having the inner list run one way and the
+  /// outer the other is a worse first guess than matching.
+  Future<List<HistoryListRow>> querySecondsInWindow({
+    required DateTime from,
+    int windowMs = 60000,
+    String? deviceId,
+    bool attributedOnly = false,
+    int? tzOffsetMs,
+  }) =>
+      queryListBuckets(
+        since: from,
+        until: from.add(Duration(milliseconds: windowMs)),
+        bucketMs: 1000,
+        deviceId: deviceId,
+        attributedOnly: attributedOnly,
+        tzOffsetMs: tzOffsetMs,
+      );
 
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
   /// returns avg/min/max of pvlt + temperature per bucket (ascending by time).
