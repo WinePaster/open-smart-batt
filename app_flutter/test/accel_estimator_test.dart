@@ -490,4 +490,163 @@ void main() {
       expect(out.first.aMps2, closeTo(3.0, 1e-9));
     });
   });
+
+  // ==========================================================================
+  // design 0073 §7 Q9 — the adaptive DISPLAY slope (`displaySlopeMps2`)
+  // ==========================================================================
+  //
+  // 🔴 THE CLAIM UNDER TEST IS A NEGATIVE ONE, so read this before the
+  // assertions. Design 0073 extrapolates the SPEED reading along this module's
+  // slope, and at a standing start the fixed two-second window makes that slope
+  // half its true size — the window still contains the seconds the vehicle was
+  // stopped. 0073 §7 Q9's arithmetic: three 1 Hz samples reading `0, 0, a` fit
+  // a least squares slope of exactly `a/2`.
+  //
+  // The fix is a SECOND READING of the SAME buffer, not a second buffer and not
+  // a shorter `tWindow`, and the reason is design 0044 §3.5: what this module
+  // EMITS is "the average acceleration over the last two seconds", a sentence
+  // an analyst reads back off the history column and off design 0061's
+  // per-second storage. Shortening the window would have changed that sentence
+  // for everyone in order to fix a display. So `estimates` keeps fitting the
+  // whole window and `displaySlopeMps2` fits it from the last stationary sample
+  // onward — and the tests below check BOTH halves, because a change that only
+  // did the first half would look identical from the card.
+  group('design 0073 §7 Q9 — the adaptive display slope', () {
+    test('🔴 at a standing start the fixed window is half, adaptive is whole',
+        () async {
+      // 0073 §7 Q9's own vectors, so the number in the design doc and the
+      // number here are the same number: samples 0, 0, a at 1 Hz.
+      const a = 3.0;
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      final out = <AccelEstimate>[];
+      accel.estimates.listen(out.add);
+
+      accel.onSpeedEstimate(est(t0, 0.0));
+      accel.onSpeedEstimate(est(t0.add(const Duration(seconds: 1)), 0.0));
+      accel.onSpeedEstimate(est(t0.add(const Duration(seconds: 2)), a));
+      await _pump();
+
+      expect(accel.state, AccelState.live);
+      expect(out.last.aMps2, closeTo(a / 2, 1e-9),
+          reason: '🔴 the RECORDED slope must stay `a/2` — it is the two-second '
+              'average, and design 0044 §3.5 / design 0061 define it that way. '
+              'If this ever reads `a`, the display change leaked into history');
+      expect(accel.displaySlopeMps2, closeTo(a, 1e-9),
+          reason: 'the DISPLAYED trend drops the stationary half of the window '
+              'and recovers the real acceleration');
+    });
+
+    test('with no stationary sample in the window it IS the recorded slope',
+        () async {
+      // The trim only ever removes leading zeros, so in ordinary riding the two
+      // readings are the same number — bit for bit, not approximately. That is
+      // what makes the adaptive path a launch fix rather than a second, subtly
+      // different estimator running all the time.
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      final out = <AccelEstimate>[];
+      accel.estimates.listen(out.add);
+      final vs = [11.0, 13.7, 16.1, 18.9, 21.2];
+      for (var i = 0; i < vs.length; i++) {
+        accel.onSpeedEstimate(est(t0.add(Duration(seconds: i)), vs[i]));
+        await _pump();
+        // Nothing is emitted until the window is full, and the display reading
+        // is null for exactly as long (C3①).
+        if (out.isEmpty) {
+          expect(accel.displaySlopeMps2, isNull);
+          continue;
+        }
+        expect(accel.displaySlopeMps2, out.last.aMps2,
+            reason: 'sample \$i: the two readings diverged with no zero in the '
+                'window');
+      }
+    });
+
+    test('the newest sample being still falls back to the whole window',
+        () async {
+      // Braking to a stop: the trim would leave a single point, which is not a
+      // line. Falling back to the full window is also the honest answer — a
+      // vehicle that has just stopped should report the deceleration that
+      // stopped it, not nothing.
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      final out = <AccelEstimate>[];
+      accel.estimates.listen(out.add);
+      final vs = [6.0, 3.0, 0.0];
+      for (var i = 0; i < vs.length; i++) {
+        accel.onSpeedEstimate(est(t0.add(Duration(seconds: i)), vs[i]));
+      }
+      await _pump();
+      expect(out.last.aMps2, closeTo(-3.0, 1e-9));
+      expect(accel.displaySlopeMps2, closeTo(-3.0, 1e-9));
+    });
+
+    test('a stationary window has no trend to show', () async {
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      for (var i = 0; i < 4; i++) {
+        accel.onSpeedEstimate(est(t0.add(Duration(seconds: i)), 0.0));
+      }
+      await _pump();
+      expect(accel.state, AccelState.live);
+      expect(accel.displaySlopeMps2, 0.0,
+          reason: 'a flat zero window fits a flat zero line, which design '
+              "0073's C3② deadband then discards");
+    });
+
+    test('🔴 null whenever the window is not live — C3① and 0044 G2', () async {
+      // The adaptive reading does NOT loosen the fullness rule. Coming out of a
+      // tunnel there is still nothing to extrapolate along for about two
+      // seconds, which is design 0073's replacement for 0071 pin 5 and the
+      // reason a tunnel cannot be swept across.
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      expect(accel.displaySlopeMps2, isNull, reason: 'warming, empty');
+
+      accel.onSpeedEstimate(est(t0, 10.0));
+      accel.onSpeedEstimate(est(t0.add(const Duration(seconds: 1)), 13.0));
+      await _pump();
+      expect(accel.state, AccelState.warming);
+      expect(accel.displaySlopeMps2, isNull,
+          reason: 'two points span 1 s — short of T_w − T_slack');
+
+      accel.onSpeedEstimate(est(t0.add(const Duration(seconds: 2)), 16.0));
+      await _pump();
+      expect(accel.displaySlopeMps2, isNotNull);
+
+      accel.onSpeedEstimate(est(t0.add(const Duration(seconds: 3)), 16.0,
+          state: SpeedState.holding));
+      await _pump();
+      expect(accel.state, AccelState.suppressed);
+      expect(accel.displaySlopeMps2, isNull,
+          reason: 'a frozen speed differentiates to a flawless 0.0 that nobody '
+              'measured — 0044 G2, and 0073 must not reopen it');
+    });
+
+    test('reading it a thousand times emits nothing and changes nothing',
+        () async {
+      // The card asks for this every frame. It is a getter over a buffer it
+      // must not disturb.
+      final accel = AccelEstimator();
+      addTearDown(accel.dispose);
+      final out = <AccelEstimate>[];
+      accel.estimates.listen(out.add);
+      for (var i = 0; i < 4; i++) {
+        accel.onSpeedEstimate(est(t0.add(Duration(seconds: i)), i * 3.0));
+      }
+      await _pump();
+      final before = out.length;
+      final len = accel.windowLength;
+      final value = accel.displaySlopeMps2;
+      for (var i = 0; i < 1000; i++) {
+        accel.displaySlopeMps2;
+      }
+      await _pump();
+      expect(out.length, before);
+      expect(accel.windowLength, len);
+      expect(accel.displaySlopeMps2, value);
+      expect(accel.current, out.last);
+    });
+  });
 }

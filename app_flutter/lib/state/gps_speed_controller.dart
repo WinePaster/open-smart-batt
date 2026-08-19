@@ -121,11 +121,16 @@ class GeolocatorSpeedSource implements SpeedLocationSource {
   /// comment carries the mirror of this note.
   ///
   /// 🔴 Since design 0071 there is a THIRD place this number appears:
-  /// `SpeedEstimatorConfig.displayRampPeriod`, the length of the curve the card
-  /// sweeps between two samples. Change this one and that one must move with
-  /// it, or the reading either arrives early and sits still (ramp too short) or
-  /// never arrives at all (ramp too long) — neither of which looks like a bug
-  /// while you are staring at it.
+  /// `SpeedEstimatorConfig.samplingPeriod` (called `displayRampPeriod` until
+  /// design 0073 removed the ramp). It is now `T` in the extrapolation ceiling
+  /// `Δ_max = T + λ_cap + T(1−α)/α`. Change this one and that one must move
+  /// with it, or the reading is allowed to run forward for the wrong length of
+  /// time — which does not look like a bug while you are staring at it.
+  ///
+  /// 🔵 Lowering it is design 0073 §4.4 D, and the reason that option is
+  /// COMPATIBLE with 0073 rather than an alternative to it: a shorter period
+  /// makes Δ smaller and Δ_max tighter by itself, so the extrapolation quietly
+  /// does less work and no other line has to change.
   static const Duration speedSamplingPeriod = Duration(seconds: 1);
 
   /// The settings actually handed to the plugin. Exposed so a test can assert
@@ -324,8 +329,34 @@ class GpsSpeedController extends ChangeNotifier {
   /// last opened — the card's "waiting for a fix" state.
   SpeedEstimate? get current => _estimator.current;
 
+  /// 🔑 **The assembly point for design 0073's trend extrapolation.**
+  ///
+  /// The drawn speed is `level + k·slope·Δ`, and the three inputs live in three
+  /// different places: `level` and `Δ` in [SpeedEstimator], `slope` in
+  /// [AccelEstimator]. This class is where they meet, and it is the ONLY place
+  /// they can meet: `accel_estimator.dart` imports `speed_estimator.dart` for
+  /// [SpeedEstimate], so the estimator cannot reach forward for the slope
+  /// without a cycle (0073 §2.5 #1 / §3.10). Both estimators are already owned
+  /// here, so the assembly costs one getter and no new wiring.
+  ///
+  /// 🔴 **`_accel.displaySlopeMps2`, NOT [currentAccel].** The latter is
+  /// `_publishedAccel`, which passes through the 500 ms display throttle that
+  /// exists to stop the acceleration ROW flickering. Feeding a throttled slope
+  /// into the speed reading would freeze the extrapolation for half a second at
+  /// a time the moment `speedSamplingPeriod` is lowered — a coupling nobody
+  /// would look for, between two readouts that only share a source.
+  double? _trendSlopeMps2() {
+    // C3③ — belt and braces. `AccelEstimator.onSpeedEstimate` already suppresses
+    // on any non-live estimate, so this can only ever agree with it; 0073 §3.4
+    // asks for the check anyway rather than letting a display guarantee rest on
+    // another module's internal invariant.
+    if (_estimator.current?.state != SpeedState.live) return null;
+    // C3① — null while the least squares window is warming or suppressed.
+    return _accel.displaySlopeMps2;
+  }
+
   /// The speed to DRAW right now — [SpeedEstimator.displaySpeedMpsAt] read on
-  /// this controller's clock (design 0071 §3.6).
+  /// this controller's clock (design 0073 §3.10).
   ///
   /// The card asks for it once per frame. It deliberately does not take a
   /// `DateTime`: a widget reaching for `DateTime.now()` would put a SECOND
@@ -339,17 +370,32 @@ class GpsSpeedController extends ChangeNotifier {
   /// than to a 0 the empty estimator would otherwise have handed it.
   ///
   /// 🔴 Read-only. It publishes nothing and notifies nobody, so calling it 60
-  /// times a second costs the recorded series exactly nothing (0071 G3).
-  double? displaySpeedMpsNow() => _estimator.displaySpeedMpsAt(_now());
+  /// times a second costs the recorded series exactly nothing (0073 G4).
+  double? displaySpeedMpsNow() =>
+      _estimator.displaySpeedMpsAt(_now(), slopeMps2: _trendSlopeMps2());
 
-  /// Whether the curve is still sweeping — the card's ticker asks this to
-  /// decide whether the next frame has anything to draw (design 0071 §3.7).
-  bool displayRampActiveNow() => _estimator.displayRampActiveAt(_now());
+  /// Whether the reading is still moving between samples — the card's ticker
+  /// asks this to decide whether the next frame has anything to draw
+  /// (design 0073 §3.10, sustaining 0071 §3.7).
+  bool displayTrendActiveNow() =>
+      _estimator.displayTrendActiveAt(_now(), slopeMps2: _trendSlopeMps2());
 
   /// The same value at an arbitrary instant. Exposed for tests and for the road
   /// test's diagnosis; production reads [displaySpeedMpsNow].
+  ///
+  /// ⚠️ The SLOPE is still read as of now — there is no way to ask the least
+  /// squares window what it thought at some other instant, and pretending
+  /// otherwise would make this method quietly disagree with the one the card
+  /// uses. It is [at] that moves, i.e. the horizon Δ.
   @visibleForTesting
-  double? displaySpeedMpsAt(DateTime at) => _estimator.displaySpeedMpsAt(at);
+  double? displaySpeedMpsAt(DateTime at) =>
+      _estimator.displaySpeedMpsAt(at, slopeMps2: _trendSlopeMps2());
+
+  /// The slope the reading is currently being extrapolated along, or null when
+  /// it is not being extrapolated at all. Exposed for tests and for the road
+  /// test's diagnosis (0073 §7 Q8 makes measuring this a release gate).
+  @visibleForTesting
+  double? get trendSlopeMps2 => _trendSlopeMps2();
 
   SpeedPermissionState get permission => _permission;
 
