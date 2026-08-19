@@ -958,7 +958,48 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get historyListMinuteNote =>
-      'The list shows one row per minute. Full per-second data is available when you export.';
+      'The list shows one row per minute. Tap a row to see the seconds inside it.';
+
+  @override
+  String historySecondsSheetTitle(String time) {
+    return 'Seconds in $time';
+  }
+
+  @override
+  String historySecondsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seconds recorded',
+      one: '1 second recorded',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historySecondsSamples(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count telemetry snapshots',
+      one: '1 telemetry snapshot',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get historySecondsLegacyOnly =>
+      'This minute was recorded before the app stored per-second data, so only the minute average exists. Nothing was lost — there simply are no per-second readings for it.';
+
+  @override
+  String get historySecondsLegacyRow =>
+      'Minute average — recorded before per-second storage';
+
+  @override
+  String get historySecondsInProgress => 'This minute is still being recorded.';
+
+  @override
+  String get historySecondsEmpty => 'No readings stored for this minute.';
 
   @override
   String historyChartBucketMinutes(int count) {

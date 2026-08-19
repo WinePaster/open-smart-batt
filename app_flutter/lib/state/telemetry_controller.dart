@@ -380,6 +380,46 @@ class TelemetryController extends ChangeNotifier
           deviceId: deviceId,
           attributedOnly: true);
 
+  /// How recent a window has to be for the drill-down to force a commit first
+  /// — design 0074 §3.5, Q7 ruled 2026-08-19.
+  ///
+  /// 🔑 The number is not arbitrary: it is [_historyBufferCap] expressed as
+  /// time (600 rows = ten minutes of one unit's seconds), i.e. the oldest a
+  /// buffered row can be while the buffer still holds it. Anything older than
+  /// this cannot be waiting in memory, so flushing for it would buy nothing and
+  /// cost a transaction — and a user drilling into last Tuesday would pay it on
+  /// every tap.
+  static const Duration drillFlushHorizon = Duration(minutes: 10);
+
+  /// The seconds inside one History-list window — design 0074 (FB-90).
+  ///
+  /// Attributed rows only, for [historyStats]' reason: the list this opens from
+  /// shows attributed rows only (design 0043 §3.2), so a drill-down that did
+  /// not would show seconds belonging to nothing the screen above it can name.
+  ///
+  /// Flushes the write buffer first, but only for a window inside
+  /// [drillFlushHorizon] — see there.
+  Future<List<HistoryListRow>> historySecondsInWindow({
+    required DateTime from,
+    int windowMs = 60000,
+    String? deviceId,
+  }) async {
+    // Measured from the window's END, not its start: the minute in progress is
+    // exactly the one whose last seconds are still in the buffer, and measuring
+    // from its start would put it a whole window closer to the horizon than it
+    // is.
+    final end = from.add(Duration(milliseconds: windowMs));
+    if (DateTime.now().difference(end) < drillFlushHorizon) {
+      await flushHistoryForExport();
+    }
+    return _history.querySecondsInWindow(
+      from: from,
+      windowMs: windowMs,
+      deviceId: deviceId,
+      attributedOnly: true,
+    );
+  }
+
   /// Stored sample count, unattributed rows included. [historyAttributedCount]
   /// is the one the History screen reports.
   Future<int> historyCount() => _history.count();
@@ -482,6 +522,12 @@ class TelemetryController extends ChangeNotifier
 
   /// Land everything still in flight, then wait for it — call this immediately
   /// before an export reads the table (design 0061 T7b).
+  ///
+  /// 🔵 **design 0074 §3.5 gave it a second caller**, the History list's
+  /// drill-down ([historySecondsInWindow]). The name still says "export"
+  /// because that is the obligation it was created for and the one design 0061
+  /// pins; what both callers share is the reason — the user is looking at this
+  /// data right now, so the last ten seconds may not sit in a buffer.
   ///
   /// 🔴 A NEW obligation, not a tidy-up. Since T7a a recorded second can sit in
   /// a batch buffer for ~10 seconds, and the moment the user taps "export" is

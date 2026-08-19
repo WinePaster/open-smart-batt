@@ -906,7 +906,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String get deviceHistoryRefresh => '重新整理';
 
   @override
-  String get historyListMinuteNote => '清單以每分鐘一列顯示；完整的每秒資料可以在匯出時選。';
+  String get historyListMinuteNote => '清單以每分鐘一列顯示；點一列可以看那一分鐘的每一秒。';
+
+  @override
+  String historySecondsSheetTitle(String time) {
+    return '$time 的每一秒';
+  }
+
+  @override
+  String historySecondsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '記錄到 $count 秒',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historySecondsSamples(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '共 $count 筆遙測',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get historySecondsLegacyOnly =>
+      '這一分鐘是在 App 還沒逐秒記錄之前錄的，只有分鐘平均。資料沒有遺失，是那時候本來就沒有逐秒的讀數。';
+
+  @override
+  String get historySecondsLegacyRow => '分鐘平均 —— 逐秒記錄之前錄的';
+
+  @override
+  String get historySecondsInProgress => '這一分鐘還在記錄中。';
+
+  @override
+  String get historySecondsEmpty => '這一分鐘沒有任何紀錄。';
 
   @override
   String historyChartBucketMinutes(int count) {

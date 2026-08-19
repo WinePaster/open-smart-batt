@@ -25,6 +25,7 @@ import '../dashboard/power_flow.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'minute_seconds_sheet.dart';
 
 /// Selectable chart/list time range.
 enum HistoryRange { today, week, all }
@@ -438,6 +439,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 tempUnit: tempUnit,
                                 status: historyClassifyRow(r,
                                     ov: ov, uv: uv, ot: ot),
+                                // design 0074. EVERY row, not only the ones
+                                // with seconds in them (Q3): the sheet is
+                                // where "this minute predates per-second
+                                // recording" gets said, and a row that simply
+                                // does not respond says it much worse.
+                                onTap: () => showMinuteSecondsSheet(
+                                  context,
+                                  row: r,
+                                  tempUnit: tempUnit,
+                                  deviceClass: deviceClassFor(
+                                    devices,
+                                    r.deviceId,
+                                    facts: facts,
+                                    liveDeviceId: tele.recordingDeviceId,
+                                    liveClass: conn.resolvedClass,
+                                  ),
+                                  ov: ov,
+                                  uv: uv,
+                                  ot: ot,
+                                ),
                                 // Class-gated, not data-driven — and the class
                                 // now decides the WORDING as well as the
                                 // presence (design 0056). See
@@ -1637,10 +1658,34 @@ class HistoryRow extends StatelessWidget {
     required this.tempUnit,
     required this.status,
     required this.deviceClass,
+    this.onTap,
+    this.showSeconds = false,
   });
 
   /// One display WINDOW (a minute), not a stored row — design 0061 T3a.
   final HistoryListRow row;
+
+  /// Opens this window's drill-down (design 0074). Null leaves the row inert
+  /// and unchanged — the chevron appears only when there is something to tap.
+  ///
+  /// 🔑 **Every row gets one, including a minute with no seconds in it**
+  /// (design 0074 Q3, ruled 2026-08-19). Rows recorded before per-second
+  /// storage cannot be expanded, but making exactly those rows dead is worse
+  /// than opening a sheet that says why: the two kinds sit interleaved in one
+  /// list, so "half the rows do not respond" is what a broken screen looks
+  /// like. The sheet explains; the list does not have to.
+  final VoidCallback? onTap;
+
+  /// Print `HH:mm:ss` instead of `HH:mm` — design 0074 §3.6.
+  ///
+  /// 🔵 **This is the EXTENSION of design 0061 T3c, not a reversal of it.**
+  /// T3c forbids a seconds place on the LIST, for two reasons that both hold
+  /// there and neither of which holds here: the stamp was always `:00`, and the
+  /// row is a minute window over per-second storage so a seconds figure would
+  /// name one of sixty readings arbitrarily. Inside the drill-down a row IS one
+  /// second's measurement, so the seconds place is the honest part of it. See
+  /// the `HH:mm` comment in [build].
+  final bool showSeconds;
 
   TelemetrySample get sample => row.sample;
 
@@ -1655,7 +1700,8 @@ class HistoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Container(
+    final tap = onTap;
+    final body = Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1675,7 +1721,14 @@ class HistoryRow extends StatelessWidget {
               // to print: the row is a MINUTE WINDOW over per-second storage,
               // so a seconds figure would name one of sixty readings and
               // there would be no saying which.
-              DateFormat('HH:mm').format(sample.timestamp),
+              //
+              // 🔵 **[showSeconds] is the one exception, and it does not
+              // contradict the paragraph above** — design 0074 §3.6 (Q4, ruled
+              // 2026-08-19). Inside the drill-down a row is ONE SECOND's
+              // measurement, so neither reason applies. Read [showSeconds]
+              // before concluding this screen prints seconds anywhere else.
+              DateFormat(showSeconds ? 'HH:mm:ss' : 'HH:mm')
+                  .format(sample.timestamp),
               style: AppTextStyles.mono(context).copyWith(
                 fontSize: 10.5,
                 color: context.colors.muted,
@@ -1701,7 +1754,26 @@ class HistoryRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           _StatusTag(status: status),
+          if (tap != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: Icon(Icons.chevron_right,
+                  size: 16, color: context.colors.muted),
+            ),
         ],
+      ),
+    );
+    if (tap == null) return body;
+    // The ripple has to be UNDER the row's own background or it never shows —
+    // the Container above paints `panel2` opaquely over anything Material would
+    // draw behind it. Wrapping the other way round (InkWell inside) would put
+    // the tap target inside the padding and lose the row's edges.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: tap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        child: body,
       ),
     );
   }
