@@ -140,29 +140,30 @@ void main() {
     expect(find.text('36'), findsOneWidget);
 
     // A second sample, 20 m/s. The RECORDED value it walks to is
-    // 0.632·20 + 0.368·10 = 16.32 m/s = 58.8 km/h ⇒ "59".
+    // 0.85·20 + 0.15·10 = 18.5 m/s = 66.6 km/h ⇒ "67". (α was 0.632 until the
+    // 2026-08-19 field check; see `SpeedEstimatorConfig.alpha`.)
     clock.advance(const Duration(seconds: 1));
     await feed(tester, 20.0);
     expect(find.text('36'), findsOneWidget,
         reason: 'property 1: a sample landing must not move the digits by '
-            'itself — the pre-0071 card jumped to 59 here');
+            'itself — the pre-0071 card jumped to 67 here');
 
-    // Halfway through the period. v = 20 + (10 − 20)·0.368^0.5 = 13.93 m/s
-    // = 50.2 km/h ⇒ "50". This is the assertion the whole design is for: the
-    // old card showed 36 for the whole second and then 59; this one is passing
-    // through 50 on its way.
+    // Halfway through the period. v = 20 + (10 − 20)·0.15^0.5 = 16.13 m/s
+    // = 58.1 km/h ⇒ "58". This is the assertion the whole design is for: the
+    // old card showed 36 for the whole second and then 67; this one is passing
+    // through 58 on its way.
     clock.advance(const Duration(milliseconds: 500));
     await tester.pump();
-    expect(find.text('50'), findsOneWidget,
-        reason: 'the card is drawing estimate.vSmoothMps (36 or 59) rather '
+    expect(find.text('58'), findsOneWidget,
+        reason: 'the card is drawing estimate.vSmoothMps (36 or 67) rather '
             'than the curve');
 
     // And it arrives exactly where the recorded series already is.
     clock.advance(const Duration(milliseconds: 500));
     await tester.pump();
-    expect(find.text('59'), findsOneWidget);
+    expect(find.text('67'), findsOneWidget);
     expect(
-        formatSpeed(gps.current!.vSmoothMps, SpeedUnit.kmh), '59',
+        formatSpeed(gps.current!.vSmoothMps, SpeedUnit.kmh), '67',
         reason: 'v_disp(t_k + T) == vSmoothMps — the drawn number and the '
             'recorded one are the same number at every sampling instant');
   });
@@ -178,7 +179,7 @@ void main() {
     // The card is mid-sweep, so its ticker is definitely running — without
     // this the test would pass on a card that never started one.
     expect(find.text('36'), findsNothing);
-    expect(find.text('59'), findsNothing);
+    expect(find.text('67'), findsNothing);
 
     await mount(tester, child: const SizedBox.shrink());
     // `SingleTickerProviderStateMixin.dispose` asserts on an undisposed active

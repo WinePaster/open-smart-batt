@@ -117,7 +117,60 @@ class SpeedEstimatorConfig {
     // what the ruling says, what the road test will be told, and what a future
     // retune will overwrite. Spelling it as an expression would invite the next
     // reader to "correct" the ruling into arithmetic.
-    this.alpha = 0.632,
+    //
+    // ────────────────────────────────────────────────────────────────────────
+    // 🔴 **Raised a third time, 0.632 ⇒ 0.85, by the 2026-08-19 field check on
+    // `v0.7.25` (design 0071 §7 Q2's "revisit after the ride", FB-89).**
+    // Everything above stays true and stays here; it is the derivation of the
+    // number this line NO LONGER carries, and the road test is what §7 Q2 said
+    // would overwrite it. The owner rode 0.632 and reported two things: the
+    // sub-10 km/h decimal reads well (so `formatSpeed` is untouched — Q3
+    // closed), and **the reading still FEELS slow**.
+    //
+    // 🔑 **Why "feels slow" can be true while the average lag is unchanged, and
+    // why that is not a contradiction.** 0.632 was chosen to make the AVERAGE
+    // lag come out at the pre-0071 1.50 s (§3.3), and it does. But the average
+    // is not what a rider notices when they open the throttle. Before 0071 the
+    // instant a sample landed the digits jumped the WHOLE step; the first
+    // visible reaction was immediate and full-size. After 0071 that same step is
+    // spread across a whole second, so the earliest reaction is a fraction of
+    // it. Matching the mean moved the FRONT of the response later — 0071 §3.3
+    // balanced an integral and the rider is watching a leading edge. So: G2 was
+    // satisfied and the complaint survived it. That is a real result, not a
+    // measurement error, and it is the reason this line moved rather than the
+    // curve being taken back out.
+    //
+    // The arithmetic, from the same formulas as above (T = 1 s):
+    //
+    //     τ    = T / ln(1/(1−α))       = 1 / ln(1/0.15) = 1/1.89712 = 0.527 s
+    //     mean lag = T·(0.5 + τ/T)     = 0.5 + 0.527    = 1.03 s
+    //     travelled by t_k + 0.3 s = 1 − (1−α)^0.3 = 1 − 0.15^0.3 = 43 %
+    //
+    // against α = 0.632: τ = 1.000 s, mean lag 1.50 s, 0.3 s progress
+    // 1 − 0.368^0.3 = 26 %. **The leading edge is what this buys**: 26 % ⇒ 43 %
+    // of the step visible in the first third of a second. The mean coming down
+    // 1.50 ⇒ 1.03 s is a bonus, and it is why this change does not need a fresh
+    // G2 argument — it moves lag the right way on both measures at once.
+    //
+    // ⚠️ **The ceiling, so nobody reads "higher is better" off the paragraph
+    // above.** The 0.5·T half-step in `0.5 + τ/T` is the ZERO-ORDER-HOLD floor
+    // of a 1 Hz sample rate; τ is the only part α can touch, and it is already
+    // the smaller half here. α = 0.9 gives τ = 0.434 s (mean 0.93 s) and α =
+    // 0.95 gives τ = 0.334 s (mean 0.83 s) — 0.09 s and 0.19 s respectively,
+    // for a filter that passes 90 % / 95 % of every jitter spike straight to
+    // the digits. Even α = 1 (no smoothing at all) still lags 0.5 s. **Past
+    // ~0.85 the lag is bought in hundredths of a second and the twitch is paid
+    // in full**, so this is where it stops until a measurement says otherwise —
+    // see [SpeedEstimate.lastLiveAt] and `TelemetryController`'s
+    // `speed-timing:` log line, which was added in the same change to find out
+    // whether the real ceiling is the filter at all or the delivery latency in
+    // front of it (M2 below: 2.1 s, observed once, never characterised).
+    //
+    // ⚠️ FB-56's warning survives all three raises and now applies at 0.85: in
+    // stop-start traffic this number is twitchy. 0071 §3.3's answer (the twitch
+    // arrives as a sweep, not an integer hop) is what makes it tolerable and is
+    // still the thing a road test can overturn.
+    this.alpha = 0.85,
     // The length of the display ramp (design 0071 §3.1). It must MIRROR
     // `GeolocatorSpeedSource.speedSamplingPeriod`, and it is a second copy of
     // that number for the same reason `alpha` is not over in
