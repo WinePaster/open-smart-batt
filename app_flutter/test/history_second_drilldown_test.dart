@@ -31,7 +31,6 @@ import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
-import 'package:open_smart_batt/protocol/protocol.dart';
 import 'package:open_smart_batt/state/session_context.dart';
 import 'package:open_smart_batt/state/settings_controller.dart';
 import 'package:open_smart_batt/state/telemetry_controller.dart';
