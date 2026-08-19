@@ -1925,10 +1925,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get declaredModelRetrofitLid => 'Retrofit smart lid';
 
   @override
-  String get declaredRetrofitNoteLabel => 'Which battery is under the lid?';
-
-  @override
-  String get declaredRetrofitNoteHint => 'e.g. the stock 7 Ah, or a brand name';
+  String get declaredRetrofitNotePrompt =>
+      'You can tell us which battery is under the lid in the note below.';
 
   @override
   String get declaredNoteHint => 'Anything else worth telling us';

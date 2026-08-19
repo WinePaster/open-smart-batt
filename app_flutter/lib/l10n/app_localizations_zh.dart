@@ -1821,10 +1821,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get declaredModelRetrofitLid => '改智慧上蓋';
 
   @override
-  String get declaredRetrofitNoteLabel => '上蓋底下那顆電池是什麼？';
-
-  @override
-  String get declaredRetrofitNoteHint => '例如：原廠 7Ah、或某個牌子';
+  String get declaredRetrofitNotePrompt => '可以在下面備註寫上蓋底下那顆電池是什麼';
 
   @override
   String get declaredNoteHint => '其他想告訴我們的事';
