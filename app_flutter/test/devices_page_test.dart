@@ -727,8 +727,12 @@ void main() {
               'harm FB `2026.08.02/004` reported, aimed somewhere else');
     });
 
-    testWidgets('§6.1: the spinner runs to `ready`, and the button is inert '
-        'for all of it', (tester) async {
+    // ⚠️ NAME CHANGED 2026-08-21 with the ruling below. It was 「…and the
+    // button is inert for all of it」; the button is no longer inert (it is a
+    // door), and what the test still pins — that a second press cannot reach
+    // the radio — was always the part worth having.
+    testWidgets('§6.1: the spinner runs to `ready`, and the RADIO is out of '
+        'reach for all of it', (tester) async {
       await pressConnectAndHang(tester);
 
       // 🔴 The whole of `2026.08.18-008.md` §3.3 mechanism ③ is this instant.
@@ -746,20 +750,45 @@ void main() {
           (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
       expect(spinner, findsOneWidget);
 
-      // ⚠️ ASSERTED ON THE WIDGET, NOT BY TAPPING, and this is not fussiness.
-      // `_ConnectButton` locks itself with `onTap: connecting ? null : onTap`,
-      // which makes the InkWell inert — it does NOT absorb the gesture. The row
-      // BODY underneath is a door (design 0055 §4.1), so a tap on the spinning
-      // button falls through and opens the detail page. That is pre-existing
-      // behaviour, it is not FB-92's to change (whether it is even wrong under
-      // B3 is an open question for the owner), and a `tester.tap` here would
-      // quietly assert the fall-through instead of the lock. See the report.
+      // 🔴 OVERTURNED IN PLACE, 2026-08-21 — owner's ruling (c) on the same
+      // day this test was written. THE ORIGINAL ASSERTION AND ITS REASONING
+      // ARE KEPT BELOW, WORD FOR WORD AND COMMENTED OUT:
+      //
+      //   // ⚠️ ASSERTED ON THE WIDGET, NOT BY TAPPING, and this is not
+      //   // fussiness. `_ConnectButton` locks itself with `onTap: connecting ?
+      //   // null : onTap`, which makes the InkWell inert — it does NOT absorb
+      //   // the gesture. The row BODY underneath is a door (design 0055 §4.1),
+      //   // so a tap on the spinning button falls through and opens the detail
+      //   // page. That is pre-existing behaviour, it is not FB-92's to change
+      //   // (whether it is even wrong under B3 is an open question for the
+      //   // owner), and a `tester.tap` here would quietly assert the
+      //   // fall-through instead of the lock. See the report.
+      //   final button = tester.widget<InkWell>(find
+      //       .ancestor(of: spinner, matching: find.byType(InkWell))
+      //       .first);
+      //   expect(button.onTap, isNull,
+      //       reason: 'the button must refuse a second press for the WHOLE '
+      //           'wait, not for the first half second of it');
+      //
+      // 🔑 WHY IT WAS THE WRONG ASSERTION. It is a true statement about the
+      // code and a FALSE statement about the product: what the user got from a
+      // second press was never "nothing", it was the detail page, because the
+      // press fell through to the row. The comment above says so itself and
+      // then pins the `null` anyway — so the file was pinning the mechanism
+      // while the shipped behaviour lived one layer down, unnamed and unpinned.
+      // The owner's answer to the open question it flags is (c): KEEP THE
+      // BEHAVIOUR, LOSE THE ACCIDENT. 「還在連的時候再按一次 ＝ 我不想等，
+      // 現在就過去」.
+      //
+      // What the `null` was actually protecting is untouched and is now stated
+      // as itself below: the second press must not reach the radio.
       final button = tester.widget<InkWell>(find
           .ancestor(of: spinner, matching: find.byType(InkWell))
           .first);
-      expect(button.onTap, isNull,
-          reason: 'the button must refuse a second press for the WHOLE wait, '
-              'not for the first half second of it');
+      expect(button.onTap, isNotNull,
+          reason: 'FB-92 (c): the spinning button ANSWERS the second press — '
+              'and it has to be the BUTTON that answers, not the row body it '
+              'used to leak the gesture to');
       expect(ble.connects, 1);
 
       // …and it ends where it should.
@@ -767,6 +796,196 @@ void main() {
       await settleRoute(tester);
       expect(find.byType(DeviceDetailPage), findsOneWidget);
       expect(ble.connects, 1, reason: 'one press, one connect');
+    });
+
+    // ------------------------------------------------------------------
+    // FB-92 (c) — 「我不想等，現在就過去」 (owner, 2026-08-21).
+    //
+    // 🔴 READ THIS BEFORE CHANGING EITHER TEST BELOW. Both are written against
+    // the button's OWN callback (`button.onTap!()`), never with `tester.tap`,
+    // and that is the only construction that can tell the ruling apart from
+    // the accident it replaced. A `null` `onTap` leaves the InkWell inert but
+    // does not absorb the gesture, so a `tester.tap` on the spinner lands on
+    // the row body — which is a door (design 0055 §4.1) and opens the very
+    // same page. Revert the implementation and a tap-based test STAYS GREEN.
+    // Verified, not assumed: that is exactly how the assertion above was found
+    // to be pinning the wrong thing.
+    // ------------------------------------------------------------------
+
+    /// Press connect, hang at `connected`, and hand back the spinning button.
+    Future<AppServices> spinningButton(
+      WidgetTester tester,
+      void Function(InkWell button) use,
+    ) async {
+      final s = await pressConnectAndHang(tester);
+      final spinner = find.byWidgetPredicate(
+          (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
+      expect(spinner, findsOneWidget, reason: 'the premise: it is turning');
+      use(tester.widget<InkWell>(
+          find.ancestor(of: spinner, matching: find.byType(InkWell)).first));
+      return s;
+    }
+
+    testWidgets('(c): the spinning button opens the page WITHOUT dialling '
+        'again', (tester) async {
+      await spinningButton(tester, (button) => button.onTap!());
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the ruling: a second press means 「我不想等，現在就過去」, '
+              'so it goes — the link is still forming, and the destination '
+              'shows that forming (design 0075 §3.1: `_OfflineBody` is a '
+              'progress report, not the empty dashboard R22 was about)');
+
+      // 🔴 THE HALF THAT MATTERS MORE THAN THE NAVIGATION. `connect()` opens by
+      // tearing down whatever link is there, so a second dial at ~1.0 s kills
+      // the link that is forming — `2026.08.18-008.md` §3.3 mechanism ③, wire
+      // evidence, four taps for one link. FB-92 exists to close that window,
+      // and a door that dialled on the way through would reopen it while
+      // looking like an improvement.
+      expect(ble.connects, 1,
+          reason: 'the door must NOT dial: a second connect here is mechanism '
+              '③, the defect this whole report is about');
+      expect(ble.connectedId, 'DEV-A');
+
+      // And the link it did not touch is still there to come up.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+      expect(conn.isOnline, isTrue,
+          reason: 'the forming link survived the press');
+    });
+
+    testWidgets('(c): going early CANCELS the wait — `ready` does not push a '
+        'second page', (tester) async {
+      await spinningButton(tester, (button) => button.onTap!());
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+
+      // Back to the list, deliberately, while the link is still coming up.
+      await popBack(tester);
+
+      // …and NOW it becomes usable. The pending §6.2 navigation must be gone:
+      // this user has already been to that page and has just chosen to leave
+      // it. Shoving them back in two seconds later is FB `2026.08.02/004`'s
+      // harm with a different destination — the screen moving on its own after
+      // the user has moved on. `_openDetail` settles the wait as
+      // `_ConnectOutcome.abandoned` for exactly this.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(conn.isOnline, isTrue, reason: 'the premise: the link DID come up');
+      expect(conn.connectedDeviceId, 'DEV-A');
+      expect(find.byType(DeviceDetailPage, skipOffstage: false), findsNothing,
+          reason: 'C3: the promise was kept early, so it must not be kept '
+              'again — one press, one page');
+      expect(find.text('Disconnect'), findsOneWidget,
+          reason: 'and the list says so in place, which is all that is left '
+              'to do here');
+    });
+
+    // ------------------------------------------------------------------
+    // PER-DEVICE SCOPING — WHICH ROW TURNS, AND ON WHOSE AUTHORITY.
+    //
+    // 📌 Ported from the parallel branch `fix/fb-92-spinner-until-ready`
+    // (`5cb543e`), whose IMPLEMENTATION was not adopted: it rebuilt the spinner
+    // out of the controller (`_rowConnecting(conn, id)`), where this branch
+    // keeps `_connectingId` and hangs a wait state machine off it so that
+    // §6.1's lock and §6.2's navigation are the same object rather than two
+    // things that have to agree. These two tests outlive the branch that wrote
+    // them because they are about the CONTRACT and not about either
+    // implementation — and because a controller-driven spinner is the obvious
+    // simplification for a later reader to reach for, which is precisely when
+    // both of these break.
+    //
+    // Rewritten against this harness rather than copied: `stopAtConnected`
+    // instead of that branch's `readyAfterConnect`, and the REAL controller
+    // (`pumpPage`) rather than `_StateConn`, since what is being asked here is
+    // which row draws a spinner and nothing about error attribution.
+    // ------------------------------------------------------------------
+
+    /// The row spinner: 1.8 px stroke, which is `_ConnectButton`'s and nothing
+    /// else's on this page.
+    final rowSpinner = find.byWidgetPredicate(
+        (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
+
+    testWidgets('PER DEVICE: another unit connecting leaves this row alone',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(
+          () => s.devices.saveNew('DEV-B', 'Cap #2', name: 'RCE-SCAP_II'));
+      ble.stopAtConnected = true;
+      await pumpPage(tester, s);
+      await settle(tester);
+      expect(find.text('Connect'), findsNWidgets(2), reason: 'two saved rows');
+
+      // Press one row and hold its link in the connected-but-not-ready window.
+      // Which row the list puts last is not this test's subject, so the busy
+      // unit is READ rather than assumed.
+      await tester.tap(find.text('Connect').last);
+      await settleRoute(tester);
+      final busy = ble.connectedId;
+      expect(busy, anyOf('DEV-A', 'DEV-B'));
+      final other = busy == 'DEV-A' ? 'DEV-B' : 'DEV-A';
+
+      // 🔴 EXACTLY ONE ROW TURNS. A spinner read off the controller's global
+      // `isBusy` would turn both — and since FB-92 the spinner is also the lock
+      // and the promise of a page, so a spinner on the wrong row locks the row
+      // the user might have wanted instead and promises them a page about a
+      // unit they never pressed.
+      expect(rowSpinner, findsOneWidget);
+      expect(find.text('Connect'), findsOneWidget);
+
+      // And the surviving button is the OTHER unit's — still live, and still
+      // aimed at the unit its own row is about.
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(ble.connectedId, other);
+      expect(ble.connects, 2);
+    });
+
+    // The other half of "per device", and the half the test above cannot see:
+    // there, the spinner is off because the busy unit is a DIFFERENT row. Here
+    // it is THIS row's unit that is coming up — and the user never asked for
+    // it, so the button is not this page's to take away.
+    //
+    // 🔴 This is what `_connectingId` is for and nothing else pins it: an
+    // auto-reconnect after a drop, a connect started from the detail page, or
+    // an iOS hand-off drives `isBusy` and `connectedDeviceId` exactly as a
+    // pressed button does. Under FB-92 the stakes went up — a spinner built
+    // from the controller alone would lock a list the user merely walked back
+    // into AND then push a detail page at them, with no press of theirs
+    // anywhere in the story. That is R22's harm reconstructed out of §6.2.
+    testWidgets('a connect the user did NOT ask for takes no button away',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      ble.stopAtConnected = true;
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      // Straight at the controller — the shape of every connect this page did
+      // not start.
+      await tester.runAsync(
+          () => s.connection.connectToSaved(s.devices.deviceFor('DEV-A')!));
+      await settleRoute(tester);
+      expect(s.connection.connectedDeviceId, 'DEV-A');
+      expect(s.connection.isBusy, isTrue, reason: 'the precondition: busy…');
+      expect(s.connection.isOnline, isFalse, reason: '…and not ready');
+
+      expect(rowSpinner, findsNothing);
+      expect(find.text('Connect'), findsOneWidget);
+      expect(find.byType(DeviceDetailPage, skipOffstage: false), findsNothing,
+          reason: 'and no page either: §6.2 navigates for a press, not for '
+              'every link that happens to come up');
+
+      // "Not taken away" has to mean the button still WORKS, not merely that
+      // the word is still painted there.
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(ble.connects, 2);
+      expect(rowSpinner, findsOneWidget,
+          reason: 'and NOW it is this page\'s connect, so now it turns');
     });
 
     // ------------------------------------------------------------------

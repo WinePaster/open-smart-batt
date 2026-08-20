@@ -894,6 +894,30 @@ class _DevicesPageState extends State<DevicesPage>
     // and this is a no-op. One line covers both because "a detail page is being
     // opened" is the same fact either way.
     _abandonReadyWait();
+    // …and retract the PROMISE as well as the wait (FB-92 (c), 2026-08-21).
+    //
+    // The spinner is this page's promise that it will open a page when the link
+    // is up. Once the user is on that page — by pressing the spinning button,
+    // by pressing the row body, by pressing the badge — the promise has been
+    // kept early and must not be kept a second time.
+    //
+    // 🔴 [_abandonReadyWait] alone does not cover this, and the gap is narrow
+    // but real: a completer only exists once `connectToSaved` has RETURNED
+    // (T1, ~0.54 s), so a press inside that first half second settles nothing,
+    // `_awaitReady` then installs a fresh wait, and a `ready` arriving after
+    // the user has walked back to the list pushes the page a SECOND time —
+    // the R22 harm, aimed at somebody who had already been where it wanted to
+    // send them. Dropping `_connectingId` routes that case into the C3 guard
+    // that `_connectSaved` / `_connectNew` already re-check after the wait
+    // (`if (_connectingId != d.id) return;`), so no new state and no new
+    // branch. It costs nothing on the ordinary path: on the SUCCESS path this
+    // is already null, and on the row-body path the resumed caller was going to
+    // clear it a microtask later anyway.
+    //
+    // ⚠️ Untested on purpose — that window cannot be scheduled from a widget
+    // test (the fake connect returns without ever yielding a frame the test can
+    // tap in). Recorded here rather than left implicit.
+    if (_connectingId != null) setState(() => _connectingId = null);
     // 🔴 The scan is NOT stopped here, and that is the fix rather than the bug
     // (ruled 2026-08-12). W-3 — "reading one device must not leave the radio
     // scanning" — is a rule about a WINDOW, and stating it here stated it about
@@ -1469,7 +1493,15 @@ class _DeviceRow extends StatelessWidget {
   /// One-word status, saved rows only (R21). Null on a nearby (unsaved) row.
   final ConnectionBadge? badge;
 
-  /// Where [badge] leads. Non-null exactly when [badge] is.
+  /// This unit's page — where the row body, the [badge] and (since FB-92) the
+  /// SPINNING connect button all lead.
+  ///
+  /// ⚠️ NOT "non-null exactly when [badge] is", which is what this said until
+  /// 2026-08-21 and had not been true since design 0055 §4.1: a nearby row
+  /// carries no badge (§4.6 — a wall of 未連線 is noise) and still has a page.
+  /// Corrected rather than deleted because the old sentence is what would make
+  /// a reader think the connect button's fallback below is unreachable on the
+  /// scan tab.
   final VoidCallback? onOpenDetail;
 
   final VoidCallback? onEdit;
@@ -1594,6 +1626,17 @@ class _DeviceRow extends StatelessWidget {
                     connecting: isConnecting,
                     onTap:
                         isConnected ? (onDisconnect ?? onConnect) : onConnect,
+                    // FB-92 (c): the spinning button is a door to THIS unit's
+                    // page. [onOpenDetail] is the same destination the row body
+                    // and the badge already use, and it is keyed to the same id
+                    // the connect was dialled with at all three call sites — so
+                    // "take me there now" cannot land on a different unit than
+                    // "wait and take me there".
+                    //
+                    // ⛔ Deliberately NOT wired for the connected state: that
+                    // button is 斷線, design 0075 §7 says 「不動」, and a
+                    // disconnect does not navigate (N6).
+                    onTapWhileConnecting: onOpenDetail,
                   ),
                 ],
               ),
@@ -1856,11 +1899,39 @@ class _ConnectButton extends StatelessWidget {
     required this.connected,
     required this.connecting,
     required this.onTap,
+    this.onTapWhileConnecting,
   });
 
   final bool connected;
   final bool connecting;
   final VoidCallback onTap;
+
+  /// What the button does WHILE IT IS SPINNING (FB-92, owner's ruling (c),
+  /// 2026-08-21): 「還在連的時候再按一次 ＝ 我不想等，現在就過去」 — open this
+  /// unit's page now instead of waiting for `ready` to open it.
+  ///
+  /// 🔴 THIS IS A DECISION, NOT AN INHERITANCE. Pressing a spinning button
+  /// already opened the detail page before this parameter existed, and it did
+  /// so BY ACCIDENT: `onTap: connecting ? null : onTap` leaves the [InkWell]
+  /// inert but does NOT absorb the gesture, so the press fell through to the
+  /// row body — and the row body is a door (design 0055 §4.1). The behaviour
+  /// was right and its provenance was a hit-test detail: anyone who later gave
+  /// this button an opaque background, a `GestureDetector`, an
+  /// `AbsorbPointer`, or simply reordered the stack would have deleted a
+  /// shipped behaviour without touching a line that mentions it. Naming it
+  /// makes it survive that.
+  ///
+  /// 🔑 AND IT IS SAFE BECAUSE OF WHAT IT IS NOT. While [connecting] the
+  /// connect callback ([onTap]) is unreachable from this widget, so a second
+  /// press CANNOT reach `connect()` / `connectToSaved()`. That is the entire
+  /// point of FB-92 §6.1: `connect()` opens by tearing down whatever link is
+  /// there, so a second dial 1.0–1.1 s in kills the link that is forming —
+  /// `2026.08.18-008.md` §3.3 mechanism ③, four taps for one link. This
+  /// callback navigates and does nothing else.
+  ///
+  /// Null leaves the old inert button, which is correct for a row that has no
+  /// page to go to.
+  final VoidCallback? onTapWhileConnecting;
 
   @override
   Widget build(BuildContext context) {
@@ -1889,7 +1960,13 @@ class _ConnectButton extends StatelessWidget {
       );
     }
     return InkWell(
-      onTap: connecting ? null : onTap,
+      // 🔵 FB-92 / owner's ruling (c), 2026-08-21. This used to be
+      // `connecting ? null : onTap`. The `null` still stands for "a second
+      // press must not reach the radio" — that half is unchanged and is what
+      // protects the forming link — but the tap is no longer DISCARDED, it is
+      // ANSWERED: see [onTapWhileConnecting] for why the answer is a
+      // navigation and why the old `null` was not really a refusal at all.
+      onTap: connecting ? onTapWhileConnecting : onTap,
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
