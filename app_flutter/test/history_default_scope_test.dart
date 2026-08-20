@@ -499,7 +499,7 @@ void main() {
       await pumpHistory(t);
       // Open the menu: the entry has to be absent from the options themselves,
       // not merely unselected.
-      await t.tap(find.byType(DropdownButton<String>));
+      await t.tap(find.byType(MenuAnchor));
       await t.pumpAndSettle();
       expect(find.text('全部裝置'), findsNothing);
       expect(find.text('Power bank'), findsWidgets,
@@ -520,7 +520,7 @@ void main() {
 
       await pumpHistory(t);
 
-      expect(find.byType(DropdownButton<String>), findsOneWidget);
+      expect(find.byType(MenuAnchor), findsOneWidget);
       expect(find.text('Capacitor'), findsOneWidget);
     });
 
@@ -528,7 +528,7 @@ void main() {
       await boot(t);
       await pumpHistory(t);
       expect(find.text(_noDevices), findsOneWidget);
-      expect(find.byType(DropdownButton<String>), findsNothing);
+      expect(find.byType(MenuAnchor), findsNothing);
     });
 
     testWidgets('🔴 export is reachable in the EMPTY state too', (t) async {
@@ -558,7 +558,7 @@ void main() {
             12.6);
       });
       await pumpHistory(t);
-      expect(find.byType(DropdownButton<String>), findsOneWidget);
+      expect(find.byType(MenuAnchor), findsOneWidget);
       expect(find.text('匯出 CSV'), findsOneWidget);
       expect(find.text('警告'), findsOneWidget);
     });

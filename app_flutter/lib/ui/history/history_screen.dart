@@ -614,32 +614,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       padding: const EdgeInsets.fromLTRB(15, 0, 15, 0),
       child: IndustrialCard(
         padding: const EdgeInsets.fromLTRB(11, 5, 7, 5),
-        child: Row(
-          children: [
-            Icon(Icons.devices_other, size: 15, color: context.colors.muted),
-            const SizedBox(width: 7),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selected,
-                  isDense: true,
-                  isExpanded: true,
-                  style: TextStyle(fontSize: 12.5, color: context.colors.text),
-                  dropdownColor: context.colors.panel2,
-                  items: [
-                    for (final o in options)
-                      DropdownMenuItem<String>(
-                        value: o.id,
-                        child: Text(o.label, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (id) {
-                    if (id != null) _setDevice(id);
-                  },
-                ),
-              ),
-            ),
-          ],
+        child: _DeviceScopeMenu(
+          options: options,
+          selected: selected,
+          onChanged: _setDevice,
         ),
       ),
     );
@@ -828,6 +806,207 @@ class _DeviceOption {
   /// Alias, else advertised name, else the short hash — never blank, and never
   /// the raw id, which is a MAC address on Android.
   final String label;
+}
+
+/// Trigger-row height. 24 pt is exactly what `DropdownButton(isDense: true)`
+/// gave the row this replaces (`_kDenseButtonHeight`, `material/dropdown.dart`),
+/// pinned so swapping the control moved nothing else on the page.
+const double _kScopeRowHeight = 24;
+
+/// Gap between the trigger row and the menu. 6 pt clears the card's own 5 pt
+/// bottom padding, so the menu opens just below the card rather than on it.
+const double _kScopeMenuGap = 6;
+
+/// Menu-row height floor. Below the 48 pt the Material menu used, because these
+/// rows sit in a compact industrial layout — but not so far below that the
+/// list stops being tappable with a thumb.
+const double _kScopeItemMinHeight = 40;
+
+/// The device picker: a trigger row that fills the scope card, and its menu.
+///
+/// 🔴 NOT a [DropdownButton], and the reason is geometry. Material 2's dropdown
+/// INFLATES the button's rect by `EdgeInsetsDirectional.only(start: 16, end:
+/// 24)` before positioning the menu (`_kUnalignedMenuMargin`,
+/// `material/dropdown.dart`), then clamps the result onto the screen. Inside
+/// this card — 15 pt page margin, 11/7 pt card padding — that arithmetic put
+/// the menu at `32 .. screen width` at EVERY width measured (320 / 360 /
+/// 411 pt, 2026-08-20): 40 pt wider than the control that opened it, hard
+/// against the right edge of the screen, 15 pt outside the card it belongs to
+/// while inset 17 pt from it on the left. Reported 2026-08-20 as 「跑版」, and
+/// the asymmetry is why it read as broken rather than merely wide.
+///
+/// [MenuAnchor] puts its menu at `alignment.withinRect(anchorRect)`, so
+/// anchoring to the row makes the menu start where the row starts; the width is
+/// pinned to the row's own measured width rather than assumed, because the
+/// card's padding is the only thing that decides it. Both properties are locked
+/// down in `history_device_menu_test.dart` — at the same three widths, since a
+/// single width is exactly how the original defect stayed invisible.
+class _DeviceScopeMenu extends StatefulWidget {
+  const _DeviceScopeMenu({
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<_DeviceOption> options;
+
+  /// Always one of [options] — the caller drops the bar entirely rather than
+  /// render a picker that cannot show what it is set to.
+  final String selected;
+
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_DeviceScopeMenu> createState() => _DeviceScopeMenuState();
+}
+
+class _DeviceScopeMenuState extends State<_DeviceScopeMenu> {
+  final MenuController _menu = MenuController();
+
+  /// Drives the caret only. [MenuAnchor] does not rebuild its builder when the
+  /// menu opens, so the arrow would otherwise point down at an open menu.
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final label =
+        widget.options.firstWhere((o) => o.id == widget.selected).label;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return MenuAnchor(
+          controller: _menu,
+          // The tap that dismisses must not ALSO hit whatever is underneath —
+          // the chart card and the list rows below both take taps of their own.
+          consumeOutsideTap: true,
+          onOpen: () => setState(() => _open = true),
+          onClose: () => setState(() => _open = false),
+          alignmentOffset: const Offset(0, _kScopeMenuGap),
+          style: MenuStyle(
+            // Explicit: the M3 default for a menu panel is `topEnd`, which is
+            // the submenu case, and it would hang this menu off the row's
+            // top-right corner.
+            alignment: AlignmentDirectional.bottomStart,
+            backgroundColor: WidgetStatePropertyAll(colors.panel2),
+            surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+            elevation: const WidgetStatePropertyAll(4),
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(vertical: 4),
+            ),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                side: BorderSide(color: colors.line),
+              ),
+            ),
+          ),
+          menuChildren: [
+            for (final o in widget.options)
+              _DeviceScopeMenuItem(
+                width: width,
+                label: o.label,
+                selected: o.id == widget.selected,
+                onTap: () {
+                  _menu.close();
+                  // Re-selecting the current unit is a dismissal, not a
+                  // reload: `_setDevice` re-queries and rebuilds the chart.
+                  if (o.id != widget.selected) widget.onChanged(o.id);
+                },
+              ),
+          ],
+          builder: (context, controller, _) => InkWell(
+            // The WHOLE row, icon included — that is also what makes the anchor
+            // rect the full width of the card's content box, which is what the
+            // menu aligns itself to.
+            onTap: () => controller.isOpen ? controller.close() : controller.open(),
+            child: SizedBox(
+              height: _kScopeRowHeight,
+              child: Row(
+                children: [
+                  Icon(Icons.devices_other, size: 15, color: colors.muted),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: colors.text),
+                    ),
+                  ),
+                  Icon(
+                    _open ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                    size: 24,
+                    color: colors.muted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One row of the device menu.
+///
+/// [width] is the anchor row's width, handed down rather than measured again:
+/// the menu panel takes its width from its widest child, so this is what keeps
+/// the panel exactly as wide as the control that opened it.
+class _DeviceScopeMenuItem extends StatelessWidget {
+  const _DeviceScopeMenuItem({
+    required this.width,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final double width;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: width,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _kScopeItemMinHeight),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w400,
+                        color: selected ? context.accent.accent : colors.text,
+                      ),
+                    ),
+                  ),
+                  if (selected) ...[
+                    const SizedBox(width: 7),
+                    Icon(Icons.check, size: 14, color: context.accent.accent),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HistoryData {
