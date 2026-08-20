@@ -196,12 +196,50 @@ voltage (`0x19`) tracked that state:
 | Unit | `SVLT − PVLT` | Independently known state |
 |---|---|---|
 | capacitor, healthy | −0.04 V | healthy |
-| capacitor, 2026-07-19 | 3.11 V | vendor app showed a fault |
+| capacitor, 2026-07-19 | **−3.12 V** (corrected 2026-08-20, see below) | vendor app showed a fault |
 | battery, 2026-07-28 | **−0.040 V** | healthy reference (n = 42) |
 | battery, 2026-07-28 | **5.07 V** | cell imbalance, deeply discharged (n = 557) |
 
 **This is four units. It is not enough for a classifier, and this document
 deliberately does not state a threshold.**
+
+> 🔴 **Sign corrected 2026-08-20, and the correction removes the capacitor half
+> of this lead entirely.** The 2026-07-19 row previously read ~~`3.11 V`~~ — a
+> POSITIVE gap, which put the faulty capacitor on the same side as the faulty
+> battery. It is the other side. That unit's own wire values, quoted in the
+> report this row comes from and re-derived from the corpus on 2026-08-20, are
+> **PVLT `0x19` = 12.50 V, SVLT `0x37` = 9.38 V** ⇒ `SVLT − PVLT` = **−3.12 V**.
+> The string reads BELOW the terminal, where the faulty battery's string reads
+> **above** it. A reader who took the table at face value would have looked for
+> the wrong sign.
+>
+> ⚠️ **This is the second occurrence of this exact failure mode.** The same
+> quantity was written as `PVLT − SVLT` in one directory until 2026-07-30, when
+> the project standardised on `SVLT − PVLT` everywhere. This row survived that
+> sweep.
+>
+> 🔴 **And with the sign right, the capacitor half does not hold up at all.**
+> The 2026-07-19 log carries TWO devices interleaved with no `0x10` attribution
+> — the faulty capacitor was identified by matching the screenshot's three
+> values. The OTHER device in that same log, which **nobody reported as
+> faulty**, sits at PVLT ≈ 13.6 V / SVLT ≈ 6.57 V ⇒ **≈ −6.9 V, a bigger gap
+> than the faulty one**.
+>
+> A whole-corpus re-walk on 2026-08-20 (190 batches, 52,461,777 frames) agrees:
+> across **71 capacitor device-records / 23 distinct physical units**, **zero**
+> have a gap above +0.5 V, while three distinct units sit below −0.5 V and none
+> of them was ever reported as faulty. One of those (`3dae9512`) holds
+> **≈ −5.9 V steadily for 8.5 minutes across two captures three days apart**,
+> with `0x23` = `0x05` (healthy) throughout.
+>
+> ⇒ **Do not use `SVLT − PVLT` to reason about a CAPACITOR's health, in either
+> direction.** The battery rows are untouched by this correction: the
+> 2026-07-28 pair remains the cleanest fault/healthy contrast in the corpus, and
+> the `+5.07 V` there is independently corroborated by that unit's own `0x24`
+> second-string reading (≈ +1.75 V above its siblings — a second, unrelated
+> quantity pointing the same way). What this paragraph still is, for batteries
+> only, is a **direction for a controlled experiment** — never something to
+> render.
 
 Stating one was tried and it was wrong in both directions. Measured across the
 whole corpus (re-walk 2026-07-30), a ">3 V = suspect" rule would have:
