@@ -525,7 +525,7 @@ void main() {
         expect(switchIn(tester, row).onChanged, isNull, reason: label);
         final sub = tester.widget<SettingsRow>(row).sub;
         expect(sub, isNotNull, reason: label);
-        expect(sub, contains('進階'),
+        expect(sub, contains('簡易'),
             reason: '$label must name the mode that turned it off, not just '
                 'go grey — a caption that still describes the feature is how '
                 'a withdrawn function becomes an apparent fault');
