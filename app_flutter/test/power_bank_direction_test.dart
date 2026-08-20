@@ -46,6 +46,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/dashboard/dashboard_cards.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readout_grid.dart';
@@ -122,6 +123,7 @@ void main() {
     required double? current,
     String locale = 'en',
     Watchface face = Watchface.standard,
+    int? designCapacityMah,
   }) async {
     final s = await makeServices(tester);
     addTearDown(() => teardown(tester, s));
@@ -168,6 +170,7 @@ void main() {
       temperatureC: 31,
       socPercent: 64,
       current: current,
+      designCapacityMah: designCapacityMah,
     ));
     await tester.pump();
     await tester.pump();
@@ -187,6 +190,58 @@ void main() {
   TrendChartCard chartCard(WidgetTester tester) =>
       tester.widget<TrendChartCard>(find.byType(TrendChartCard));
 
+  /// The SOC ring, rendered on the surface it still LIVES on.
+  ///
+  /// 🔴 2026-08-21: the ring left the device page (owner: 「移除SOC圓環」) and
+  /// stayed on the home grid, where the layout is the user's. So the sub-line
+  /// tests below cannot pump `PowerBankView` any more — they pump the card
+  /// itself, through the same `dashboardCardFor` the home grid calls, with
+  /// `surface: CardSurface.home`.
+  ///
+  /// The alternative was to delete those tests with the card. That would have
+  /// thrown away the pin on the thing FB-47 was actually about — a bank being
+  /// drained must not draw a charging glyph — on a surface where the card is
+  /// still drawn every day.
+  Future<void> pumpHomeCard(
+    WidgetTester tester, {
+    required double? current,
+    DisplayModule module = DisplayModule.gaugeSoc,
+    int? designCapacityMah,
+    String locale = 'en',
+  }) async {
+    final tele = StaticCardTelemetry(
+      sample: TelemetrySample(
+        timestamp: DateTime(2026, 8, 4, 14, 43),
+        deviceType: 0x22,
+        pvlt: 3.95,
+        svlt: 9.15,
+        temperatureC: 31,
+        socPercent: 64,
+        current: current,
+        designCapacityMah: designCapacityMah,
+      ),
+      trend: LiveTrendBuffer(),
+      tempUnit: TempUnit.celsius,
+    );
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: Locale(locale),
+      home: Scaffold(
+        body: Builder(
+          builder: (c) =>
+              dashboardCardFor(c, module,
+                  shellClass: ProductClass.powerBank,
+                  surface: CardSurface.home,
+                  tele: tele) ??
+              const SizedBox.shrink(),
+        ),
+      ),
+    ));
+    await tester.pump();
+  }
+
   PvltGauge gauge(WidgetTester tester) =>
       tester.widget<PvltGauge>(find.byType(PvltGauge));
 
@@ -199,6 +254,7 @@ void main() {
 
   String kind(Readout r) {
     if (r.unit == '%') return 'soc';
+    if (r.unit == 'mAh') return 'capacity';
     if (r.unit == 'A') return 'current';
     if (r.icon == Icons.thermostat) return 'temp';
     if (r.icon == Icons.usb) return 'svlt';
@@ -246,11 +302,19 @@ void main() {
   // pause_circle_outline) are the clean FB-47 signal because the row draws
   // neither of those.
   // =========================================================================
+  // 🔴 Every count below dropped by ONE on 2026-08-21: the SOC ring left this
+  // page (owner: 「移除SOC圓環」) and took its sub-line glyph with it. The counts
+  // are chip + SOC READOUT TILE now, and the ring's own glyph is pinned on the
+  // home surface in 'the SOC ring, where it still lives' below.
+  //
+  // 🔑 What the group is FOR is unchanged and is why it was not deleted with
+  // the card: FB-47 symptom 1 is "a bank being drained draws a charging icon",
+  // and that is a statement about the WHOLE page, not about one card.
   group('the glyph follows the flow', () {
-    testWidgets('charging draws the charging battery (chip + SOC tile + dial)',
+    testWidgets('charging draws the charging battery (chip + SOC tile)',
         (tester) async {
       await pumpBank(tester, current: -0.43);
-      expect(iconCount(tester, Icons.battery_charging_full), 3);
+      expect(iconCount(tester, Icons.battery_charging_full), 2);
       // The lone bolt is the energy-path row's (waiting) heading, not a flow
       // glyph — charging draws no discharge glyph on chip or SOC tile.
       expect(iconCount(tester, Icons.bolt), 1);
@@ -262,24 +326,25 @@ void main() {
       // FB-47 symptom 1, pinned: NOTHING here may show a charging battery while
       // the bank is being drained.
       expect(iconCount(tester, Icons.battery_charging_full), 0);
-      // chip + SOC tile + dial sub-line + the energy-path row's heading = 4.
-      expect(iconCount(tester, Icons.bolt), 4);
+      // chip + SOC tile + the energy-path row's heading = 3.
+      expect(iconCount(tester, Icons.bolt), 3);
     });
 
     testWidgets('idle draws neither', (tester) async {
       await pumpBank(tester, current: 0.0);
-      expect(iconCount(tester, Icons.pause_circle_outline), 3);
+      expect(iconCount(tester, Icons.pause_circle_outline), 2);
       expect(iconCount(tester, Icons.battery_charging_full), 0);
     });
 
     testWidgets('no reading keeps the status-quo glyph (chip + SOC tile)',
         (tester) async {
       await pumpBank(tester, current: null);
-      // Still 2, NOT 3: `unknown` is the absence of a reading, so the dial
-      // draws no glyph rather than guessing one. Its sub-line says so in words.
       expect(iconCount(tester, Icons.battery_charging_full), 2);
-      expect(gauge(tester).subIcon, isNull);
-      expect(gauge(tester).subText, 'NO READING');
+      // 🔴 And the ring is not here to say anything at all. Asserted as an
+      // absence rather than left to the count above: a count is satisfied by
+      // any two widgets, so on its own it could not tell "the ring is gone"
+      // apart from "the ring is here and the chip is not".
+      expect(find.byType(PvltGauge), findsNothing);
     });
   });
 
@@ -366,33 +431,87 @@ void main() {
   // =========================================================================
   // The dial says what its caption promises (2026-08-04 field report).
   // =========================================================================
-  group('the dial sub-line carries the direction', () {
+  // 🔴 RE-HOMED 2026-08-21, not deleted. These pin the ring's own sub-line,
+  // and the ring is now a HOME-grid card only — so they pump it through
+  // `dashboardCardFor` (`pumpSocCard`) instead of through the device page.
+  // The behaviour itself is untouched by the ruling.
+  group('the SOC ring, where it still lives, carries the direction', () {
     testWidgets('charging', (tester) async {
-      await pumpBank(tester, current: -0.43);
+      await pumpHomeCard(tester, current: -0.43);
       expect(gauge(tester).subText, 'CHARGING');
       expect(gauge(tester).subIcon, Icons.battery_charging_full);
     });
 
     testWidgets('discharging', (tester) async {
-      await pumpBank(tester, current: 1.2);
+      await pumpHomeCard(tester, current: 1.2);
       expect(gauge(tester).subText, 'DISCHARGING');
       expect(gauge(tester).subIcon, Icons.bolt);
     });
 
-    testWidgets('in-band current is standby, not a direction', (tester) async {
-      await pumpBank(tester, current: 0.0);
-      expect(gauge(tester).subText, 'STANDBY');
+    testWidgets('no reading says so in words rather than guessing a glyph',
+        (tester) async {
+      await pumpHomeCard(tester, current: null);
+      expect(gauge(tester).subIcon, isNull);
+      expect(gauge(tester).subText, 'NO READING');
     });
 
-    testWidgets('the cell voltage is printed exactly zero times', (tester) async {
-      // It used to appear twice on one screen: the dial sub-line AND a grid
-      // tile, both reading `tele.pvlt`. Owner's call was to drop it, not to
-      // de-duplicate it — a 1S bank's cell voltage is the pack voltage the SOC
-      // ring already stands for.
-      await pumpBank(tester, current: 1.2);
-      expect(readoutsCard(tester).items.map(kind).toList(),
-          isNot(contains('cell')));
-      expect(find.byIcon(Icons.battery_5_bar), findsNothing);
+    testWidgets('in-band current is standby, not a direction', (tester) async {
+      await pumpHomeCard(tester, current: 0.0);
+      expect(gauge(tester).subText, 'STANDBY');
     });
+  });
+
+  // =========================================================================
+  // 🔴 The 標示容量 tile — owner ruling 2026-08-21,「數字格 移除 10000mAh」,
+  // scoped to 裝置詳情. It is a SURFACE gate, not a data gate, so both halves
+  // have to be pinned: the same unit, the same frame, two different pages.
+  //
+  // 🔑 The 'surviving grid order' test above cannot do this job. Its snapshot
+  // leaves `designCapacityMah` unset, so it would stay green if the gate were
+  // deleted tomorrow — an absence for the wrong reason is what these two are
+  // written against.
+  // =========================================================================
+  group('the nameplate capacity tile is HOME-only', () {
+    testWidgets('device detail: absent even when the unit reports one',
+        (tester) async {
+      // 10000 mAh IS on the wire here (`0x4B` b4b5, the value a rated-10000
+      // unit actually reports), and the tile still must not appear.
+      final s = await pumpBank(tester, current: 1.2, designCapacityMah: 10000);
+      // 🔑 Proved to have ARRIVED before it is asserted absent. Without this
+      // line the test passes just as well on a build that never decoded the
+      // register — an absence of data wearing an absence of tile's clothes.
+      expect(s.telemetry.sample.designCapacityMah, 10000);
+      expect(readoutsCard(tester).items.map(kind).toList(), ['soc', 'temp']);
+      // `findRichText`: the grid prints value and unit as spans of one
+      // `Text.rich`, so a plain finder would report "not on screen" for a tile
+      // that is — and this assertion would pass without meaning anything.
+      expect(find.textContaining('10000', findRichText: true), findsNothing);
+    });
+
+    testWidgets('home grid: the same frame still prints it', (tester) async {
+      await pumpHomeCard(tester,
+          current: 1.2,
+          module: DisplayModule.readouts,
+          designCapacityMah: 10000);
+      expect(readoutsCard(tester).items.map(kind).toList(),
+          ['soc', 'temp', 'capacity']);
+      expect(find.textContaining('10000', findRichText: true), findsWidgets);
+    });
+  });
+
+  // =========================================================================
+  // 📦 Moved out of the group above 2026-08-21: it is about the DEVICE PAGE's
+  // grid, which the ring's departure did not change, so it must keep pumping
+  // `PowerBankView`.
+  // =========================================================================
+  testWidgets('the cell voltage is printed exactly zero times', (tester) async {
+    // It used to appear twice on one screen: the dial sub-line AND a grid
+    // tile, both reading `tele.pvlt`. Owner's call was to drop it, not to
+    // de-duplicate it — a 1S bank's cell voltage is the pack voltage the SOC
+    // ring already stands for.
+    await pumpBank(tester, current: 1.2);
+    expect(readoutsCard(tester).items.map(kind).toList(),
+        isNot(contains('cell')));
+    expect(find.byIcon(Icons.battery_5_bar), findsNothing);
   });
 }

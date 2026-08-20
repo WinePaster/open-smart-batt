@@ -9,6 +9,7 @@ export 'app_settings.dart';
 export 'log_entry.dart';
 export 'capture_mark.dart';
 export 'card_shell.dart';
+export 'card_surface.dart';
 export 'card_view.dart';
 export 'display_layout.dart';
 export 'display_module.dart';

@@ -529,8 +529,14 @@ class _ModuleTile extends StatelessWidget {
       // A device module with fake data. It can still return null — a class that
       // has no such card must not grow one in the editor either — and the
       // waiting tile is the honest rendering of that.
+      // `home`, not a third state: the editor exists to show what the home
+      // grid will look like, so a preview that rendered a different card would
+      // be lying about the thing it previews (`card_surface.dart`).
       return dashboardCardFor(context, module,
-              shellClass: p.shellClass, tele: p.tele, view: view) ??
+              shellClass: p.shellClass,
+              surface: CardSurface.home,
+              tele: p.tele,
+              view: view) ??
           HomeWaitingTile(module: module);
     }
     final conn = context.watch<ConnectionController>();
@@ -548,6 +554,7 @@ class _ModuleTile extends StatelessWidget {
       final shellClass = homeTileShellClass(id, conn);
       card = dashboardCardFor(context, module,
               shellClass: shellClass,
+              surface: CardSurface.home,
               tele: context.watch<TelemetryController>(),
               view: view) ??
           HomeWaitingTile(module: module);

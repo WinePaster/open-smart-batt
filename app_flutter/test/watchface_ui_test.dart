@@ -261,8 +261,11 @@ void main() {
           DisplayModule.readouts,
           DisplayModule.cells,
         ],
+        // 🔴 No SOC arc either, ruled 2026-08-21 (owner: 「移除SOC圓環」) —
+        // the third of the three instrument removals, so NO classified unit
+        // carries one on this face now. The SOC READING stays: it is the
+        // readouts grid's first tile.
         ProductClass.powerBank: [
-          DisplayModule.gaugeSoc,
           DisplayModule.chart,
           DisplayModule.readouts,
           DisplayModule.energyPath,
@@ -325,27 +328,24 @@ void main() {
             // layouts were — not something this ruling revisited. (Written the
             // wrong way round first, and this test caught it.)
             //
-            // 🔴 Two rulings, one shape: the capacitor lost its PVLT dial on
-            // 2026-08-16 and the battery on 08-17. On `fixed`, an instrument
-            // therefore survives only where it is NOT a PVLT dial (the power
-            // bank's SOC arc) or where the class is not known yet.
+            // 🔴 THREE rulings, one shape: the capacitor lost its PVLT dial
+            // on 2026-08-16, the battery on 08-17, and the power bank's SOC arc
+            // on 08-21. On `fixed`, an instrument now survives on exactly ONE
+            // class — the one whose class nobody knows yet.
             //
             // 🔑 `unknown` keeps it deliberately: that is the "we do not know
             // what this is yet" page, and the dial is the one card that can
             // draw something from the first frame (design 0051 D2).
             //
-            // Written as an explicit allow-list, so removing the arc from the
-            // power bank — or the dial from `unknown` — still turns this red.
-            f == Watchface.fixed &&
-                    cls != ProductClass.powerBank &&
-                    cls != ProductClass.unknown
+            // Written as an explicit allow-list, so putting an instrument back
+            // on any classified unit — or taking the dial off `unknown` —
+            // still turns this red.
+            f == Watchface.fixed && cls != ProductClass.unknown
                 ? isFalse
                 : isTrue,
-            reason: f == Watchface.fixed &&
-                    cls != ProductClass.powerBank &&
-                    cls != ProductClass.unknown
-                ? '${cls.name}/${f.slug} must NOT carry a PVLT dial '
-                    '(ruled 2026-08-16 / 08-17)'
+            reason: f == Watchface.fixed && cls != ProductClass.unknown
+                ? '${cls.name}/${f.slug} must NOT carry an instrument '
+                    '(ruled 2026-08-16 / 08-17 / 08-21)'
                 : '${cls.name}/${f.slug} has no instrument',
           );
         }
@@ -527,13 +527,16 @@ void main() {
       expect(find.textContaining('constant 0 A'), findsOneWidget);
     });
 
-    testWidgets('power bank: SOC ring → chart → readouts', (tester) async {
+    testWidgets('power bank: chart → readouts, and NO SOC ring', (tester) async {
       final s = await makeServices(tester);
       addTearDown(() => teardown(tester, s));
       await pumpUnder(tester, s, const PowerBankView(deviceId: 'DEV-TEST'));
 
-      expect(dy(tester, find.byType(PvltGauge)),
-          lessThan(dy(tester, find.byType(TrendChartCard))));
+      // 🔴 Ruled 2026-08-21 (「移除SOC圓環」), and asserted as an ABSENCE on
+      // screen for the same reason the capacitor's is above: the expected-list
+      // change is a different decision point, and a card no face names can
+      // still be drawn by a stray branch.
+      expect(find.byType(PvltGauge), findsNothing);
       expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       // The energy-path row renders nothing in this harness — the class is not
@@ -763,10 +766,16 @@ void main() {
 
         // The page did render — otherwise "no controls" would be vacuous.
         //
-        // Probed on the SOC ring rather than the readouts card: since design
-        // 0040 Q2 the power bank's `compact` face has no readouts card at all,
-        // so that probe would have started passing for the wrong reason.
-        expect(find.byType(PvltGauge), findsOneWidget);
+        // 🔴 Probed on the CHART since 2026-08-21. It used to be the SOC ring,
+        // chosen over the readouts card because design 0040 Q2 leaves the power
+        // bank's `compact` face without one — but the ring was removed from
+        // this page by that day's ruling, so the probe would now pass for
+        // exactly the wrong reason (nothing found ⇒ nothing to find). The chart
+        // is on `fixed`, and `fixed` is what every stored slug in this loop
+        // resolves to (pinned by 'EVERY unit is drawn with the fixed face').
+        expect(find.byType(TrendChartCard), findsOneWidget);
+        // …and the ring really is gone, on every stored slug.
+        expect(find.byType(PvltGauge), findsNothing);
         expect(find.byType(BatteryControls), findsNothing);
         expect(find.byType(CapacitorControls), findsNothing);
         expect(find.byType(PackControls), findsNothing);

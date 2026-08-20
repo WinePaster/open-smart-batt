@@ -68,7 +68,10 @@ Future<void> _pump(
           width: 360,
           child: Builder(
             builder: (c) =>
-                dashboardCardFor(c, module, shellClass: cls, tele: tele) ??
+                dashboardCardFor(c, module,
+                    shellClass: cls,
+                    surface: CardSurface.deviceDetail,
+                    tele: tele) ??
                 const SizedBox.shrink(),
           ),
         ),
