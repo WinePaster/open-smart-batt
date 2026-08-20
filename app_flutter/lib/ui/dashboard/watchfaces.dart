@@ -179,21 +179,33 @@ List<DisplayModule> watchfaceModules(ProductClass cls, Watchface face) {
     // ONLY on the dial. Dropping the dial without that half would have deleted
     // the number outright.
     //
-    // ⛔ Device detail only. The home grid keeps offering the gauge tile to
-    // capacitors — that surface is a layout the USER arranged, and taking a
+    // ⛔ Device detail only, and that has now been ruled three times (capacitor
+    // 08-16, battery 08-17, power bank 2026-08-21). The home grid keeps
+    // offering the gauge tile — the PVLT dial to the pack classes and the SOC
+    // arc to the power bank, where it is still `HomeLayout.defaultFor`'s first
+    // tile — because that surface is a layout the USER arranged, and taking a
     // card out of it because we changed our mind is not ours to do.
     case Watchface.fixed:
       return [
-        // 🔴 The power bank's SOC arc only. Owner ruling 2026-08-17 extended the
-        // capacitor's removal (08-16) to the smart battery, so NO pack class
-        // draws a PVLT dial on this page any more.
+        // 🔴 `unknown` ONLY. Three rulings, one shape: the capacitor lost its
+        // PVLT dial 2026-08-16, the smart battery followed 08-17, and the power
+        // bank's SOC arc went the same way 2026-08-21 (owner: 「移除SOC圓環」).
+        // No CLASSIFIED unit carries an instrument on this page any more.
         //
-        // ⚠️ `unknown` still does, and that is deliberate rather than an
-        // oversight: it is the "we do not know what this is yet" state, and the
-        // dial is the one card that can draw something from the first frame
+        // 🔑 The SOC NUMBER does not vanish with the arc — the readouts grid's
+        // first tile is 電量 SOC (`dashboard_cards.dart`), and the DIRECTION the
+        // arc's sub-line carried is still on the page twice over: the type chip
+        // at the top of `power_bank_view.dart` and the energy-path row below.
+        // That is the same test the 08-16 removal had to pass (a dropped card
+        // must not be the only home of a number), and it is why this one could
+        // be a deletion rather than a move.
+        //
+        // ⚠️ `unknown` still draws its dial, and that is deliberate rather than
+        // an oversight: it is the "we do not know what this is yet" state, and
+        // the dial is the one card that can draw something from the first frame
         // (design 0051 D2). Taking it away there would leave that page with a
         // chart that has no points yet.
-        if (cls == ProductClass.powerBank || cls == ProductClass.unknown) gauge,
+        if (cls == ProductClass.unknown) gauge,
         DisplayModule.chart,
         DisplayModule.readouts,
         ?extra,

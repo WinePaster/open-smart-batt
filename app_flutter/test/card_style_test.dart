@@ -179,8 +179,14 @@ void main() {
               child: Builder(
                 builder: (c) => CardStyleScope(
                   shell: shell,
+                  // `home`: this file is design 0054, and the shell + view
+                  // vocabularies it pins are delivered by the HOME grid's own
+                  // `CardStyleScope` (placed two lines up).
                   child: dashboardCardFor(c, module,
-                          shellClass: cls, tele: tele, view: view) ??
+                          shellClass: cls,
+                          surface: CardSurface.home,
+                          tele: tele,
+                          view: view) ??
                       const SizedBox.shrink(),
                 ),
               ),
@@ -693,12 +699,14 @@ void main() {
             expect(
                 dashboardCardFor(c, DisplayModule.gaugeVoltage,
                     shellClass: ProductClass.powerBank,
+                    surface: CardSurface.home,
                     tele: teleOf(previewPowerBankSample(kNow)),
                     view: 'numeric'),
                 isNull);
             expect(
                 dashboardCardFor(c, DisplayModule.gaugeSoc,
                     shellClass: ProductClass.smartBattery,
+                    surface: CardSurface.home,
                     tele: teleOf(previewPackSample(kNow)),
                     view: 'numeric'),
                 isNull);

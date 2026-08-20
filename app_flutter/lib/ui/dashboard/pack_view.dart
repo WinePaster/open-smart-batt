@@ -221,7 +221,9 @@ class PackScaffold extends StatelessWidget {
             // DisplayModule for it, so no watchface can name it.
             for (final m in order)
               ?dashboardCardFor(context, m,
-                  shellClass: shellClass, tele: tele),
+                  shellClass: shellClass,
+                  surface: CardSurface.deviceDetail,
+                  tele: tele),
 
             // ---- protection status + class-specific controls -------------
             IndustrialCard(

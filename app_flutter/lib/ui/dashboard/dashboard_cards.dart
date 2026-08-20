@@ -68,6 +68,15 @@ import 'speed_card.dart';
 /// possible WITHOUT a `previewMode` flag — see [CardTelemetry] for why a flag
 /// was refused. Every caller watches its own source and passes it; the real
 /// paths physically cannot pass a fake one.
+/// 🔴 [surface] is WHERE this card is being drawn, and it is REQUIRED — see
+/// `card_surface.dart` for why it is a parameter with no default rather than a
+/// scope. Exactly ONE branch reads it today (the power bank's 標示容量 tile,
+/// owner ruling 2026-08-21: off the device page, kept on the home grid), and it
+/// is deliberately not used for anything else. A surface flag is a licence to
+/// make any card differ per page, which is how two surfaces stop being the same
+/// card factory at all — the thing this file's own doc comment says it exists
+/// to prevent. Every new use needs its own ruling.
+///
 /// [view] is the tile's stored CONTENT VARIANT slug, or null for that card's
 /// default (design 0054). It arrives as a raw string because the vocabulary is
 /// scoped to the module — `card_view.dart` argues why there is no global enum —
@@ -81,6 +90,7 @@ Widget? dashboardCardFor(
   BuildContext context,
   DisplayModule m, {
   required ProductClass shellClass,
+  required CardSurface surface,
   required CardTelemetry tele,
   String? view,
 }) {
@@ -331,7 +341,10 @@ Widget? dashboardCardFor(
           view: readoutsView,
           items: [
             // Order (design 0035 §6, Q5+Q12): SOC, temperature, design
-            // capacity. The 0037 "output voltage" and "current" tiles are GONE
+            // capacity — the last of which is HOME-ONLY since 2026-08-21, so on
+            // the device page this list is two tiles long. The surviving order
+            // is unchanged either way, which is what the note below promises.
+            // The 0037 "output voltage" and "current" tiles are GONE
             // from here — the energy-path row carries both now, so showing them
             // again would print the same number twice. The capacity tile still
             // collapses when absent; the surviving order holds.
@@ -352,7 +365,24 @@ Widget? dashboardCardFor(
               value: _fmtInt(tele.temperatureDisplay),
               unit: tele.temperatureUnitLabel,
             ),
-            if (tele.sample.designCapacityMah != null)
+            // 🔴 HOME GRID ONLY since 2026-08-21 (owner: 「數字格 移除
+            // 10000mAh」). On the device page this grid is now SOC + temperature
+            // and nothing else.
+            //
+            // 🔑 Removed rather than moved, and the difference matters: the
+            // 標示容量 is the NAMEPLATE (`0x4B` b4b5 — a constant the unit
+            // reports about itself, 10000 on a unit rated 10000 mAh), not a
+            // measurement. Nothing on the page is read against it and it never
+            // changes while you watch, so the rule that forced PVLT into this
+            // grid when its dial went away — a dropped card must not be the
+            // only home of a live number — does not apply to it.
+            //
+            // The tile SURVIVES on the home grid because that layout is the
+            // user's, not ours (`card_surface.dart`), so the l10n key and the
+            // `designCapacityMah` decode both stay live and this is not a
+            // retired-key cleanup.
+            if (surface == CardSurface.home &&
+                tele.sample.designCapacityMah != null)
               Readout(
                 icon: Icons.battery_std,
                 label: l10n.powerBankDesignCapacityLabel,

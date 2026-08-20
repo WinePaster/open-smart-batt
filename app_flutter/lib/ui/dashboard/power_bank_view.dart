@@ -117,7 +117,9 @@ class PowerBankView extends StatelessWidget {
             // forbids is an empty CONTROL CARD, and that is still forbidden.
             for (final m in order)
               ?dashboardCardFor(context, m,
-                  shellClass: ProductClass.powerBank, tele: tele),
+                  shellClass: ProductClass.powerBank,
+                  surface: CardSurface.deviceDetail,
+                  tele: tele),
 
             // ---- this unit's own history (design 0065) ------------------
             //

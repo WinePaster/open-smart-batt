@@ -190,7 +190,7 @@ void main() {
           cls: ProductClass.powerBank,
           layout: const DisplayLayout(watchface: Watchface.diagnostic),
         ),
-        'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
+        'face=fixed modules=chart,readouts,energyPath',
       );
     });
 
@@ -293,6 +293,14 @@ void main() {
     //     capture in the corpus so far reads `face=standard`; from this build
     //     on none will. A reader comparing a 0.7.x capture with a 0.8.x one is
     //     comparing two different pages, and `modules=` is what says so.
+    //  4. **2026-08-21 — the POWER BANK loses `gaugeSoc`** (owner ruling
+    //     「移除SOC圓環」), so `face=fixed` on that class goes from
+    //     `gaugeSoc,chart,readouts,energyPath` to `chart,readouts,energyPath`.
+    //     🔑 The break is the CARD, not the reading: SOC is still decoded from
+    //     `0x4B` b6 and still printed, as the readouts grid's first tile. A
+    //     reader must not conclude from a missing `gaugeSoc` that the capture
+    //     has no state of charge in it. (Same shape as the 08-16 / 08-17 dial
+    //     removals, which did this to the pack classes and `gaugeVoltage`.)
     //
     // Same class of thing as the `usb` → `energyPath` rename (design 0035 §5.3
     // / R4) and recorded the same way, in `docs/feedback-index/conventions.md`.
@@ -300,7 +308,9 @@ void main() {
       ProductClass.smartBattery: 'face=fixed modules=chart,readouts,cells',
       // No `cells` — design 0050 D5,「電容沒有分串電壓」.
       ProductClass.supercapacitor: 'face=fixed modules=chart,readouts',
-      ProductClass.powerBank: 'face=fixed modules=gaugeSoc,chart,readouts,energyPath',
+      // 🔴 No `gaugeSoc` since 2026-08-21 (owner: 「移除SOC圓環」) — break 4
+      // below. The SOC number is still on the page, in `readouts`.
+      ProductClass.powerBank: 'face=fixed modules=chart,readouts,energyPath',
       // 📌 `unknown` is IN the table now. Design 0034 Q4 used to force it onto
       // the standard face, which is why it used to be excluded; it is an
       // ordinary row today.
