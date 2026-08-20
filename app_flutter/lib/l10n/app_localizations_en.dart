@@ -1129,17 +1129,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsAppModeSub =>
-      'Advanced mode removes 主頁 (Home) from the bottom menu, and turns off speed detection and the G meter with it.';
+      'Simple mode removes 主頁 (Home) from the bottom menu, and turns off speed detection and the G meter with it.';
 
   @override
   String get settingsAppModePersonal => 'Personal';
 
   @override
-  String get settingsAppModeAdvanced => 'Advanced';
+  String get settingsAppModeAdvanced => 'Simple';
 
   @override
   String get settingsDisabledByAdvancedMode =>
-      'Advanced mode has turned this off. Switch back to Personal to restore your setting.';
+      'Simple mode has turned this off. Switch back to Personal to restore your setting.';
 
   @override
   String get settingsThemeLabel => 'Theme';
