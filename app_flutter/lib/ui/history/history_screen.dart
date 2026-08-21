@@ -27,153 +27,26 @@ import '../dashboard/power_flow.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'history_query.dart';
 import 'minute_seconds_sheet.dart';
 
-/// Selectable chart/list time range.
-enum HistoryRange { today, week, all }
+// ⚠️ `export` alone does not put those names in THIS library's scope — the
+// import above is what lets this file go on using them unchanged.
+export 'history_query.dart';
 
-/// The export preamble's `window:` value for [r] (FB-60).
-///
-/// Says WHAT WAS ASKED FOR, which the repo-computed `range: A .. B` cannot: a
-/// file whose rows start on Tuesday is a complete "last 7 days" export from a
-/// phone that has only been recording since Tuesday, and an incomplete-looking
-/// one otherwise. Only this line tells the two apart.
-///
-/// Machine-stable slugs, never the localized segmented-control captions — the
-/// reader of a preamble is whoever receives the file, not the phone that made
-/// it (the rule `exportScopeLabel` already follows). [since] is the computed
-/// cut-off, appended so the window is reproducible rather than relative to an
-/// export timestamp the reader has to do arithmetic on; `all` has none.
-String historyWindowLabel(HistoryRange r, DateTime? since) {
-  final slug = switch (r) {
-    HistoryRange.today => 'today',
-    HistoryRange.week => '7d',
-    HistoryRange.all => 'all',
-  };
-  return since == null ? slug : '$slug  since=${since.toIso8601String()}';
-}
-
-/// Row classification derived from a stored [TelemetrySample].
-///
-/// PUBLIC since design 0065: the device detail page renders the same rows with
-/// the same three states, and a second enum saying the same three words is how
-/// two surfaces start disagreeing about what "warning" means.
-enum HistoryRowStatus { normal, warning, event }
-
-/// Most list entries to build widgets for.
-///
-/// 🔴 **1,000 MINUTE WINDOWS, not 1,000 stored rows** (design 0061 §3.3.3).
-/// The number did not change when storage went to one row per second; its
-/// meaning did. The list groups by [kHistoryListBucketMs] before this applies,
-/// so it still covers 16 h 40 m exactly as it did when a row WAS a minute —
-/// that is why the cap did not have to move.
-///
-/// ⚠️ **It no longer saves any I/O.** It used to bound the rows SQLite
-/// touched; it now applies to the output of a `GROUP BY`, and SQLite has to
-/// scan and group every row in scope before it knows which windows are the
-/// newest — up to 86,400 rows per unit for "today" at second resolution,
-/// against 1,440 before. What survives is only the widget bound. The composite
-/// `idx_history_device_ts` (schema v17) is what pays for the scan, and it is
-/// why that index stopped being optional.
-///
-/// 🔴 Top-level since design 0065 so the detail page's embedded section uses
-/// the SAME cap. A second, smaller cap there would make the two surfaces show
-/// different numbers of rows for one unit (design 0065 §6 R5).
-const int kHistoryRowCap = 1000;
-
-/// Display window for the list: one minute, always.
-///
-/// Not the chart's dynamic width. The list is read row by row by a person
-/// looking for a moment, so its unit has to stay the same one all day; the
-/// chart's job is to fit a span on screen, so its width has to move. They were
-/// one number once and it made both worse.
-const int kHistoryListBucketMs = 60000;
-
-/// How many points the chart aims for across the visible span.
-const int kHistoryTargetBucketPoints = 180;
-
-/// The cut-off for [r] — `null` for [HistoryRange.all], which has none.
-///
-/// 🔴 Top-level, and the ONLY derivation (design 0065 §6 R5). The History tab
-/// and the detail page's embedded section must agree on what "today" means down
-/// to the millisecond, or one unit shows two sets of numbers on two screens and
-/// the difference is invisible to whoever reports it.
-DateTime? historySinceFor(HistoryRange r) {
-  final n = DateTime.now();
-  switch (r) {
-    case HistoryRange.today:
-      return DateTime(n.year, n.month, n.day);
-    case HistoryRange.week:
-      return DateTime(n.year, n.month, n.day).subtract(const Duration(days: 6));
-    case HistoryRange.all:
-      return null;
-  }
-}
-
-/// The chart's bucket width for a span starting at [from]: aim for
-/// [kHistoryTargetBucketPoints] points, never narrower than a minute nor wider
-/// than a day.
-///
-/// [from] is the range's cut-off, or — for "all" — the oldest stored row; null
-/// means there is nothing to span, and the minimum applies.
-///
-/// 🔴 Top-level for [historySinceFor]'s reason, and this one is the sharper
-/// half of it: the width decides how much each plotted point averages, so two
-/// surfaces computing it "about the same way" would draw two different-looking
-/// charts from identical data (design 0065 §6 R5, pinned by `T65-12`).
-int historyChartBucketMs(DateTime? from, {DateTime? now}) {
-  final spanMs = from == null
-      ? kHistoryListBucketMs
-      : (now ?? DateTime.now()).millisecondsSinceEpoch -
-          from.millisecondsSinceEpoch;
-  return (spanMs ~/ kHistoryTargetBucketPoints)
-      .clamp(kHistoryListBucketMs, 24 * 3600000);
-}
-
-/// Classify one display window — design 0061 §3.3.2, and the one rule in this
-/// file that is worth reading twice.
-///
-/// 🔴 **Thresholds are judged on the window's EXTREMES, never on its mean.**
-/// A minute holds ~60 stored seconds; one of them going over-voltage moves
-/// [HistoryListRow.maxPvlt] and leaves the mean flat. Judging on the mean would
-/// mark that minute `normal`, drop it out of "warnings only", and so erase — at
-/// read time — exactly the instantaneous event that storing seconds exists to
-/// preserve. The SQL and this method would both look entirely ordinary while
-/// doing it, which is why it is spelled out here and pinned by a test
-/// (`history_list_aggregation_test.dart`).
-///
-/// ⚠️ `mode` reaches here as `MAX(mode)` over the window — "did a cut-off or an
-/// anti-theft happen at any point", which is the only reading a discrete status
-/// has once a window holds several of them. Averaging a status code is
-/// meaningless.
-///
-/// 🔴 **Null thresholds still classify `event`** and that is load-bearing for
-/// design 0065: the detail page withholds `ov`/`uv`/`ot` unless the unit on
-/// screen is the unit on the link (§3.2.2), and what survives is the status the
-/// DEVICE ITSELF reported. Only the `warning` class is lost. Whoever changes
-/// this must not "simplify" the null case into `normal`.
-HistoryRowStatus historyClassifyRow(
-  HistoryListRow r, {
-  double? ov,
-  double? uv,
-  double? ot,
-}) {
-  final m = r.sample.mode;
-  if (m == ReportedStatus.antiTheftActive ||
-      m == ReportedStatus.cutOffActive) {
-    return HistoryRowStatus.event;
-  }
-  // MAX for over-voltage, MIN for under-voltage: each threshold is crossed
-  // from its own side, and the extreme on that side is the only value that
-  // can answer it.
-  final hi = r.maxPvlt;
-  final lo = r.minPvlt;
-  if (ov != null && hi != null && hi > ov) return HistoryRowStatus.warning;
-  if (uv != null && lo != null && lo < uv) return HistoryRowStatus.warning;
-  final t = r.maxTemp;
-  if (t != null && ot != null && t > ot) return HistoryRowStatus.warning;
-  return HistoryRowStatus.normal;
-}
+// ---------------------------------------------------------------------------
+// 🔵 **The shared kernel moved to `history_query.dart` on 2026-08-21**
+// (design 0079 S4 / owner ruling Q5): `HistoryRange`, `historyWindowLabel`,
+// `HistoryRowStatus`, the three constants, `historySinceFor`,
+// `historyChartBucketMs`, `historyClassifyRow` — plus the three queries
+// themselves, which both surfaces had been issuing from their own `_load`.
+//
+// 🔑 **Re-exported below rather than moved-and-fixed-up**, and that is the
+// point: every existing importer — this file's own callers, the detail page,
+// and a dozen test files — keeps working with no edit at all. A consolidation
+// whose first act is to break thirty imports gets reverted; one that is
+// invisible from the outside gets kept.
+// ---------------------------------------------------------------------------
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -270,26 +143,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _deviceId = scoped;
     });
 
+    // 🔴 The whole-database figure is THIS screen's, and stays here: it counts
+    // every unit, which is meaningful under a device picker and would be a
+    // confidently wrong number on a single unit's page (design 0065 §3.2.3).
     final total = await tele.historyAttributedCount();
-    final stats = await tele.historyStats(since: since, deviceId: scoped);
-    // Bucket width: aim for ~180 points across the visible span (>= 1 minute).
-    final bucketMs = historyChartBucketMs(since ?? stats.firstAt);
-    final buckets = await tele.historyBuckets(
-        since: since, bucketMs: bucketMs, deviceId: scoped);
-    // One entry per MINUTE, not one per stored row (design 0061 T3a). See
-    // [kHistoryRowCap] for what the cap counts now, and [HistoryListRow] for
-    // why the window carries its own min/max.
-    final rows = await tele.historyListBuckets(
-        since: since,
-        bucketMs: kHistoryListBucketMs,
-        limit: kHistoryRowCap,
-        deviceId: scoped);
+    // 🔵 The three queries now come from [loadHistorySlice] (design 0079 S4).
+    // Same three, same order, same arguments as before — the change is that
+    // the detail page's tab can no longer drift from them, which is what
+    // design 0065 §6 R5 had only a comment to enforce.
+    final slice = await loadHistorySlice(tele, since: since, deviceId: scoped);
     return _HistoryData(
-        rows: rows,
-        buckets: buckets,
-        stats: stats,
+        rows: slice.rows,
+        buckets: slice.buckets,
+        stats: slice.stats,
         total: total,
-        bucketMs: bucketMs);
+        bucketMs: slice.bucketMs);
   }
 
   void _reload() => setState(() => _future = _load());
@@ -357,6 +225,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // whole of design 0057 G2 for the live case.
     final facts = context.watch<DeviceFactsController?>();
     final ov = tele.warnOv, uv = tele.warnUv, ot = tele.warnOt;
+    final framing = historyChartFraming(l10n, _range);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -403,15 +272,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
                   children: [
                     IndustrialCard(
-                      heading: _range == HistoryRange.today
-                          ? l10n.historyChartTodayTitle
-                          : l10n.historyChartTitle,
+                      // 🔵 One derivation for both surfaces (design 0079 S4).
+                      heading: framing.heading,
                       headingIcon: Icons.show_chart,
                       child: HistoryTrendCard(
                         buckets: data.buckets,
                         stats: data.stats,
                         tempUnit: tempUnit,
-                        multiDay: _range != HistoryRange.today,
+                        multiDay: framing.multiDay,
                         bucketMs: data.bucketMs,
                       ),
                     ),

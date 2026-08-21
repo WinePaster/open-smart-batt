@@ -52,7 +52,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
-import '../../data/history_repo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -150,13 +149,13 @@ const Duration kDeviceHistoryCacheTtl = Duration(seconds: 30);
 /// truth — a miss simply re-queries.
 class _QueryCache {
   static const int _maxEntries = 8;
-  static final Map<String, ({DateTime at, DeviceHistoryData data})> _entries =
-      <String, ({DateTime at, DeviceHistoryData data})>{};
+  static final Map<String, ({DateTime at, HistorySlice data})> _entries =
+      <String, ({DateTime at, HistorySlice data})>{};
 
   static String keyOf(String deviceId, HistoryRange range) =>
       '$deviceId|${range.name}';
 
-  static DeviceHistoryData? get(String key) {
+  static HistorySlice? get(String key) {
     final e = _entries[key];
     if (e == null) return null;
     if (DateTime.now().difference(e.at) > kDeviceHistoryCacheTtl) {
@@ -166,7 +165,7 @@ class _QueryCache {
     return e.data;
   }
 
-  static void put(String key, DeviceHistoryData data) {
+  static void put(String key, HistorySlice data) {
     // Insertion-ordered, so the first key is the oldest write.
     if (_entries.length >= _maxEntries && !_entries.containsKey(key)) {
       _entries.remove(_entries.keys.first);
@@ -199,42 +198,33 @@ void debugClearDeviceHistoryCache() => _QueryCache.clear();
 // ⚠️ `T65-4b` / `T65-4c` went with it — see design 0079 §5.4. They pinned a
 // mechanism, and the mechanism is the thing that was removed.
 
-/// One tab's worth of query results.
-///
-/// 🔵 **`rows` is back (design 0079 S2), and it is not a revert of S0.** S0
-/// removed a `historyListBuckets` call whose entire result was consumed by one
-/// `rows.isEmpty` — a thousand minute windows to answer a boolean. The list is
-/// now DRAWN, so the rows are fetched to be read.
-///
-/// ⚠️ The empty check still goes through [HistoryStats.count], not through
-/// `rows`: it is the question being asked ("is there anything to report"), and
-/// it stays correct on the FB-85 case where a unit has rows but too few chart
-/// points to plot.
-class DeviceHistoryData {
-  const DeviceHistoryData({
-    required this.rows,
-    required this.buckets,
-    required this.stats,
-    required this.bucketMs,
-  });
+// 🔵 **`DeviceHistoryData` is gone (design 0079 S4).** It was field-for-field
+// [HistorySlice] — rows, buckets, stats, bucketMs — which is precisely the
+// duplication the owner's Q5 ruling was about: two surfaces carrying their own
+// copy of the same shape is how they start meaning different things by it.
+//
+// 🔑 The two facts its doc comment carried are kept where they are USED:
+//
+//  * why `rows` is fetched at all (S2 draws the list; S0 had removed a fetch
+//    whose entire result was one `rows.isEmpty`) — see `_load`;
+//  * why the empty check goes through `HistoryStats.count` and not through
+//    `rows` — see `_resultSlivers`, where the FB-85 case it protects lives.
 
-  static const DeviceHistoryData empty = DeviceHistoryData(
-    rows: [],
-    buckets: [],
-    stats: HistoryStats.empty,
-    bucketMs: kHistoryListBucketMs,
-  );
 
-  /// One entry per display WINDOW (a minute) — design 0061 T3a.
-  final List<HistoryListRow> rows;
-  final List<HistoryBucket> buckets;
-  final HistoryStats stats;
-
-  /// The chart's bucket width, from [historyChartBucketMs]. Carried rather than
-  /// recomputed at render time so the note under the chart cannot describe a
-  /// different width from the one the data was fetched at.
-  final int bucketMs;
-}
+// 🔵 **`debugDeviceHistoryBodyBuilds` and the P-2' memo it witnessed are GONE
+// (design 0079 S2).** The memo existed because `PackScaffold` — the shell the
+// block hung off — calls `context.watch<TelemetryController>()`, so the block's
+// `build` ran several times a second for as long as the page was open. Its own
+// comment called the cache key "the single most dangerous line in this file",
+// because a missed input freezes the surface on stale data: a failure far
+// harder to notice than the rebuild it prevents.
+//
+// This tab has no such driver. It is a SIBLING of the live half, not a child of
+// it, and it never watches [TelemetryController]. A mechanism kept past the
+// problem it solved is only a way to be wrong later.
+//
+// ⚠️ `T65-4b` / `T65-4c` went with it — see design 0079 §5.4. They pinned a
+// mechanism, and the mechanism is the thing that was removed.
 
 
 /// Counts completed queries, for tests.
@@ -309,7 +299,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   HistoryRange _range = HistoryRange.today;
   bool _exporting = false;
 
-  late Future<DeviceHistoryData> _future;
+  late Future<HistorySlice> _future;
 
   @override
   void initState() {
@@ -345,7 +335,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// nominally two and actually still three (the third was issued and thrown
   /// away — design 0065 §0.9's correction), then genuinely two after S0. The
   /// list makes the third one earn its place.
-  Future<DeviceHistoryData> _load({bool force = false}) async {
+  Future<HistorySlice> _load({bool force = false}) async {
     // Captured before the first await: this runs from `initState`, and a
     // `context.read` after an await may be addressing a page that has gone.
     final tele = context.read<TelemetryController>();
@@ -357,26 +347,15 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
       if (hit != null) return hit;
     }
     debugDeviceHistoryQueries++;
-    final since = historySinceFor(range);
-    final stats = await tele.historyStats(since: since, deviceId: deviceId);
-    // 🔴 `historyChartBucketMs`, never an inline "about the same" calculation.
-    // The width decides how much each plotted point averages; two surfaces
-    // computing it separately is how one unit ends up with two charts (§6 R5).
-    final bucketMs = historyChartBucketMs(since ?? stats.firstAt);
-    final buckets = await tele.historyBuckets(
-        since: since, bucketMs: bucketMs, deviceId: deviceId);
-    // 🔴 `kHistoryListBucketMs` and `kHistoryRowCap`, both shared with the
-    // History tab. The cap especially: two surfaces loading different amounts
-    // of the same unit's history is design 0065 §6 R5 in its purest form, and
-    // slivers make the rows cheap to RENDER — not a reason to fetch more.
-    final rows = await tele.historyListBuckets(
-      since: since,
-      bucketMs: kHistoryListBucketMs,
-      limit: kHistoryRowCap,
+    // 🔵 design 0079 S4: the three queries live in [loadHistorySlice], shared
+    // with the History tab. What stays here is what is genuinely this
+    // surface's — the cache, the counter, and the fact that `deviceId` is
+    // never null.
+    final data = await loadHistorySlice(
+      tele,
+      since: historySinceFor(range),
       deviceId: deviceId,
     );
-    final data = DeviceHistoryData(
-        rows: rows, buckets: buckets, stats: stats, bucketMs: bucketMs);
     _QueryCache.put(key, data);
     return data;
   }
@@ -490,7 +469,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                   // below, which is what makes the row possible: none of them
                   // needs the query's result.
                   SliverToBoxAdapter(child: _rangeRow(l10n)),
-                  FutureBuilder<DeviceHistoryData>(
+                  FutureBuilder<HistorySlice>(
                     future: _future,
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
@@ -502,7 +481,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                       }
                       return _resultSlivers(
                         l10n,
-                        snap.data ?? DeviceHistoryData.empty,
+                        snap.data ?? HistorySlice.empty,
                         tempUnit: tempUnit,
                         deviceClass: deviceClass,
                         ov: ov,
@@ -598,13 +577,14 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
 
   Widget _resultSlivers(
     AppLocalizations l10n,
-    DeviceHistoryData data, {
+    HistorySlice data, {
     required TempUnit tempUnit,
     required ProductClass deviceClass,
     double? ov,
     double? uv,
     double? ot,
   }) {
+    final framing = historyChartFraming(l10n, _range);
     final chartEmpty = data.buckets.length < 2;
     // 🔴 The tab is still DRAWN when there is nothing in it. A surface that
     // vanishes for a unit with no records is the dead-end shape FB-53 and
@@ -622,15 +602,16 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
       slivers: [
         SliverToBoxAdapter(
           child: IndustrialCard(
-            heading: _range == HistoryRange.today
-                ? l10n.historyChartTodayTitle
-                : l10n.historyChartTitle,
+            // 🔵 One derivation for both surfaces (design 0079 S4). The heading
+            // and `multiDay` are one decision, and it used to be made here AND
+            // in `history_screen.dart`, four lines apart in two files.
+            heading: framing.heading,
             headingIcon: Icons.show_chart,
             child: HistoryTrendCard(
               buckets: data.buckets,
               stats: data.stats,
               tempUnit: tempUnit,
-              multiDay: _range != HistoryRange.today,
+              multiDay: framing.multiDay,
               bucketMs: data.bucketMs,
             ),
           ),
