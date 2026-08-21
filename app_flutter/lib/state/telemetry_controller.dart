@@ -623,6 +623,36 @@ class TelemetryController extends ChangeNotifier
   @override
   DateTime? get lastTelemetryAt => _stalls[_session.deviceId]?.lastSampleAt;
 
+  /// Is this frame from the unit currently being recorded?
+  ///
+  /// 🔴 FB-88 / design 0078. The same gate as
+  /// `ConnectionController._sampleIsFromCurrentLink`, against this class's own
+  /// notion of "current": while a previous link is still tearing down it keeps
+  /// sending, and a frame from the OLD unit landing after the new one's session
+  /// has begun would freshen the new unit's stall watch, feed the new unit's
+  /// trend, and be folded into the new unit's history second — three readings
+  /// of one unit recorded as another's.
+  ///
+  /// Both "cannot tell" cases let the frame through, exactly as they do in the
+  /// controller:
+  ///
+  /// * **G2 — the sample carries no id.** Test doubles build samples by hand;
+  ///   dropping them here would break those suites in behaviour rather than at
+  ///   compile time. The real transport always stamps (`ble_service.dart`).
+  /// * **G3 — no session is open.** Nothing to compare with, and `_maybeAutoLog`
+  ///   already refuses to record a row with no device (design 0043 §3.1), so
+  ///   nothing is filed under a guess either way.
+  ///
+  /// ⚠️ This does NOT change attribution — see the note in [_onTelemetry]. It
+  /// only removes frames that were never this session's to begin with.
+  bool _sampleIsFromCurrentSession(TelemetrySample s) {
+    final from = s.deviceId;
+    if (from == null) return true; // G2
+    final current = _session.deviceId;
+    if (current == null) return true; // G3
+    return from == current;
+  }
+
   Duration? _ageOf(String? deviceId) {
     final at = _stalls[deviceId]?.lastSampleAt;
     return at == null ? null : DateTime.now().difference(at);
@@ -645,11 +675,20 @@ class TelemetryController extends ChangeNotifier
   }
 
   void _onTelemetry(TelemetrySample s) {
+    // 🔴 FB-88 / design 0078 (G1), first line for the same reason it is first
+    // in `ConnectionController._onTelemetrySample`: everything below reads the
+    // frame as the CURRENT unit's, starting with `_sample`, which is what the
+    // dashboard renders.
+    if (!_sampleIsFromCurrentSession(s)) return;
     _sample = s;
-    // The telemetry stream carries no device id, so the recording session is
-    // the attribution — same source the history row about to be written uses,
-    // so a sample can never be counted against one unit and stored under
-    // another.
+    // Attribution is the recording SESSION, not the frame's own id — and that
+    // is deliberately unchanged by design 0078 (Q6): today at most one link is
+    // alive, so the two agree, and re-pointing attribution at the new field
+    // would be a behaviour change with no defect behind it. It also keeps this
+    // reading the same source as the history row about to be written, so a
+    // sample cannot be counted against one unit and stored under another.
+    // design 0046 deliverable 2 (several live links) is what makes the two
+    // diverge; that is where the attribution question belongs.
     final watch = _watchFor(_session.deviceId);
     watch.lastSampleAt = DateTime.now();
     watch.samples++;

@@ -57,6 +57,40 @@ const radioLevelErrorCodes = <String>{
   'permission_denied',
 };
 
+/// What the identity check (design 0068 C) has been able to say about the link
+/// currently held — THREE answers, not two.
+///
+/// 🔑 design 0078 Q4. The controller used to carry a single `_identityMismatch`
+/// bool, and `false` meant two entirely different things: "we compared the
+/// wire's `0x38` against the saved record and they agree" and "we have not
+/// compared anything — no record, no address on that record, or no `0x38` has
+/// arrived yet". Nothing downstream could tell a verified link from an
+/// unverifiable one, so nothing downstream could act on verification at all.
+///
+/// FB-93 (design 0077 Q1) is the caller that needs the distinction, which is
+/// why it is added here rather than there: both features read the same few
+/// lines of [ConnectionController._verifyIdentity], and splitting the change
+/// across two releases would mean touching that method twice.
+///
+/// ⚠️ [verified] is a statement about THIS link, not about the unit: it is
+/// reset by every [ConnectionController.connect]. And [unchecked] is not a
+/// weaker [mismatch] — a first connect has no yardstick, only something to
+/// learn, and treating "cannot tell" as "wrong unit" is precisely the naive
+/// implementation design 0068 warns about.
+enum IdentityVerdict {
+  /// Nothing to compare yet (or ever): no saved record, no stored MAC on it, or
+  /// no `0x38` frame so far. The state every connection starts in.
+  unchecked,
+
+  /// The wire's `0x38` matched the address the saved record holds. Positive:
+  /// this link has been shown to be the unit that was asked for.
+  verified,
+
+  /// The wire's `0x38` disagreed with the saved record. The link is dropped and
+  /// `wrong_device` is filed; see [ConnectionController._verifyIdentity].
+  mismatch,
+}
+
 /// A connection error TOGETHER WITH the unit it is a fact about (FB-86).
 ///
 /// 🔴 WHY THIS TYPE EXISTS. The controller used to hold the error as a bare
@@ -677,9 +711,34 @@ class ConnectionController extends ChangeNotifier {
   /// to be reported under — see [_verifyIdentity] and [ConnectionError].
   String? _requestedDeviceId;
 
-  /// One identity report per connection: the check runs on every telemetry
-  /// sample (~5 Hz) and the answer cannot change within one link.
-  bool _identityMismatch = false;
+  /// What the identity check has been able to say about the link in hand.
+  ///
+  /// One identity REPORT per connection: the check runs on every telemetry
+  /// sample (~5 Hz) and the answer cannot change within one link, so
+  /// [IdentityVerdict.mismatch] is also the "already reported" latch.
+  ///
+  /// design 0078 Q4 replaced the `bool _identityMismatch` this used to be. One
+  /// field with three states rather than two booleans, deliberately: "verified"
+  /// and "mismatched" are answers to the SAME question, and this codebase has
+  /// already paid for keeping one piece of state in two places.
+  IdentityVerdict _identity = IdentityVerdict.unchecked;
+
+  /// Whether the unit on the other end of this link has been shown to be the
+  /// one that was asked for (design 0078 Q4; read by FB-93 / design 0077 Q1).
+  ///
+  /// 🔑 Read this as three-valued. [IdentityVerdict.unchecked] means the
+  /// question could not be answered — a first connect, or a `0x38` that has not
+  /// arrived — and MUST NOT be rendered as a negative claim about the unit.
+  IdentityVerdict get identityVerdict => _identity;
+
+  /// The last foreign device id this controller refused a frame from, or null
+  /// while frames are arriving from the expected link (design 0078 G1).
+  ///
+  /// Exists only so the diagnostic line is written ONCE per run of foreign
+  /// frames instead of at the 5 Hz they arrive at: a 3.2 s teardown window is
+  /// ~16 frames, and sixteen identical lines would bury the one fact worth
+  /// having.
+  String? _foreignFrameFrom;
 
   bool _wantScan = false; // user asked to scan; re-fire when adapter turns on
 
@@ -1623,7 +1682,10 @@ class ConnectionController extends ChangeNotifier {
     // the same reason `seedClass` exists two lines below.
     _requestedDeviceId = requestedId == deviceId ? null : requestedId;
     _expectedMac = _devices?.deviceFor(requestedId ?? deviceId)?.mac;
-    _identityMismatch = false;
+    _identity = IdentityVerdict.unchecked;
+    // design 0078 G1: a fresh target means the previous run of refused frames
+    // (if any) is over, so the next one gets its own diagnostic line.
+    _foreignFrameFrom = null;
     // FB-43: seed routing NOW, not at `ready`. The pack/power-bank layout is
     // chosen while the link is still coming up, and on a stale iOS NSUUID that
     // can take ~10 s. `seedClass` covers a rebound id whose record still lives
@@ -2734,7 +2796,90 @@ class ConnectionController extends ChangeNotifier {
   /// logged once rather than every second.
   final Set<int> _loggedUnknownStatus = <int>{};
 
+  /// Is this frame from the link we are currently asking for?
+  ///
+  /// 🔴 FB-88 / design 0078. Switching from unit A to unit B replaces the
+  /// target SYNCHRONOUSLY in [connect] (`_desiredDeviceId`, `_expectedMac`) and
+  /// then tears A's link down ASYNCHRONOUSLY; A keeps sending for the length of
+  /// that teardown — 49 ms and 3,240 ms in the two field captures — so A's
+  /// frames arrive while B is the yardstick. Six device switches in
+  /// `2026.08.18/008` produced two `wrong_device` drops that way, one of them
+  /// 20 ms after the tap, which is less time than a BLE connect plus service
+  /// discovery plus a `0x38` read physically takes. The unit was never wrong;
+  /// the frame was never B's.
+  ///
+  /// TWO ways of saying "I cannot tell", and BOTH let the frame through:
+  ///
+  /// * **G2 — the sample does not say (`deviceId == null`).** Every sample a
+  ///   test builds by hand is like this, and 45 test files publish samples on
+  ///   their own stubbed `telemetry` stream. Dropping those would break them in
+  ///   BEHAVIOUR rather than at compile time, which is the worse of the two
+  ///   failure modes by a distance — a suite that still passes while testing
+  ///   nothing. This is not the gate being lenient: the real transport stamps
+  ///   every frame it publishes (`ble_service.dart`, `_onNotify`), and that is
+  ///   pinned by its own guard test rather than left to trust, which is the
+  ///   price of letting null through here.
+  /// * **G3 — we have no target (`_desiredDeviceId == null`).** [disconnect]
+  ///   clears it, so a frame still in flight after a manual disconnect has
+  ///   nothing to be compared with. Refusing it would be a guess, and the
+  ///   guard's whole point is to stop guessing about attribution.
+  ///
+  /// G3, on WHICH target: `_desiredDeviceId`, not `_ble.connectedDeviceId` and
+  /// not `_expectedMac`.
+  ///
+  /// * `_desiredDeviceId` is written synchronously by [connect] before it
+  ///   awaits anything, so throughout the whole teardown window it already
+  ///   names B — which is exactly the interval that needs an answer. It is also
+  ///   the id [_adoptRestoredArm] sets when iOS hands a restored link back, so
+  ///   the cold-start path is covered rather than left fail-open.
+  /// * `_ble.connectedDeviceId` would REPRODUCE the bug rather than catch it.
+  ///   It reads `_current?.device?.remoteId`, and `BleService.connect` awaits
+  ///   the platform disconnect of the previous link BEFORE it re-points
+  ///   `_current` — so for the whole teardown window the service still answers
+  ///   with A, the very unit whose frames need refusing. (Once `_teardown`
+  ///   nulls `device` it answers null instead, which fails open. It is never
+  ///   the id we want, in either phase.) Pinned by T2b.
+  /// * `_expectedMac` is the wire address, a different namespace from the
+  ///   platform id the frame is stamped with (an NSUUID on iOS), and it is the
+  ///   yardstick this gate exists to protect. Comparing against it would be
+  ///   circular.
+  bool _sampleIsFromCurrentLink(TelemetrySample s) {
+    final from = s.deviceId;
+    // G2 — see above. Absence of a claim is not a claim of absence.
+    if (from == null) return true;
+    final want = _desiredDeviceId;
+    // G3 — nothing to compare against.
+    if (want == null) return true;
+    if (from == want) {
+      _foreignFrameFrom = null;
+      return true;
+    }
+    // Once per run, not once per frame (see [_foreignFrameFrom]). Filed under
+    // the unit we ASKED for, matching how every other line in this controller
+    // is scoped; both ids are hashed because a diagnostic line is exported
+    // material (design 0027 §3.1).
+    if (_foreignFrameFrom != from) {
+      _foreignFrameFrom = from;
+      _event(
+          'telemetry from ${shortDeviceHash(from)} ignored: this link is '
+          '${shortDeviceHash(want)} — the previous connection is still '
+          'tearing down (FB-88)',
+          deviceId: want);
+    }
+    return false;
+  }
+
   void _onTelemetrySample(TelemetrySample s) {
+    // 🔴 FB-88 / design 0078 (G1). THE FIRST LINE, before anything at all is
+    // read off this sample. Everything below attributes the frame to the link
+    // we believe we hold — the pack-class resolver, the pack label, the ongoing
+    // notification's reading line, the capacitor status log, `liveMac`, and
+    // only THEN the identity check — so a gate placed anywhere further down
+    // would leave five consumers already fed. The comment on `_verifyIdentity`
+    // says "before anything is attributed to this link"; it was true only of
+    // the four persistence calls beneath it, and this is what makes it true of
+    // the whole method.
+    if (!_sampleIsFromCurrentLink(s)) return;
     // The link answered — whatever the resume probe was waiting for, it came.
     _resumeProbeTimer?.cancel();
     _resumeProbeTimer = null;
@@ -2901,13 +3046,29 @@ class ConnectionController extends ChangeNotifier {
   /// us to the very unit we just rejected. It leaves [_lastError] standing —
   /// which is the behaviour FB-87 ② deliberately keeps.
   void _verifyIdentity(TelemetrySample s) {
-    if (_identityMismatch) return;
+    if (_identity == IdentityVerdict.mismatch) return;
     final expected = _expectedMac;
     final actual = s.mac;
+    // The two "cannot tell" cases, and they stay [IdentityVerdict.unchecked]
+    // rather than becoming a weak pass (design 0078 Q4): no yardstick on the
+    // saved record, and no `0x38` on this frame. A reader of [identityVerdict]
+    // must be able to tell "shown to be the right unit" from "never asked".
     if (expected == null || expected.isEmpty) return;
     if (actual == null || actual.isEmpty) return;
-    if (sameMac(expected, actual)) return;
-    _identityMismatch = true;
+    if (sameMac(expected, actual)) {
+      // 🆕 design 0078 Q4 — the POSITIVE signal, the whole of what this case
+      // adds. Previously this was a bare `return` and the absence of a mismatch
+      // was the only trace, which is why nothing could act on verification.
+      //
+      // ⚠️ No `notifyListeners()` here, deliberately: Q4 asks for a new SIGNAL
+      // and explicitly not for a behaviour change, and this method runs at
+      // ~5 Hz on a path that already notifies when it has something to say. The
+      // consumer that wants this on screen is FB-93 (design 0077 Q1); it can
+      // add the notification together with the surface that reads it.
+      _identity = IdentityVerdict.verified;
+      return;
+    }
+    _identity = IdentityVerdict.mismatch;
     // Filed under what the USER asked for — the saved record's id, which is the
     // id their screen is keyed by. Filing it under the id we dialled would put
     // the report on a unit they never chose (FB-87 ①).

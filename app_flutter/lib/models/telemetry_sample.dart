@@ -175,6 +175,34 @@ class TelemetrySample {
   /// export writes its [shortDeviceHash] instead. See design 0027 §3.1.
   final String? mac;
 
+  /// Which unit sent the frames this sample folds — the BLE remote id of the
+  /// link it came off, stamped by `BleService` at the ONE point a sample leaves
+  /// the transport.
+  ///
+  /// 🔴 FB-88 / design 0078 (M1-b). The telemetry stream used to be a bare
+  /// `Stream<TelemetrySample>` with no way to ask whose frame this is, even
+  /// though the BLE layer is per-device internally and the emit site holds the
+  /// link — it flattened its own structure on the way out. That cost a real
+  /// defect: switching from unit A to unit B tears A's link down
+  /// asynchronously, A keeps sending for the length of the teardown (49 ms and
+  /// 3,240 ms measured, `2026.08.18/008`), and the consumer measured A's frame
+  /// against B's yardstick and dropped a perfectly good link as "wrong device".
+  /// Identity travels WITH the frame now, so a consumer can refuse one that is
+  /// not its own.
+  ///
+  /// NULLABLE, and that is load-bearing rather than laziness: the decoder
+  /// accumulates samples that have no link behind them, tests construct them by
+  /// hand, and history reads them back out of a table. Null therefore means
+  /// "this sample does not say whose it is", which is NOT the claim "this
+  /// sample is from another unit" — consumers must let null through. See
+  /// design 0078 §4 G2.
+  ///
+  /// NOT persisted: [toMap] deliberately has no column for it, for the reason
+  /// stated there — a stored row's attribution is the repository's to stamp,
+  /// and one fact with two writers is a shape this codebase has been caught by
+  /// before.
+  final String? deviceId;
+
   /// Reported mode/status code (b4) — selector 0x23. Pack states are 0/1/2
   /// (normal / anti-theft / cut-off); a capacitor reports its own 0x05 baseline
   /// instead. Corrected 2026-08-01: this said "0/2/4", and `0x04` occurs
@@ -223,6 +251,7 @@ class TelemetrySample {
     this.serial,
     this.dealerCode,
     this.mac,
+    this.deviceId,
     this.mode,
     this.twfRaw,
   });
@@ -338,6 +367,7 @@ class TelemetrySample {
     String? serial,
     String? dealerCode,
     String? mac,
+    String? deviceId,
     int? mode,
     int? twfRaw,
   }) {
@@ -367,6 +397,7 @@ class TelemetrySample {
       serial: serial ?? this.serial,
       dealerCode: dealerCode ?? this.dealerCode,
       mac: mac ?? this.mac,
+      deviceId: deviceId ?? this.deviceId,
       mode: mode ?? this.mode,
       twfRaw: twfRaw ?? this.twfRaw,
     );
@@ -391,8 +422,11 @@ class TelemetrySample {
         // SOC was decoded and shown on the power-bank view but never persisted,
         // so it could not be exported — a dealer asked for the charge
         // percentage and the column simply did not exist. `device_id` is NOT
-        // here — that
-        // is a storage concern the repo stamps on, not sample data.
+        // here, and stays out now that [deviceId] exists (FB-88 / design
+        // 0078): a stored row's attribution is a storage concern the repo
+        // stamps on, whereas the sample field is a TRANSPORT fact — which
+        // link this frame came off. Writing it here as well would give one
+        // column two writers that can disagree.
         'soc': socPercent,
       };
 
