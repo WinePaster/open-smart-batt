@@ -74,10 +74,10 @@ class TrendTrack {
 /// 🔴 This said "with a scrub cursor" until 2026-08-21 and there has never been
 /// one — the chart takes no gestures at all, and the only value on screen is
 /// each track's latest ([_TrackHeader]). The history chart grew a scrub in
-/// design 0077; doing the same here is design 0078's question, and it is NOT
+/// design 0076; doing the same here is design 0078's question, and it is NOT
 /// the same job: this buffer advances ~4.8 times a second, so a cursor has to
 /// decide whether the time window freezes under the finger and when it catches
-/// up again (0077 §3.8 ③).
+/// up again (0076 §3.8 ③).
 class LiveTrendChart extends StatefulWidget {
   const LiveTrendChart({
     super.key,
