@@ -162,8 +162,12 @@ enum AlertsDisabledReason {
   /// doc.
   deviceTypePending,
 
-  /// A device-type byte arrived and this build does not recognise it, and no
-  /// persisted class stood in for it either.
+  /// A device-type byte arrived and this build does not recognise it.
+  ///
+  /// 🔵 **§7.5.7: a persisted class does NOT rescue this** (~~"and no persisted
+  /// class stood in for it either"~~). An unrecognised byte is the unit telling
+  /// us it is something we cannot name, and that statement is newer than any
+  /// record of an earlier session.
   ///
   /// The durable case, and the one §7.5.6 C-3 puts on screen: switch disabled,
   /// "尚未辨識此裝置類型，無法提供警告". It is also the actionable one for us —
@@ -536,6 +540,9 @@ CategoryAlertDefaults? categoryDefaultsFor({
 /// wins anyway); callers resolving an OFFLINE saved device pass the persisted
 /// `SavedDevice.productClass`, which is the only evidence available with no
 /// link open.
+/// 🔵 **It stands in only where there is NO live byte** (§7.5.7). A byte that
+/// arrived and was not recognised overrules it outright — see the gate in the
+/// body and [AlertsDisabledReason.deviceTypeUnrecognised].
 ///
 /// It decides three things, and none of them is a number:
 ///
@@ -562,33 +569,52 @@ AlertThresholds resolveThresholds({
   DeclaredCategory? category,
   ProductClass wireClass = ProductClass.unknown,
 }) {
-  // The live byte outranks the argument: `0x10 b4` is what THIS link just said,
-  // while [wireClass] is a value persisted in some earlier session. They agree
-  // in every ordinary case; the ordering matters only for a unit whose class
-  // changed under us (a re-used MAC, a restored backup), where the thing in
-  // front of us is the better evidence. Before the frame arrives
-  // `fromDeviceType(null)` is [ProductClass.unknown] and the stored answer
-  // stands in, which is what keeps an offline saved device resolvable at all.
-  final live = ProductClass.fromDeviceType(reported?.deviceType);
-  final wire = live == ProductClass.unknown ? wireClass : live;
+  // 🔵 §7.5.7 (third ruling of 2026-08-22) — the raw byte is kept, not just the
+  // class it maps to, because the two ways of arriving at [ProductClass.unknown]
+  // are NOT the same fact and the enum cannot tell them apart:
+  //
+  //   * an UNRECOGNISED byte is EVIDENCE. The unit in front of us is saying
+  //     "I am something", and this build cannot name it. That statement is
+  //     newer than anything a previous session wrote down, so it OUTRANKS the
+  //     persisted class — a firmware bump that changes the byte is exactly the
+  //     case where the old record is the wrong answer, and it is also what a
+  //     new hardware generation looks like (`0x18` read as unknown for a full
+  //     day in 2026-08);
+  //   * an ABSENT byte is NO EVIDENCE at all. The `0x10` has not arrived on
+  //     this link, or there is no link. Nothing has been contradicted, so the
+  //     persisted class stands in — which is what keeps an offline saved
+  //     device resolvable, and what stops every connect flashing "無法提供警告"
+  //     during its first frames.
+  //
+  // ~~`final wire = live == ProductClass.unknown ? wireClass : live;`~~ 🔴 that
+  // single line was the gap: it let case one fall through to case two, so a
+  // device whose byte we no longer recognise kept being evaluated on the
+  // strength of an old record.
+  final liveByte = reported?.deviceType;
+  final live = ProductClass.fromDeviceType(liveByte);
 
-  // 🔴 §7.5.6 C-2 — the device-level gate, and it is deliberately the FIRST
-  // statement after the class is known. Everything below this line interprets
+  // 🔴 §7.5.6 C-2 + §7.5.7 — the device-level gate, and it is deliberately the
+  // FIRST thing after the class is known. Everything below this line interprets
   // numbers in the light of what the unit is; if that is not known, there is
   // nothing to interpret them in the light of. Placing the check here rather
   // than folding it into `pick` is what makes "no exceptions" structural: a
   // later edit cannot let a user value through by accident, because by then the
   // function has already returned.
+  if (liveByte != null && live == ProductClass.unknown) {
+    // Evidence beats the record: no `wireClass` fallback on this branch, by
+    // ruling, even when the persisted class is a perfectly good one.
+    return const AlertThresholds.unwatched(
+        AlertsDisabledReason.deviceTypeUnrecognised);
+  }
+
+  // No byte yet ⇒ the persisted class is the only evidence there is.
+  final wire = liveByte == null ? wireClass : live;
   if (wire == ProductClass.unknown) {
-    // `deviceType == null` is the whole difference between "the 0x10 has not
-    // arrived yet" and "it arrived and we do not know the byte" — see
-    // [AlertsDisabledReason] for why the UI must not conflate them. Note this
-    // reads the RAW byte, not `live`: an unrecognised byte and an absent one
-    // both map to [ProductClass.unknown], which is exactly the distinction the
-    // class enum throws away.
-    return AlertThresholds.unwatched(reported?.deviceType == null
-        ? AlertsDisabledReason.deviceTypePending
-        : AlertsDisabledReason.deviceTypeUnrecognised);
+    // Only reachable with no byte AND no persisted class, so the reason is
+    // always the transient one — see [AlertsDisabledReason] for why the UI must
+    // not conflate it with the durable case above.
+    return const AlertThresholds.unwatched(
+        AlertsDisabledReason.deviceTypePending);
   }
 
   // §7.5.1.1 A — the suppression reads the wire. See

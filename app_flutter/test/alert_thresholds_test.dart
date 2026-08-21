@@ -692,18 +692,83 @@ void main() {
           isFalse);
     });
 
-    test('a persisted class still rescues an unrecognised live byte', () {
-      // Not a back door: the gate asks the RESOLVED class, and an earlier
-      // session that did recognise this unit is evidence like any other. Pinned
-      // because it is the behaviour that keeps a saved device usable across a
-      // firmware bump that changes the byte.
+    // 🔴 ~~test('a persisted class still rescues an unrecognised live byte')~~
+    // REVERSED by §7.5.7 (third ruling of 2026-08-22), not deleted silently:
+    // it used to assert `isDeviceUnwatched == false` for exactly the input the
+    // group below now expects to be unwatched. Its old rationale ("the gate
+    // asks the RESOLVED class, and an earlier session that recognised this unit
+    // is evidence like any other") is what the owner ruled against — an
+    // unrecognised byte is not the absence of evidence, it is evidence of
+    // change, and it is newer than the record. Kept as a note rather than a
+    // renamed test so the file never holds two cases asserting opposite things
+    // about `deviceType: 0x33` + a good `wireClass` ("同檔兩處互相矛盾").
+  });
+
+  // ---------------------------------------------------------------------------
+  group('§7.5.7 — an unrecognised live byte outranks the persisted class', () {
+    // The third ruling of 2026-08-22, closing the gap the C-2 implementation
+    // reported against itself: `live == unknown` used to fall back to the
+    // persisted class, which merged "no byte" and "a byte we cannot read" into
+    // one branch. They are opposites — no evidence versus fresh evidence of
+    // change — so all three rows of the ruling's table get a test.
+
+    test('row 1 — no byte yet: the persisted class carries the evaluation', () {
+      // NOT `deviceTypePending`. Nothing has contradicted the record, and a
+      // screen that went dark for the first frames of every connect would be
+      // flashing a false alarm about the alarms.
       final r = resolveThresholds(
-        wireClass: ProductClass.supercapacitor,
-        reported: _reported(deviceType: 0x33),
+        wireClass: ProductClass.smartBattery,
+        reported: _reported(ov: 15.2, ot: 62),
       );
 
       expect(r.isDeviceUnwatched, isFalse);
-      expect(r.ov, const ResolvedThreshold(14.8, ThresholdSource.appDefault));
+      expect(r.disabledReason, AlertsDisabledReason.none);
+      expect(r.ov, const ResolvedThreshold(15.2, ThresholdSource.device),
+          reason: 'evaluated normally on the strength of the stored class');
+    });
+
+    test('row 2 — an unrecognised byte disables the unit even though the '
+        'persisted class is a good one', () {
+      // 🔑 THE fix. 0x31 is not in `product_class.dart`; the unit is saying "I
+      // am something" and this build cannot name it. That statement is newer
+      // than `saved_devices.product_class`, so the record loses — which is also
+      // what a firmware bump and a new hardware generation look like from here
+      // (`0x18` read as unknown for a full day in 2026-08).
+      final r = resolveThresholds(
+        wireClass: ProductClass.smartBattery,
+        reported: _reported(ov: 15.2, uv: 12.4, ot: 62, deviceType: 0x31),
+      );
+
+      for (final k in AlertKind.values) {
+        expect(r[k], ResolvedThreshold.unavailable, reason: k.name);
+      }
+      expect(r.disabledReason, AlertsDisabledReason.deviceTypeUnrecognised,
+          reason: 'the durable case, and the one the UI may show');
+    });
+
+    test('row 3 — no byte and no persisted class is the pending case', () {
+      final r = resolveThresholds(
+        wireClass: ProductClass.unknown,
+        reported: _reported(ov: 15.2),
+      );
+
+      expect(r.disabledReason, AlertsDisabledReason.deviceTypePending,
+          reason: 'transient: the 0x10 has not been seen on this link');
+      expect(r.hasAny, isFalse);
+    });
+
+    test('row 2 beats layer ① too — a user threshold does not rescue it '
+        'either', () {
+      // The C-2 back doors do not reopen just because a persisted class exists:
+      // the gate still returns before layer ① is read.
+      final r = resolveThresholds(
+        userUv: 12.0,
+        wireClass: ProductClass.supercapacitor,
+        reported: _reported(deviceType: 0x31),
+      );
+
+      expect(r.hasAny, isFalse);
+      expect(r.disabledReason, AlertsDisabledReason.deviceTypeUnrecognised);
     });
   });
 
