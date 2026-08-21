@@ -16,6 +16,7 @@
 //
 // CLEAN-ROOM: expectations derive from this project's own source and captures.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
@@ -1041,6 +1042,58 @@ void main() {
       expect(find.textContaining('span'), findsOneWidget);
     });
   });
+  // ==========================================================================
+  // T79-12 — the two surfaces have ONE derivation of the three queries.
+  //
+  // 🔴 **This is design 0065 §6 R5 finally becoming structural.** Until
+  // 2026-08-21 it was held off by a comment in each `_load` saying "the same
+  // three, in the same order, with the same arguments as the other one" —
+  // discipline, and discipline is what a comment can buy. The owner ruled on
+  // Q5 to consolidate; this test is what stops the split growing back.
+  //
+  // A SOURCE-level check, and deliberately so: the failure it guards against
+  // is not a wrong pixel or a wrong number, it is one surface quietly acquiring
+  // its own copy of the queries. That produces no error and no visible
+  // difference until the day the two copies disagree — and by then whichever
+  // one is wrong has been shipping for weeks.
+  // ==========================================================================
+  group('T79-12 — one derivation of the three queries (Q5)', () {
+    const surfaces = <String>[
+      'lib/ui/history/history_screen.dart',
+      'lib/ui/history/device_history_tab.dart',
+    ];
+
+    test('neither surface issues the three itself', () {
+      for (final path in surfaces) {
+        final src = File(path).readAsStringSync();
+        expect(src.contains('loadHistorySlice('), isTrue,
+            reason: '$path must go through the shared loader');
+        for (final q in ['historyStats(', 'historyBuckets(', 'historyListBuckets(']) {
+          expect(src.contains(q), isFalse,
+              reason: '$path calls `$q` directly. That is the split design '
+                  '0079 S4 closed: the order matters (the chart bucket width '
+                  'is derived from `stats.firstAt` on the "all" range), and so '
+                  'does `kHistoryRowCap` — two surfaces loading different '
+                  'amounts of one unit is design 0065 §6 R5 in its purest '
+                  'form. Add it to `loadHistorySlice` instead.');
+        }
+      }
+    });
+
+    test('and the chart frames itself from one place', () {
+      // The smaller half of the same rule. `heading` and `multiDay` are one
+      // decision — "is this chart about today, or about a span of days" — and
+      // it used to be made four lines apart in two files. A surface that
+      // titled a multi-day chart "Today's" while plotting it as multi-day
+      // would have been wrong in a way nothing was watching for.
+      for (final path in surfaces) {
+        expect(File(path).readAsStringSync().contains('historyChartFraming('),
+            isTrue,
+            reason: '$path must not re-derive the chart heading');
+      }
+    });
+  });
+
   // ==========================================================================
   // T79-10 — the badge on the history tab (design 0079 Q3).
   // ==========================================================================
