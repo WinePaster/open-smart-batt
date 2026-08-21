@@ -4,6 +4,7 @@
 library;
 
 export 'telemetry_sample.dart';
+export 'alert_thresholds.dart';
 export 'saved_device.dart';
 export 'app_settings.dart';
 export 'log_entry.dart';
