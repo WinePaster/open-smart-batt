@@ -16,7 +16,17 @@
 ///   ① what the USER set for THIS unit          (most specific, always wins)
 ///   ② what THIS unit reported in its `0x2B`    (per-unit factory setting)
 ///   ③ our per-category default table           (§3.2.1, a fallback)
+///        — only while the wire does not contradict the declaration (§7.5.1.1 B)
 ///   ④ nobody knows                             ⇒ do not evaluate, do not guess
+///
+/// 🔵 **What the DECLARATION may and may not do (design 0080 §7.5.1, ruling
+/// 2026-08-22).** Layer ③ is keyed on [DeclaredCategory], and that is the whole
+/// of its involvement: it hands over a NUMBER. Whether a field is watched at
+/// all — the power bank's two voltage rows — is decided by the wire's
+/// [ProductClass], never by what the owner tapped. Design 0066 therefore needs
+/// no amendment: a declared value still gates nothing. See
+/// [kPowerBankWatchesTemperatureOnly] for the incident shape that forced the
+/// distinction.
 ///
 /// 🔴 **Why ② outranks ③, stated once because it is the load-bearing claim.**
 /// `0x2B` is per-UNIT, not per-category: `tools/fb.py counter 0x2B` (2026-08-22)
@@ -39,6 +49,7 @@
 library;
 
 import 'declared_device_model.dart';
+import 'product_class.dart';
 import 'telemetry_sample.dart';
 
 /// The three things design 0080 watches.
@@ -195,6 +206,18 @@ class CategoryAlertDefaults {
 
 /// 🔴 **A FALLBACK, never a truth** (design 0080 §3.2.1). Layer ③ only.
 ///
+/// 🔵 **Still keyed on [DeclaredCategory] after the 2026-08-22 ruling, and that
+/// is deliberate** (design 0080 §7.5.1.1 D). A map from what the owner tapped to
+/// three numbers does not violate design 0066's "a declared value gates nothing
+/// and displays nothing", because a number is not a gate: every row on the
+/// screen exists or does not exist for reasons taken from the wire, and this map
+/// only fills in what a row SAYS when nothing better is available. The wire
+/// cannot replace it either — it knows three classes, and this table has to tell
+/// a bike battery's UV 11.0 from a car battery's 12.0, a distinction `0x02`
+/// does not carry (see `declared_device_model.dart` on why the field exists at
+/// all). What the ruling DID change is that a category the wire contradicts is
+/// not consulted; [resolveThresholds] enforces that, not this map.
+///
 /// Every voltage row below is one real `0x2B` payload observed in the corpus,
 /// decoded with the shipping arithmetic (`telemetry_decoder.dart:103-109`:
 /// `ov = b4*0.025 + 14.4`, `uv = b5*0.025 + 10.4`, `ot = b6 + 60`) — a
@@ -274,13 +297,40 @@ const double kPowerBankOtDefaultC = 50;
 ///    collapsing 12 V battery. `TelemetrySample.twfRaw`'s comment is that
 ///    incident's headstone.
 ///
+/// 🔴 **Keyed on the WIRE's [ProductClass], never on [DeclaredCategory]**
+/// (design 0080 §7.5.1 / §7.5.1.1 A, owner ruling 2026-08-22). The first cut of
+/// [resolveThresholds] asked `category == DeclaredCategory.powerBank`, and that
+/// was wrong twice over:
+///
+///   * it broke design 0066's standing rule, written verbatim in
+///     `declared_device_model.dart`: **a declared value gates nothing and
+///     displays nothing** — because a user who taps the wrong entry must not
+///     end up somewhere we cannot reproduce from their bug report;
+///   * and it broke it at a price higher than 0066 was even arguing about. What
+///     a mis-tap switched off there is not a screen, it is **a set of alarms**.
+///     Declare a power bank as a car battery and its ~3.7 V cell reading is
+///     measured against UV 12.0 V — a permanent under-voltage warning that the
+///     owner cannot clear and that we would have manufactured out of a dropdown.
+///     Declare a car battery as a power bank and its real under-voltage alarm is
+///     silently switched off.
+///
+/// Device-type `0x22` is measured, not asserted (`product_class.dart`,
+/// PROTOCOL.md §8.2/§9), so keying on it also puts this back on the standing
+/// invariant next door: **gating follows the wire, routing follows the wire.**
+///
 /// ⚠️ **Deliberately applied AFTER layers ① and ②, not instead of them** — see
 /// [resolveThresholds]. The design specifies the UI will not offer the two
-/// voltage rows for this category at all (§3.2.2, "不是顯示成灰色停用"), so a
+/// voltage rows for this class at all (§3.2.2, "不是顯示成灰色停用"), so a
 /// user-set voltage should be unreachable; this constant makes the pure
 /// function safe anyway rather than trusting that no future screen, import or
 /// migration ever puts a number in those columns. Reason 2 above does not stop
 /// being true because a row exists.
+///
+/// ⚠️ **Silence is not the default when the class is unknown** (§7.5.1.1 C). A
+/// unit whose `0x10` has not arrived, or whose byte this build does not
+/// recognise, is [ProductClass.unknown] and its voltages are evaluated
+/// normally: nothing has said it is a power bank, and suppressing an alarm on
+/// the strength of no evidence is the same mistake in the other direction.
 const bool kPowerBankWatchesTemperatureOnly = true;
 
 /// Resolve all three thresholds for ONE unit, per field, per design 0080 §3.1.
@@ -295,10 +345,33 @@ const bool kPowerBankWatchesTemperatureOnly = true;
 /// Passed as a whole [TelemetrySample] rather than as three loose doubles
 /// deliberately — three same-typed positional-ish arguments in the caller's
 /// hand is how OV ends up wired to UV, and the corrections in §2.5 are what
-/// that class of mistake costs. Null when nothing is on the link.
+/// that class of mistake costs. Null when nothing is on the link. Its
+/// `deviceType` is also the freshest source of [wireClass], below.
 ///
 /// [category] is layer ③: what the owner declared (design 0066). Null — the
 /// common case, since the declaration is optional — simply skips the layer.
+/// 🔑 It supplies **numbers only**: which fields exist, and whether a field is
+/// evaluated at all, are decided by [wireClass] and by [kCategoryDefaults]'
+/// own empty cells. That separation is what lets design 0066 stand unamended
+/// (§7.5.1.1 D) — the table stays keyed on [DeclaredCategory] because a
+/// fallback number is not a gate.
+///
+/// [wireClass] is what the WIRE says this unit is, defaulting to
+/// [ProductClass.unknown] so an unclassified unit needs no special call site.
+/// Callers holding a live sample may leave it alone (the sample's `deviceType`
+/// wins anyway); callers resolving an OFFLINE saved device pass the persisted
+/// `SavedDevice.productClass`, which is the only evidence available with no
+/// link open.
+///
+/// It decides exactly two things, and neither of them is a number:
+///
+///   1. **whether voltage is watched at all** — see
+///      [kPowerBankWatchesTemperatureOnly] (§7.5.1.1 A);
+///   2. **whether layer ③ may speak** — a declaration the wire CONTRADICTS
+///      supplies nothing, and the field drops to layer ④ (§7.5.1.1 B). Not
+///      guessing beats guessing wrong: if the owner said "car battery" and the
+///      byte said `0x22`, one of those two is wrong and we cannot tell which,
+///      so 15.0 / 12.0 / 80 is not a fallback, it is a coin toss.
 ///
 /// Returns [ThresholdSource.none] with a null value for any field none of the
 /// layers could answer. That field is then not evaluated at all (layer ④).
@@ -308,10 +381,48 @@ AlertThresholds resolveThresholds({
   double? userOt,
   TelemetrySample? reported,
   DeclaredCategory? category,
+  ProductClass wireClass = ProductClass.unknown,
 }) {
-  final defaults = category == null ? null : kCategoryDefaults[category];
+  // The live byte outranks the argument: `0x10 b4` is what THIS link just said,
+  // while [wireClass] is a value persisted in some earlier session. They agree
+  // in every ordinary case; the ordering matters only for a unit whose class
+  // changed under us (a re-used MAC, a restored backup), where the thing in
+  // front of us is the better evidence. Before the frame arrives
+  // `fromDeviceType(null)` is [ProductClass.unknown] and the stored answer
+  // stands in, which is what keeps an offline saved device resolvable at all.
+  final live = ProductClass.fromDeviceType(reported?.deviceType);
+  final wire = live == ProductClass.unknown ? wireClass : live;
+
+  // §7.5.1.1 A — the suppression reads the wire. See
+  // [kPowerBankWatchesTemperatureOnly] for why this is not `category`.
   final voltageMuted =
-      kPowerBankWatchesTemperatureOnly && category == DeclaredCategory.powerBank;
+      kPowerBankWatchesTemperatureOnly && wire == ProductClass.powerBank;
+
+  // §7.5.1.1 B — layer ③ may only speak when the wire does not contradict the
+  // declaration.
+  //
+  // 🔑 Asked through [declaredWireMismatch] rather than by comparing the two
+  // enums here, even though wrapping the category in a bare [DeclaredModel] to
+  // do it looks roundabout. The category → class correspondence is a fact about
+  // design 0066's vocabulary and it already lives in exactly one function; a
+  // second copy of it in this file is precisely the "one piece of state, two
+  // places, updated in one of them" shape that `discipline.md` records three
+  // incidents of. The `flagship` generation check inside it cannot fire from
+  // here — that branch needs `model == 'flagship'`, which this model has not —
+  // and it is the right non-answer anyway: a generation quibble is not the wire
+  // calling the CATEGORY wrong.
+  //
+  // [ProductClass.unknown] yields no mismatch (that function's own rule), so
+  // §7.5.1.1 C falls out for free: an unclassified unit still gets its declared
+  // defaults, because nothing has contradicted them.
+  final contradicted = category != null &&
+      declaredWireMismatch(
+            declared: DeclaredModel(category: category),
+            wireClass: wire,
+          ) !=
+          null;
+  final defaults =
+      category == null || contradicted ? null : kCategoryDefaults[category];
 
   ResolvedThreshold pick(double? user, double? device, double? fallback) {
     if (user != null) return ResolvedThreshold(user, ThresholdSource.user);

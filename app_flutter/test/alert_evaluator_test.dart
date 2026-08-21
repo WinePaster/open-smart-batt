@@ -626,7 +626,18 @@ void main() {
 
   // -------------------------------------------------------------------------
   group('§3.2.2 — power banks: heat only', () {
-    final powerBank = resolveThresholds(category: DeclaredCategory.powerBank);
+    // 🔵 2026-08-22 — the premise moved from the DECLARATION to the WIRE
+    // (design 0080 §7.5.1.1 A), and that changes what this group asserts.
+    // It used to say "a user who taps 行動電源 gets no voltage alarms"; it now
+    // says "a unit that REPORTS device-type 0x22 gets none", which is the claim
+    // the ruling actually makes and the only one design 0066 permits. The three
+    // resolved values are unchanged, so everything below still reads the same —
+    // only the reason it holds is different. The declaration stays in the call
+    // because layer ③ is still where the 50 °C comes from.
+    final powerBank = resolveThresholds(
+      category: DeclaredCategory.powerBank,
+      wireClass: ProductClass.powerBank,
+    );
 
     test('no voltage is ever evaluated, however far out it reads', () {
       fakeAsync((async) {
