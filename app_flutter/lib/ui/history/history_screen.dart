@@ -24,6 +24,7 @@ import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/power_flow.dart';
+import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
@@ -224,7 +225,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // unit nobody named) has to reach the rows already on screen — that is the
     // whole of design 0057 G2 for the live case.
     final facts = context.watch<DeviceFactsController?>();
-    final ov = tele.warnOv, uv = tele.warnUv, ot = tele.warnOt;
+    // 🔵 **Design 0080 §3.8 (P2): resolved per SCOPED unit, not read off the
+    // link.** `tele.warnOv/warnUv/warnOt` used to be read here directly, and on
+    // this screen that was design 0079 §0.3's defect in its purest form — the
+    // picker above chooses which unit's rows are listed, and the thresholds
+    // colouring them came from whichever unit the phone happened to be holding.
+    // Pick a capacitor while a battery is connected and every row was judged
+    // against the battery's limits.
+    //
+    // It also brings this surface under the one-source rule: a user's own
+    // threshold now colours the list here exactly as it does on the device
+    // page, instead of the two screens disagreeing about one unit.
+    final thresholds = watchAlertThresholds(context, _deviceId);
+    final ov = thresholds.ov.value,
+        uv = thresholds.uv.value,
+        ot = thresholds.ot.value;
     final framing = historyChartFraming(l10n, _range);
 
     return Column(

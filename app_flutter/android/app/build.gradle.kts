@@ -33,6 +33,13 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Required by flutter_local_notifications 10+ (design 0080 P3), even
+        // though this app schedules nothing: the plugin's own AAR is built with
+        // core-library desugaring on, so the app has to be too or the build
+        // fails at dexing with a missing java.time class. The plugin pins
+        // desugar_jdk_libs 2.1.4 and AGP 8.11.1; this module is on AGP 9.0.1
+        // (android/settings.gradle.kts), which is above that floor.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -42,8 +49,14 @@ android {
         applicationId = "com.winepaster.openSmartBatt"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // flutter_blue_plus (BLE) requires API 21+. Never go below 21.
-        minSdk = maxOf(flutter.minSdkVersion, 21)
+        // Two floors, and the higher one now belongs to notifications:
+        // flutter_blue_plus (BLE) needs 21, flutter_local_notifications needs
+        // **24** (design 0080 P3 — its own AAR declares `minSdkVersion 24`).
+        // `flutter.minSdkVersion` is already 24 on Flutter 3.44, so today this
+        // expression is a no-op; it is written this way so that a future
+        // Flutter that LOWERED its default could not silently take the app
+        // below a plugin's floor and fail at manifest merge instead.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -73,6 +86,12 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    // See `compileOptions` above — the plugin's own version, so the two AARs
+    // agree about which backport they are calling into.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {

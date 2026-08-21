@@ -25,6 +25,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../util/alert_thresholds_lookup.dart';
 import 'status_controls_shared.dart';
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,24 @@ import 'status_controls_shared.dart';
 
 /// Protection card body for a super-capacitor.
 class CapacitorControls extends StatelessWidget {
-  const CapacitorControls({super.key});
+  const CapacitorControls({super.key, this.deviceId});
+
+  /// The unit whose page this body sits on, or null when the caller names none.
+  ///
+  /// 🔴 **Design 0080 §3.9: a threshold follows the DEVICE, never "whoever is
+  /// connected".** Design 0079 §0.3 logged what happens otherwise — unit A's
+  /// rows judged against unit B's limits — so the id is threaded in from
+  /// [PackView] rather than looked up from `ConnectionController` here, even
+  /// though on this surface the two agree today (the detail page only builds a
+  /// dashboard when the page's unit IS the live one).
+  ///
+  /// Null is a supported value and means "no saved record to consult": layer ①
+  /// and the declaration both live in `saved_devices`, so an unnamed unit
+  /// resolves from its own `0x2B` alone — which is exactly what design 0055 made
+  /// an ordinary way to use the app, and what every widget test in this repo
+  /// constructs.
+  final String? deviceId;
+
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +66,8 @@ class CapacitorControls extends StatelessWidget {
     // "cut-off" — see [packRunModeOf]. Removed, not fixed in place: the control
     // was never applicable to this class.
     final health = capacitorHealthOf(tele.mode);
-    final thresholdBreach = readingBreachesThreshold(tele);
+    final thresholdBreach =
+        readingBreachesThreshold(tele, watchAlertThresholds(context, deviceId));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -104,7 +123,24 @@ class CapacitorControls extends StatelessWidget {
 
 /// Protection card body for a smart battery.
 class BatteryControls extends StatelessWidget {
-  const BatteryControls({super.key});
+  const BatteryControls({super.key, this.deviceId});
+
+  /// The unit whose page this body sits on, or null when the caller names none.
+  ///
+  /// 🔴 **Design 0080 §3.9: a threshold follows the DEVICE, never "whoever is
+  /// connected".** Design 0079 §0.3 logged what happens otherwise — unit A's
+  /// rows judged against unit B's limits — so the id is threaded in from
+  /// [PackView] rather than looked up from `ConnectionController` here, even
+  /// though on this surface the two agree today (the detail page only builds a
+  /// dashboard when the page's unit IS the live one).
+  ///
+  /// Null is a supported value and means "no saved record to consult": layer ①
+  /// and the declaration both live in `saved_devices`, so an unnamed unit
+  /// resolves from its own `0x2B` alone — which is exactly what design 0055 made
+  /// an ordinary way to use the app, and what every widget test in this repo
+  /// constructs.
+  final String? deviceId;
+
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +176,8 @@ class BatteryControls extends StatelessWidget {
     // The name is historical — the helper is a threshold comparison over
     // PVLT/temperature against the device's own thresholds, and is not
     // capacitor-specific.
-    final thresholdBreach = readingBreachesThreshold(tele);
+    final thresholdBreach =
+        readingBreachesThreshold(tele, watchAlertThresholds(context, deviceId));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -243,7 +280,24 @@ class BatteryControls extends StatelessWidget {
 /// [CapacitorControls] / [BatteryControls] the moment the cosmetic label
 /// resolves.
 class PackControls extends StatelessWidget {
-  const PackControls({super.key});
+  const PackControls({super.key, this.deviceId});
+
+  /// The unit whose page this body sits on, or null when the caller names none.
+  ///
+  /// 🔴 **Design 0080 §3.9: a threshold follows the DEVICE, never "whoever is
+  /// connected".** Design 0079 §0.3 logged what happens otherwise — unit A's
+  /// rows judged against unit B's limits — so the id is threaded in from
+  /// [PackView] rather than looked up from `ConnectionController` here, even
+  /// though on this surface the two agree today (the detail page only builds a
+  /// dashboard when the page's unit IS the live one).
+  ///
+  /// Null is a supported value and means "no saved record to consult": layer ①
+  /// and the declaration both live in `saved_devices`, so an unnamed unit
+  /// resolves from its own `0x2B` alone — which is exactly what design 0055 made
+  /// an ordinary way to use the app, and what every widget test in this repo
+  /// constructs.
+  final String? deviceId;
+
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +309,8 @@ class PackControls extends StatelessWidget {
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
-    final thresholdBreach = readingBreachesThreshold(tele);
+    final thresholdBreach =
+        readingBreachesThreshold(tele, watchAlertThresholds(context, deviceId));
     final cutOff = isCutOffMode(tele.mode);
     // The same asymmetric gate as the battery body. There is deliberately NO
     // 斷電 button in this body (owner's ruling, 2026-07-30): an unclassified

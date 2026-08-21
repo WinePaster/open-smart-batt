@@ -98,6 +98,71 @@ class SavedDevice {
   /// has not filled the form in.
   final DeclaredModel declared;
 
+  /// Whether THIS unit is one of the ones warnings are raised for (design 0080
+  /// §3.6, schema v22). Defaults to true, including for every pre-v22 row.
+  ///
+  /// 🔑 Subordinate to the app-wide [AppSettings.alertsEnabled], which defaults
+  /// to OFF. Two switches with opposite defaults is not an oversight: the global
+  /// one is the consent (§3.7.3 Q4 — notifications are an interruption and iOS's
+  /// permission prompt is one-shot), and this one answers a different question,
+  /// "now that they are on, is this unit included". Default this to false as
+  /// well and the first person who turns the feature on gets silence from every
+  /// unit they own, with nothing on screen saying why.
+  final bool alertEnabled;
+
+  /// Layer ① of design 0080 §3.1 — what the owner typed for THIS unit, in volts
+  /// / °C. **NULL means "not answered" and never "zero"** (§3.6.1).
+  ///
+  /// 🔴 The null-vs-sentinel rule is load-bearing rather than tidy. A `0.0`
+  /// written here to mean "unset" would win layer ① on every comparison, so the
+  /// unit's own `0x2B` could never be reached again — and a sentinel is also a
+  /// second spelling of NULL in one column, which is what stops
+  /// `WHERE alert_uv IS NULL` from counting the people it exists to count. Same
+  /// position the `declared_*` columns already take, for the same reason
+  /// (`app_database.dart`, v20 and v22).
+  ///
+  /// ⚠️ Per FIELD, not per unit: a user who typed a UV keeps the device's OV and
+  /// OT, so these three are independently nullable and never written as a group.
+  final double? alertOv;
+
+  /// See [alertOv] — layer ①, volts, NULL when the owner has not answered.
+  final double? alertUv;
+
+  /// See [alertOv] — layer ①, °C, NULL when the owner has not answered.
+  final double? alertOt;
+
+  /// Gate ② of design 0080 §3.4 — "mute this unit for an hour", as an epoch-ms
+  /// INSTANT rather than a remaining duration. NULL when never muted.
+  ///
+  /// 🔴 An instant, and it is persisted, because "1 hour" is a promise about
+  /// WALL-CLOCK TIME: closing the app must not extend it and reopening the app
+  /// must not cancel it. Its sibling — "not again this connection" — is
+  /// deliberately memory-only for the mirror-image reason (§3.4: the promise is
+  /// about a link, and the link is gone). The asymmetry is the design, not an
+  /// omission, which is why only one of the two has a column.
+  ///
+  /// ⚠️ NULL, never 0. Zero is a real instant (1970-01-01) that happens to read
+  /// as "not muted" only by arithmetic accident, and a reader counting rows that
+  /// have never been muted would have to know that.
+  final int? alertMutedUntilMs;
+
+  /// [alertMutedUntilMs] as a [DateTime], or null. Convenience so no call site
+  /// has to remember whether the column is seconds or milliseconds.
+  DateTime? get alertMutedUntil => alertMutedUntilMs == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(alertMutedUntilMs!);
+
+  /// True when [now] is still inside the mute window (§3.4 gate ②).
+  ///
+  /// Takes [now] rather than reading the clock so the caller's clock — the
+  /// substitutable `clock.now()` the evaluator uses — stays the only one in
+  /// play. A model that read `DateTime.now()` itself would be the second time
+  /// source design 0080 §3.3.1 rules out.
+  bool isMutedAt(DateTime now) {
+    final until = alertMutedUntilMs;
+    return until != null && now.millisecondsSinceEpoch < until;
+  }
+
   const SavedDevice({
     required this.id,
     required this.alias,
@@ -110,8 +175,20 @@ class SavedDevice {
     this.mac,
     this.serial,
     this.declared = DeclaredModel.none,
+    this.alertEnabled = true,
+    this.alertOv,
+    this.alertUv,
+    this.alertOt,
+    this.alertMutedUntilMs,
   });
 
+  /// 🔴 The four nullable alert fields need CLEAR FLAGS, unlike every other
+  /// nullable on this class, and the reason is that null MEANS something here
+  /// (see [alertOv]). `copyWith(alertUv: null)` is indistinguishable from "leave
+  /// it alone" in Dart, so without these there would be no way to express the
+  /// 「還原」 button — the one control on the alert screen whose entire job is to
+  /// put a field back to "the owner has not answered". Same shape and same
+  /// reason as [AppSettings.clearGCalibration].
   SavedDevice copyWith({
     String? id,
     String? alias,
@@ -124,6 +201,15 @@ class SavedDevice {
     String? mac,
     String? serial,
     DeclaredModel? declared,
+    bool? alertEnabled,
+    double? alertOv,
+    bool clearAlertOv = false,
+    double? alertUv,
+    bool clearAlertUv = false,
+    double? alertOt,
+    bool clearAlertOt = false,
+    int? alertMutedUntilMs,
+    bool clearAlertMutedUntil = false,
   }) =>
       SavedDevice(
         id: id ?? this.id,
@@ -140,6 +226,13 @@ class SavedDevice {
         // rather than null — so this one field needs none of the `clearX` flags
         // the settings model has to carry. See `declared_device_model.dart`.
         declared: declared ?? this.declared,
+        alertEnabled: alertEnabled ?? this.alertEnabled,
+        alertOv: clearAlertOv ? null : (alertOv ?? this.alertOv),
+        alertUv: clearAlertUv ? null : (alertUv ?? this.alertUv),
+        alertOt: clearAlertOt ? null : (alertOt ?? this.alertOt),
+        alertMutedUntilMs: clearAlertMutedUntil
+            ? null
+            : (alertMutedUntilMs ?? this.alertMutedUntilMs),
       );
 
   // Mirrors the v10 `saved_devices` schema. `name`/`stale` were added by the
@@ -173,6 +266,19 @@ class SavedDevice {
         // unsaved — it is erased on the next unrelated write to the record
         // (the trap `schema_v19_test`'s round-trip case documents).
         ...declared.toMap(),
+        // design 0080 v22. Written on EVERY upsert for the reason the declared
+        // block above states: `upsertSavedDevice` is an INSERT OR REPLACE of the
+        // whole row, so a column left out of this map is not "unsaved", it is
+        // erased the next time anything else about this unit is written — a
+        // user's mute would expire the moment they renamed the device.
+        'alert_enabled': alertEnabled ? 1 : 0,
+        // 🔴 NULL travels as NULL. Do not "tidy" these with `?? 0`: null is the
+        // answer "the owner has not said", and it is what lets layer ② win. See
+        // [alertOv].
+        'alert_ov': alertOv,
+        'alert_uv': alertUv,
+        'alert_ot': alertOt,
+        'alert_muted_until': alertMutedUntilMs,
       };
 
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
@@ -201,6 +307,65 @@ class SavedDevice {
         // [DeclaredModel.none] — "the owner has not answered", which is the
         // truth about every row that existed before this shipped (M7).
         declared: DeclaredModel.fromMap(m),
+        // Absent column (pre-v22) reads as ON, matching the column's DEFAULT —
+        // `!= 0` rather than `== 1`, unlike the two consent switches in
+        // `AppSettings`, because this one is not a consent: it is subordinate to
+        // the global switch, which is off, so an upgraded row reading "included"
+        // grants nothing.
+        alertEnabled: ((m['alert_enabled'] as num?)?.toInt() ?? 1) != 0,
+        // 🔴 Absent column and stored NULL both read back as null — "not
+        // answered" — and nothing here substitutes a number for them.
+        alertOv: (m['alert_ov'] as num?)?.toDouble(),
+        alertUv: (m['alert_uv'] as num?)?.toDouble(),
+        alertOt: (m['alert_ot'] as num?)?.toDouble(),
+        alertMutedUntilMs: (m['alert_muted_until'] as num?)?.toInt(),
+      );
+
+  /// Value equality (design 0080 P2).
+  ///
+  /// 🔑 Added with the alert columns rather than before them because this is the
+  /// first record the UI DIFFS: the alert screen holds a device, writes a field,
+  /// and reloads, and "did anything change" has to be answerable without
+  /// comparing eleven fields by hand at each call site. `DeclaredModel` already
+  /// carries its own `==`, so the nested compare is a value compare too.
+  @override
+  bool operator ==(Object other) =>
+      other is SavedDevice &&
+      other.id == id &&
+      other.alias == alias &&
+      other.name == name &&
+      other.lastSeen == lastSeen &&
+      other.lastValue == lastValue &&
+      other.stale == stale &&
+      other.productClass == productClass &&
+      other.displayLayout == displayLayout &&
+      other.mac == mac &&
+      other.serial == serial &&
+      other.declared == declared &&
+      other.alertEnabled == alertEnabled &&
+      other.alertOv == alertOv &&
+      other.alertUv == alertUv &&
+      other.alertOt == alertOt &&
+      other.alertMutedUntilMs == alertMutedUntilMs;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        alias,
+        name,
+        lastSeen,
+        lastValue,
+        stale,
+        productClass,
+        displayLayout,
+        mac,
+        serial,
+        declared,
+        alertEnabled,
+        alertOv,
+        alertUv,
+        alertOt,
+        alertMutedUntilMs,
       );
 }
 

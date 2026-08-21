@@ -90,6 +90,22 @@ dependencies:
   # which imports nothing from here, so machine-to-machine differences in sensor
   # quality change the INPUT and never the logic (R4).
   sensors_plus: ^7.1.0
+  # Local (not push) notifications for the warning alerts — design 0080 P3.
+  # Chosen over writing two more platform channels because Android has only half
+  # of one (the foreground service's own ongoing notification, which is not a
+  # general pipeline) and iOS has none at all: UNUserNotificationCenter would be
+  # written from scratch plus a test double for each side. Same position
+  # wakelock_plus / share_plus already hold here — platform detail a maintained
+  # package does better goes to the package, and we keep only what nothing else
+  # can do for us (the BLE keep-alive, the foreground service).
+  #
+  # ⚠️ Two build-side consequences, both handled in android/app/build.gradle.kts:
+  # core-library desugaring is REQUIRED even though nothing here is scheduled,
+  # and the plugin's own minSdk is 24.
+  # 🔑 Permissions stay on this app's existing permission_handler flow rather
+  # than the plugin's own request API, exactly as geolocator's is unused: one
+  # grant story, not two.
+  flutter_local_notifications: ^22.3.0
 
 dev_dependencies:
   flutter_test:

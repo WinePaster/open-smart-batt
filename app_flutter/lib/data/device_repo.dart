@@ -135,6 +135,41 @@ class DeviceRepo {
     );
   }
 
+  /// Persist this unit's warning settings (design 0080 §3.6, schema v22).
+  /// Returns rows affected (0 if the device is not saved).
+  ///
+  /// 🔴 **Writes all five columns every time, NULLS INCLUDED** — the
+  /// [setDeclaredModel] side of the asymmetry, not the [setIdentity] side, and
+  /// for the same reason: this is a FORM the user just submitted, not a merge of
+  /// observations arriving at different times. A cleared threshold is an answer
+  /// (「還原」 = "go back to what the device says"), and skipping nulls would make
+  /// a value settable but never retractable — which is the one operation the
+  /// screen's 還原 button exists to perform.
+  ///
+  /// 🔴 It touches no other column, `product_class` and `declared_*` least of
+  /// all: a threshold is not an opinion about what the unit IS.
+  Future<int> setAlertSettings(
+    String id, {
+    required bool enabled,
+    required double? ov,
+    required double? uv,
+    required double? ot,
+    required int? mutedUntilMs,
+  }) {
+    return _db.update(
+      Db.tableSavedDevices,
+      {
+        'alert_enabled': enabled ? 1 : 0,
+        'alert_ov': ov,
+        'alert_uv': uv,
+        'alert_ot': ot,
+        'alert_muted_until': mutedUntilMs,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
     return _db.delete(

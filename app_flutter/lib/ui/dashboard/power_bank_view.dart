@@ -32,6 +32,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../alerts/alert_settings_page.dart';
 import 'dashboard_cards.dart';
 import 'power_flow.dart';
 import 'watchfaces.dart';
@@ -119,6 +120,14 @@ class PowerBankView extends StatelessWidget {
                   shellClass: ProductClass.powerBank,
                   surface: CardSurface.deviceDetail,
                   tele: tele),
+
+            // ---- warnings (design 0080 §3.7.1) --------------------------
+            //
+            // ⚠️ The rule three paragraphs up bars an empty CONTROL card, not
+            // every card — and this one is neither empty nor a control: a power
+            // bank is watched for heat (Q1), so it has real thresholds to show.
+            // The screen it opens draws ONE row (§3.2.2, state D).
+            AlertSettingsEntry(deviceId: deviceId),
 
             // ---- this unit's own history --------------------------------
             //

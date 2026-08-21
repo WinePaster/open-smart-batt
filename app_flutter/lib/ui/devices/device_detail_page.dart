@@ -25,6 +25,8 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../alerts/alert_event_banner.dart';
+import '../alerts/alert_settings_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../history/device_history_tab.dart';
 import '../widgets/one_screen_report.dart';
@@ -753,22 +755,43 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     required String deviceId,
   }) {
     return live
-          ? (saved == null
-                ? Column(
-                    children: [
-                      _UnsavedNotice(deviceId: deviceId),
-                      Expanded(
-                        child: DashboardPage(
-                          deviceId: deviceId,
-                          onOpenSettings: widget.onOpenSettings,
-                        ),
-                      ),
-                    ],
-                  )
-                : DashboardPage(
+          ? Column(
+              children: [
+                // 🔵 design 0080 P3 — the event banner (§5, 「詳情頁事件橫幅」).
+                //
+                // 🔴 ABOVE the dashboard and OUTSIDE its ListView, and drawn for
+                // an unsaved unit exactly as for a saved one (ruling Q3 /
+                // §0.2.1). Outside because a raised warning must not be
+                // something the user has to scroll to find — the whole premise
+                // of design 0080 is that people are not looking at the screen —
+                // and one level up from the four dashboard bodies because
+                // `pack_view`, `power_bank_view`, `unidentified_view` and
+                // `class_pending_view` would otherwise each need their own copy
+                // of it. It renders nothing when nothing is raised, which is
+                // what makes one placement serve all four.
+                //
+                // ⚠️ Not in the OFFLINE branch below: with no link there are no
+                // frames, the evaluator was cleared on disconnect (§3.3.2), and
+                // a banner there could only be re-stating something we stopped
+                // observing.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(15, 3, 15, 0),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: AlertEventBanner(deviceId: deviceId),
+                    ),
+                  ),
+                ),
+                if (saved == null) _UnsavedNotice(deviceId: deviceId),
+                Expanded(
+                  child: DashboardPage(
                     deviceId: deviceId,
                     onOpenSettings: widget.onOpenSettings,
-                  ))
+                  ),
+                ),
+              ],
+            )
           : _OfflineBody(
               deviceId: deviceId,
               fallbackName: widget.fallbackName,
@@ -1170,6 +1193,31 @@ class _OfflineBody extends StatelessWidget {
       // that widget's general capability, not something design 0065 invented,
       // and deleting it would cost the next caller a fresh argument about
       // centring — it is simply not passed here any more.
+      //
+      // 🔵 **2026-08-22 (design 0080 P2): the next caller arrived.** The alert
+      // entry is drawn for an OFFLINE unit too, and that is deliberate rather
+      // than incidental — thresholds are the one part of this feature that needs
+      // no link. Layers ① and ③ (the owner's own numbers, and the class table)
+      // are both answerable with the radio off, which is exactly the situation a
+      // dealer sets limits in: the battery is on a shelf, not on the phone. Only
+      // layer ② is missing, and the screen says so in as many words rather than
+      // caching a stale `0x2B` to fill the gap (§7.5.2).
+      //
+      // ⚠️ Gated on `saved != null`. An unsaved unit that is also offline has
+      // nothing to show and nothing to write: `_UnsavedNotice`'s naming button
+      // is the only useful control on this screen, and a second row leading to
+      // the same prompt would be two answers to one question.
+      below: saved == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(15, 0, 15, 14),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: AlertSettingsEntry(deviceId: deviceId),
+                ),
+              ),
+            ),
       report: [
         ConnectionPulseIcon(working: mine && working),
         const SizedBox(height: 24),

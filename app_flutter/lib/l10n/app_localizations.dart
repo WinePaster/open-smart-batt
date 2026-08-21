@@ -3469,6 +3469,686 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'17.5Ah-A'**
   String get declaredModel175AhA;
+
+  /// design 0080 §3.7.1 — the device detail page's row into this unit's alert settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning notifications'**
+  String get alertsEntryTitle;
+
+  /// No description provided for @alertsEntrySummaryFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits {uv} – {ov} V · {ot} °C'**
+  String alertsEntrySummaryFull(String uv, String ov, String ot);
+
+  /// No description provided for @alertsEntrySummaryTempOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Over-temperature limit {ot} °C'**
+  String alertsEntrySummaryTempOnly(String ot);
+
+  /// design 0080 §7.5.2 — 0x2B is persisted nowhere, so an offline unit genuinely cannot say. Never dress this up as 'no limits'.
+  ///
+  /// In en, this message translates to:
+  /// **'Known once connected'**
+  String get alertsEntrySummaryUnknown;
+
+  /// No description provided for @alertsEntrySummaryUnrecognised.
+  ///
+  /// In en, this message translates to:
+  /// **'This device type is not recognised yet'**
+  String get alertsEntrySummaryUnrecognised;
+
+  /// No description provided for @alertsEntrySummaryUnsaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Save this device first to set warnings'**
+  String get alertsEntrySummaryUnsaved;
+
+  /// No description provided for @alertsEntryBadgeOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get alertsEntryBadgeOn;
+
+  /// No description provided for @alertsEntryBadgeOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get alertsEntryBadgeOff;
+
+  /// No description provided for @alertsEntryBadgeMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted'**
+  String get alertsEntryBadgeMuted;
+
+  /// No description provided for @alertsPageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning notifications'**
+  String get alertsPageTitle;
+
+  /// No description provided for @alertsDeviceSwitchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me about this device'**
+  String get alertsDeviceSwitchTitle;
+
+  /// design 0080 §6.1 RED LINE — 'while connected' is not optional wording. Never 'tell me when the battery has a fault'.
+  ///
+  /// In en, this message translates to:
+  /// **'While connected, tell me when a reading passes a limit'**
+  String get alertsDeviceSwitchSub;
+
+  /// No description provided for @alertsDeviceSwitchSubTempOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'While connected, tell me when it runs hot'**
+  String get alertsDeviceSwitchSubTempOnly;
+
+  /// No description provided for @alertsDeviceSwitchSubUnrecognised.
+  ///
+  /// In en, this message translates to:
+  /// **'This device type is not recognised yet'**
+  String get alertsDeviceSwitchSubUnrecognised;
+
+  /// No description provided for @alertsThresholdsHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits'**
+  String get alertsThresholdsHeading;
+
+  /// No description provided for @alertsLiveReadingHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get alertsLiveReadingHeading;
+
+  /// No description provided for @alertsRowOverVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'Over-voltage'**
+  String get alertsRowOverVoltage;
+
+  /// No description provided for @alertsRowUnderVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'Under-voltage'**
+  String get alertsRowUnderVoltage;
+
+  /// No description provided for @alertsRowOverTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'Over-temperature'**
+  String get alertsRowOverTemperature;
+
+  /// No description provided for @alertsRowAboveWarns.
+  ///
+  /// In en, this message translates to:
+  /// **'Warn above'**
+  String get alertsRowAboveWarns;
+
+  /// No description provided for @alertsRowBelowWarns.
+  ///
+  /// In en, this message translates to:
+  /// **'Warn below'**
+  String get alertsRowBelowWarns;
+
+  /// Layer ② badge — the unit's own 0x2B.
+  ///
+  /// In en, this message translates to:
+  /// **'Device'**
+  String get alertsSourceDevice;
+
+  /// No description provided for @alertsSourceUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get alertsSourceUser;
+
+  /// design 0080 §3.2.2 — the power bank's 50 °C is the one number nobody measured, and the screen is REQUIRED to say so.
+  ///
+  /// In en, this message translates to:
+  /// **'App default'**
+  String get alertsSourceApp;
+
+  /// No description provided for @alertsSourceNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No basis'**
+  String get alertsSourceNone;
+
+  /// No description provided for @alertsSourceOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Known once connected'**
+  String get alertsSourceOffline;
+
+  /// No description provided for @alertsValueUnset.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get alertsValueUnset;
+
+  /// No description provided for @alertsVoltsValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{v} V'**
+  String alertsVoltsValue(String v);
+
+  /// No description provided for @alertsCelsiusValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{v} °C'**
+  String alertsCelsiusValue(String v);
+
+  /// No description provided for @alertsNearReadingVolts.
+  ///
+  /// In en, this message translates to:
+  /// **'The {label} limit is only {delta} V from the current reading.'**
+  String alertsNearReadingVolts(String label, String delta);
+
+  /// No description provided for @alertsNearReadingCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'The {label} limit is only {delta} °C from the current reading.'**
+  String alertsNearReadingCelsius(String label, String delta);
+
+  /// No description provided for @alertsFactoryValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Device value {v}'**
+  String alertsFactoryValue(String v);
+
+  /// No description provided for @alertsRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get alertsRestore;
+
+  /// No description provided for @alertsOfflineNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected — this device\'s own factory limits are only readable while connected.'**
+  String get alertsOfflineNote;
+
+  /// design 0080 §7.5.6 C-3 / §7.5.7 — the TRANSIENT state. It must never borrow the words of alertsUnrecognisedTitle: every connect passes through here.
+  ///
+  /// In en, this message translates to:
+  /// **'Still identifying this device'**
+  String get alertsPendingTitle;
+
+  /// No description provided for @alertsPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Which warnings this device can offer is known once it has said what it is. Nothing is switched off — there is simply nothing to show yet.'**
+  String get alertsPendingBody;
+
+  /// No description provided for @alertsPowerBankNoteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Why is there no voltage warning?'**
+  String get alertsPowerBankNoteTitle;
+
+  /// No description provided for @alertsPowerBankNoteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.'**
+  String get alertsPowerBankNoteBody;
+
+  /// No description provided for @alertsPowerBankOtNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This device reports no warning limits. 50 °C is the app\'s own default, and you can change it.'**
+  String get alertsPowerBankOtNote;
+
+  /// No description provided for @alertsPowerBankOtEvidence.
+  ///
+  /// In en, this message translates to:
+  /// **'Highest observed across 49 captures: 40 °C'**
+  String get alertsPowerBankOtEvidence;
+
+  /// No description provided for @alertsUnrecognisedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This device type is not recognised, so no warnings are offered.'**
+  String get alertsUnrecognisedTitle;
+
+  /// No description provided for @alertsUnrecognisedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This device reports a type code we do not know yet. Until we can identify it, the app cannot tell which readings are normal — so it offers no warnings rather than a set of limits that may be wrong.'**
+  String get alertsUnrecognisedBody;
+
+  /// No description provided for @alertsUnrecognisedDeviceType.
+  ///
+  /// In en, this message translates to:
+  /// **'device-type = {hex} (not catalogued)'**
+  String alertsUnrecognisedDeviceType(String hex);
+
+  /// No description provided for @alertsStillAvailableHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Still available'**
+  String get alertsStillAvailableHeading;
+
+  /// No description provided for @alertsStillAvailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Live monitoring, history and export are unaffected — only warnings are switched off.'**
+  String get alertsStillAvailableBody;
+
+  /// No description provided for @alertsMuteHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get alertsMuteHeading;
+
+  /// No description provided for @alertsMuteHourTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute for 1 hour'**
+  String get alertsMuteHourTitle;
+
+  /// No description provided for @alertsMuteHourSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Still counts after the app is closed'**
+  String get alertsMuteHourSub;
+
+  /// No description provided for @alertsMutedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted'**
+  String get alertsMutedTitle;
+
+  /// No description provided for @alertsMutedSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Until {time} · {minutes} min left'**
+  String alertsMutedSub(String time, String minutes);
+
+  /// No description provided for @alertsMuteInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get alertsMuteInactive;
+
+  /// No description provided for @alertsMuteClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get alertsMuteClear;
+
+  /// No description provided for @alertsSessionMuteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not again this connection'**
+  String get alertsSessionMuteTitle;
+
+  /// design 0080 §3.4 gate ③ — memory only, deliberately NOT persisted.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends when the link drops'**
+  String get alertsSessionMuteSub;
+
+  /// No description provided for @alertsEditDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} limit'**
+  String alertsEditDialogTitle(String label);
+
+  /// No description provided for @alertsEditHintVolts.
+  ///
+  /// In en, this message translates to:
+  /// **'Volts, e.g. 12.40'**
+  String get alertsEditHintVolts;
+
+  /// No description provided for @alertsEditHintCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'Degrees Celsius, e.g. 80'**
+  String get alertsEditHintCelsius;
+
+  /// No description provided for @alertsEditInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number'**
+  String get alertsEditInvalid;
+
+  /// No description provided for @alertsUnsavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not saved'**
+  String get alertsUnsavedTitle;
+
+  /// No description provided for @alertsUnsavedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning settings are stored per device, so this one needs a name first.'**
+  String get alertsUnsavedBody;
+
+  /// No description provided for @settingsAlertsHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get settingsAlertsHeading;
+
+  /// No description provided for @settingsAlertsEnableLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable warning notifications'**
+  String get settingsAlertsEnableLabel;
+
+  /// No description provided for @settingsAlertsEnableSub.
+  ///
+  /// In en, this message translates to:
+  /// **'While connected, notify me when a reading passes a limit'**
+  String get settingsAlertsEnableSub;
+
+  /// No description provided for @settingsAlertsPermissionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'System notification permission'**
+  String get settingsAlertsPermissionLabel;
+
+  /// design 0080 — the NOT-YET-ASKED wording, kept from P2 now that P3 runs the flow. It is still the only honest thing to show before the first-enable dialog: on iOS an un-asked permission and a refused one report the same value, so a status read early would show every new user a red 'refused'.
+  ///
+  /// In en, this message translates to:
+  /// **'Requested when you turn notifications on'**
+  String get settingsAlertsPermissionPending;
+
+  /// No description provided for @settingsAlertsSustainLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How long before it counts'**
+  String get settingsAlertsSustainLabel;
+
+  /// No description provided for @settingsAlertsSustainSub.
+  ///
+  /// In en, this message translates to:
+  /// **'So a momentary bad contact does not notify you'**
+  String get settingsAlertsSustainSub;
+
+  /// No description provided for @settingsAlertsRepeatLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat reminder every'**
+  String get settingsAlertsRepeatLabel;
+
+  /// No description provided for @settingsAlertsRepeatSub.
+  ///
+  /// In en, this message translates to:
+  /// **'While one event is still going'**
+  String get settingsAlertsRepeatSub;
+
+  /// No description provided for @settingsAlertsMaxLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders per event'**
+  String get settingsAlertsMaxLabel;
+
+  /// No description provided for @settingsAlertsMaxSub.
+  ///
+  /// In en, this message translates to:
+  /// **'After the limit it goes quiet until the reading recovers'**
+  String get settingsAlertsMaxSub;
+
+  /// No description provided for @settingsAlertsSecondsValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} s'**
+  String settingsAlertsSecondsValue(String n);
+
+  /// No description provided for @settingsAlertsMinutesValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min'**
+  String settingsAlertsMinutesValue(String n);
+
+  /// No description provided for @settingsAlertsCountValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{n}'**
+  String settingsAlertsCountValue(String n);
+
+  /// design 0080 §6.1 RED LINE. Never '24-hour monitoring', never 'offline guardian', never any iOS background promise.
+  ///
+  /// In en, this message translates to:
+  /// **'What this feature can do'**
+  String get settingsAlertsLimitsTitle;
+
+  /// No description provided for @settingsAlertsLimitsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Detection only happens while the app is CONNECTED to the device. Nothing is checked after the link drops.'**
+  String get settingsAlertsLimitsBody;
+
+  /// No description provided for @settingsAlertsLimitsAndroid.
+  ///
+  /// In en, this message translates to:
+  /// **'Android: detection continues while connected, even with the screen off.'**
+  String get settingsAlertsLimitsAndroid;
+
+  /// No description provided for @settingsAlertsLimitsIos.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.'**
+  String get settingsAlertsLimitsIos;
+
+  /// No description provided for @settingsAlertsStepDown.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease'**
+  String get settingsAlertsStepDown;
+
+  /// No description provided for @settingsAlertsStepUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Increase'**
+  String get settingsAlertsStepUp;
+
+  /// No description provided for @settingsAlertsPermissionGranted.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get settingsAlertsPermissionGranted;
+
+  /// design 0080 §6.2 RED. Precedent design 0008 §3.4: a refused permission left the service running and only hid its notification, so what the user experienced was 'I turned it on and nothing arrives'. This row must never fail silently.
+  ///
+  /// In en, this message translates to:
+  /// **'Refused — nothing will reach your phone'**
+  String get settingsAlertsPermissionDenied;
+
+  /// No description provided for @settingsAlertsPermissionUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Not confirmed yet'**
+  String get settingsAlertsPermissionUnknown;
+
+  /// No description provided for @settingsAlertsPermissionOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get settingsAlertsPermissionOpen;
+
+  /// No description provided for @settingsAlertsPermissionDeniedHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings are still evaluated and still appear on the device screen — only the phone staying quiet is the difference.'**
+  String get settingsAlertsPermissionDeniedHelp;
+
+  /// No description provided for @alertsConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on warning notifications'**
+  String get alertsConsentTitle;
+
+  /// No description provided for @alertsConsentIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Before you turn this on, what it does and does not do:'**
+  String get alertsConsentIntro;
+
+  /// No description provided for @alertsConsentPointConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.'**
+  String get alertsConsentPointConnected;
+
+  /// No description provided for @alertsConsentPointAndroid.
+  ///
+  /// In en, this message translates to:
+  /// **'Android: detection continues while connected, even with the screen off.'**
+  String get alertsConsentPointAndroid;
+
+  /// No description provided for @alertsConsentPointIos.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.'**
+  String get alertsConsentPointIos;
+
+  /// No description provided for @alertsConsentPointPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Next you will be asked to allow system notifications. You can refuse — warnings still appear on screen, your phone just stays quiet.'**
+  String get alertsConsentPointPermission;
+
+  /// No description provided for @alertsConsentPointThresholds.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits are set per device, under 「Warnings」 on each device\'s page.'**
+  String get alertsConsentPointThresholds;
+
+  /// No description provided for @alertsConsentEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get alertsConsentEnable;
+
+  /// design 0080 §3.5.3: a SECOND Android channel, separate from the foreground service's ongoing one, so the user can silence one without the other.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get alertsChannelName;
+
+  /// No description provided for @alertsChannelDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A reading passed a limit you set'**
+  String get alertsChannelDescription;
+
+  /// No description provided for @alertsNotificationOverVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'voltage too high'**
+  String get alertsNotificationOverVoltage;
+
+  /// No description provided for @alertsNotificationUnderVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'voltage too low'**
+  String get alertsNotificationUnderVoltage;
+
+  /// No description provided for @alertsNotificationOverTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'temperature too high'**
+  String get alertsNotificationOverTemperature;
+
+  /// No description provided for @alertsNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{alias} · {kind}'**
+  String alertsNotificationTitle(String alias, String kind);
+
+  /// design 0080 §3.5.3 — the body carries the reading AND the limit so the severity is readable without opening the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Now {reading} V, limit {threshold} V · {time}'**
+  String alertsNotificationBodyVolts(
+    String reading,
+    String threshold,
+    String time,
+  );
+
+  /// No description provided for @alertsNotificationBodyCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'Now {reading} °C, limit {threshold} °C · {time}'**
+  String alertsNotificationBodyCelsius(
+    String reading,
+    String threshold,
+    String time,
+  );
+
+  /// No description provided for @alertsBannerHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning raised'**
+  String get alertsBannerHeading;
+
+  /// No description provided for @alertsBannerRowVolts.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} · now {reading} V, limit {threshold} V'**
+  String alertsBannerRowVolts(String kind, String reading, String threshold);
+
+  /// No description provided for @alertsBannerRowCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} · now {reading} °C, limit {threshold} °C'**
+  String alertsBannerRowCelsius(String kind, String reading, String threshold);
+
+  /// No description provided for @alertsBannerFor.
+  ///
+  /// In en, this message translates to:
+  /// **'for {duration}'**
+  String alertsBannerFor(String duration);
+
+  /// No description provided for @alertsBannerDurationSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} s'**
+  String alertsBannerDurationSeconds(String n);
+
+  /// No description provided for @alertsBannerDurationMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min'**
+  String alertsBannerDurationMinutes(String n);
+
+  /// No description provided for @alertsBannerDurationHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{h} h {m} min'**
+  String alertsBannerDurationHours(String h, String m);
+
+  /// design 0080 ruling Q3 / §0.2.1: an unsaved unit is evaluated and DRAWN; only the notification is withheld.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not saved, so this stays on screen and your phone will not ring.'**
+  String get alertsBannerUnsavedNote;
+
+  /// No description provided for @alertsBannerSilencedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications for this device are paused. The warning itself is still being tracked.'**
+  String get alertsBannerSilencedNote;
+
+  /// No description provided for @alertsBannerGloballyOffNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning notifications are off in Settings. The warning itself is still being tracked.'**
+  String get alertsBannerGloballyOffNote;
+
+  /// No description provided for @alertsBannerOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get alertsBannerOpen;
 }
 
 class _AppLocalizationsDelegate

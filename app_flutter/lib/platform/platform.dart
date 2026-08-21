@@ -4,4 +4,5 @@
 /// state layer stays testable with plain fakes.
 library;
 
+export 'alert_notifier.dart';
 export 'monitor_service.dart';

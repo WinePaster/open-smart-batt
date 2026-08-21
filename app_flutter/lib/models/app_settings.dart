@@ -307,6 +307,54 @@ class AppSettings {
   /// anything wrote it.
   final String? gCalibration;
 
+  // --- alerts (design 0080 §3.6, schema v22) ---
+  /// App-wide master switch for threshold warnings. **DEFAULT OFF** (§3.7.3,
+  /// owner ruling Q4).
+  ///
+  /// 🔴 Off is the ruling, not a placeholder, and the reason is iOS-shaped: a
+  /// notification permission is asked once, and a reflexive "Don't Allow" cannot
+  /// be undone from inside the app. So the prompt has to follow the user's own
+  /// "turn this on" rather than arrive at launch. Same reasoning as
+  /// [backgroundMonitoringIos]'s default and as [speedDetection]'s.
+  ///
+  /// ⚠️ **What this switch does NOT gate is evaluation** (§0.2.1). Design 0080
+  /// puts the gate on the last step — sending a notification — so the advisory
+  /// line and the history colouring keep working for everybody. Anything that
+  /// reads this to decide whether to COMPUTE a threshold has moved the gate
+  /// forward and turned an interruption preference into a feature regression.
+  ///
+  /// 📌 P2 stores and shows it; nothing consumes it yet (the evaluator has no
+  /// caller until P3). That is the deliberate P2/P3 line, not an oversight.
+  final bool alertsEnabled;
+
+  /// How long a reading must stay past the threshold before it counts as a
+  /// warning, in SECONDS (§3.3). DEFAULT 5.
+  ///
+  /// 🔑 Seconds, not samples, and §3.3.1 is emphatic about why: `_onTelemetry`
+  /// fires once per decoded FRAME, and a second carries several frames from
+  /// several selectors, so "5 samples" is 5 s on one product family and 1.5 s on
+  /// another. A number the UI puts in front of a user has to mean the same thing
+  /// on every unit.
+  final int alertSustainSec;
+
+  /// Minutes between repeat notifications while one event is still open (§3.3).
+  /// DEFAULT 15.
+  final int alertRepeatMin;
+
+  /// How many notifications one event may produce before going quiet until it
+  /// clears (§3.3). DEFAULT 3.
+  final int alertMaxPerEvent;
+
+  /// The ranges the settings steppers offer. Stored values outside them are
+  /// clamped by [fromMap] rather than rejected — a row hand-edited to 0 s would
+  /// otherwise make every transient blip a warning.
+  static const int alertSustainMinSec = 1;
+  static const int alertSustainMaxSec = 60;
+  static const int alertRepeatMinMinutes = 1;
+  static const int alertRepeatMaxMinutes = 120;
+  static const int alertMaxPerEventMin = 1;
+  static const int alertMaxPerEventMax = 10;
+
   // --- data ---
   /// How long history is kept. Telemetry is ALWAYS recorded while connected —
   /// there is no longer a switch that stops it — and this only decides when old
@@ -382,6 +430,12 @@ class AppSettings {
     this.retention = RetentionPolicy.days90,
     this.rawPacketLog = false,
     this.logMaxBytes = defaultLogMaxBytes,
+    // 🔴 design 0080 Q4. See [alertsEnabled] — and note that `fromMap` reads a
+    // pre-v22 row as OFF too, so a new install and an upgraded one agree.
+    this.alertsEnabled = false,
+    this.alertSustainSec = 5,
+    this.alertRepeatMin = 15,
+    this.alertMaxPerEvent = 3,
   });
 
   /// Defaults (matches the mockup's initial UI state).
@@ -417,6 +471,13 @@ class AppSettings {
     RetentionPolicy? retention,
     bool? rawPacketLog,
     int? logMaxBytes,
+    // design 0080 §3.6. No `clearX` flags: all four are non-nullable, so there
+    // is no "never answered" state to express — see [alertsEnabled] for why the
+    // per-DEVICE thresholds are the opposite case.
+    bool? alertsEnabled,
+    int? alertSustainSec,
+    int? alertRepeatMin,
+    int? alertMaxPerEvent,
   }) =>
       AppSettings(
         autoReconnect: autoReconnect ?? this.autoReconnect,
@@ -441,6 +502,10 @@ class AppSettings {
         retention: retention ?? this.retention,
         rawPacketLog: rawPacketLog ?? this.rawPacketLog,
         logMaxBytes: logMaxBytes ?? this.logMaxBytes,
+        alertsEnabled: alertsEnabled ?? this.alertsEnabled,
+        alertSustainSec: alertSustainSec ?? this.alertSustainSec,
+        alertRepeatMin: alertRepeatMin ?? this.alertRepeatMin,
+        alertMaxPerEvent: alertMaxPerEvent ?? this.alertMaxPerEvent,
       );
 
   /// The persisted row.
@@ -491,6 +556,14 @@ class AppSettings {
         'retention': retention.name,
         'raw_packet_log': rawPacketLog ? 1 : 0,
         'log_max_bytes': logMaxBytes,
+        // schema v22 (design 0080). All four written on every save — the
+        // INSERT OR REPLACE warning at the head of this map applies to them like
+        // everything else, and these are the newest columns, i.e. the ones a
+        // future edit is likeliest to forget.
+        'alerts_enabled': alertsEnabled ? 1 : 0,
+        'alert_sustain_sec': alertSustainSec,
+        'alert_repeat_min': alertRepeatMin,
+        'alert_max_per_event': alertMaxPerEvent,
       };
 
   static AppSettings fromMap(Map<String, Object?> m) => AppSettings(
@@ -553,7 +626,34 @@ class AppSettings {
         ),
         rawPacketLog: (m['raw_packet_log'] as num?)?.toInt() == 1,
         logMaxBytes: _normaliseLogMaxBytes((m['log_max_bytes'] as num?)?.toInt()),
+        // 🔴 `== 1`, NOT `!= 0`, and it is the same distinction v13 and
+        // `speed_detection` turn on: a pre-v22 row has no such column (NULL) and
+        // must read OFF. `!= 0` would hand every upgrading phone a notification
+        // feature it was never shown a consent screen for — and on iOS the
+        // permission that would then be requested is one-shot.
+        alertsEnabled: (m['alerts_enabled'] as num?)?.toInt() == 1,
+        // Clamped rather than trusted. A stored 0 — from a hand-edited row, or a
+        // downgrade past a build that offered a wider range — would make the
+        // debounce zero-length, i.e. would turn every single-frame blip into a
+        // warning. Absent column falls back to the shipped default.
+        alertSustainSec: _clampInt((m['alert_sustain_sec'] as num?)?.toInt(), 5,
+            alertSustainMinSec, alertSustainMaxSec),
+        alertRepeatMin: _clampInt((m['alert_repeat_min'] as num?)?.toInt(), 15,
+            alertRepeatMinMinutes, alertRepeatMaxMinutes),
+        alertMaxPerEvent: _clampInt(
+            (m['alert_max_per_event'] as num?)?.toInt(), 3,
+            alertMaxPerEventMin, alertMaxPerEventMax),
       );
+
+  /// Absent ⇒ [fallback]; present ⇒ pinned into [lo]..[hi].
+  ///
+  /// Deliberately NOT the `_normaliseLogMaxBytes` shape (membership of a list,
+  /// anything else back to the default): these are continuous ranges driven by
+  /// steppers, so an out-of-range value has a nearest legal neighbour and
+  /// throwing the user's choice away to reach the default would lose more than
+  /// it fixes.
+  static int _clampInt(int? stored, int fallback, int lo, int hi) =>
+      stored == null ? fallback : (stored < lo ? lo : (stored > hi ? hi : stored));
 
   /// Resolve the app mode from a persisted row (schema v18).
   ///

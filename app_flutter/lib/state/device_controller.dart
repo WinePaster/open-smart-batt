@@ -164,6 +164,35 @@ class DeviceController extends ChangeNotifier {
     await load();
   }
 
+  /// Persist this unit's warning settings (design 0080 §3.6). No-op when the
+  /// device is not saved — §3.6.3: an unsaved unit has no row to write into, and
+  /// the alert screen's entrance says so rather than saving on the user's behalf
+  /// (a device they declined to name is one they declined to remember, the same
+  /// position [setDisplayLayout] takes).
+  ///
+  /// 🔴 Takes the WHOLE record rather than a field at a time, and there is no
+  /// early return on "nothing changed". Both are deliberate:
+  ///
+  ///   * the five columns are written as one form (see
+  ///     [DeviceRepo.setAlertSettings]), so a per-field setter would have to
+  ///     re-read the other four and would be the place they get lost;
+  ///   * this is called by a person pressing a control, not by the wire at 1 Hz,
+  ///     so the write-per-frame worry that shaped [setProductClass] does not
+  ///     apply. `SavedDevice` now carries `==`, so a caller that wants the check
+  ///     can make it and the ones that do not are not paying for it.
+  Future<void> setAlertSettings(SavedDevice next) async {
+    if (deviceFor(next.id) == null) return;
+    await _repo.setAlertSettings(
+      next.id,
+      enabled: next.alertEnabled,
+      ov: next.alertOv,
+      uv: next.alertUv,
+      ot: next.alertOt,
+      mutedUntilMs: next.alertMutedUntilMs,
+    );
+    await load();
+  }
+
   /// Forget a saved device, then reload.
   Future<void> remove(String id) async {
     await _repo.deleteSavedDevice(id);

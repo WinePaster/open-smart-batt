@@ -55,6 +55,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
@@ -252,12 +253,28 @@ class DeviceHistoryTab extends StatefulWidget {
   /// the detail page computes for itself (`isOnline && connectedDeviceId ==
   /// deviceId`), passed IN rather than derived here.
   ///
-  /// 🔴 **It gates the warning thresholds, and only those.** `warnOv` /
+  /// 🔴 ~~**It gates the warning thresholds, and only those.** `warnOv` /
   /// `warnUv` / `warnOt` come from [TelemetryController], i.e. from the unit the
   /// phone is holding. On a page showing unit A while the phone holds unit B
   /// they would judge A's stored rows against B's limits — FB-41's shape in a
   /// third column. With [live] false the three are withheld and every row falls
-  /// back to the status the device itself recorded.
+  /// back to the status the device itself recorded.~~
+  ///
+  /// 🔵 **Design 0080 P2 (2026-08-22): it gates NOTHING in this widget any
+  /// more, and the reason is that the defect it guarded no longer exists.** The
+  /// gate was compensating for an AMBIENT source — `tele.warnOv` is whoever is
+  /// on the link — and `alertThresholdsFor` takes a `deviceId` and refuses a
+  /// mismatched sample itself, so the ambient read and its hand-gate went
+  /// together. Withholding on top of that would now cost the offline case its
+  /// thresholds for nothing: the owner's own numbers and the category table need
+  /// no link, and an offline unit's rows are exactly the ones a dealer reads.
+  ///
+  /// ⚠️ **Kept as a parameter, not deleted.** Two reasons, and neither is
+  /// sentiment: the 2026-08-21 ruling below covered all four of these
+  /// parameters, and this one is still the only place a caller can state "this
+  /// page's unit is the live one" — which is what design 0080 P3's event banner
+  /// needs, on this very surface. Deleting it would make P3 re-derive it, and
+  /// the re-derivation is the part FB-41 got wrong.
   ///
   /// 🔵 **Ruled 2026-08-21** (owner, verbatim: 「警告用的 ov uv ot 要留之後要
   /// 做」). Between 2026-08-16 and 2026-08-21 nothing read these — the warning
@@ -266,12 +283,14 @@ class DeviceHistoryTab extends StatefulWidget {
   /// classifies every row through them. What is still to come is the FILTER
   /// ("show only warnings"), not the thresholds.
   ///
-  /// 🔴 **What must NOT happen when this flips true** (auto-connect succeeding
-  /// while the user reads history): a re-query. The thresholds are applied at
-  /// render time to rows already in hand, so the rows re-classify and nothing
-  /// is fetched. See design 0079 §6 R2 — rows changing colour under the reader
-  /// is intended, and it is why the offline copy may not claim a clean bill of
-  /// health.
+  /// 🔴 **What must NOT happen when a connection arrives** (auto-connect
+  /// succeeding while the user reads history): a re-query. The thresholds are
+  /// applied at render time to rows already in hand, so a `0x2B` landing
+  /// re-classifies the rows and nothing is fetched. See design 0079 §6 R2 —
+  /// rows changing colour under the reader is intended, and it is why the
+  /// offline copy may not claim a clean bill of health. That property survives
+  /// P2 unchanged; what used to trigger it was this flag flipping, and what
+  /// triggers it now is the sample itself.
   final bool live;
 
   /// Bumped by the page every time this tab becomes the selected one.
@@ -434,10 +453,34 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     final tempUnit = context.watch<SettingsController>().tempUnit;
     // 🔴 `read`, not `watch` — red line 2.
     final tele = context.read<TelemetryController>();
-    // 🔴 Withheld unless this page's unit is the unit on the link.
-    final ov = widget.live ? tele.warnOv : null;
-    final uv = widget.live ? tele.warnUv : null;
-    final ot = widget.live ? tele.warnOt : null;
+    // 🔵 **Design 0080 §3.8 / §7.2 (P2): these three now come from
+    // `resolveThresholds()`, not from `tele.warnOv/warnUv/warnOt`.** The three
+    // parameters design 0079 §0.2 was told to keep are the same parameters; what
+    // changed is who answers them, and it changed for two reasons:
+    //
+    //   * a user who set a threshold for THIS unit expects the list to be
+    //     coloured by it. Reading `0x2B` alone is layer ② only, so the rows and
+    //     the alarm would disagree — §3.8 calls that out by name as the "one
+    //     fact, two sources" shape this repo keeps paying for;
+    //   * §7.5.6 C-2: on a unit whose class nothing recognises the resolution
+    //     comes back empty and every row falls back to the status the device
+    //     itself recorded, which is the same honest outcome the `live` gate used
+    //     to produce by hand.
+    //
+    // 🔴 **`widget.deviceId`, and the `live` gate is gone with it — read this
+    // before "simplifying" it back.** The gate existed because the source was
+    // ambient: `tele.warnOv` is whatever unit the phone is holding, so on a page
+    // showing A while B is connected it had to be withheld or A's rows would be
+    // judged against B's limits (design 0079 §0.3). `alertThresholdsFor` takes
+    // the id and drops a mismatched sample itself, so the ambient read — and the
+    // hand-gate compensating for it — are both gone rather than one of them.
+    // What is GAINED is the offline case the old gate could only answer with
+    // silence: an offline saved unit now colours its rows by the owner's own
+    // numbers, and by the class table, neither of which needs a link.
+    final thresholds = watchAlertThresholds(context, widget.deviceId);
+    final ov = thresholds.ov.value;
+    final uv = thresholds.uv.value;
+    final ot = thresholds.ot.value;
 
     // The class decides whether a row's CURRENT column means anything, and how
     // it is worded (design 0056). Resolved ONCE here rather than per row: on

@@ -376,12 +376,14 @@ void main() {
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current EXACT pin — inherited from `schema_v20_test.dart`, which
-        // now asserts a floor. Move it again when v22 lands; the registry in
-        // `Db.schemaVersion`'s doc comment is the arbiter, and this line is what
-        // makes two branches claiming one number collide here rather than on a
-        // user's phone.
-        expect(Db.schemaVersion, 21);
+        // 🔵 **Was `expect(Db.schemaVersion, 21)` — an exact pin, relaxed to a
+        // floor when v22 landed (design 0080 P2, 2026-08-22)**, exactly as the
+        // line above it instructed and exactly as `schema_v17/18/19/20_test`
+        // were relaxed before it. The floor is what still says something: it
+        // fails if a branch RENUMBERS v21 rather than adding after it, which is
+        // the collision the registry in `Db.schemaVersion`'s doc comment exists
+        // to prevent. The exact number is now `schema_v22_test`'s to pin.
+        expect(Db.schemaVersion, greaterThanOrEqualTo(21));
       }
     });
   });

@@ -14,6 +14,8 @@ import '../ble/ble.dart';
 import '../data/data.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
+import '../ui/util/alert_thresholds_lookup.dart';
+import 'alert_controller.dart';
 import 'build_info.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
@@ -43,6 +45,7 @@ class AppServices {
     required this.telemetry,
     required this.speed,
     required this.gforce,
+    required this.alerts,
     required this.pending,
     required this.appBuild,
     required this.platform,
@@ -91,6 +94,13 @@ class AppServices {
   /// calibrates never touches the accelerometer.
   final GForceController gforce;
 
+  /// design 0080 P3 — the warning state machine and the notifications it
+  /// produces. Constructed unconditionally and, like the two above, INERT until
+  /// its gate opens: ruling Q4 ships `alerts_enabled` OFF, and
+  /// [LocalAlertNotifier] does not touch the notification plugin until
+  /// something asks it to post or to request a permission.
+  final AlertController alerts;
+
   /// Fire-and-forget database writes still in flight. Drained by [dispose]
   /// before the database closes; see [PendingWrites].
   final PendingWrites pending;
@@ -113,11 +123,14 @@ class AppServices {
   ///   a closed composition root injects its own. Ignored when [ble] is provided.
   /// - [monitor]: inject a fake background-monitor handle in tests; defaults to
   ///   the platform's implementation (Android foreground service, else no-op).
+  /// - [alertNotifier]: inject a fake local-notification handle in tests;
+  ///   defaults to the platform's ([NoopAlertNotifier] off Android/iOS).
   static Future<AppServices> create({
     String? dbPath,
     AppDatabase? appDatabase,
     BleService? ble,
     MonitorService? monitor,
+    AlertNotifier? alertNotifier,
     MetadataParser parser = const NoopMetadataParser(),
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
@@ -174,6 +187,30 @@ class AppServices {
       appBuild: env.build,
       pending: pending,
     );
+    // design 0080 P3. Thresholds arrive as a CLOSURE rather than as a set of
+    // controller references, so `resolveThresholds()` keeps being the app's one
+    // threshold source (§3.8) while `lib/state` keeps its back turned on
+    // `lib/ui`, where the four inputs are already gathered.
+    //
+    // 🔑 The three ids inside it are not interchangeable. The unit being judged
+    // is the one the SESSION is recording, which is also what `liveDeviceId`
+    // has to be — passing `connection.connectedDeviceId` instead would name the
+    // DESIRED unit while a connect is still in flight and hand this frame the
+    // previous unit's limits (design 0079 §0.3, and the reason
+    // `watchAlertThresholds` documents the same pairing).
+    final alerts = AlertController(
+      devices: devices,
+      settings: settings,
+      notifier: alertNotifier ?? AlertNotifier.forPlatform(),
+      resolve: (deviceId, sample) => alertThresholdsFor(
+        devices,
+        deviceId,
+        facts: facts,
+        liveSample: sample,
+        liveDeviceId: deviceId,
+        liveClass: connection.resolvedClass,
+      ),
+    );
     // Holds no resources until its gate opens; see [GpsSpeedController].
     final speed = GpsSpeedController();
     // Same contract; see [GForceController].
@@ -182,6 +219,11 @@ class AppServices {
     // stale banner and the ongoing notification. Wired here because it is the
     // only place both controllers exist (design 0038 §5.5).
     connection.bindTelemetryHealth(telemetry);
+    // design 0080 P3 §3.3: every decoded frame reaches the evaluator, and only
+    // through here. Wired at the composition root for the line above's reason —
+    // it is the only place both objects exist — and it is what turns two merged
+    // branches of dead code into a feature.
+    telemetry.bindAlerts(alerts);
     // The phone's speed reaches recorded history here and nowhere else
     // (design 0042 §3.9). Wired at the composition root for the same reason as
     // the line above: it is the only place both controllers exist, and neither
@@ -232,6 +274,7 @@ class AppServices {
       telemetry: telemetry,
       speed: speed,
       gforce: gforce,
+      alerts: alerts,
       pending: pending,
       appBuild: env.build,
       platform: env.platform,
@@ -289,6 +332,9 @@ class AppServices {
     connection.dispose();
     speed.dispose();
     gforce.dispose();
+    // After [telemetry], which is what feeds it: a frame arriving between the
+    // two would reach a disposed ChangeNotifier.
+    alerts.dispose();
     devices.dispose();
     // After the drain for [devices]' reason: `record()` finishes with
     // `load()` -> `notifyListeners()`, and the connection controller queues

@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../alerts/alert_consent_dialog.dart';
 import '../dashboard/capture_mark_labels.dart';
 import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
@@ -67,6 +68,7 @@ class SettingsScreen extends StatelessWidget {
         const _ConnectionCard(),
         if (panel != null) panel(context),
         const _DisplayCard(),
+        const _AlertsCard(),
         const _DataCard(),
         const _DiagnosticsCard(),
         const _AboutCard(),
@@ -502,6 +504,388 @@ String _calibratedWhen(DateTime at) {
 // layout and nothing to pick. T-new-7 ("Settings is a link, never a second
 // writer of `display_layout`") is satisfied vacuously — this file no longer
 // mentions the column at all, which is the strongest form of that rule.
+
+// ---------------------------------------------------------------------------
+// 警告通知 / Warnings (design 0080 §3.7.2)
+// ---------------------------------------------------------------------------
+
+/// The GLOBAL half of design 0080: the master switch, the three tuning
+/// parameters, the permission line, and the capability statement.
+///
+/// 🔴 **The per-DEVICE thresholds are deliberately not here** (§3.7.1). Ruling B
+/// made them per unit, so a copy of them on this screen would have to open with
+/// a device picker — and the picker is the one thing a unit's own page does not
+/// need. What lives here is what is genuinely app-wide: whether to interrupt at
+/// all, and how.
+///
+/// 🔴 **The last card is a RED LINE, not a footnote** (§6.1). This feature
+/// watches only while the app is connected; there is no check after the link
+/// drops and iOS only has the wake windows `bluetooth-central` gives it. The
+/// copy may say "while connected, when a reading passes a limit" and may never
+/// say「電池有異常會通知你」, "24-hour monitoring" or anything about iOS
+/// background delivery. The precedent is v0.6.15's caveat and the whole of
+/// design 0038: what shipped there was an honest failure inside a minute, not a
+/// fix, and saying so is what kept the report answerable.
+class _AlertsCard extends StatefulWidget {
+  const _AlertsCard();
+
+  @override
+  State<_AlertsCard> createState() => _AlertsCardState();
+}
+
+class _AlertsCardState extends State<_AlertsCard> {
+  @override
+  void initState() {
+    super.initState();
+    // 🔴 Only when the feature is ALREADY on. See [AlertPermission.unknown]:
+    // iOS reports the same value for "never asked" and "refused", so reading
+    // the status for a user who has not been through the first-enable flow
+    // would paint a red "refused" row about a prompt they have never seen — and
+    // ruling Q4 ships the switch off precisely to protect that one-shot prompt.
+    //
+    // ⚠️ This is not the only refresh. The 「前往設定」 button sends the user out
+    // of the app, and what they do there is invisible from here — so the app
+    // root re-reads the status on every resume (`main.dart`). Without that, a
+    // user who granted the permission from the system settings would come back
+    // to a row still saying they had refused.
+    if (context.read<SettingsController>().settings.alertsEnabled) {
+      unawaited(context.read<AlertController>().refreshPermission());
+    }
+  }
+
+  /// The first-enable flow (§3.7.3): explain, then ask, then enable.
+  ///
+  /// 🔴 **Enabling does NOT depend on the permission being granted**, and that
+  /// is design 0008 §3.4's precedent rather than laziness: there, a refused
+  /// `POST_NOTIFICATIONS` left the foreground service running and only hid its
+  /// notification. What made that a defect was not the service running — it was
+  /// that nothing SAID SO. So here the switch goes on, the evaluation and the
+  /// on-screen banner work, and the permission row turns red with a way out.
+  /// Refusing to enable would trade a silent failure for a dead end.
+  Future<void> _enable(BuildContext context) async {
+    final settings = context.read<SettingsController>();
+    final alerts = context.read<AlertController>();
+    if (!await showAlertsConsentDialog(context)) return;
+    // Cancelling asks for nothing: the OS never sees a request, so the one iOS
+    // prompt is still unspent.
+    await alerts.requestPermission();
+    await settings.setAlertsEnabled(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsController>();
+    final alerts = context.watch<AlertController>();
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      children: [
+        IndustrialCard(
+          heading: l10n.settingsAlertsHeading,
+          headingIcon: Icons.notifications_active_outlined,
+          child: Column(
+            children: [
+              SettingsRow(
+                label: l10n.settingsAlertsEnableLabel,
+                sub: l10n.settingsAlertsEnableSub,
+                trailing: _Toggle(
+                  value: s.alertsEnabled,
+                  // Turning it ON runs the explainer + the permission request
+                  // once; turning it OFF is immediate and asks nothing. The
+                  // asymmetry is the point of an opt-in.
+                  onChanged: (v) => v
+                      ? unawaited(_enable(context))
+                      : unawaited(s.setAlertsEnabled(false)),
+                ),
+              ),
+              // 🔵 **P3 turned this from a statement of intent into a status**
+              // (§7.6.4 hand-over 2, §6.2).
+              //
+              // ~~a permanent 「將在啟用通知時要求」 with a clock icon~~ — P2
+              // could not read the status without spending iOS's one-shot
+              // prompt's worth of credibility (see `initState`), so it printed
+              // the plan. Now that the request has a home, the row reports what
+              // the OS actually says, and a REFUSAL is red with a one-tap route
+              // to the system settings.
+              //
+              // 🔴 It must never fail silently. Design 0008 §3.4 is the logged
+              // precedent: a denied permission left the watch running and only
+              // hid the notification, so the user's experience was "I turned it
+              // on and nothing arrives" — with nothing on any screen to explain
+              // it.
+              _PermissionRow(
+                permission: alerts.permission,
+                blocked: alerts.permissionBlocked,
+                onOpenSettings: () => unawaited(alerts.openSystemSettings()),
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsSustainLabel,
+                sub: l10n.settingsAlertsSustainSub,
+                // Seconds, never sample counts — §3.3.1. A second carries
+                // several frames from several selectors, so "5 samples" is a
+                // different duration on every product family and is not a unit
+                // this row could honestly print.
+                value: l10n.settingsAlertsSecondsValue('${s.alertSustainSec}'),
+                onDown: s.alertSustainSec > AppSettings.alertSustainMinSec
+                    ? () => s.setAlertSustainSec(s.alertSustainSec - 1)
+                    : null,
+                onUp: s.alertSustainSec < AppSettings.alertSustainMaxSec
+                    ? () => s.setAlertSustainSec(s.alertSustainSec + 1)
+                    : null,
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsRepeatLabel,
+                sub: l10n.settingsAlertsRepeatSub,
+                value: l10n.settingsAlertsMinutesValue('${s.alertRepeatMin}'),
+                onDown: s.alertRepeatMin > AppSettings.alertRepeatMinMinutes
+                    ? () => s.setAlertRepeatMin(s.alertRepeatMin - 1)
+                    : null,
+                onUp: s.alertRepeatMin < AppSettings.alertRepeatMaxMinutes
+                    ? () => s.setAlertRepeatMin(s.alertRepeatMin + 1)
+                    : null,
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsMaxLabel,
+                sub: l10n.settingsAlertsMaxSub,
+                last: true,
+                value: l10n.settingsAlertsCountValue('${s.alertMaxPerEvent}'),
+                onDown: s.alertMaxPerEvent > AppSettings.alertMaxPerEventMin
+                    ? () => s.setAlertMaxPerEvent(s.alertMaxPerEvent - 1)
+                    : null,
+                onUp: s.alertMaxPerEvent < AppSettings.alertMaxPerEventMax
+                    ? () => s.setAlertMaxPerEvent(s.alertMaxPerEvent + 1)
+                    : null,
+              ),
+            ],
+          ),
+        ),
+        IndustrialCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.settingsAlertsLimitsTitle,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.settingsAlertsLimitsBody,
+                style: TextStyle(
+                    fontSize: 11.5, height: 1.65, color: context.colors.muted),
+              ),
+              const SizedBox(height: 6),
+              // Both platforms, on every platform. A user reads this to decide
+              // whether to trust the feature, and one line about the phone in
+              // their hand does not tell them what they lose by switching —
+              // whereas FB-26 is what showing only the OTHER platform's advice
+              // cost.
+              Text(
+                l10n.settingsAlertsLimitsAndroid,
+                style: const TextStyle(
+                    fontSize: 11.5, height: 1.65, color: AppSemantics.good),
+              ),
+              Text(
+                l10n.settingsAlertsLimitsIos,
+                style: const TextStyle(
+                    fontSize: 11.5, height: 1.65, color: AppSemantics.warn),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// System-notification-permission status (design 0080 §6.2).
+///
+/// Four states, three of which are the same row with different words — and the
+/// fourth is the one this class exists for.
+///
+/// 🔴 **A refusal is RED and carries a button.** §6.2 names the precedent it is
+/// avoiding (design 0008 §3.4): a denied permission that changes nothing on
+/// screen produces a user who has turned the feature on, receives nothing, and
+/// has no way to find out why. The button is the only route back on iOS, where
+/// a refusal cannot be re-asked from inside the app.
+///
+/// ⚠️ [AlertPermission.unknown] deliberately keeps P2's 「將在啟用通知時要求」
+/// wording rather than saying "unknown": before the feature is switched on that
+/// IS the truth, and on iOS it is the only honest thing that can be said,
+/// because the OS answers "not determined" and "denied" identically.
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.permission,
+    required this.blocked,
+    required this.onOpenSettings,
+  });
+
+  final AlertPermission permission;
+
+  /// [AlertController.permissionBlocked] — refused AND the feature is on.
+  ///
+  /// Both halves, because a refusal only MATTERS once something wants to
+  /// notify: shouting about it while the master switch is off would be an alarm
+  /// about a consequence that does not exist yet.
+  final bool blocked;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final (sub, colour, icon) = switch (permission) {
+      AlertPermission.granted => (
+          l10n.settingsAlertsPermissionGranted,
+          AppSemantics.good,
+          Icons.check_circle_outline,
+        ),
+      AlertPermission.denied || AlertPermission.permanentlyDenied => blocked
+          ? (
+              l10n.settingsAlertsPermissionDenied,
+              AppSemantics.danger,
+              Icons.error_outline,
+            )
+          : (
+              l10n.settingsAlertsPermissionUnknown,
+              context.colors.muted,
+              Icons.schedule,
+            ),
+      // Never asked (or a host with no such permission).
+      AlertPermission.unknown => (
+          l10n.settingsAlertsPermissionPending,
+          context.colors.muted,
+          Icons.schedule,
+        ),
+    };
+    return Column(
+      children: [
+        SettingsRow(
+          label: l10n.settingsAlertsPermissionLabel,
+          sub: sub,
+          trailing: blocked
+              ? OutlinedButton(
+                  onPressed: onOpenSettings,
+                  child: Text(l10n.settingsAlertsPermissionOpen),
+                )
+              : Icon(icon, size: 16, color: colour),
+        ),
+        // 🔑 Said out loud rather than left implicit: what a refusal costs is
+        // the RINGING, not the watching. Without this line a user who reads
+        // "refused" has no way to know the banner on the device page still
+        // works, and the reasonable conclusion is that the feature is dead.
+        if (blocked)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
+            child: Text(
+              l10n.settingsAlertsPermissionDeniedHelp,
+              style: TextStyle(
+                  fontSize: 11, height: 1.55, color: context.colors.muted),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A settings row whose value is nudged by − / +.
+///
+/// A stepper rather than a slider or a segmented control, and the mockup is only
+/// half the reason. The other half is the ranges: 1–60 s, 1–120 min and 1–10
+/// have nothing in common but "an integer with a nearest neighbour", so a
+/// segmented control would need three different option lists (and would have to
+/// forbid the values in between), while a slider on a 1–10 range hands a
+/// three-pixel target to a feature FB-70 already showed this project cannot
+/// afford to make small.
+///
+/// A null [onDown] / [onUp] disables that half at the end of the range rather
+/// than wrapping around: wrapping turns one stray tap on "1 reminder" into "10".
+class _StepperRow extends StatelessWidget {
+  const _StepperRow({
+    required this.label,
+    required this.sub,
+    required this.value,
+    required this.onDown,
+    required this.onUp,
+    this.last = false,
+  });
+
+  final String label;
+  final String sub;
+  final String value;
+  final VoidCallback? onDown;
+  final VoidCallback? onUp;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SettingsRow(
+      label: label,
+      sub: sub,
+      last: last,
+      trailing: Container(
+        decoration: BoxDecoration(
+          color: context.colors.panel2,
+          border: Border.all(color: context.colors.line),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StepButton(
+              icon: Icons.remove,
+              tooltip: l10n.settingsAlertsStepDown,
+              onPressed: onDown,
+            ),
+            SizedBox(
+              width: 58,
+              child: Text(
+                value,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.mono(context).copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.text,
+                ),
+              ),
+            ),
+            _StepButton(
+              icon: Icons.add,
+              tooltip: l10n.settingsAlertsStepUp,
+              onPressed: onUp,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        tooltip: tooltip,
+        color: context.colors.muted,
+        // The 40 dp floor again — FB-70. The mockup draws 32x30 and that is a
+        // picture, not a hit box.
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        padding: EdgeInsets.zero,
+      );
+}
 
 // ---------------------------------------------------------------------------
 // 資料 / Data

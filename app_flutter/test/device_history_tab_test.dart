@@ -289,6 +289,7 @@ void main() {
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
               value: telemetry ?? services.telemetry),
+          ChangeNotifierProvider<AlertController>.value(value: services.alerts),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -334,6 +335,7 @@ void main() {
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
               value: telemetry ?? services.telemetry),
+          ChangeNotifierProvider<AlertController>.value(value: services.alerts),
           ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: services.speed),
         ],
@@ -666,6 +668,8 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            ChangeNotifierProvider<AlertController>.value(
+                value: services.alerts),
             ChangeNotifierProvider<GForceController>.value(
                 value: services.gforce),
           ],
@@ -1291,13 +1295,22 @@ void main() {
       // A row far above any plausible over-voltage limit.
       await addRows(tester, unitA, 15.9, count: 3);
       await connectTo(tester, unitA);
-      // 🔴 The thresholds come off the WIRE (`telemetry_controller.dart:307-309`
-      // reads them from the live sample), so a link with no sample on it has
-      // none — `warnOv` is null and every row classifies `normal`. Emitting one
-      // is what makes this test about the gate rather than about the stub.
+      // 🔴 The thresholds come off the WIRE, so a link with no sample on it has
+      // none and every row classifies `normal`. Emitting one is what makes this
+      // test about the gate rather than about the stub.
+      //
+      // 🔵 **`deviceType` added 2026-08-22 (design 0080 P2).** The sample used
+      // to carry `warnOv` and nothing else, and it passed because the tab read
+      // that field directly. It now resolves through `resolveThresholds()`,
+      // whose FIRST act is the device-level gate: a unit whose class nothing has
+      // established is not watched at all (§7.5.6 C-2), because 14.0 V is not a
+      // limit until we know what kind of hardware is reporting it. A real link
+      // always answers `0x10` — this is the stub catching up with the wire, not
+      // the rule being worked around.
       await tester.runAsync(() async {
         ble.emitTelemetry(TelemetrySample(
           timestamp: DateTime.now(),
+          deviceType: 0x02,
           pvlt: 13.0,
           warnOv: 14.0,
         ));
@@ -1334,6 +1347,39 @@ void main() {
       expect(rows.map((r) => r.status),
           isNot(contains(HistoryRowStatus.warning)),
           reason: 'B\'s limits may not be applied to A\'s rows');
+    });
+
+    testWidgets(
+        '🔵 T79-11 (design 0080) — offline, THIS unit\'s own limit still judges',
+        (tester) async {
+      // 🔑 **What P2 GAINED, and the other half of T79-9.** That test pins that
+      // another unit's limits never arrive; this one pins that the page's own
+      // do, with the radio off. Before design 0080 the thresholds were read off
+      // the live sample, so "not connected" and "no limits" were the same state
+      // and an offline unit's rows could never be coloured at all — which is
+      // precisely the unit a dealer reads (design 0065 Q4).
+      //
+      // The limit here comes from LAYER ① (`saved_devices.alert_uv`), which
+      // needs no link, and B is on the wire with limits that would classify
+      // these rows differently — so a regression to the ambient read shows up
+      // as the wrong colour rather than as no colour.
+      await boot(tester);
+      await addRows(tester, unitA, vA, count: 3); // 12.34 V
+      await tester.runAsync(() => services.devices.save(const SavedDevice(
+            id: unitA,
+            alias: 'A',
+            productClass: ProductClass.smartBattery,
+            alertUv: 12.8,
+          )));
+      await addRows(tester, unitB, vB);
+      await connectTo(tester, unitB);
+      await pumpSection(tester, deviceId: unitA, live: false);
+
+      final rows = tester.widgetList<HistoryRow>(find.byType(HistoryRow));
+      expect(rows, isNotEmpty);
+      expect(rows.map((r) => r.status), contains(HistoryRowStatus.warning),
+          reason: 'the owner asked to be told below 12.8 V, and 12.34 is below '
+              'it — no link required to know that');
     });
   });
 

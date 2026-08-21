@@ -40,6 +40,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../alerts/alert_settings_page.dart';
 import '../widgets/one_screen_report.dart';
 
 /// Shown when the device-type byte is one this build does not map.
@@ -76,6 +77,28 @@ class UnidentifiedView extends StatelessWidget {
       // detail page now**, so this resting state no longer appends it under the
       // report. `OneScreenReport.below` stays a parameter; it is just not
       // passed. ~~below: DeviceHistorySection(deviceId: deviceId, live: true)~~
+      //
+      // 🔵 **…and 2026-08-22 it IS passed again, with something else** (design
+      // 0080 P2). The alert entry belongs here specifically BECAUSE this route
+      // is the dead end: an unrecognised device-type byte is the only way to
+      // reach the alert screen's state C (「尚未辨識此裝置類型，無法提供警告」),
+      // and without a way in, that screen — and the 「即時監控／歷史／匯出都不受
+      // 影響」 reassurance on it — would be unreachable code. The user standing
+      // here is precisely the one who needs to be told that only the warnings
+      // are switched off.
+      //
+      // ⚠️ This does not soften the dead end. The page still asserts nothing
+      // about the hardware; the row it gains leads to a screen whose whole
+      // content is "we cannot name this, so we will not guess".
+      below: Padding(
+        padding: const EdgeInsets.fromLTRB(15, 0, 15, 14),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: AlertSettingsEntry(deviceId: deviceId),
+          ),
+        ),
+      ),
       report: [
         Icon(Icons.help_outline, size: 44, color: context.colors.muted),
         const SizedBox(height: 22),

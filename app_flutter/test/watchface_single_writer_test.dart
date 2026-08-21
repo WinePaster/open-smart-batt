@@ -106,6 +106,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: s.connection),
           ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<AlertController>.value(value: s.alerts),
           ChangeNotifierProvider<GForceController>.value(value: s.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
         ],
