@@ -11,7 +11,9 @@
 /// warning compared against the device's live OV/UV/OT thresholds when known).
 library;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
@@ -1081,7 +1083,7 @@ class _TrendGeometry {
   }
 }
 
-/// Legend + dual-axis chart (tap a point for that bucket's detail) + stats.
+/// Legend + dual-axis chart (tap or scrub for a bucket's detail) + stats.
 ///
 /// PUBLIC since design 0065 §3.2.1 ③ — the detail page's embedded section shows
 /// the same chart for one unit. Every input is a plain value; it reads no
@@ -1138,10 +1140,64 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         n: widget.buckets.length,
       );
 
+  /// The bucket the pointer went down on, and whether it was ALREADY the
+  /// selected one — the two facts `onTapUp` needs to decide whether this tap
+  /// was a "tap the same point again to dismiss" (design 0076 §3.2 ruling B).
+  int? _downIndex;
+  bool _downWasSelected = false;
+
+  /// Set once the pointer starts scrubbing, so the release does not then read
+  /// as a dismissing tap.
+  bool _didScrub = false;
+
+  /// Select [i], never clear. 🔴 The toggle lives in [_onTapUp] alone.
+  ///
+  /// Clearing here is what made the two obvious implementations of a scrub
+  /// wrong (design 0076 §3.2): a finger dragged 5 → 6 → 5 would close the
+  /// panel on the way back, and a drag that STARTS on the selected point would
+  /// blink it shut before the first move event set it again.
+  void _select(int i, {bool haptic = false}) {
+    if (_selected == i) return; // no rebuild, and no buzz, for the same point
+    if (haptic) HapticFeedback.selectionClick();
+    setState(() => _selected = i);
+  }
+
   void _onTapDown(double dx, double width) {
     final i = _geometry(width).indexAt(dx);
     if (i == null) return;
-    setState(() => _selected = _selected == i ? null : i);
+    _downIndex = i;
+    _downWasSelected = _selected == i;
+    _didScrub = false;
+    _select(i);
+  }
+
+  void _onTapUp() {
+    // Tap-to-dismiss: only for a press that neither moved nor landed on a
+    // fresh point. (A drag cancels the tap recognizer, so `_didScrub` is belt
+    // and braces — it is the one that would bite silently if that ever
+    // changed.)
+    if (!_didScrub && _downWasSelected && _selected == _downIndex) {
+      setState(() => _selected = null);
+    }
+    _downIndex = null;
+    _downWasSelected = false;
+  }
+
+  void _scrubTo(double dx, double width) {
+    final i = _geometry(width).indexAt(dx);
+    if (i == null) return;
+    _didScrub = true;
+    // Haptic per crossing: while scrubbing the finger covers the plot, so the
+    // fingertip is the only channel left that says "you are on a new point".
+    _select(i, haptic: true);
+  }
+
+  /// Release keeps the selection — reading the numbers is why the finger
+  /// stopped (design 0076 §3.6 / Q4).
+  void _scrubEnd() {
+    _downIndex = null;
+    _downWasSelected = false;
+    _didScrub = false;
   }
 
   @override
@@ -1212,9 +1268,29 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         LayoutBuilder(
           builder: (context, c) {
             final w = c.maxWidth;
+            // Tap AND horizontal drag on the same detector: the two
+            // recognizers coexist, and a horizontal move past the touch slop
+            // cancels the tap and hands over to the drag.
+            //
+            // ⚠️ A diagonal start is LOST TO THE SCROLLING host — whichever
+            // axis crosses the slop first wins the arena, and both landing
+            // sites are inside a vertical scroll view (design 0076 §2). That
+            // is the deliberate price of not stealing vertical drags from a
+            // 160 px band of the page; the copy must never promise that any
+            // gesture scrubs.
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapDown: (d) => _onTapDown(d.localPosition.dx, w),
+              onTapUp: (_) => _onTapUp(),
+              onTapCancel: _scrubEnd,
+              // `DragStartBehavior.down` so the first scrubbed point is the
+              // one under the finger when it went down, not the one it had
+              // already slid to by the time the drag was recognised.
+              dragStartBehavior: DragStartBehavior.down,
+              onHorizontalDragStart: (d) => _scrubTo(d.localPosition.dx, w),
+              onHorizontalDragUpdate: (d) => _scrubTo(d.localPosition.dx, w),
+              onHorizontalDragEnd: (_) => _scrubEnd(),
+              onHorizontalDragCancel: _scrubEnd,
               child: SizedBox(
                 height: _chartH,
                 child: CustomPaint(
