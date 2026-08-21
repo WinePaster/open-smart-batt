@@ -48,6 +48,7 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/l10n/app_localizations_en.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
@@ -206,6 +207,25 @@ class _StateConn extends ConnectionController {
     stalledLatch = stalled;
     notifyListeners();
   }
+
+  /// FB-82, captured rather than written — same device as
+  /// `detail_auto_connect_test.dart`'s `_CountingConn`, for the same reason:
+  /// the real one goes to the diagnostic log, and what the tests below ask is
+  /// which gate the DETAIL PAGE decided on, not whether sqlite stored the
+  /// sentence.
+  ///
+  /// 🔑 Needed here at all only because of FB-92: this file now pushes that
+  /// page, so this file is now the only place two of its entrances can be
+  /// observed. See the arrival block in the `FB-92` group.
+  final List<String> skips = <String>[];
+
+  @override
+  void noteAutoConnectSkipped(String reason, {String? deviceId}) =>
+      skips.add(reason);
+
+  /// Make a mounted page's `didChangeDependencies` run again, which is what
+  /// the detail page's one-line-per-reason de-duplication has to survive.
+  void bump() => notifyListeners();
 }
 
 void main() {
@@ -1082,6 +1102,191 @@ void main() {
       expect(find.text('Car #4'), findsOneWidget,
           reason: 'rule 2: a device you just named must be on the tab you are '
               'looking at');
+    });
+
+    // ------------------------------------------------------------------
+    // ARRIVING — design 0072's nine gates, met at the two doors FB-92 built.
+    //
+    // 🔑 NEW SURFACE, NOT DUPLICATE COVERAGE. Design 0072 wrote the gate list
+    // (`autoConnectBlocker`) and `detail_auto_connect_test.dart` pins all nine
+    // of it — but for ONE way in: a row is tapped and the page, arriving on
+    // nothing in particular, tries to connect. FB-92 built two more doors, and
+    // NEITHER EXISTED when those gates were written:
+    //
+    //   * §6.2, the ordinary path — the list holds the user on the row until
+    //     `ready` and pushes then, so the page opens onto a link that is
+    //     ALREADY UP;
+    //   * (c), the early path (owner's Q7) — the user presses the spinning
+    //     button at ~1.0 s and goes now, so the page opens onto a link at GATT
+    //     `connected`, still 1.5–2.0 s away from usable.
+    //
+    // What both invite is the defect FB-75's gates were written against, only
+    // reintroduced from the other end: two connects 1.9 s apart once ran GATT
+    // setup twice on one link and filed 18 minutes of telemetry twice
+    // (`2026.08.13/001`). A page that dialled on arrival would be that, caused
+    // by a navigation change rather than by a user's second tap — and the list
+    // would have handed it the exact timing to do it in.
+    //
+    // 📌 WHY HERE AND NOT IN `detail_auto_connect_test.dart`. What is under
+    // test is the DOOR, not the gate function: it needs the list, a real
+    // `Navigator.push`, and a link this list drove into a stated phase. That
+    // file pumps the page as `home` with each gate simply asserted, which
+    // cannot express "pushed from the list, on a connection the list started".
+    // A signpost in its header points at this block, because coverage of the
+    // nine gates now lives in two files and a reader of either has to know.
+    // ------------------------------------------------------------------
+
+    /// §6.2's ordinary path: press 連線, let the link run to `ready`, land on
+    /// the page the list pushes.
+    Future<AppServices> arriveOnReady(WidgetTester tester) async {
+      final s = await makeServices(tester);
+      conn = _StateConn(ble, settings: s.settings);
+      addTearDown(() {
+        conn.dispose();
+        return teardown(tester, s);
+      });
+      await pumpStated(tester, s);
+      await settle(tester);
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the premise of all of these: §6.2 pushed');
+      return s;
+    }
+
+    /// (c)'s early path: press 連線, hang at `connected`, press the spinning
+    /// button and go now.
+    Future<AppServices> arriveOnConnected(WidgetTester tester) async {
+      final s = await spinningButton(tester, (button) => button.onTap!());
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the premise: (c) pushed, early');
+      return s;
+    }
+
+    testWidgets('§6.2 door: the page does not re-dial the link it was pushed '
+        'for, and names `already online` as the gate that stopped it',
+        (tester) async {
+      final en = AppLocalizationsEn();
+      await arriveOnReady(tester);
+
+      expect(conn.isOnline, isTrue, reason: 'the state at this door: up');
+      expect(conn.connectedDeviceId, 'DEV-A');
+      expect(ble.connects, 1,
+          reason: 'ONE press, ONE dial. `connect()` opens by tearing down '
+              'whatever link is there, so a second dial here would drop the '
+              'link the user just waited 2–5 s for, on the frame their page '
+              'appeared');
+      // 🔴 WHICH gate, not merely THAT one fired: an export of this page is
+      // the only record of the refusal, and a refusal filed under the wrong
+      // gate's name sends whoever reads it somewhere else entirely.
+      //
+      // ⚠️ WHAT THIS DOES AND DOES NOT CATCH, measured rather than asserted.
+      // Swapping `isOnline` and `isBusy` in `autoConnectBlocker` leaves both
+      // doors GREEN, and that is not a weakness in the test — on the real
+      // controller the two are mutually exclusive (`isOnline` is
+      // `_link == ready`; `isBusy` is connecting/connected/disconnecting), so
+      // that particular swap is not a behaviour change on any reachable state.
+      // What does turn this red is the gate itself going away or answering
+      // differently: delete `isOnline` and this door falls through every
+      // remaining gate to a null blocker and DIALS (verified). A26 in
+      // `detail_auto_connect_test.dart` is where the order is pinned as order.
+      expect(conn.skips, <String>['already online'],
+          reason: 'the link is `ready` before the push, so `isOnline` is the '
+              'first gate that matches. Anything else here means the order '
+              'moved, and every diagnostic log written on this path since '
+              'means something different');
+      // FB-82 Q4: and it is one of the silent seven — the screen here is a
+      // dashboard with telemetry on it, and a notice explaining that no
+      // automatic connect was attempted would answer a question nobody has.
+      //
+      // ⚠️ SAID PLAINLY, because a green line is not evidence of what it looks
+      // like it is evidence of: on THIS door the silence is structural, not a
+      // mapping. `_skipNotice` is only ever rendered by `_OfflineBody`, and at
+      // `ready` this page is drawing `DashboardPage` instead — so teaching
+      // `autoConnectSkipNotice` to shout about `already online` leaves this
+      // line green (verified by mutation, not assumed). It is kept because it
+      // is the user-visible claim the ruling makes, and because the day this
+      // page grows a notice that outlives the offline body is the day the
+      // claim needs a test that was already written.
+      expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing);
+    });
+
+    testWidgets('§6.2 door: one line, however often the controller notifies',
+        (tester) async {
+      await arriveOnReady(tester);
+
+      // The detail page rebuilds on every notification from the two
+      // controllers it watches, and a live link notifies on every telemetry
+      // sample. Unguarded, this door alone would write the same sentence for
+      // as long as the user looks at the page (design 0072 §1 `_loggedSkips`).
+      for (var i = 0; i < 20; i++) {
+        conn.bump();
+        await tester.pump();
+      }
+
+      expect(conn.skips, <String>['already online']);
+      expect(ble.connects, 1, reason: 'and none of those rebuilds dialled');
+    });
+
+    testWidgets('(c) door: arriving at `connected` is `link busy` — NOT '
+        '`already online`', (tester) async {
+      final en = AppLocalizationsEn();
+      await arriveOnConnected(tester);
+
+      // 🔑 The distinction this door exists to make. `isOnline` is
+      // `_link == ready` and nothing else, so at GATT `connected` it is FALSE
+      // while `isBusy` is TRUE — the same 1.5–2.0 s window mechanism ③ lives
+      // in. The two doors therefore report DIFFERENT gates, and a test that
+      // covered only the ordinary one would leave the early one free to change.
+      expect(conn.isOnline, isFalse, reason: 'not usable yet…');
+      expect(conn.isBusy, isTrue, reason: '…but very much in flight');
+      expect(conn.skips, <String>['link busy']);
+      expect(ble.connects, 1,
+          reason: 'the worst dial of the two: `connect()` tears the forming '
+              'link down first, so a page that dialled on arrival here would '
+              'kill the very connection the user pressed the button to skip '
+              'ahead of — mechanism ③ (`2026.08.18-008.md` §3.3), caused by '
+              'the app instead of by the user');
+      // 🔑 THE ONE PLACE THE NOTICE COULD ACTUALLY HAVE APPEARED. Unlike the
+      // §6.2 door, this page IS drawing `_OfflineBody`, so nothing structural
+      // suppresses the notice — and it is still absent for two independent
+      // reasons, checked in this order by the page: `_attemptSeen` is already
+      // true (`isBusy` sets it before the gates are consulted), and `link
+      // busy` maps to no notice anyway. Mutation says the FIRST is the one
+      // carrying this line: make the mapping loud and it stays green; remove
+      // the `_attemptSeen` guard as well and it goes red. Both are the ruling
+      // — a screen visibly working on it does not also need telling.
+      expect(find.text(en.devicesAutoConnectSkippedTitle), findsNothing,
+          reason: 'FB-82 Q4 leaves `link busy` among the silent seven, and '
+              'this door is the first way a user can reach that gate on a '
+              'page that has the offline body up to show it on');
+    });
+
+    testWidgets('(c) door: one line while it waits, and a SECOND only when the '
+        'answer really changes', (tester) async {
+      await arriveOnConnected(tester);
+
+      for (var i = 0; i < 20; i++) {
+        conn.bump();
+        await tester.pump();
+      }
+      expect(conn.skips, <String>['link busy'],
+          reason: 'de-duplication is per page instance and per reason');
+
+      // …and now the link this page arrived early on becomes usable, under the
+      // user's nose. The gate's answer genuinely changes, so a second line is
+      // the de-duplication working rather than failing — `A24`/`A25` state the
+      // same rule from the other file. No second PUSH either: the pending §6.2
+      // navigation was retracted by `_openDetail` on the way in.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(conn.isOnline, isTrue);
+      expect(conn.skips, <String>['link busy', 'already online']);
+      expect(ble.connects, 1);
+      expect(find.byType(DeviceDetailPage, skipOffstage: false), findsOneWidget,
+          reason: 'one press, one page — the early press already spent it');
     });
   });
 
