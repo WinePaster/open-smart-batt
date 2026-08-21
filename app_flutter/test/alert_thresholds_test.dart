@@ -16,6 +16,12 @@
 // These assertions are the thing that now computes with it. If somebody edits
 // a constant, a test says so before a user's phone does.
 //
+// 🔵 2026-08-22 (second ruling, §7.5.6) — nearly every call below grew a
+// `wireClass:` argument. That is not boilerplate: an unclassified unit is now
+// not watched AT ALL, so a fixture that omits the class no longer exercises the
+// layers, it exercises the device-level gate. Where the omission was the point
+// of the test, the test says so.
+//
 // CLEAN-ROOM: every number below is decoded from this project's own shipping
 // arithmetic (`telemetry_decoder.dart:103-109`) applied to payloads in our own
 // captures, as tabulated in design 0080 §3.2.1.
@@ -49,7 +55,12 @@ void main() {
         userOv: 14.2,
         userUv: 12.4,
         userOt: 60,
-        reported: _reported(ov: 15.0, uv: 12.0, ot: 80),
+        reported: _reported(
+          ov: 15.0,
+          uv: 12.0,
+          ot: 80,
+          deviceType: kSmartBatteryDeviceType,
+        ),
         category: DeclaredCategory.carBattery,
       );
 
@@ -63,7 +74,12 @@ void main() {
       // would say 14.8. Rank them the other way round and every one of these
       // units is "over voltage" at rest.
       final r = resolveThresholds(
-        reported: _reported(ov: 16.0, uv: 11.5, ot: 100),
+        reported: _reported(
+          ov: 16.0,
+          uv: 11.5,
+          ot: 100,
+          deviceType: kSuperCapacitorGen3DeviceType,
+        ),
         category: DeclaredCategory.carCapacitor,
       );
 
@@ -74,7 +90,13 @@ void main() {
     });
 
     test('③ the table answers when the unit reported nothing', () {
-      final r = resolveThresholds(category: DeclaredCategory.motorcycleBattery);
+      // 🔵 The `wireClass` is new (§7.5.6 C-1): a battery is the ONE class whose
+      // layer ③ needs both halves — `0x02` says "battery", the declaration says
+      // which kind, and neither alone picks a row.
+      final r = resolveThresholds(
+        category: DeclaredCategory.motorcycleBattery,
+        wireClass: ProductClass.smartBattery,
+      );
 
       expect(r.ov, const ResolvedThreshold(15.0, ThresholdSource.appDefault));
       expect(r.uv, const ResolvedThreshold(11.0, ThresholdSource.appDefault));
@@ -82,7 +104,11 @@ void main() {
     });
 
     test('④ nothing anywhere ⇒ not evaluated, and never guessed', () {
-      final r = resolveThresholds();
+      // 🔵 Since §7.5.6 C-2 this call is stopped by the DEVICE gate rather than
+      // by four empty layers; the assertions are unchanged because the outcome
+      // is, and `disabledReason` is what now tells the two apart (asserted in
+      // the §7.5.6 group).
+      final r = resolveThresholds(wireClass: ProductClass.smartBattery);
 
       expect(r.ov, ResolvedThreshold.unavailable);
       expect(r.uv, ResolvedThreshold.unavailable);
@@ -101,7 +127,7 @@ void main() {
       // Every current category HAS a row, so this drives the null-map-lookup
       // path with a live-fire arrangement instead: category present, table row
       // present, but the field within it empty (the power bank's voltages).
-      final r = resolveThresholds(category: DeclaredCategory.powerBank);
+      final r = resolveThresholds(wireClass: ProductClass.powerBank);
       expect(r.ov.source, ThresholdSource.none);
       expect(r.ot.isSet, isTrue);
     });
@@ -111,7 +137,12 @@ void main() {
     test('a user-set UV leaves OV and OT on the device\'s own values', () {
       final r = resolveThresholds(
         userUv: 12.4,
-        reported: _reported(ov: 15.0, uv: 12.0, ot: 80),
+        reported: _reported(
+          ov: 15.0,
+          uv: 12.0,
+          ot: 80,
+          deviceType: kSmartBatteryDeviceType,
+        ),
         category: DeclaredCategory.carBattery,
       );
 
@@ -130,7 +161,7 @@ void main() {
       // temperature falls through to the table.
       final r = resolveThresholds(
         userUv: 12.6,
-        reported: _reported(ov: 15.0),
+        reported: _reported(ov: 15.0, deviceType: kSmartBatteryDeviceType),
         category: DeclaredCategory.carBattery,
       );
 
@@ -142,8 +173,16 @@ void main() {
 
     test('operator [] agrees with the named fields', () {
       final r = resolveThresholds(
-        reported: _reported(ov: 15.0, uv: 12.0, ot: 80),
+        reported: _reported(
+          ov: 15.0,
+          uv: 12.0,
+          ot: 80,
+          deviceType: kSmartBatteryDeviceType,
+        ),
       );
+      expect(r.hasAny, isTrue,
+          reason: 'a fixture where all three are unset would make the three '
+              'assertions below pass without comparing anything');
       expect(r[AlertKind.overVoltage], r.ov);
       expect(r[AlertKind.underVoltage], r.uv);
       expect(r[AlertKind.overTemperature], r.ot);
@@ -273,8 +312,10 @@ void main() {
     test('an undeclared, unclassified unit is simply unknown', () {
       // Neither input present — the commonest real state, since most owners
       // never fill the form in and the class byte only arrives on connect.
-      // Layer ④ catches it, so the outcome is silence, by a different route
-      // than the suppression above.
+      // 🔵 The ROUTE changed on 2026-08-22 (§7.5.6 C-2): this used to fall
+      // through four empty layers, and is now stopped at the device gate. The
+      // assertion is deliberately left as-is, because "silence" is what this
+      // test was ever about; the gate's own behaviour is pinned below.
       final r = resolveThresholds();
       expect(r.hasAny, isFalse);
     });
@@ -304,9 +345,16 @@ void main() {
       expect(r.uv, ResolvedThreshold.unavailable,
           reason: 'the wire said 0x22; no tap in the UI can put a 12 V limit '
               'on a cell voltage');
-      expect(r.ot, ResolvedThreshold.unavailable,
-          reason: 'and 80 °C is not applied either — the declaration is '
-              'contradicted, so layer ③ says nothing at all (§7.5.1.1 B)');
+      // 🔵 2026-08-22, §7.5.6 C-1 — this assertion changed MEANING, not just
+      // value. It used to read `ResolvedThreshold.unavailable` with the reason
+      // "the declaration is contradicted, so layer ③ says nothing at all
+      // (§7.5.1.1 B)". That turned out to punish the wrong party: the ruling's
+      // whole point is that a power bank gets a heat alarm, and the old rule
+      // took it away from precisely the unit whose owner had mis-tapped. Layer
+      // ③ is keyed on the wire now, so the wrong tap is simply ignored.
+      expect(r.ot, const ResolvedThreshold(50, ThresholdSource.appDefault),
+          reason: 'the wire says power bank, so the power-bank row applies and '
+              'the contradicted declaration is not consulted at all');
     });
 
     test('B — a car battery DECLARED as a power bank keeps its voltage alarms',
@@ -332,22 +380,27 @@ void main() {
       expect(r.ot, const ResolvedThreshold(80, ThresholdSource.device));
     });
 
-    test('B — a contradicted declaration supplies no fallback at all', () {
-      // Same shape as above but with no 0x2B to fall back on, which isolates
-      // layer ③. A capacitor declared as a battery could take 15.0/12.0/80 from
-      // the table, and it would be wrong by 0.2 V, 0.5 V and 20 °C. One of the
-      // two inputs is a mistake and nothing here can tell which, so the honest
-      // answer is layer ④ — 不猜勝於猜錯.
+    test('B — a contradicted declaration is ignored, and the WIRE\'s row is '
+        'used', () {
+      // 🔵 2026-08-22, §7.5.6 C-1 — this test previously asserted the opposite
+      // outcome ("a contradicted declaration supplies no fallback at all":
+      // three `ThresholdSource.none`, on the 不猜勝於猜錯 reading of §7.5.1.1 B).
+      // It is inverted here because the ruling moved the coin toss: with the
+      // declaration merely INDEXING the table, "car battery + 0x17" was two
+      // claims of which one had to be discarded; with the wire indexing it, the
+      // declaration is not a claim about which row to read at all, so there is
+      // nothing left to be in conflict with. A capacitor gets the capacitor row
+      // because it is a capacitor.
       final r = resolveThresholds(
         category: DeclaredCategory.carBattery,
         wireClass: ProductClass.supercapacitor,
       );
 
-      for (final k in AlertKind.values) {
-        expect(r[k].source, ThresholdSource.none, reason: k.name);
-        expect(r[k].value, isNull, reason: k.name);
-      }
-      expect(r.hasAny, isFalse);
+      expect(r.ov, const ResolvedThreshold(14.8, ThresholdSource.appDefault));
+      expect(r.uv, const ResolvedThreshold(11.5, ThresholdSource.appDefault));
+      expect(r.ot, const ResolvedThreshold(100, ThresholdSource.appDefault),
+          reason: 'the capacitor row, not the 15.0/12.0/80 the owner\'s tap '
+              'would have asked for');
     });
 
     test('B — an AGREEING declaration is consulted as normal', () {
@@ -364,37 +417,16 @@ void main() {
       expect(r.ot, const ResolvedThreshold(80, ThresholdSource.appDefault));
     });
 
-    test('C — an unknown wire class suppresses nothing and blocks nothing', () {
-      // A saved device with no link open, or a `0x10` that has not arrived yet,
-      // or a hardware generation this build has never seen. Nothing has claimed
-      // it is a power bank, so voltage is watched; nothing has contradicted the
-      // declaration, so layer ③ still speaks. Both halves matter: silence here
-      // would be a guess just as much as a warning would be.
-      final r = resolveThresholds(category: DeclaredCategory.motorcycleBattery);
-
-      expect(r.ov, const ResolvedThreshold(15.0, ThresholdSource.appDefault));
-      expect(r.uv, const ResolvedThreshold(11.0, ThresholdSource.appDefault),
-          reason: 'the bike row, and evaluated — §7.5.1.1 C');
-      expect(r.ot, const ResolvedThreshold(80, ThresholdSource.appDefault));
-    });
-
-    test('C — a declared power bank with no wire class is NOT voltage-muted',
-        () {
-      // Subtle, and worth pinning precisely because the outcome looks identical
-      // to the suppressed case: the two voltage fields are unset either way.
-      // They are unset here because the power-bank ROW has no voltage cells,
-      // not because anything was muted. If a future edit ever puts numbers in
-      // that row, this test is what will notice that they now come through.
-      final r = resolveThresholds(
-        category: DeclaredCategory.powerBank,
-        userUv: 3.0,
-      );
-
-      expect(r.uv, const ResolvedThreshold(3.0, ThresholdSource.user),
-          reason: 'no wire evidence of 0x22 ⇒ nothing is suppressed, so the '
-              'user value survives — the declaration alone must not gate');
-      expect(r.ot.value, kPowerBankOtDefaultC);
-    });
+    // 🔴 2026-08-22 — the two tests that stood here ("C — an unknown wire class
+    // suppresses nothing and blocks nothing" and "C — a declared power bank
+    // with no wire class is NOT voltage-muted") were DELETED, not adjusted.
+    // Both asserted that an unclassified unit keeps resolving its layers
+    // normally, which is §7.5.1.1 C — the one row of that ruling §7.5.6 C-2
+    // overturned outright. Their subject matter now lives in the §7.5.6 group
+    // below, with the opposite expectation; keeping them here as skipped or
+    // renamed cases would leave two tests named "C" asserting contradictory
+    // things about the same input, which is the failure this repo logs as
+    // "同檔兩處互相矛盾".
 
     test('the live device-type byte outranks the persisted class', () {
       // A restored backup or a re-used MAC can leave a stale product_class in
@@ -422,6 +454,259 @@ void main() {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  group('§7.5.6 C-1 — layer ③ is keyed on the WIRE, the declaration only breaks '
+      'the battery tie', () {
+    // The second ruling of 2026-08-22, and the two field-reported holes that
+    // caused it. Both were found by running the §7.5.1 fix, not by reading it —
+    // which is why they get named regression tests rather than a note.
+    test('hole ① — a power bank with NO declaration is still watched for heat',
+        () {
+      // 🔴 THE regression. A power bank never reports a `0x2B` (0 occurrences
+      // in 49 batches), so layer ② is empty for the entire class; under the
+      // declaration-keyed table, layer ③ needed a form the owner had probably
+      // never filled in. Result: the Q1 ruling "行動電源只做溫度監控" applied to
+      // nobody by default. The unit says what it is; that is enough.
+      final r = resolveThresholds(
+        reported: _reported(deviceType: kPowerBankDeviceType),
+      );
+
+      expect(r.ot, const ResolvedThreshold(50, ThresholdSource.appDefault));
+      expect(r.ov, ResolvedThreshold.unavailable);
+      expect(r.uv, ResolvedThreshold.unavailable,
+          reason: 'the voltage suppression is untouched by this ruling — a '
+              'cell voltage still has no 12 V-scale limit');
+    });
+
+    test('hole ② — a power bank declared as a car battery keeps that heat alarm',
+        () {
+      // The two holes stacked: the mis-tap used to be "contradicted" and cost
+      // the unit its LAST remaining alarm. Same expectation as hole ①, because
+      // the declaration is not consulted for this class at all.
+      final r = resolveThresholds(
+        category: DeclaredCategory.carBattery,
+        wireClass: ProductClass.powerBank,
+      );
+
+      expect(r.ot, const ResolvedThreshold(50, ThresholdSource.appDefault));
+      expect(r.ov, ResolvedThreshold.unavailable);
+      expect(r.uv, ResolvedThreshold.unavailable);
+    });
+
+    test('a capacitor needs no declaration — one row serves both kinds', () {
+      // §3.2.1: the bike and car capacitor rows are identical, so the wire's
+      // inability to separate `0x17`/`0x18` into two kinds costs nothing here.
+      // The declaration is simply not asked.
+      final r = resolveThresholds(wireClass: ProductClass.supercapacitor);
+
+      expect(r.ov, const ResolvedThreshold(14.8, ThresholdSource.appDefault));
+      expect(r.uv, const ResolvedThreshold(11.5, ThresholdSource.appDefault));
+      expect(r.ot, const ResolvedThreshold(100, ThresholdSource.appDefault));
+    });
+
+    test('a capacitor declared as the WRONG kind of capacitor is unaffected',
+        () {
+      // Follows from the row being shared, and worth pinning: it is the reason
+      // the wire-keyed lookup can drop the contradiction check without losing
+      // anything for this class.
+      final bike = resolveThresholds(
+        wireClass: ProductClass.supercapacitor,
+        category: DeclaredCategory.motorcycleCapacitor,
+      );
+      final car = resolveThresholds(
+        wireClass: ProductClass.supercapacitor,
+        category: DeclaredCategory.carCapacitor,
+      );
+      expect(bike, car);
+      expect(bike, resolveThresholds(wireClass: ProductClass.supercapacitor));
+    });
+
+    test('a battery with NO declaration gets no layer ③ — but keeps ① and ②',
+        () {
+      // The one gap the ruling knowingly leaves open, and the test is in two
+      // halves so that "the battery is silent" cannot be mistaken for "the
+      // battery is broken". `0x02` cannot say bike-or-car and the two rows
+      // differ by a whole volt of UV, so there is no row to take.
+      final noDeclaration =
+          resolveThresholds(wireClass: ProductClass.smartBattery);
+
+      for (final k in AlertKind.values) {
+        expect(noDeclaration[k].source, ThresholdSource.none, reason: k.name);
+      }
+      expect(noDeclaration.isDeviceUnwatched, isFalse,
+          reason: 'the DEVICE is recognised — it is only layer ③ that has '
+              'nothing to say, which the UI renders differently (§7.5.6 C-3)');
+
+      // Same unit, same absent declaration, one `0x2B` later. If this half ever
+      // fails, the wire-keyed layer ③ has leaked upwards into layer ②.
+      final withReported = resolveThresholds(
+        wireClass: ProductClass.smartBattery,
+        reported: _reported(ov: 15.0, uv: 12.0, ot: 80),
+      );
+
+      expect(withReported.ov, const ResolvedThreshold(15.0, ThresholdSource.device));
+      expect(withReported.uv, const ResolvedThreshold(12.0, ThresholdSource.device));
+      expect(withReported.ot, const ResolvedThreshold(80, ThresholdSource.device));
+    });
+
+    test('the declaration decides bike UV 11.0 vs car UV 12.0 — its last job',
+        () {
+      final bike = resolveThresholds(
+        wireClass: ProductClass.smartBattery,
+        category: DeclaredCategory.motorcycleBattery,
+      );
+      final car = resolveThresholds(
+        wireClass: ProductClass.smartBattery,
+        category: DeclaredCategory.carBattery,
+      );
+
+      expect(bike.uv, const ResolvedThreshold(11.0, ThresholdSource.appDefault));
+      expect(car.uv, const ResolvedThreshold(12.0, ThresholdSource.appDefault));
+      expect(bike.ov, car.ov, reason: 'both rows are 15.0 — only UV differs');
+      expect(bike.ot, car.ot);
+    });
+
+    test('a battery declared as something that is not a battery gets no row',
+        () {
+      // "Absent" and "contradicting" collapse into the same case now, which is
+      // the simplification the ruling bought: neither of them names one of the
+      // two admissible rows.
+      for (final c in <DeclaredCategory>[
+        DeclaredCategory.carCapacitor,
+        DeclaredCategory.motorcycleCapacitor,
+        DeclaredCategory.powerBank,
+      ]) {
+        final r = resolveThresholds(
+          wireClass: ProductClass.smartBattery,
+          category: c,
+        );
+        expect(r.hasAny, isFalse, reason: c.storageKey);
+      }
+    });
+
+    test('categoryDefaultsFor is the layer, and it is exhaustive over the wire',
+        () {
+      // Pinned directly because P2 reads it to render the "App 預設" badge
+      // without re-running the whole resolution.
+      expect(
+          categoryDefaultsFor(wireClass: ProductClass.powerBank)!.ot,
+          kPowerBankOtDefaultC);
+      expect(categoryDefaultsFor(wireClass: ProductClass.powerBank)!.uv, isNull);
+      expect(categoryDefaultsFor(wireClass: ProductClass.supercapacitor)!.ov,
+          14.8);
+      expect(categoryDefaultsFor(wireClass: ProductClass.smartBattery), isNull);
+      expect(categoryDefaultsFor(wireClass: ProductClass.unknown), isNull,
+          reason: 'unreachable through resolveThresholds, which returns at the '
+              'device gate first — but a direct caller must still get the safe '
+              'answer rather than an exception');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  group('§7.5.6 C-2 — an unclassified unit is not watched at all', () {
+    test('no exceptions: a reported 0x2B does not buy its way in', () {
+      // 🔴 The first back door the ruling names, and the plausible one — layer
+      // ② is per-unit evidence that needs no table of ours. It is refused
+      // because a threshold is only meaningful next to a quantity, and an
+      // unrecognised class does not tell us which quantity PVLT is. Compare
+      // the power bank, where "voltage" is a ~3.7 V cell.
+      final r = resolveThresholds(
+        reported: _reported(ov: 15.0, uv: 12.0, ot: 80, deviceType: 0x33),
+      );
+
+      for (final k in AlertKind.values) {
+        expect(r[k].source, ThresholdSource.none, reason: k.name);
+        expect(r[k].value, isNull, reason: k.name);
+      }
+      expect(r.hasAny, isFalse);
+    });
+
+    test('no exceptions: a user-typed threshold does not buy its way in either',
+        () {
+      // 🔴 The second back door, and the uncomfortable one, because layer ①
+      // outranks everything else in the entire design. It loses here anyway: a
+      // user typing 12.0 into a unit neither of us has identified is making the
+      // same guess we just declined to make, and we would be the ones ringing
+      // the bell for it.
+      final r = resolveThresholds(
+        userOv: 15.0,
+        userUv: 12.0,
+        userOt: 60,
+        reported: _reported(deviceType: 0x33),
+      );
+
+      for (final k in AlertKind.values) {
+        expect(r[k].source, ThresholdSource.none, reason: k.name);
+      }
+      expect(r.hasAny, isFalse);
+    });
+
+    test('both back doors at once, and the persisted class is unknown too', () {
+      final r = resolveThresholds(
+        userUv: 12.0,
+        reported: _reported(ov: 15.0, uv: 12.0, ot: 80, deviceType: 0x33),
+        category: DeclaredCategory.carBattery,
+        wireClass: ProductClass.unknown,
+      );
+      expect(r.hasAny, isFalse);
+      expect(r.isDeviceUnwatched, isTrue);
+    });
+
+    test('"not arrived yet" and "arrived but unrecognised" are DIFFERENT', () {
+      // 🔑 The distinction §7.5.6 C-2 requires the API to carry. Every single
+      // connection spends its first frames in `deviceTypePending`, so a screen
+      // that could not tell the two apart would flash "無法提供警告" at every
+      // connect — a false alarm about the alarms.
+      expect(resolveThresholds().disabledReason,
+          AlertsDisabledReason.deviceTypePending,
+          reason: 'offline saved device: no sample at all');
+      expect(resolveThresholds(reported: _reported()).disabledReason,
+          AlertsDisabledReason.deviceTypePending,
+          reason: 'connected, telemetry flowing, 0x10 not seen yet');
+      expect(resolveThresholds(reported: _reported(deviceType: 0x33)).disabledReason,
+          AlertsDisabledReason.deviceTypeUnrecognised,
+          reason: 'a byte exists and product_class.dart should be taught it — '
+              'this is the one the UI may show');
+    });
+
+    test('a recognised unit carries no disabled reason', () {
+      expect(resolveThresholds(wireClass: ProductClass.smartBattery).disabledReason,
+          AlertsDisabledReason.none);
+      expect(resolveThresholds(wireClass: ProductClass.smartBattery)
+          .isDeviceUnwatched, isFalse);
+    });
+
+    test('AlertThresholds.none and .unwatched are not equal', () {
+      // Both have three empty fields and both answer `hasAny == false`, so the
+      // evaluator treats them alike — correctly. The screen must not: one says
+      // "no numbers for this device", the other "we do not know what this
+      // device is". A `==` that could not separate them would let P2's diff
+      // miss the transition between them.
+      expect(AlertThresholds.none,
+          isNot(const AlertThresholds.unwatched(
+              AlertsDisabledReason.deviceTypeUnrecognised)));
+      expect(AlertThresholds.none.hasAny, isFalse);
+      expect(
+          const AlertThresholds.unwatched(AlertsDisabledReason.deviceTypePending)
+              .hasAny,
+          isFalse);
+    });
+
+    test('a persisted class still rescues an unrecognised live byte', () {
+      // Not a back door: the gate asks the RESOLVED class, and an earlier
+      // session that did recognise this unit is evidence like any other. Pinned
+      // because it is the behaviour that keeps a saved device usable across a
+      // firmware bump that changes the byte.
+      final r = resolveThresholds(
+        wireClass: ProductClass.supercapacitor,
+        reported: _reported(deviceType: 0x33),
+      );
+
+      expect(r.isDeviceUnwatched, isFalse);
+      expect(r.ov, const ResolvedThreshold(14.8, ThresholdSource.appDefault));
+    });
+  });
+
   group('value semantics', () {
     test('ResolvedThreshold compares by value, so a rebuild is not a change',
         () {
@@ -434,9 +719,18 @@ void main() {
           isNot(const ResolvedThreshold(15.0, ThresholdSource.user)),
           reason: 'same number, different provenance — a DIFFERENT badge, so '
               'not the same value');
-      expect(
-          resolveThresholds(reported: _reported(ov: 15.0, uv: 12.0, ot: 80)),
-          resolveThresholds(reported: _reported(ov: 15.0, uv: 12.0, ot: 80)));
+      AlertThresholds resolved() => resolveThresholds(
+            reported: _reported(
+              ov: 15.0,
+              uv: 12.0,
+              ot: 80,
+              deviceType: kSmartBatteryDeviceType,
+            ),
+          );
+      expect(resolved(), resolved());
+      expect(resolved().hasAny, isTrue,
+          reason: 'two identically EMPTY results would compare equal too, and '
+              'would prove nothing about the fields');
     });
 
     test('AlertKind knows which unit it is measured in', () {

@@ -60,8 +60,19 @@ TelemetrySample _sample({double? pvlt, int? tempC, DateTime? stamp}) =>
     );
 
 /// Thresholds as a car battery reports them (`18401414`), with no user override.
+///
+/// 🔵 2026-08-22 — `deviceType` is now part of the fixture, not decoration.
+/// Since §7.5.6 C-2 a unit whose class is unknown resolves to three empty
+/// fields no matter what its `0x2B` said, so without the `0x02` byte this
+/// fixture would silently become "nothing is watched" and every test built on
+/// it would pass by evaluating nothing.
 final AlertThresholds _carBattery = resolveThresholds(
-  reported: _sample().copyWith(warnOv: 15.0, warnUv: 12.0, warnOt: 80),
+  reported: _sample().copyWith(
+    warnOv: 15.0,
+    warnUv: 12.0,
+    warnOt: 80,
+    deviceType: kSmartBatteryDeviceType,
+  ),
 );
 
 /// A gate that lets everything through: saved unit, both switches on, no mute.
@@ -593,7 +604,11 @@ void main() {
     test('an unknown unit produces nothing however bad the reading', () {
       fakeAsync((async) {
         final e = AlertEvaluator();
-        final none = resolveThresholds();
+        // 🔵 A recognised battery that simply has no thresholds from any layer:
+        // since §7.5.6 C-2 a bare `resolveThresholds()` would be stopped by the
+        // DEVICE gate instead, which is a different rule and is tested in
+        // `alert_thresholds_test.dart`. This one is still about layer ④.
+        final none = resolveThresholds(wireClass: ProductClass.smartBattery);
 
         for (var i = 0; i < 60; i++) {
           expect(_feed(e, pvlt: 3.0, tempC: 120, thresholds: none), isEmpty);
@@ -609,8 +624,14 @@ void main() {
     test('a partially known unit evaluates only the fields it knows', () {
       fakeAsync((async) {
         final e = AlertEvaluator();
-        // Only a UV, from the user; nothing else from any layer.
-        final partial = resolveThresholds(userUv: 12.0);
+        // Only a UV, from the user; nothing else from any layer. The wire class
+        // is required since §7.5.6 C-2 — an unidentified unit gets no alarms at
+        // all, user value included, so without it there would be no UV here to
+        // be partial about.
+        final partial = resolveThresholds(
+          userUv: 12.0,
+          wireClass: ProductClass.smartBattery,
+        );
 
         _feed(e, pvlt: 11.5, tempC: 200, thresholds: partial);
         async.elapse(const Duration(seconds: 5));
@@ -785,7 +806,12 @@ void main() {
         final e = AlertEvaluator();
         final mine = resolveThresholds(
           userUv: 12.4,
-          reported: _sample().copyWith(warnOv: 15.0, warnUv: 12.0, warnOt: 80),
+          reported: _sample().copyWith(
+            warnOv: 15.0,
+            warnUv: 12.0,
+            warnOt: 80,
+            deviceType: kSmartBatteryDeviceType,
+          ),
         );
 
         _feed(e, pvlt: 12.2, thresholds: mine);
