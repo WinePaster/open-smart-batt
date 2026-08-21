@@ -1939,4 +1939,274 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get declaredModel175AhA => '17.5Ah-A';
+
+  @override
+  String get alertsEntryTitle => '警告通知';
+
+  @override
+  String alertsEntrySummaryFull(String uv, String ov, String ot) {
+    return '門檻 $uv – $ov V · $ot °C';
+  }
+
+  @override
+  String alertsEntrySummaryTempOnly(String ot) {
+    return '過溫門檻 $ot °C';
+  }
+
+  @override
+  String get alertsEntrySummaryUnknown => '連線後才知道';
+
+  @override
+  String get alertsEntrySummaryUnrecognised => '尚未辨識此裝置類型';
+
+  @override
+  String get alertsEntrySummaryUnsaved => '先儲存這台裝置才能設定警告';
+
+  @override
+  String get alertsEntryBadgeOn => '已開啟';
+
+  @override
+  String get alertsEntryBadgeOff => '已關閉';
+
+  @override
+  String get alertsEntryBadgeMuted => '靜音中';
+
+  @override
+  String get alertsPageTitle => '警告通知';
+
+  @override
+  String get alertsDeviceSwitchTitle => '為這台發出通知';
+
+  @override
+  String get alertsDeviceSwitchSub => '連線期間偵測到超標時通知';
+
+  @override
+  String get alertsDeviceSwitchSubTempOnly => '連線期間偵測到過溫時通知';
+
+  @override
+  String get alertsDeviceSwitchSubUnrecognised => '此裝置類型尚未辨識';
+
+  @override
+  String get alertsThresholdsHeading => '門檻';
+
+  @override
+  String get alertsLiveReadingHeading => '目前讀數';
+
+  @override
+  String get alertsRowOverVoltage => '過壓';
+
+  @override
+  String get alertsRowUnderVoltage => '欠壓';
+
+  @override
+  String get alertsRowOverTemperature => '過溫';
+
+  @override
+  String get alertsRowAboveWarns => '高於就警告';
+
+  @override
+  String get alertsRowBelowWarns => '低於就警告';
+
+  @override
+  String get alertsSourceDevice => '裝置回報';
+
+  @override
+  String get alertsSourceUser => '自訂';
+
+  @override
+  String get alertsSourceApp => 'App 預設';
+
+  @override
+  String get alertsSourceNone => '無依據';
+
+  @override
+  String get alertsSourceOffline => '連線後才知道';
+
+  @override
+  String get alertsValueUnset => '未設定';
+
+  @override
+  String alertsVoltsValue(String v) {
+    return '$v V';
+  }
+
+  @override
+  String alertsCelsiusValue(String v) {
+    return '$v °C';
+  }
+
+  @override
+  String alertsNearReadingVolts(String label, String delta) {
+    return '$label門檻距離目前讀數只有 $delta V。';
+  }
+
+  @override
+  String alertsNearReadingCelsius(String label, String delta) {
+    return '$label門檻距離目前讀數只有 $delta °C。';
+  }
+
+  @override
+  String alertsFactoryValue(String v) {
+    return '出廠值 $v';
+  }
+
+  @override
+  String get alertsRestore => '還原';
+
+  @override
+  String get alertsOfflineNote => '目前未連線，這台裝置自己回報的出廠門檻要連線後才讀得到。';
+
+  @override
+  String get alertsPendingTitle => '正在辨識這台裝置';
+
+  @override
+  String get alertsPendingBody =>
+      '要等它說出自己是什麼，才知道能提供哪些警告。沒有任何東西被關掉，只是現在還沒有東西可以顯示。';
+
+  @override
+  String get alertsPowerBankNoteTitle => '為什麼沒有電壓警告？';
+
+  @override
+  String get alertsPowerBankNoteBody =>
+      '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事，而且它不回報出廠警戒門檻 —— 我們沒有依據可以判斷多少算異常。';
+
+  @override
+  String get alertsPowerBankOtNote => '這台裝置沒有回報警戒門檻，50 °C 是 App 的預設值，你可以改。';
+
+  @override
+  String get alertsPowerBankOtEvidence => '全庫 49 批實測上限 40 °C';
+
+  @override
+  String get alertsUnrecognisedTitle => '尚未辨識此裝置類型，無法提供警告。';
+
+  @override
+  String get alertsUnrecognisedBody =>
+      '這台裝置回報的類型代號是我們還不認得的。在辨識出它之前，App 無法判斷它的讀數多少算正常 —— 所以不提供警告，而不是給你一組可能是錯的門檻。';
+
+  @override
+  String alertsUnrecognisedDeviceType(String hex) {
+    return 'device-type = $hex（未收錄）';
+  }
+
+  @override
+  String get alertsStillAvailableHeading => '仍然可用';
+
+  @override
+  String get alertsStillAvailableBody => '即時監控、歷史紀錄、匯出都不受影響 —— 停用的只有警告。';
+
+  @override
+  String get alertsMuteHeading => '暫停';
+
+  @override
+  String get alertsMuteHourTitle => '靜音 1 小時';
+
+  @override
+  String get alertsMuteHourSub => '關掉 App 也還算數';
+
+  @override
+  String get alertsMutedTitle => '靜音中';
+
+  @override
+  String alertsMutedSub(String time, String minutes) {
+    return '到 $time 為止 · 剩 $minutes 分鐘';
+  }
+
+  @override
+  String get alertsMuteInactive => '未啟用';
+
+  @override
+  String get alertsMuteClear => '解除';
+
+  @override
+  String get alertsSessionMuteTitle => '本次連線不再提醒';
+
+  @override
+  String get alertsSessionMuteSub => '斷線就失效';
+
+  @override
+  String alertsEditDialogTitle(String label) {
+    return '$label門檻';
+  }
+
+  @override
+  String get alertsEditHintVolts => '伏特，例如 12.40';
+
+  @override
+  String get alertsEditHintCelsius => '攝氏度，例如 80';
+
+  @override
+  String get alertsEditInvalid => '請輸入數字';
+
+  @override
+  String get alertsUnsavedTitle => '這台裝置尚未儲存';
+
+  @override
+  String get alertsUnsavedBody => '警告設定是逐台儲存的，所以要先幫它取個名字。';
+
+  @override
+  String get settingsAlertsHeading => '警告通知';
+
+  @override
+  String get settingsAlertsEnableLabel => '啟用警告通知';
+
+  @override
+  String get settingsAlertsEnableSub => '連線期間讀數超過門檻時通知你';
+
+  @override
+  String get settingsAlertsPermissionLabel => '系統通知權限';
+
+  @override
+  String get settingsAlertsPermissionPending => '將在啟用通知時要求';
+
+  @override
+  String get settingsAlertsSustainLabel => '持續多久才算警告';
+
+  @override
+  String get settingsAlertsSustainSub => '避免瞬間的接觸不良就發通知';
+
+  @override
+  String get settingsAlertsRepeatLabel => '重複提醒間隔';
+
+  @override
+  String get settingsAlertsRepeatSub => '同一個事件持續中時';
+
+  @override
+  String get settingsAlertsMaxLabel => '同一事件最多提醒';
+
+  @override
+  String get settingsAlertsMaxSub => '達到上限後閉嘴，直到恢復正常';
+
+  @override
+  String settingsAlertsSecondsValue(String n) {
+    return '$n 秒';
+  }
+
+  @override
+  String settingsAlertsMinutesValue(String n) {
+    return '$n 分';
+  }
+
+  @override
+  String settingsAlertsCountValue(String n) {
+    return '$n 則';
+  }
+
+  @override
+  String get settingsAlertsLimitsTitle => '這個功能能做到什麼';
+
+  @override
+  String get settingsAlertsLimitsBody => '只有在 App 連著裝置的時候才會偵測。斷線之後不會有任何檢查。';
+
+  @override
+  String get settingsAlertsLimitsAndroid => 'Android：連線中即使螢幕關閉也會持續偵測。';
+
+  @override
+  String get settingsAlertsLimitsIos =>
+      'iPhone：切到背景後，只有在裝置送資料喚醒 App 的短暫期間會偵測；系統回收 App 之後就會停止。';
+
+  @override
+  String get settingsAlertsStepDown => '減少';
+
+  @override
+  String get settingsAlertsStepUp => '增加';
 }

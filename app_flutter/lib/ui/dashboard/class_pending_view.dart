@@ -125,6 +125,16 @@ class _ClassPendingViewState extends State<ClassPendingView> {
       // unknown (design 0065 §0.4).
       // 🔵 **Design 0079 S1 (2026-08-21)** — see `unidentified_view.dart`.
       // ~~below: DeviceHistorySection(deviceId: widget.deviceId, live: true)~~
+      //
+      // 🔴 **And NO `AlertSettingsEntry` here, unlike `unidentified_view.dart`,
+      // which grew one on 2026-08-22** (design 0080 P2). The two routes look
+      // alike and are opposites, which is the whole reason this view exists
+      // separately: that one is a RESTING state — the byte arrived and we cannot
+      // name it — so its alert screen has something durable to say. This one is
+      // a WAIT that almost always ends within a second, and design 0080 §7.5.6
+      // C-3 forbids exactly this window from acquiring alert chrome: a row that
+      // flashed up and vanished on every connect would be a defect, and there is
+      // nothing it could truthfully summarise while the class is unknown.
       report: [
         _PendingGlyph(stalled: stalled),
         const SizedBox(height: 22),

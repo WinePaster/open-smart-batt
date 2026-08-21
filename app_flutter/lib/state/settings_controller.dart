@@ -87,6 +87,14 @@ class SettingsController extends ChangeNotifier {
   int get logMaxBytes => _settings.logMaxBytes;
   int? get logTrimBudget => _settings.logTrimBudget;
 
+  /// The app-wide warning switch and its three tuning parameters (design 0080
+  /// §3.6). See [AppSettings.alertsEnabled] for why the switch defaults OFF and
+  /// for the one thing it must never be read to gate.
+  bool get alertsEnabled => _settings.alertsEnabled;
+  int get alertSustainSec => _settings.alertSustainSec;
+  int get alertRepeatMin => _settings.alertRepeatMin;
+  int get alertMaxPerEvent => _settings.alertMaxPerEvent;
+
   /// Load the persisted row (or defaults if none stored yet).
   Future<void> load() async {
     _settings = await _repo.loadSettings();
@@ -205,6 +213,39 @@ class SettingsController extends ChangeNotifier {
     if (age == null || history == null) return;
     await history.deleteOlderThan(DateTime.now().subtract(age));
   }
+  /// The app-wide warning switch (design 0080 §3.7.3, Q4).
+  ///
+  /// Same division of labour as [setSpeedDetection] and [setGMeterEnabled]: the
+  /// first-run explanation and the OS permission prompt belong to the SCREEN,
+  /// this only records the answer. A setter that asked for permission itself
+  /// would make "write the setting" and "obtain consent" one call, so any later
+  /// caller — a restore-defaults, a test, a deep link from a notification —
+  /// would either block on a dialog it cannot answer or bypass the consent.
+  ///
+  /// 📌 P2 stores it and shows it. Nothing reads it to decide anything yet; the
+  /// permission flow and the evaluator arrive together in P3, because they share
+  /// one gate and splitting them would give that gate two versions.
+  Future<void> setAlertsEnabled(bool v) =>
+      update(_settings.copyWith(alertsEnabled: v));
+
+  /// Seconds a reading must stay past a threshold before it counts (§3.3.1 —
+  /// seconds, never sample counts). Clamped to the offered range here as well as
+  /// in [AppSettings.fromMap]: the stepper is one caller, and the clamp belongs
+  /// where the value is written rather than only where it is read back.
+  Future<void> setAlertSustainSec(int v) => update(_settings.copyWith(
+      alertSustainSec: _clamp(v, AppSettings.alertSustainMinSec,
+          AppSettings.alertSustainMaxSec)));
+
+  Future<void> setAlertRepeatMin(int v) => update(_settings.copyWith(
+      alertRepeatMin: _clamp(v, AppSettings.alertRepeatMinMinutes,
+          AppSettings.alertRepeatMaxMinutes)));
+
+  Future<void> setAlertMaxPerEvent(int v) => update(_settings.copyWith(
+      alertMaxPerEvent: _clamp(v, AppSettings.alertMaxPerEventMin,
+          AppSettings.alertMaxPerEventMax)));
+
+  static int _clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
+
   Future<void> setRawPacketLog(bool v) =>
       update(_settings.copyWith(rawPacketLog: v));
   Future<void> setLogMaxBytes(int v) =>

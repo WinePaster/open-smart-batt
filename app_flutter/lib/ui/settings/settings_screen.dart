@@ -67,6 +67,7 @@ class SettingsScreen extends StatelessWidget {
         const _ConnectionCard(),
         if (panel != null) panel(context),
         const _DisplayCard(),
+        const _AlertsCard(),
         const _DataCard(),
         const _DiagnosticsCard(),
         const _AboutCard(),
@@ -502,6 +503,245 @@ String _calibratedWhen(DateTime at) {
 // layout and nothing to pick. T-new-7 ("Settings is a link, never a second
 // writer of `display_layout`") is satisfied vacuously — this file no longer
 // mentions the column at all, which is the strongest form of that rule.
+
+// ---------------------------------------------------------------------------
+// 警告通知 / Warnings (design 0080 §3.7.2)
+// ---------------------------------------------------------------------------
+
+/// The GLOBAL half of design 0080: the master switch, the three tuning
+/// parameters, the permission line, and the capability statement.
+///
+/// 🔴 **The per-DEVICE thresholds are deliberately not here** (§3.7.1). Ruling B
+/// made them per unit, so a copy of them on this screen would have to open with
+/// a device picker — and the picker is the one thing a unit's own page does not
+/// need. What lives here is what is genuinely app-wide: whether to interrupt at
+/// all, and how.
+///
+/// 🔴 **The last card is a RED LINE, not a footnote** (§6.1). This feature
+/// watches only while the app is connected; there is no check after the link
+/// drops and iOS only has the wake windows `bluetooth-central` gives it. The
+/// copy may say "while connected, when a reading passes a limit" and may never
+/// say「電池有異常會通知你」, "24-hour monitoring" or anything about iOS
+/// background delivery. The precedent is v0.6.15's caveat and the whole of
+/// design 0038: what shipped there was an honest failure inside a minute, not a
+/// fix, and saying so is what kept the report answerable.
+class _AlertsCard extends StatelessWidget {
+  const _AlertsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsController>();
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      children: [
+        IndustrialCard(
+          heading: l10n.settingsAlertsHeading,
+          headingIcon: Icons.notifications_active_outlined,
+          child: Column(
+            children: [
+              SettingsRow(
+                label: l10n.settingsAlertsEnableLabel,
+                sub: l10n.settingsAlertsEnableSub,
+                trailing: _Toggle(
+                  value: s.alertsEnabled,
+                  onChanged: s.setAlertsEnabled,
+                ),
+              ),
+              // 🔴 **A statement of intent, not a status** (design 0080 P2).
+              // §6.2 requires this row to show a REFUSED permission in red with
+              // a jump to the system settings, and that is P3's — because the
+              // request flow is P3's. Reading the status early would be worse
+              // than saying nothing: on iOS an un-asked permission reports the
+              // same value as a denied one, so this row would show every new
+              // user a red "denied" for a prompt they have never seen, and the
+              // one-shot prompt is exactly the thing Q4 turned the whole feature
+              // off to protect.
+              SettingsRow(
+                label: l10n.settingsAlertsPermissionLabel,
+                sub: l10n.settingsAlertsPermissionPending,
+                trailing: Icon(Icons.schedule,
+                    size: 16, color: context.colors.muted),
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsSustainLabel,
+                sub: l10n.settingsAlertsSustainSub,
+                // Seconds, never sample counts — §3.3.1. A second carries
+                // several frames from several selectors, so "5 samples" is a
+                // different duration on every product family and is not a unit
+                // this row could honestly print.
+                value: l10n.settingsAlertsSecondsValue('${s.alertSustainSec}'),
+                onDown: s.alertSustainSec > AppSettings.alertSustainMinSec
+                    ? () => s.setAlertSustainSec(s.alertSustainSec - 1)
+                    : null,
+                onUp: s.alertSustainSec < AppSettings.alertSustainMaxSec
+                    ? () => s.setAlertSustainSec(s.alertSustainSec + 1)
+                    : null,
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsRepeatLabel,
+                sub: l10n.settingsAlertsRepeatSub,
+                value: l10n.settingsAlertsMinutesValue('${s.alertRepeatMin}'),
+                onDown: s.alertRepeatMin > AppSettings.alertRepeatMinMinutes
+                    ? () => s.setAlertRepeatMin(s.alertRepeatMin - 1)
+                    : null,
+                onUp: s.alertRepeatMin < AppSettings.alertRepeatMaxMinutes
+                    ? () => s.setAlertRepeatMin(s.alertRepeatMin + 1)
+                    : null,
+              ),
+              _StepperRow(
+                label: l10n.settingsAlertsMaxLabel,
+                sub: l10n.settingsAlertsMaxSub,
+                last: true,
+                value: l10n.settingsAlertsCountValue('${s.alertMaxPerEvent}'),
+                onDown: s.alertMaxPerEvent > AppSettings.alertMaxPerEventMin
+                    ? () => s.setAlertMaxPerEvent(s.alertMaxPerEvent - 1)
+                    : null,
+                onUp: s.alertMaxPerEvent < AppSettings.alertMaxPerEventMax
+                    ? () => s.setAlertMaxPerEvent(s.alertMaxPerEvent + 1)
+                    : null,
+              ),
+            ],
+          ),
+        ),
+        IndustrialCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.settingsAlertsLimitsTitle,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.settingsAlertsLimitsBody,
+                style: TextStyle(
+                    fontSize: 11.5, height: 1.65, color: context.colors.muted),
+              ),
+              const SizedBox(height: 6),
+              // Both platforms, on every platform. A user reads this to decide
+              // whether to trust the feature, and one line about the phone in
+              // their hand does not tell them what they lose by switching —
+              // whereas FB-26 is what showing only the OTHER platform's advice
+              // cost.
+              Text(
+                l10n.settingsAlertsLimitsAndroid,
+                style: const TextStyle(
+                    fontSize: 11.5, height: 1.65, color: AppSemantics.good),
+              ),
+              Text(
+                l10n.settingsAlertsLimitsIos,
+                style: const TextStyle(
+                    fontSize: 11.5, height: 1.65, color: AppSemantics.warn),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A settings row whose value is nudged by − / +.
+///
+/// A stepper rather than a slider or a segmented control, and the mockup is only
+/// half the reason. The other half is the ranges: 1–60 s, 1–120 min and 1–10
+/// have nothing in common but "an integer with a nearest neighbour", so a
+/// segmented control would need three different option lists (and would have to
+/// forbid the values in between), while a slider on a 1–10 range hands a
+/// three-pixel target to a feature FB-70 already showed this project cannot
+/// afford to make small.
+///
+/// A null [onDown] / [onUp] disables that half at the end of the range rather
+/// than wrapping around: wrapping turns one stray tap on "1 reminder" into "10".
+class _StepperRow extends StatelessWidget {
+  const _StepperRow({
+    required this.label,
+    required this.sub,
+    required this.value,
+    required this.onDown,
+    required this.onUp,
+    this.last = false,
+  });
+
+  final String label;
+  final String sub;
+  final String value;
+  final VoidCallback? onDown;
+  final VoidCallback? onUp;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SettingsRow(
+      label: label,
+      sub: sub,
+      last: last,
+      trailing: Container(
+        decoration: BoxDecoration(
+          color: context.colors.panel2,
+          border: Border.all(color: context.colors.line),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StepButton(
+              icon: Icons.remove,
+              tooltip: l10n.settingsAlertsStepDown,
+              onPressed: onDown,
+            ),
+            SizedBox(
+              width: 58,
+              child: Text(
+                value,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.mono(context).copyWith(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.text,
+                ),
+              ),
+            ),
+            _StepButton(
+              icon: Icons.add,
+              tooltip: l10n.settingsAlertsStepUp,
+              onPressed: onUp,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        tooltip: tooltip,
+        color: context.colors.muted,
+        // The 40 dp floor again — FB-70. The mockup draws 32x30 and that is a
+        // picture, not a hit box.
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        padding: EdgeInsets.zero,
+      );
+}
 
 // ---------------------------------------------------------------------------
 // 資料 / Data

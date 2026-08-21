@@ -25,6 +25,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../alerts/alert_settings_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../history/device_history_tab.dart';
 import '../widgets/one_screen_report.dart';
@@ -1170,6 +1171,31 @@ class _OfflineBody extends StatelessWidget {
       // that widget's general capability, not something design 0065 invented,
       // and deleting it would cost the next caller a fresh argument about
       // centring — it is simply not passed here any more.
+      //
+      // 🔵 **2026-08-22 (design 0080 P2): the next caller arrived.** The alert
+      // entry is drawn for an OFFLINE unit too, and that is deliberate rather
+      // than incidental — thresholds are the one part of this feature that needs
+      // no link. Layers ① and ③ (the owner's own numbers, and the class table)
+      // are both answerable with the radio off, which is exactly the situation a
+      // dealer sets limits in: the battery is on a shelf, not on the phone. Only
+      // layer ② is missing, and the screen says so in as many words rather than
+      // caching a stale `0x2B` to fill the gap (§7.5.2).
+      //
+      // ⚠️ Gated on `saved != null`. An unsaved unit that is also offline has
+      // nothing to show and nothing to write: `_UnsavedNotice`'s naming button
+      // is the only useful control on this screen, and a second row leading to
+      // the same prompt would be two answers to one question.
+      below: saved == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(15, 0, 15, 14),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: AlertSettingsEntry(deviceId: deviceId),
+                ),
+              ),
+            ),
       report: [
         ConnectionPulseIcon(working: mine && working),
         const SizedBox(height: 24),

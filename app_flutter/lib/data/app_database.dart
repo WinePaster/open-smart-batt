@@ -339,7 +339,65 @@ class Db {
   /// statement — "the owner told us there is no lid" — that no one made. Write 0
   /// across the table and `WHERE declared_retrofit IS NULL` counts nobody, while
   /// `= 0` counts everybody who has never opened the form.
-  static const int schemaVersion = 21;
+  ///
+  /// v22 — design 0080 P2. NINE columns across TWO tables, and they split into
+  /// two groups whose NULL/DEFAULT rules are deliberately opposite.
+  ///
+  ///   saved_devices.alert_enabled      INTEGER NOT NULL DEFAULT 1
+  ///   saved_devices.alert_ov           REAL,    nullable, NO DEFAULT
+  ///   saved_devices.alert_uv           REAL,    nullable, NO DEFAULT
+  ///   saved_devices.alert_ot           REAL,    nullable, NO DEFAULT
+  ///   saved_devices.alert_muted_until  INTEGER, nullable, NO DEFAULT (epoch ms)
+  ///   settings.alerts_enabled          INTEGER NOT NULL DEFAULT 0  ⇐ Q4
+  ///   settings.alert_sustain_sec       INTEGER NOT NULL DEFAULT 5
+  ///   settings.alert_repeat_min        INTEGER NOT NULL DEFAULT 15
+  ///   settings.alert_max_per_event     INTEGER NOT NULL DEFAULT 3
+  ///
+  /// 🔴 **THE THREE THRESHOLDS ARE NULL, AND NULL IS THE WHOLE FEATURE**
+  /// (design 0080 §3.6.1). `alert_ov IS NULL` means "the owner has not answered
+  /// for this field", which is what makes `resolveThresholds()`'s layer ① fall
+  /// through to the unit's own `0x2B` and then to the category table. Seed a
+  /// number — any number, including a category default — and every one of those
+  /// rows now claims the owner typed it, layer ② can never be reached again, and
+  /// the third-generation capacitor that leaves the factory at OV 16.0 V spends
+  /// the rest of its life being warned about at 14.8. Same rule and same reason
+  /// as v20's `declared_*`, one step sharper: there a wrong default was a
+  /// fabricated ANSWER, here it is a fabricated answer that RINGS.
+  ///
+  /// ⚠️ `0` and `-1` are not available as "unset" either, for v20's reason:
+  /// a sentinel is a second spelling of NULL sitting in the same column, and
+  /// `WHERE alert_uv IS NULL` stops counting the people it was written to count.
+  /// `alert_muted_until` follows the same rule — NULL is "never muted", never 0
+  /// (0 is a real epoch instant, 1970-01-01, and it means "muted until then",
+  /// i.e. not muted, by a coincidence rather than by a statement).
+  ///
+  /// 🔑 **THE FOUR GLOBAL PARAMETERS TAKE DEFAULTS, and here a DEFAULT is the
+  /// honest answer** — the opposite call from the paragraph above, made on the
+  /// same grounds. `alert_sustain_sec` / `alert_repeat_min` /
+  /// `alert_max_per_event` are not questions anyone is being asked; they are the
+  /// tuning the feature ships with (§3.3: 5 s / 15 min / 3), and a NULL there
+  /// would mean "this build has no idea how long to debounce for", which is not
+  /// a state the state machine can be in. Writing 5 into an upgraded row states
+  /// nothing about the user.
+  ///
+  /// 🔴 `alerts_enabled DEFAULT 0` is the Q4 ruling, and it is the one place in
+  /// this migration where the two rules meet: a DEFAULT of 1 would grant every
+  /// upgrading phone a notification feature nobody consented to, on a platform
+  /// (iOS) where the permission prompt is one-shot and a reflexive "Don't Allow"
+  /// is not recoverable in-app. Same shape and same reasoning as v13's
+  /// `background_monitoring_ios`.
+  ///
+  /// ⚠️ `alert_enabled` (per DEVICE) DEFAULTS TO 1 and that is not a
+  /// contradiction of the line above: it is subordinate to the global switch,
+  /// which is off. It answers "when alerts are on, is THIS unit one of them",
+  /// and the answer a user expects for a unit they have never opened the screen
+  /// for is yes — a per-device opt-in on top of a global opt-in would leave the
+  /// first person who turns the feature on with nothing happening and no clue
+  /// why.
+  ///
+  /// CLAIMING A NUMBER (see the note under v8): 22 was taken after checking
+  /// every local and remote ref on 2026-08-22 — the highest anywhere was 21.
+  static const int schemaVersion = 22;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -835,6 +893,42 @@ class AppDatabase {
         "WHERE declared_model = 'retrofit-lid'",
       );
     }
+    if (from < 22) {
+      // design 0080 P2. Nine additive columns, no row rewritten, nothing read —
+      // see [Db.schemaVersion] v22 for why the five per-device ones are NULL and
+      // the four global ones take DEFAULTs, which is the same question answered
+      // two different ways on purpose.
+      //
+      // ⚠️ `product_class` and `declared_category` are deliberately NOT read
+      // here, exactly as in v20/v21. Seeding `alert_ov` from the category table
+      // would look like a favour — every upgraded unit arrives with sensible
+      // limits — and would state that the owner typed them, which permanently
+      // outranks the unit's own `0x2B` (design 0080 §3.1 layer ① beats layer ②).
+      // An upgrade may add capability, never evidence.
+      for (final column in const <String>[
+        'alert_enabled INTEGER NOT NULL DEFAULT 1',
+        'alert_ov REAL',
+        'alert_uv REAL',
+        'alert_ot REAL',
+        'alert_muted_until INTEGER',
+      ]) {
+        await db.execute(
+          'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN $column',
+        );
+      }
+      for (final column in const <String>[
+        // 🔴 0, not 1 — Q4. See v13's `background_monitoring_ios` for the same
+        // call made for the same reason.
+        'alerts_enabled INTEGER NOT NULL DEFAULT 0',
+        'alert_sustain_sec INTEGER NOT NULL DEFAULT 5',
+        'alert_repeat_min INTEGER NOT NULL DEFAULT 15',
+        'alert_max_per_event INTEGER NOT NULL DEFAULT 3',
+      ]) {
+        await db.execute(
+          'ALTER TABLE ${Db.tableSettings} ADD COLUMN $column',
+        );
+      }
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -943,7 +1037,12 @@ class AppDatabase {
       declared_capacity TEXT,
       declared_note TEXT,
       declared_at INTEGER,
-      declared_retrofit INTEGER
+      declared_retrofit INTEGER,
+      alert_enabled INTEGER NOT NULL DEFAULT 1,
+      alert_ov REAL,
+      alert_uv REAL,
+      alert_ot REAL,
+      alert_muted_until INTEGER
     )
     ''',
     '''
@@ -968,7 +1067,11 @@ class AppDatabase {
       g_meter_enabled INTEGER NOT NULL DEFAULT 0,
       g_calibration TEXT,
       app_mode TEXT,
-      accent_theme TEXT
+      accent_theme TEXT,
+      alerts_enabled INTEGER NOT NULL DEFAULT 0,
+      alert_sustain_sec INTEGER NOT NULL DEFAULT 5,
+      alert_repeat_min INTEGER NOT NULL DEFAULT 15,
+      alert_max_per_event INTEGER NOT NULL DEFAULT 3
     )
     ''',
     '''

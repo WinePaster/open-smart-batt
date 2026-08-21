@@ -121,8 +121,8 @@ CapacitorHealth? capacitorHealthOf(int? mode) => mode == null
         ? CapacitorHealth.healthy
         : CapacitorHealth.unknown;
 
-/// True when a live reading breaches one of the thresholds the DEVICE reported
-/// (OV / UV / OT, selector 0x2B).
+/// True when a live reading breaches one of this unit's RESOLVED thresholds
+/// (OV / UV / OT).
 ///
 /// This is OUR computation from telemetry, NOT a device-reported state — see
 /// [CapacitorHealth]. It drives an advisory line, never the status badge.
@@ -130,12 +130,35 @@ CapacitorHealth? capacitorHealthOf(int? mode) => mode == null
 /// Named for the class it was written for; it is not capacitor-specific and all
 /// three control bodies use it (FB-30 — the battery body was the one that never
 /// did, and a battery over its own limits therefore said nothing).
-bool readingBreachesThreshold(TelemetryController tele) {
+///
+/// 🔵 **Design 0080 §3.8 / §7.1 (P2): [thresholds] replaced three direct reads
+/// of `tele.warnOv` / `warnUv` / `warnOt`.** That is the whole point of the
+/// change and it is not a refactor:
+///
+///   * those three fields are layer ② ALONE, so this line used to ignore a
+///     threshold the user had typed for this very unit and report「正常」while
+///     the notification the same reading is about to raise says otherwise —
+///     the "one fact, two sources" failure this repo has three logged incidents
+///     of, aimed at an alarm;
+///   * and it used to fire on a unit whose class nothing had identified, where
+///     §7.5.6 C-2 says we do not know what 12.0 V even means. [AlertThresholds]
+///     comes back empty in that case, so this returns false without needing to
+///     know why — the SCREEN is the thing that must tell the two "empty"s apart
+///     (`AlertsDisabledReason`), not this comparison.
+///
+/// The comparison itself is unchanged, strictly greater / strictly less, and is
+/// deliberately the same shape as `AlertEvaluator`'s: two comparators disagreeing
+/// on the boundary would put the advisory line and the notification one hundredth
+/// of a volt apart.
+bool readingBreachesThreshold(
+  TelemetryController tele,
+  AlertThresholds thresholds,
+) {
   final pvlt = tele.pvlt;
-  final ov = tele.warnOv;
-  final uv = tele.warnUv;
   final temp = tele.temperatureC;
-  final ot = tele.warnOt;
+  final ov = thresholds.ov.value;
+  final uv = thresholds.uv.value;
+  final ot = thresholds.ot.value;
   if (pvlt != null && ov != null && pvlt > ov) return true;
   if (pvlt != null && uv != null && pvlt < uv) return true;
   if (temp != null && ot != null && temp > ot) return true;

@@ -40,6 +40,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
+import 'package:open_smart_batt/ui/alerts/alert_settings_page.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
@@ -721,22 +722,36 @@ void main() {
         // `.last`, and one thing now comes after the control card: the
         // embedded history block.~~
         //
-        // 🔵 **RE-AMENDED 2026-08-21 (design 0079 S1): back to `.last`.** The
+        // 🔵 ~~**RE-AMENDED 2026-08-21 (design 0079 S1): back to `.last`.** The
         // history block left the shell — it is a sub-tab on the detail page
         // now — so the control card is once more the final child, exactly as
-        // this test's own NAME has said throughout both amendments.
+        // this test's own NAME has said throughout both amendments.~~
         //
-        // 🔑 The 08-16 note's substance is kept because it is still the
-        // argument that would be needed if anything else were ever appended
-        // below the controls: design 0034 §6's "controls last, always" is
-        // about the WATCHFACE, enforced structurally by there being no
-        // `DisplayModule` for the protection card, so no face can name it or
-        // move it. A shell-level append is not on that axis. What changed is
-        // only that there is no longer anything appended.
+        // 🔵 **AMENDED AGAIN 2026-08-22 (design 0080 P2): one thing follows it
+        // once more — `AlertSettingsEntry`.** And this is exactly the case the
+        // 08-16 note below was kept for, so the argument is used rather than
+        // re-invented: design 0034 §6's "controls last, always" is about the
+        // WATCHFACE, and it is enforced STRUCTURALLY by there being no
+        // `DisplayModule` for the protection card — no face can name it, move
+        // it, or remove it. A shell-level append is not on that axis, and the
+        // alert row is deliberately not a module for the very same reason the
+        // protection card is not one: a user who rearranged their dashboard
+        // must not be able to hide the only route to their own thresholds.
+        //
+        // 🔑 So the assertion moves from "nothing follows" to "nothing a FACE
+        // placed follows", which is the property that was always meant. The
+        // loop below is the other half and is unchanged: every card a pack face
+        // can place sits above the controls.
         final children = shellChildren(tester);
-        expect(children.last, isA<IndustrialCard>(),
-            reason: 'the control card is the last thing the dashboard puts up, '
-                'and since design 0079 S1 nothing follows it');
+        final placeable = children
+            .where((w) => w is! AlertSettingsEntry)
+            .toList(growable: false);
+        expect(placeable.last, isA<IndustrialCard>(),
+            reason: 'the control card is the last thing the WATCHFACE puts up; '
+                'only shell-level appends may follow it');
+        expect(children.last, isA<AlertSettingsEntry>(),
+            reason: 'and the alert row is that append — pinned so a future one '
+                'has to come and argue with this line rather than slip in');
         expect(find.byType(BatteryControls), findsOneWidget,
             reason: 'no face may remove it');
         // Every card a pack face can place, including the one Phase 1 added:

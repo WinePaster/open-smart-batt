@@ -2049,4 +2049,291 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get declaredModel175AhA => '17.5Ah-A';
+
+  @override
+  String get alertsEntryTitle => 'Warning notifications';
+
+  @override
+  String alertsEntrySummaryFull(String uv, String ov, String ot) {
+    return 'Limits $uv – $ov V · $ot °C';
+  }
+
+  @override
+  String alertsEntrySummaryTempOnly(String ot) {
+    return 'Over-temperature limit $ot °C';
+  }
+
+  @override
+  String get alertsEntrySummaryUnknown => 'Known once connected';
+
+  @override
+  String get alertsEntrySummaryUnrecognised =>
+      'This device type is not recognised yet';
+
+  @override
+  String get alertsEntrySummaryUnsaved =>
+      'Save this device first to set warnings';
+
+  @override
+  String get alertsEntryBadgeOn => 'On';
+
+  @override
+  String get alertsEntryBadgeOff => 'Off';
+
+  @override
+  String get alertsEntryBadgeMuted => 'Muted';
+
+  @override
+  String get alertsPageTitle => 'Warning notifications';
+
+  @override
+  String get alertsDeviceSwitchTitle => 'Notify me about this device';
+
+  @override
+  String get alertsDeviceSwitchSub =>
+      'While connected, tell me when a reading passes a limit';
+
+  @override
+  String get alertsDeviceSwitchSubTempOnly =>
+      'While connected, tell me when it runs hot';
+
+  @override
+  String get alertsDeviceSwitchSubUnrecognised =>
+      'This device type is not recognised yet';
+
+  @override
+  String get alertsThresholdsHeading => 'Limits';
+
+  @override
+  String get alertsLiveReadingHeading => 'Now';
+
+  @override
+  String get alertsRowOverVoltage => 'Over-voltage';
+
+  @override
+  String get alertsRowUnderVoltage => 'Under-voltage';
+
+  @override
+  String get alertsRowOverTemperature => 'Over-temperature';
+
+  @override
+  String get alertsRowAboveWarns => 'Warn above';
+
+  @override
+  String get alertsRowBelowWarns => 'Warn below';
+
+  @override
+  String get alertsSourceDevice => 'Device';
+
+  @override
+  String get alertsSourceUser => 'Custom';
+
+  @override
+  String get alertsSourceApp => 'App default';
+
+  @override
+  String get alertsSourceNone => 'No basis';
+
+  @override
+  String get alertsSourceOffline => 'Known once connected';
+
+  @override
+  String get alertsValueUnset => 'Not set';
+
+  @override
+  String alertsVoltsValue(String v) {
+    return '$v V';
+  }
+
+  @override
+  String alertsCelsiusValue(String v) {
+    return '$v °C';
+  }
+
+  @override
+  String alertsNearReadingVolts(String label, String delta) {
+    return 'The $label limit is only $delta V from the current reading.';
+  }
+
+  @override
+  String alertsNearReadingCelsius(String label, String delta) {
+    return 'The $label limit is only $delta °C from the current reading.';
+  }
+
+  @override
+  String alertsFactoryValue(String v) {
+    return 'Device value $v';
+  }
+
+  @override
+  String get alertsRestore => 'Restore';
+
+  @override
+  String get alertsOfflineNote =>
+      'Not connected — this device\'s own factory limits are only readable while connected.';
+
+  @override
+  String get alertsPendingTitle => 'Still identifying this device';
+
+  @override
+  String get alertsPendingBody =>
+      'Which warnings this device can offer is known once it has said what it is. Nothing is switched off — there is simply nothing to show yet.';
+
+  @override
+  String get alertsPowerBankNoteTitle => 'Why is there no voltage warning?';
+
+  @override
+  String get alertsPowerBankNoteBody =>
+      'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.';
+
+  @override
+  String get alertsPowerBankOtNote =>
+      'This device reports no warning limits. 50 °C is the app\'s own default, and you can change it.';
+
+  @override
+  String get alertsPowerBankOtEvidence =>
+      'Highest observed across 49 captures: 40 °C';
+
+  @override
+  String get alertsUnrecognisedTitle =>
+      'This device type is not recognised, so no warnings are offered.';
+
+  @override
+  String get alertsUnrecognisedBody =>
+      'This device reports a type code we do not know yet. Until we can identify it, the app cannot tell which readings are normal — so it offers no warnings rather than a set of limits that may be wrong.';
+
+  @override
+  String alertsUnrecognisedDeviceType(String hex) {
+    return 'device-type = $hex (not catalogued)';
+  }
+
+  @override
+  String get alertsStillAvailableHeading => 'Still available';
+
+  @override
+  String get alertsStillAvailableBody =>
+      'Live monitoring, history and export are unaffected — only warnings are switched off.';
+
+  @override
+  String get alertsMuteHeading => 'Pause';
+
+  @override
+  String get alertsMuteHourTitle => 'Mute for 1 hour';
+
+  @override
+  String get alertsMuteHourSub => 'Still counts after the app is closed';
+
+  @override
+  String get alertsMutedTitle => 'Muted';
+
+  @override
+  String alertsMutedSub(String time, String minutes) {
+    return 'Until $time · $minutes min left';
+  }
+
+  @override
+  String get alertsMuteInactive => 'Off';
+
+  @override
+  String get alertsMuteClear => 'Resume';
+
+  @override
+  String get alertsSessionMuteTitle => 'Not again this connection';
+
+  @override
+  String get alertsSessionMuteSub => 'Ends when the link drops';
+
+  @override
+  String alertsEditDialogTitle(String label) {
+    return '$label limit';
+  }
+
+  @override
+  String get alertsEditHintVolts => 'Volts, e.g. 12.40';
+
+  @override
+  String get alertsEditHintCelsius => 'Degrees Celsius, e.g. 80';
+
+  @override
+  String get alertsEditInvalid => 'Enter a number';
+
+  @override
+  String get alertsUnsavedTitle => 'This device is not saved';
+
+  @override
+  String get alertsUnsavedBody =>
+      'Warning settings are stored per device, so this one needs a name first.';
+
+  @override
+  String get settingsAlertsHeading => 'Warnings';
+
+  @override
+  String get settingsAlertsEnableLabel => 'Enable warning notifications';
+
+  @override
+  String get settingsAlertsEnableSub =>
+      'While connected, notify me when a reading passes a limit';
+
+  @override
+  String get settingsAlertsPermissionLabel => 'System notification permission';
+
+  @override
+  String get settingsAlertsPermissionPending =>
+      'Requested when you turn notifications on';
+
+  @override
+  String get settingsAlertsSustainLabel => 'How long before it counts';
+
+  @override
+  String get settingsAlertsSustainSub =>
+      'So a momentary bad contact does not notify you';
+
+  @override
+  String get settingsAlertsRepeatLabel => 'Repeat reminder every';
+
+  @override
+  String get settingsAlertsRepeatSub => 'While one event is still going';
+
+  @override
+  String get settingsAlertsMaxLabel => 'Reminders per event';
+
+  @override
+  String get settingsAlertsMaxSub =>
+      'After the limit it goes quiet until the reading recovers';
+
+  @override
+  String settingsAlertsSecondsValue(String n) {
+    return '$n s';
+  }
+
+  @override
+  String settingsAlertsMinutesValue(String n) {
+    return '$n min';
+  }
+
+  @override
+  String settingsAlertsCountValue(String n) {
+    return '$n';
+  }
+
+  @override
+  String get settingsAlertsLimitsTitle => 'What this feature can do';
+
+  @override
+  String get settingsAlertsLimitsBody =>
+      'Detection only happens while the app is CONNECTED to the device. Nothing is checked after the link drops.';
+
+  @override
+  String get settingsAlertsLimitsAndroid =>
+      'Android: detection continues while connected, even with the screen off.';
+
+  @override
+  String get settingsAlertsLimitsIos =>
+      'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.';
+
+  @override
+  String get settingsAlertsStepDown => 'Decrease';
+
+  @override
+  String get settingsAlertsStepUp => 'Increase';
 }

@@ -37,6 +37,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../alerts/alert_settings_page.dart';
 import '../widgets/industrial_card.dart';
 import 'dashboard_cards.dart';
 import 'display_modules.dart';
@@ -65,7 +66,8 @@ class PackView extends StatelessWidget {
       case ProductClass.unknown:
         // Still identifying (or a stray power-bank label a pack can never truly
         // be): the bounded fallback — union of controls except anti-theft.
-        return PackScaffold(deviceId: deviceId, controls: const PackControls());
+        return PackScaffold(
+            deviceId: deviceId, controls: PackControls(deviceId: deviceId));
     }
   }
 }
@@ -78,7 +80,8 @@ class CapacitorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PackScaffold(deviceId: deviceId, controls: const CapacitorControls());
+      PackScaffold(
+          deviceId: deviceId, controls: CapacitorControls(deviceId: deviceId));
 }
 
 /// Smart-battery body: the shared pack shell with [BatteryControls].
@@ -89,7 +92,8 @@ class BatteryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PackScaffold(deviceId: deviceId, controls: const BatteryControls());
+      PackScaffold(
+          deviceId: deviceId, controls: BatteryControls(deviceId: deviceId));
 }
 
 /// Shared pack chrome: cosmetic label chip + serial + PVLT gauge + data-driven
@@ -230,6 +234,16 @@ class PackScaffold extends StatelessWidget {
               headingIcon: Icons.shield_outlined,
               child: controls,
             ),
+
+            // ---- warnings (design 0080 §3.7.1) ---------------------------
+            //
+            // 🔑 Below the protection card and above nothing, which is where
+            // the mockup puts it (§1.1). It is NOT a `DisplayModule` and no
+            // watchface can name it, for the protection card's reason (design
+            // 0034 §6): this is a route into a settings screen, not a readout,
+            // and a user who rearranged their dashboard must not be able to
+            // hide the only way to reach their own thresholds.
+            AlertSettingsEntry(deviceId: deviceId),
 
             // ---- this unit's own history ---------------------------------
             //
