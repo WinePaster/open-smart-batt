@@ -35,7 +35,7 @@ import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/unidentified_view.dart';
 import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
-import 'package:open_smart_batt/ui/history/device_history_section.dart';
+import 'package:open_smart_batt/ui/history/device_history_tab.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/widgets/one_screen_report.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -154,7 +154,6 @@ void main() {
 
   Future<void> boot(WidgetTester tester) async {
     debugClearDeviceHistoryCache();
-    debugDeviceHistoryBodyBuilds = 0;
     await tester.runAsync(() async {
       final db = await AppDatabase.open(
         path: inMemoryDatabasePath,
@@ -278,12 +277,11 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: locale,
+          // 🔵 **No wrapping `ListView` since design 0079 S2** — the tab IS a
+          // `CustomScrollView`, and nesting one scrollable inside another with
+          // an unbounded main axis is an assertion, not a layout.
           home: Scaffold(
-            body: ListView(
-              children: [
-                DeviceHistorySection(deviceId: deviceId, live: live),
-              ],
-            ),
+            body: DeviceHistoryTab(deviceId: deviceId, live: live),
           ),
         ),
       ),
@@ -408,7 +406,7 @@ void main() {
 
       await pumpSection(tester, deviceId: unitA, live: false);
 
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(find.byType(DeviceHistoryTab), findsOneWidget);
       expect(showsVoltage(vA), isTrue);
     });
   });
@@ -429,7 +427,7 @@ void main() {
 
       await pumpSection(tester, deviceId: unitA, live: false);
 
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(find.byType(DeviceHistoryTab), findsOneWidget);
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       // Default range is "today", so the honest sentence is the range one.
       expect(find.text(l10n.historyEmptyDeviceRange), findsOneWidget);
@@ -473,86 +471,28 @@ void main() {
   // ==========================================================================
   // T65-4b / T65-4c — the memoisation, from both sides.
   // ==========================================================================
-  group('P-2′ memoisation', () {
-    testWidgets(
-        '🔴 T65-4b — 20 telemetry samples rebuild the body ZERO extra times',
-        (tester) async {
-      // CATCHES: the memoised subtree being dropped, or the block being
-      // switched to `context.watch<TelemetryController>()`. Either one puts up
-      // to 1,000 list rows on the ~4.7 Hz telemetry rebuild path. The symptom
-      // is not a crash and not an error — it is heat and dropped frames on the
-      // phones least able to absorb them, which is why a counter is the only
-      // witness that can see it (design 0065 §6 R2).
-      await boot(tester);
-      await addRows(tester, unitA, vA);
-      await connectTo(tester, unitA);
-      await pumpSection(tester, deviceId: unitA, live: true);
-
-      final before = debugDeviceHistoryBodyBuilds;
-      expect(before, greaterThan(0), reason: 'it did build once');
-
-      for (var i = 0; i < 20; i++) {
-        await tester.runAsync(() async {
-          ble.emitTelemetry(TelemetrySample(
-              timestamp: DateTime.now(), pvlt: vA, temperatureC: 30));
-          await Future<void>.delayed(const Duration(milliseconds: 5));
-        });
-        await tester.pump();
-      }
-
-      expect(debugDeviceHistoryBodyBuilds, before,
-          reason: 'a telemetry sample changes nothing this block renders, so '
-              'it must not cost a rebuild of it');
-    });
-
-    testWidgets('T65-4c — but a change the user CAN see still gets through',
-        (tester) async {
-      // 🔴 The reverse pin, and the more dangerous direction of the two. A
-      // cache key that is too WIDE freezes the block on stale data, and a
-      // frozen-but-plausible screen is far harder to notice than a rebuild.
-      // Three inputs, three ways in: a setting, the range control, the filter.
-      await boot(tester);
-      await addRows(tester, unitA, vA, temp: 30);
-      await pumpSection(tester, deviceId: unitA, live: false);
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-
-      // (a) a SETTING changed elsewhere — the easiest one to leave out of the
-      //     key, because the user changes it on another screen and walks back.
-      expect(find.textContaining('30°C'), findsWidgets);
-      await tester.runAsync(
-          () => services.settings.setTempUnit(TempUnit.fahrenheit));
-      await tester.pump();
-      expect(find.textContaining('86°F'), findsWidgets,
-          reason: '`tempUnit` is missing from the memo key');
-      expect(find.textContaining('30°C'), findsNothing);
-
-      // (b) the range control.
-      final buildsBeforeRange = debugDeviceHistoryBodyBuilds;
-      await tester.tap(find.text(l10n.historyRangeWeek));
-      await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
-      await tester.pump();
-      expect(debugDeviceHistoryBodyBuilds, greaterThan(buildsBeforeRange));
-      // CardHeading upper-cases what it is given.
-      expect(find.text(l10n.historyChartTitle.toUpperCase()), findsOneWidget,
-          reason: 'a multi-day range retitles the chart');
-
-      // ~~(c) the warnings filter.~~ 🔴 Removed 2026-08-16 with the filter
-      // itself (owner ruling). The two cases above still cover what this test
-      // is for — that the P-2′ memo lets a user-visible change through — and
-      // they exercise the two remaining kinds of key: a settings value
-      // (`tempUnit`) and a state field (`_range`).
-    });
-  });
-
   // ==========================================================================
-  // T65-13 — what the block is allowed to claim when it is offline.
+  // ~~P-2′ memoisation (T65-4b / T65-4c)~~ — DELETED 2026-08-21 (design 0079 S2)
+  //
+  // 🔴 **Deleted, not loosened, and the precedent is design 0065 §0.9's own**:
+  // when the owner removed the row list on 2026-08-16, the tests that guarded
+  // its slicing were deleted rather than relaxed, because "留著讓它綠等於在測
+  // 一段頁面到不了的程式碼" — keeping them green means testing code the page
+  // cannot reach.
+  //
+  // The memo existed because the block hung off `PackScaffold`, which watches
+  // `TelemetryController` and therefore rebuilt it several times a second. The
+  // history tab is a SIBLING of the live half, not a child of it, so nothing
+  // drives that rebuild any more. `debugDeviceHistoryBodyBuilds` went with it.
+  //
+  // ⚠️ What the two tests actually guarded is worth restating, because it is
+  // NOT covered elsewhere and would matter again if a memo ever came back:
+  // `T65-4b` pinned that a memo exists at all, and `T65-4c` — the reverse pin —
+  // that a change the USER can see still gets through it. A cache key missing
+  // an input freezes the surface on stale data, which is much harder to notice
+  // than the rebuild it was preventing.
   // ==========================================================================
 
-  // ==========================================================================
-  // T65-12 — the two surfaces must agree about one unit.
-  // ==========================================================================
   group('T65-12 — one unit, one set of numbers', () {
     test('the range cut-off has exactly one derivation', () {
       // CATCHES: a second `_sinceFor` growing back on either surface. "Today"
@@ -728,7 +668,7 @@ void main() {
 
     testWidgets('no dashboard view carries the block itself any more',
         (tester) async {
-      // CATCHES: a partial revert — one view getting its `DeviceHistorySection`
+      // CATCHES: a partial revert — one view getting its history block
       // back, which would put a second copy of this unit's history on the page
       // (the shape design 0079 §5.2 step 2 calls out as a legitimate MID-branch
       // state that must never reach `main`).
@@ -750,7 +690,7 @@ void main() {
         ),
       ]) {
         await pumpRoute(tester, view);
-        expect(find.byType(DeviceHistorySection), findsNothing,
+        expect(find.byType(DeviceHistoryTab), findsNothing,
             reason: '$name must not append the block: it belongs to the page');
       }
     });
@@ -769,11 +709,11 @@ void main() {
 
       expect(find.text('History'), findsOneWidget,
           reason: 'the tab is offered with no link at all');
-      expect(find.byType(DeviceHistorySection), findsNothing,
+      expect(find.byType(DeviceHistoryTab), findsNothing,
           reason: 'T-1: not mounted until it is asked for');
 
       await openHistoryTab(tester);
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(find.byType(DeviceHistoryTab), findsOneWidget);
       expect(showsVoltage(vA), isTrue, reason: 'and it queried THIS unit');
     });
 
@@ -824,7 +764,7 @@ void main() {
 
       expect(debugDeviceHistoryQueries, before,
           reason: 'the page is open and nothing has been asked of the history');
-      expect(find.byType(DeviceHistorySection), findsNothing,
+      expect(find.byType(DeviceHistoryTab), findsNothing,
           reason: 'T-1: not in the tree at all until first selected');
     });
 
@@ -923,7 +863,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.byType(DeviceHistorySection), findsNothing,
+      expect(find.byType(DeviceHistoryTab), findsNothing,
           reason: 'a swipe must not switch tabs, and must not mount history');
     });
   });
@@ -1079,9 +1019,175 @@ void main() {
     });
   });
   // ==========================================================================
-  // T79-S0 — the block makes TWO queries, not three (design 0079 S0).
+  // T79-6 … T79-9 — what S2 added: the lazy list, the drill-down, and the
+  // thresholds going back to work.
   // ==========================================================================
-  group('T79-S0 — two queries, not three', () {
+  group('T79 — the list', () {
+    testWidgets('T79-6 — the list is lazy: far fewer rows inflate than loaded',
+        (tester) async {
+      // 🔴 **The whole technical justification for design 0079 in one number.**
+      // design 0065 §0.8.1 measured the same 1,000 rows two ways: as ONE child
+      // of a host `ListView` (the block's old shape) ~3,030 elements, and as
+      // direct slivers ~417. That gap is why the row list was deleted on
+      // 2026-08-16 and why it can come back now.
+      //
+      // ⚠️ **Two things about this test were got wrong first, and both are
+      // worth leaving written down.**
+      //
+      // ① It seeded with `addRows(count: 1000)` and asserted a total element
+      //    ceiling. `addRows` spreads its rows across *the elapsed part of
+      //    today* — deliberately, see its own long comment — and the list
+      //    groups by MINUTE, so the number of display rows is a function of the
+      //    WALL CLOCK. Run at 00:47 it produced **47 rows**, and 47 rows do not
+      //    breach any sane element ceiling however eagerly they are built. The
+      //    test passed against a deliberately broken build.
+      // ② The element ceiling is the wrong instrument anyway. It measures the
+      //    whole tree, so it drowns the signal in shell.
+      //
+      // What is pinned instead is laziness DIRECTLY: fewer `HistoryRow`
+      // elements exist than there are rows loaded. Seeded at a fixed
+      // one-minute spacing over the `all` range so the count is the tester's,
+      // not the clock's.
+      const seeded = 400;
+      await boot(tester);
+      await tester.runAsync(() async {
+        final now = DateTime.now();
+        for (var i = 0; i < seeded; i++) {
+          await services.historyRepo.insertSample(
+            TelemetrySample(
+              timestamp: now.subtract(Duration(minutes: i + 1)),
+              pvlt: vA,
+              temperatureC: 30,
+              mode: ReportedStatus.normal,
+            ),
+            deviceId: unitA,
+          );
+        }
+      });
+      await pumpSection(tester, deviceId: unitA, live: false);
+      // `all`, because 400 minutes back from "now" crosses local midnight and
+      // the default range would silently drop most of them — the same trap as
+      // ① above, one layer down.
+      await tester.tap(find.text('All'));
+      await tester.pump();
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pump();
+
+      final inflated = find.byType(HistoryRow).evaluate().length;
+      expect(inflated, greaterThan(0), reason: 'the list is drawn at all');
+      expect(inflated, lessThan(seeded ~/ 2),
+          reason: '🔴 lazy: the element count tracks the VIEWPORT, not the '
+              '$seeded rows behind it. Verified by mutation — putting the rows '
+              'in one `SliverToBoxAdapter(child: Column(...))` inflates all of '
+              'them and turns this red.');
+    });
+
+    testWidgets('T79-7 — tapping a minute opens its seconds (FB-90)',
+        (tester) async {
+      // design 0074 shipped this on the History TAB in v0.7.28. The detail page
+      // could not have it because it had no list to tap — which is half of why
+      // design 0079 exists. Nothing here is new code; it is the same sheet.
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await pumpSection(tester, deviceId: unitA, live: false);
+
+      await tester.tap(find.byType(HistoryRow).first);
+      // ⚠️ **NOT `pumpAndSettle`** — `history_second_drilldown_test.dart:391`
+      // already records why, and I re-discovered it the expensive way: the
+      // sheet shows a `CircularProgressIndicator` while its query runs, and an
+      // indeterminate spinner schedules frames forever, so settling on it is a
+      // timeout rather than a pass. The `runAsync` is the other half: the query
+      // is real file I/O and the widget-test zone's clock is fake, so without
+      // it the future the sheet waits on never completes.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 150)));
+      await tester.pump();
+
+      // 🔑 The sheet's own copy, not `find.byType(BottomSheet)` — a modal
+      // sheet is pushed as a ROUTE, and the type finder does not reach it.
+      // "Seconds in <time>" is `historySecondsSheetTitle`, which every
+      // drill-down renders whether or not the minute has seconds in it.
+      expect(find.textContaining('Seconds in'), findsOneWidget,
+          reason: 'every row opens the drill-down, including minutes with no '
+              'seconds in them — design 0074 Q3');
+    });
+
+    testWidgets('T79-8 — connected: rows are judged by THIS unit\'s limits',
+        (tester) async {
+      // 🔵 `ov`/`uv`/`ot` back at work — owner ruling 2026-08-21. Between
+      // 2026-08-16 and today nothing read them, and design 0079 proposed
+      // deleting them. This is the test that would have gone red if it had.
+      await boot(tester);
+      // A row far above any plausible over-voltage limit.
+      await addRows(tester, unitA, 15.9, count: 3);
+      await connectTo(tester, unitA);
+      // 🔴 The thresholds come off the WIRE (`telemetry_controller.dart:307-309`
+      // reads them from the live sample), so a link with no sample on it has
+      // none — `warnOv` is null and every row classifies `normal`. Emitting one
+      // is what makes this test about the gate rather than about the stub.
+      await tester.runAsync(() async {
+        ble.emitTelemetry(TelemetrySample(
+          timestamp: DateTime.now(),
+          pvlt: 13.0,
+          warnOv: 14.0,
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await tester.pump();
+      await pumpSection(tester, deviceId: unitA, live: true);
+
+      final rows = tester.widgetList<HistoryRow>(find.byType(HistoryRow));
+      expect(rows, isNotEmpty);
+      expect(rows.map((r) => r.status), contains(HistoryRowStatus.warning),
+          reason: 'with the link up, the wire thresholds classify the rows');
+    });
+
+    testWidgets('T79-9 — offline: no thresholds, and no clean bill of health',
+        (tester) async {
+      // 🔴 **FB-41's shape in a third column** (design 0065 §3.2.2, carried
+      // forward by design 0079 §0.3). `warnOv`/`warnUv`/`warnOt` belong to the
+      // unit the PHONE is holding. On unit A's page while the phone holds B,
+      // ungated, they would judge A's stored rows against B's limits.
+      //
+      // 🔑 The distinction this pins is subtle and worth stating: the rows are
+      // not "fine", they are UNJUDGED. Same pixels, different claim — which is
+      // why the withheld case must never be dressed up as a pass.
+      await boot(tester);
+      await addRows(tester, unitA, 15.9, count: 3);
+      // Unit B is the one on the link; A is merely the page being looked at.
+      await addRows(tester, unitB, vB);
+      await connectTo(tester, unitB);
+      await pumpSection(tester, deviceId: unitA, live: false);
+
+      final rows = tester.widgetList<HistoryRow>(find.byType(HistoryRow));
+      expect(rows, isNotEmpty);
+      expect(rows.map((r) => r.status),
+          isNot(contains(HistoryRowStatus.warning)),
+          reason: 'B\'s limits may not be applied to A\'s rows');
+    });
+  });
+
+  // ==========================================================================
+  // T79-S0 — ~~two queries, not three~~ ⇒ **one of each, and nothing spare**
+  //
+  // 🔵 **Rewritten 2026-08-21 (design 0079 S2), not deleted.** S0 pinned that
+  // `historyListBuckets` was NOT issued, and that pin was right for the five
+  // days it stood: nothing drew a list, so a thousand minute windows were being
+  // fetched to answer one `rows.isEmpty`.
+  //
+  // The rule underneath was never "never fetch the list" — it was **do not
+  // fetch what you do not draw**. S2 draws it, so the assertion becomes the
+  // one that still says something: each load makes ONE of each query. That
+  // catches the duplicate-fetch shape (a stray second call, a load fired twice
+  // by two paths) which is what would actually go wrong now.
+  //
+  // ⚠️ The empty-state half of S0 is unchanged and is asserted below: the gate
+  // is `HistoryStats.count`, never the row list.
+  // ==========================================================================
+  group('T79-S0 — one of each query, and the empty gate is stats.count', () {
     /// Build a controller that counts, over its own stub radio, and hand it to
     /// the block instead of the app's.
     _CountingTelemetry spyFor(WidgetTester tester) {
@@ -1099,15 +1205,12 @@ void main() {
       return spy;
     }
 
-    testWidgets('the thousand-row list query is not issued', (tester) async {
-      // CATCHES: `historyListBuckets` growing back into `_load`. It was there
-      // from design 0065 until 2026-08-21 with `limit: kHistoryRowCap` — a
-      // thousand minute windows fetched on EVERY detail-page open, for every
-      // unit, offline ones included — and the whole result was read by one
-      // `rows.isEmpty`. design 0065 §0.9 had already announced the removal on
-      // 2026-08-16; nobody checked, because nothing on screen changes either
-      // way. That is exactly the failure a test has to carry rather than a
-      // reviewer.
+    testWidgets('one load ⇒ one of each query', (tester) async {
+      // CATCHES: a query issued twice per load — the shape that hid for five
+      // days when design 0065 §0.9 announced `historyListBuckets` had been
+      // dropped and it had not been. Nothing on screen changes when a query is
+      // made and thrown away, so no rendered assertion can see it; only a
+      // counter can.
       await boot(tester);
       await addRows(tester, unitA, vA);
       final spy = spyFor(tester);
@@ -1115,10 +1218,14 @@ void main() {
       await pumpSection(
           tester, deviceId: unitA, live: false, telemetry: spy);
 
-      expect(spy.stats, 1, reason: 'the range aggregate: still needed');
-      expect(spy.buckets, 1, reason: 'the chart buckets: still needed');
-      expect(spy.listBuckets, 0,
-          reason: 'the row list is not drawn here, so it is not fetched here');
+      expect(spy.stats, 1, reason: 'the range aggregate');
+      expect(spy.buckets, 1, reason: 'the chart buckets');
+      expect(spy.listBuckets, 1,
+          reason: 'the row list — fetched because design 0079 S2 draws it');
+      expect(find.byType(HistoryRow), findsWidgets,
+          reason: '🔴 the other half of the rule: what is fetched is DRAWN. '
+              'Without this, the assertion above would be satisfied by the '
+              'exact waste S0 removed.');
     });
 
     testWidgets('and the empty state still knows it is empty', (tester) async {
@@ -1131,7 +1238,6 @@ void main() {
       await pumpSection(
           tester, deviceId: unitA, live: false, telemetry: spy);
 
-      expect(spy.listBuckets, 0);
       // Default range is `today`, so this is `historyEmptyDeviceRange`; the
       // matched prefix is shared with `deviceHistoryEmpty`, so the assertion
       // survives a range change without pinning which sentence appears.
@@ -1168,7 +1274,6 @@ void main() {
       await pumpSection(
           tester, deviceId: unitA, live: false, telemetry: spy);
 
-      expect(spy.listBuckets, 0);
       expect(find.textContaining('No records for this device'), findsNothing,
           reason: 'it HAS records — it just cannot be drawn as a curve');
       expect(showsVoltage(vA), isTrue,

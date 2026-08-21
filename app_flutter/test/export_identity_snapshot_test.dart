@@ -394,7 +394,12 @@ void main() {
     /// they simply have no `layout:` line of their own to read.
     const requesters = <String>[
       'lib/ui/history/history_screen.dart',
-      'lib/ui/history/device_history_section.dart',
+      // 🔵 Renamed by design 0079 S2 (2026-08-21): the detail page's history
+      // became a TAB that owns its own scroll view, and
+      // ~~`device_history_section.dart`~~ was folded into it. The rule below
+      // is unchanged — this surface still ASKS for an export and still may
+      // not resolve any of it for itself.
+      'lib/ui/history/device_history_tab.dart',
     ];
 
     test('🔴 no export handler reads the live layout for itself', () {
