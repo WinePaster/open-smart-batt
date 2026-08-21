@@ -1,4 +1,4 @@
-/// design 0077 — drag across the history chart to walk its points.
+/// design 0076 — drag across the history chart to walk its points.
 ///
 /// 🔴 These are the FIRST tests of this chart's SELECTION at all. The two
 /// existing `HistoryTrendCard` tests (`device_history_section_test.dart`) both
@@ -42,7 +42,7 @@ const _stats = HistoryStats(
 
 /// Card inside a REAL vertical scroll view.
 ///
-/// 🔑 Not a convenience: both landing sites are inside one (design 0077 §1.1),
+/// 🔑 Not a convenience: both landing sites are inside one (design 0076 §1.1),
 /// and the horizontal scrub has to win the gesture arena against it. Hosting
 /// the card in a bare `body` would test the one arrangement that cannot fail.
 Widget _host({ScrollController? controller}) => MaterialApp(
@@ -89,7 +89,7 @@ Offset _atIndex(WidgetTester tester, int i) {
 /// so the tap recognizer cannot claim the pointer immediately — `onTapDown`
 /// fires when it wins the arena or when `kPressTimeout` (100 ms) expires,
 /// whichever comes first. Assert before that and NOTHING is selected yet, which
-/// is a property of hosting a chart in a `ListView`, not of design 0077. (A
+/// is a property of hosting a chart in a `ListView`, not of design 0076. (A
 /// flick that moves within those 100 ms simply skips the tap entirely and the
 /// drag does the first selection.)
 Future<TestGesture> _pressAt(WidgetTester tester, int i) async {
@@ -117,7 +117,7 @@ void main() {
     await g.moveTo(_atIndex(tester, 7));
     await tester.pump();
     expect(find.text(_label(7)), findsOneWidget,
-        reason: 'the whole point of design 0077');
+        reason: 'the whole point of design 0076');
     expect(find.text(_label(2)), findsNothing);
 
     await g.up();
@@ -144,7 +144,7 @@ void main() {
 
   testWidgets('T4 a drag STARTING on the selected point does not blink it shut',
       (tester) async {
-    // design 0077 §3.2: with the toggle left on tap-DOWN, pressing the already
+    // design 0076 §3.2: with the toggle left on tap-DOWN, pressing the already
     // selected point clears it, and the first move event sets it back.
     await tester.pumpWidget(_host());
     await tester.tapAt(_atIndex(tester, 4));
@@ -195,7 +195,7 @@ void main() {
 
   testWidgets('T7 a vertical drag still scrolls the host, selecting nothing',
       (tester) async {
-    // The declared price of design 0077 §2 — and the thing that would silently
+    // The declared price of design 0076 §2 — and the thing that would silently
     // disappear if anyone ever "fixed" the diagonal case with an eager
     // recognizer.
     final c = ScrollController();

@@ -1046,7 +1046,7 @@ String _tempUnitLabel(TempUnit u) => u == TempUnit.fahrenheit ? '°F' : '°C';
 /// 🔴 They used to be written twice: once in [_TrendPainter.paint] and once in
 /// the tap handler that has to invert `xAt` to turn a touch into a bucket
 /// index. The two agreed only because somebody kept them agreeing, and design
-/// 0077 §1.3 was about to add a THIRD copy (the scrub handler). A padding that
+/// 0076 §1.3 was about to add a THIRD copy (the scrub handler). A padding that
 /// drifts here does not crash — it silently selects the wrong bucket, which is
 /// the failure mode this file can least afford (FB-74 was about the chart and
 /// the list disagreeing over the same minute).
@@ -1142,7 +1142,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
 
   /// The bucket the pointer went down on, and whether it was ALREADY the
   /// selected one — the two facts `onTapUp` needs to decide whether this tap
-  /// was a "tap the same point again to dismiss" (design 0077 §3.2 ruling B).
+  /// was a "tap the same point again to dismiss" (design 0076 §3.2 ruling B).
   int? _downIndex;
   bool _downWasSelected = false;
 
@@ -1153,7 +1153,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   /// Select [i], never clear. 🔴 The toggle lives in [_onTapUp] alone.
   ///
   /// Clearing here is what made the two obvious implementations of a scrub
-  /// wrong (design 0077 §3.2): a finger dragged 5 → 6 → 5 would close the
+  /// wrong (design 0076 §3.2): a finger dragged 5 → 6 → 5 would close the
   /// panel on the way back, and a drag that STARTS on the selected point would
   /// blink it shut before the first move event set it again.
   void _select(int i, {bool haptic = false}) {
@@ -1193,7 +1193,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   }
 
   /// Release keeps the selection — reading the numbers is why the finger
-  /// stopped (design 0077 §3.6 / Q4).
+  /// stopped (design 0076 §3.6 / Q4).
   void _scrubEnd() {
     _downIndex = null;
     _downWasSelected = false;
@@ -1274,7 +1274,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             //
             // ⚠️ A diagonal start is LOST TO THE SCROLLING host — whichever
             // axis crosses the slop first wins the arena, and both landing
-            // sites are inside a vertical scroll view (design 0077 §2). That
+            // sites are inside a vertical scroll view (design 0076 §2). That
             // is the deliberate price of not stealing vertical drags from a
             // 160 px band of the page; the copy must never promise that any
             // gesture scrubs.
