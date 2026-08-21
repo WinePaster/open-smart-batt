@@ -44,6 +44,25 @@
 /// that used to live in `_connectSaved` / `_connectNew` / `_disconnect` are gone
 /// rather than moved, and the row's own button flips to 已連線 in place.
 ///
+/// 🔴 **PARTIALLY OVERTURNED 2026-08-21 — FB-92 / design 0075 (owner's ruling,
+/// §8 Q1–Q5). The paragraph above is kept word for word because the harm it
+/// describes is still real and still guarded against.** What changed is which
+/// of R22's two readings it states. R22's text was "UI 留在裝置頁" and never
+/// separated them; the owner picked the NARROW one (Q1): the rule is "do not
+/// drop the user onto a screen that cannot show the connect is happening", not
+/// "the screen must never move".
+///
+/// So `_connectSaved` / `_connectNew` now PUSH `DeviceDetailPage` — but only
+/// after the link reaches `ready`, only for the unit that came up, and never on
+/// a failure (Q3). The three `pop()` calls are still gone and `_disconnect`
+/// still navigates nowhere at all. The FB `2026.08.02/004` screen cannot recur
+/// through this door: there is no empty state to land in, because we do not
+/// leave until there is telemetry to land on.
+///
+/// ⛔ And the red line that ships with it (design 0075 §3.3, §9): none of this
+/// fixes 「連線一樣還是要點兩次」. That report has three independent causes and
+/// the heaviest — FB-88, 2 of 6 cross-device switches — is untouched here.
+///
 /// ## The badge is a door, not a decoration (R21 / T-new-6)
 ///
 /// A row carries ONE WORD of status, because this page is for scanning a list
@@ -118,10 +137,108 @@ class DevicesPage extends StatefulWidget {
 /// middle of a save flow does not say "go back to the list you just added to".
 enum _Tab { saved, scan }
 
+/// What ended a wait for `ready` (FB-92 / design 0075 §6.2, plan B3).
+///
+/// The wait exists because `await connectToSaved()` returns at T1 — GATT
+/// `connected`, 0.54 s after the tap in the wire capture — and the link is not
+/// usable until T2 (`ready`, T0+2.01 s; `2026.08.17-001.md` §2.4). Navigating
+/// on the `await` would land the user on a detail page that is still drawing
+/// `_OfflineBody` for another 1.5–2.0 s, which is design 0075's rejected plan
+/// B2 ("two spinners, in two places").
+///
+/// 🔴 EVERY MEMBER EXCEPT [ready] MEANS "STAY ON THE LIST". They are named
+/// apart anyway because they are not the same event to a reader of a log or of
+/// this code: [failed] and [stalled] have something to say to the user,
+/// [abandoned] and [timedOut] deliberately do not. `ready` is the ONLY value
+/// that may reach a `Navigator.push`.
+enum _ConnectOutcome {
+  /// `isOnline` came up AND it is this unit's link (design 0075 C2).
+  ready,
+
+  /// `lastErrorFor(id)` answered (design 0075 C4) — including the radio-level
+  /// codes, which answer for every id because they are true of every id.
+  failed,
+
+  /// `isSetupStalledFor(id)` latched: three connections that came up and said
+  /// nothing (FB-52). This is the case a bare "wait for ready" never returns
+  /// from, and C1 exists for it.
+  stalled,
+
+  /// The controller stopped working on this unit (it switched target, the user
+  /// disconnected / left the tab / started another row's connect, or the
+  /// attempt simply died with nobody retrying it). Nothing failed loudly; there
+  /// is simply nothing left to wait for. See
+  /// [_DevicesPageState._readyOutcomeFor]'s backstop.
+  abandoned,
+
+  /// The belt-and-braces cap. See [_DevicesPageState.readyWaitDeadline].
+  timedOut,
+}
+
 class _DevicesPageState extends State<DevicesPage>
     with SingleTickerProviderStateMixin {
   /// BLE id of the row whose connect is in flight (drives the row spinner).
+  ///
+  /// 🔴 FB-92 / design 0075 §6.1 MOVED WHERE THIS IS CLEARED, and the move is
+  /// the whole of that half of the report. It used to be dropped the moment
+  /// `await connectToSaved()` returned — GATT `connected`, ~0.5 s — while the
+  /// link needed another 1.5–2.0 s to reach `ready`. For that window the button
+  /// had already turned back into a live 連線, i.e. the screen was telling the
+  /// user to press it again, and `2026.08.18-008.md` §3.3 mechanism ③ is
+  /// exactly that: the dealer pressed again 1.0–1.1 s after `connected` and
+  /// killed the link that was forming (one episode took four taps).
+  ///
+  /// It is now held for the whole of [_awaitReady], so the spinner runs to the
+  /// same instant the navigation does — and `_ConnectButton` keeps `onTap:
+  /// null` for all of it. That is design 0075 §6.1 falling out of §6.2 rather
+  /// than being implemented twice; see the note on [_awaitReady].
   String? _connectingId;
+
+  /// The unit [_readyWaiter] is waiting on, or null when nothing is waiting.
+  ///
+  /// Kept beside the completer rather than inside it because
+  /// [_onConnectionChanged] fires on EVERY controller notification and has to
+  /// ask "is this about the unit we asked for?" before it may answer — C2.
+  String? _readyWaitId;
+
+  /// Completed exactly once, by [_settleReadyWait], with whatever ended the
+  /// wait. Null when no connect is in flight.
+  Completer<_ConnectOutcome>? _readyWaiter;
+
+  /// C1's last resort. See [readyWaitDeadline].
+  Timer? _readyDeadline;
+
+  /// Has the controller been seen actually working on [_readyWaitId] yet?
+  ///
+  /// 🔴 The phase flag, and the wait is WRONG without it. The backstop in
+  /// [_readyOutcomeFor] says "nothing is running any more, stop waiting" — and
+  /// for the first instants of a wait, nothing is running YET. The link-state
+  /// stream is asynchronous, so `connect()` can return before `connecting` has
+  /// been delivered to the controller: read `isBusy` at that moment and it is
+  /// false, which is indistinguishable from the state the backstop is there to
+  /// catch. Waiting for one observation of activity is what separates "not
+  /// started" from "over".
+  bool _readyWaitSawWork = false;
+
+  /// Hard cap on the wait for `ready` (design 0075 C1).
+  ///
+  /// 🔴 C1 names two terminating conditions — `lastErrorFor` and
+  /// `isSetupStalledFor` — and a third, `connectedDeviceId` moving off this
+  /// unit, falls out of C2. This timer is for the state NONE of them cover: a
+  /// link that sits at `connected` and never advances, with the stall latch not
+  /// yet at [ConnectionController.maxSetupFailures] (it needs THREE silent
+  /// connections) and no error filed because nothing has failed yet. That is
+  /// the literal shape of FB-51/FB-52, and without this the spinner would run
+  /// until the app was killed — which is the defect v0.6.15 shipped a fix for
+  /// and which this page must not reintroduce by a side door.
+  ///
+  /// 20 s, against a measured device switch of 3.1–5.3 s (independent median
+  /// 4.97 s) and a `connected → ready` gap of 1.5–2.0 s: roughly four times the
+  /// worst thing ever measured, so a healthy-but-slow link is never cut short.
+  /// Hitting it is NOT reported as a failure — nothing failed, we simply stop
+  /// promising a page. The row's badge still reads `working` off the controller
+  /// and goes on saying 連線中, so the screen does not go quiet.
+  static const Duration readyWaitDeadline = Duration(seconds: 20);
 
   /// When false (default) the nearby list shows only RCE devices; the toggle
   /// reveals all nearby BLE devices.
@@ -137,6 +254,13 @@ class _DevicesPageState extends State<DevicesPage>
   void initState() {
     super.initState();
     _conn = context.read<ConnectionController>();
+    // FB-92: the connect flow no longer ends at its own `await` (see
+    // [_awaitReady]), so this page needs to hear the controller change its mind
+    // even while nothing is rebuilding it. `context.watch` in `build` cannot
+    // serve: the wait has to be answered from a callback that runs whether or
+    // not a frame happens to be scheduled, and it must survive the widget being
+    // rebuilt for an unrelated reason.
+    _conn!.addListener(_onConnectionChanged);
     // Rule 1 (design 0055 §7.1): with nothing saved, the saved tab is an empty
     // list whose only remedy lives on the tab the user cannot see. Open on the
     // scan instead.
@@ -170,11 +294,29 @@ class _DevicesPageState extends State<DevicesPage>
       unawaited(_startScan());
     } else {
       _conn?.stopScan();
+      // C3 (design 0075 §6.2): the user left this tab while a connect was in
+      // flight. Whatever they went to do, having a device page shove itself in
+      // front of it two seconds later is the R22 harm with a different target —
+      // the screen moving on its own after the user has moved on. Drop the
+      // pending navigation; the connect itself is NOT cancelled, because they
+      // asked for the link and only stopped watching it happen.
+      _abandonReadyWait();
     }
   }
 
   @override
   void dispose() {
+    // 🔴 FIRST, and before anything else can await: settle the pending wait and
+    // kill its timer. `_connectSaved` is suspended on that completer, and a
+    // completer that is never completed leaves the continuation — which ends in
+    // `Navigator.push` — parked forever on a State that no longer has an
+    // element. Every path out of [_awaitReady] re-checks `mounted`, so the
+    // resumed continuation returns without touching the tree; this line is what
+    // makes it resume at all. The timer has to go with it or the widget test
+    // binding reports a pending timer after teardown, which is the same defect
+    // wearing a diagnostic.
+    _abandonReadyWait();
+    _conn?.removeListener(_onConnectionChanged);
     // Best-effort stop; controller tolerates a no-op when not scanning.
     _conn?.stopScan();
     _tabs.dispose();
@@ -192,16 +334,252 @@ class _DevicesPageState extends State<DevicesPage>
     await conn.startScan();
   }
 
-  /// Connect to a saved device — and STAY HERE (design 0046 R22, fix C).
+
+  // ==========================================================================
+  // FB-92 — wait for `ready`, THEN open the unit's own page (design 0075 B3)
+  // ==========================================================================
+  //
+  // 🔴 THIS IS A DELIBERATE PARTIAL REVERSAL OF design 0046 R22, ruled by the
+  // owner on 2026-08-21 (design 0075 §8 Q1–Q5). R22's words were "the UI stays
+  // on this page", and 0075 §2 found that sentence carries two readings that
+  // the original ruling never separated. The owner picked the NARROW one: what
+  // R22 forbids is dropping the user onto a screen that cannot show them the
+  // connect is still happening. FB `2026.08.02/004` (林陳裕) is that screen —
+  // the sheet popped on the `await` and left the dashboard's EMPTY STATE up for
+  // the 3.1–5.3 s a switch takes, which is indistinguishable from a dead link.
+  //
+  // Three things make this not that:
+  //
+  //   1. We do not leave until the link is `ready`, so the page that appears
+  //      has telemetry on it. There is no empty state to sit in.
+  //   2. Until then the user is on the list, watching a spinner on the row they
+  //      pressed. R22's complaint was a screen that said nothing; this one is
+  //      never silent.
+  //   3. A connect that FAILS never navigates at all (Q3). This is the part
+  //      §3.4 made non-negotiable: FB-88 is unfixed and takes out 2 of 6
+  //      cross-device switches (33%), so "navigate on the attempt" would push
+  //      a third of switches into a detail page showing 連錯機器 and make the
+  //      "two taps" complaint worse rather than better.
+  //
+  // ⛔ AND THE RED LINE THAT COMES WITH IT (design 0075 §3.3 / §9): this does
+  // NOT fix "連線一樣還是要點兩次". That report has three independent causes and
+  // the heaviest, FB-88, is untouched here. Nothing shipped off this code may be
+  // described as fixing it.
+
+  /// Decide, from the controller alone, whether the wait on [id] is over.
   ///
-  /// 🔴 The `Navigator.pop()` that used to close this on success is deliberately
-  /// absent. It is the whole of FB `2026.08.02/004`: popping handed the user
-  /// back to the dashboard's empty state for the several seconds a switch takes,
-  /// and an empty state is indistinguishable from a dropped link. The row's
-  /// button becoming 已連線 is the confirmation instead — on the page the user
-  /// was already looking at.
+  /// Returns null while it is still legitimately in progress. Pure with respect
+  /// to this State: [_onConnectionChanged] and [_awaitReady] both ask it, so
+  /// "has it already happened?" and "has it just happened?" cannot answer
+  /// differently — the race that would otherwise hang the spinner is a `ready`
+  /// that lands between the `await connect()` returning and the completer being
+  /// installed.
+  ///
+  /// 🔴 ORDER IS LOAD-BEARING. Failure is asked BEFORE success, because
+  /// FB-88's `wrong_device` is filed while a link is up: we connected, read the
+  /// unit's own address off `0x38` and it belonged to somebody else
+  /// (`connection_controller.dart` `_setError('wrong_device', …)`). Ask
+  /// `isOnline` first and that lands as a success — a detail page opened onto
+  /// the wrong capacitor, which is the exact confusion design 0068 exists to
+  /// prevent.
+  _ConnectOutcome? _readyOutcomeFor(String id, ConnectionController conn) {
+    // C4: per-unit, ALWAYS. `lastErrorUnattributed` is whatever the controller
+    // last recorded about anything, and design 0075 §4 B2 measured the gap it
+    // gets wrong at 20 ms — a `wrong_device` filed just after our `await`
+    // returned, against a unit that is not this row. `lastErrorFor` answers for
+    // radio-level codes (`bluetooth_off` and friends) under any id, which is
+    // correct: those are true of every unit. FB-86/FB-87 ① also make it answer
+    // under the SAVED id after an iOS rebind, so this holds on the path where
+    // the id we dialled is not the id the user is looking at.
+    if (conn.lastErrorFor(id) != null) return _ConnectOutcome.failed;
+    // C1: three connections that came up and never spoke (FB-52). The wire
+    // capture that produced [ConnectionController.maxSetupFailures] ran
+    // fourteen minutes and never recovered on its own, so this is a terminal
+    // answer and not a slow one.
+    if (conn.isSetupStalledFor(id)) return _ConnectOutcome.stalled;
+    // C2: `isOnline` alone is not enough and never was — it is `_link == ready`
+    // and says nothing about WHOSE link. Press 連線 on row B while row A is
+    // coming up and an `isOnline`-only test opens B's page off A's link.
+    if (conn.isOnline && conn.connectedDeviceId == id) {
+      return _ConnectOutcome.ready;
+    }
+    // C1's third exit, and it is not defensive noise: `connectedDeviceId` falls
+    // back to `_desiredDeviceId`, so it stays on this unit through connecting,
+    // through `connected`, and through the whole backoff ladder between
+    // retries. It only stops being this unit when the controller has genuinely
+    // moved on — `disconnect()` (which nulls the target), a connect to another
+    // row, or an iOS rebind that landed on a different id. Any of those means
+    // there is nothing left to wait for.
+    //
+    // ⚠️ The rebind case deliberately ends as [abandoned] rather than [ready]:
+    // after `connectToSaved` rebinds, the live link belongs to the DIALLED id
+    // and this row is keyed by the saved one, so the row itself does not flip
+    // to 已連線 either (`isConnected: conn.isOnline && connectedId == d.id`, see
+    // `_savedList`). Navigating to a page for an id that is not the one online
+    // would be the only thing on screen claiming otherwise. Pre-existing gap,
+    // matched rather than widened; it belongs to whoever re-keys the record.
+    if (conn.connectedDeviceId != id) return _ConnectOutcome.abandoned;
+    // 🔴 THE BACKSTOP, AND design 0075 §6.2 DOES NOT LIST IT. C1 names two
+    // terminating conditions, `lastErrorFor` and `isSetupStalledFor`, and there
+    // is a real, reachable state in which NEITHER of them ever becomes true and
+    // the doc's version of this method therefore spins forever:
+    //
+    //   the user has turned 自動重連 off, and a link reaches `connected` and
+    //   then drops before `ready`.
+    //
+    //   * No error is filed. `connect()` returned long ago — the drop arrives
+    //     on the link-state stream, and a stream event has nothing to throw.
+    //   * No retry is armed. `_scheduleReconnect` is gated on
+    //     `_settings.autoReconnect` (`connection_controller.dart` ~:2240, and
+    //     again inside the timer callback ~:2716), so with the setting off
+    //     `isRetrying` stays false.
+    //   * The stall latch does not fire. That needs
+    //     [ConnectionController.maxSetupFailures] = 3 consecutive silent
+    //     connections; this is the FIRST.
+    //
+    // ⇒ both of C1's conditions are false, forever, and the spinner never
+    // stops. That is precisely the screen v0.6.15 shipped a fix for, arriving
+    // through a door design 0075 did not check. So the wait also ends when
+    // nothing is running any more: no live/settling link, no armed retry, no
+    // outstanding iOS hand-off.
+    //
+    // ⚠️ Biased towards stopping, deliberately. The backoff ladder has a gap
+    // between a timer firing and the connect it starts reaching `connecting`,
+    // and a notification landing inside that gap ends the wait early. The cost
+    // of being wrong there is that the user stays on the list with a stopped
+    // spinner and a badge that still says what is happening — which is exactly
+    // the behaviour this page had before FB-92. The cost of the opposite bias
+    // is an infinite spinner, which is a defect with a report number.
+    final working = conn.isBusy || conn.isRetrying || conn.isAutoConnectArmed;
+    if (working) {
+      // Impure on purpose, and the only write in this method: the observation
+      // has to be made wherever the controller is being read, and both callers
+      // read it here.
+      _readyWaitSawWork = true;
+      return null;
+    }
+    if (_readyWaitSawWork) return _ConnectOutcome.abandoned;
+    return null;
+  }
+
+  /// Hold here until [id]'s link is usable, or until something says it will not
+  /// be.
+  ///
+  /// This is the "small state machine" design 0075 §7 asks for, and the reason
+  /// it is not simply a longer `await`: `connectToSaved` returns at GATT
+  /// `connected` and there is no future anywhere in the app that completes at
+  /// `ready`. The signal only exists as [ConnectionController] notifications,
+  /// so the wait has to be assembled from one — hence the completer, the
+  /// listener installed in [initState], and the cap.
+  ///
+  /// 📌 §6.1 FALLS OUT OF THIS, it is not implemented separately. The row
+  /// spinner is `_connectingId == d.id`, the callers hold `_connectingId` for
+  /// the whole of this future, and `_ConnectButton` already refuses taps while
+  /// it is showing (`onTap: connecting ? null : onTap`). So "the spinner runs
+  /// to `ready` and the button stays locked" — 0075 §6.1, i.e. the fix for
+  /// `2026.08.18-008.md` §3.3 mechanism ③ — is a property of this method
+  /// rather than a second change to the button.
+  Future<_ConnectOutcome> _awaitReady(String id) {
+    // Only ever one wait. A second tap on another row settles the first as
+    // [abandoned] (C3), which unparks that caller so it can notice the spinner
+    // is no longer its own and return without navigating.
+    _abandonReadyWait();
+    final conn = context.read<ConnectionController>();
+    // The race named on [_readyOutcomeFor]: in the fake-BLE tests, and on a
+    // warm link in the field, `ready` can already be true by the time the
+    // `await` unwinds. Installing a completer first would wait for a
+    // notification that has already been sent.
+    final settled = _readyOutcomeFor(id, conn);
+    if (settled != null) return Future<_ConnectOutcome>.value(settled);
+    final waiter = Completer<_ConnectOutcome>();
+    _readyWaiter = waiter;
+    _readyWaitId = id;
+    _readyDeadline = Timer(
+        readyWaitDeadline, () => _settleReadyWait(_ConnectOutcome.timedOut));
+    return waiter.future;
+  }
+
+  /// Every controller notification, filtered down to "is our wait over?".
+  ///
+  /// Cheap on purpose — this runs on every telemetry-driven rebuild the
+  /// controller announces, which at `ready` is one every keep-alive tick, and
+  /// the first line makes it a null check in the ordinary case.
+  void _onConnectionChanged() {
+    final id = _readyWaitId;
+    if (id == null) return;
+    final conn = _conn;
+    if (conn == null) return;
+    final settled = _readyOutcomeFor(id, conn);
+    if (settled != null) _settleReadyWait(settled);
+  }
+
+  /// Finish the wait exactly once, and leave nothing running.
+  ///
+  /// Deliberately does NOT call `setState` or touch the tree: it is reached
+  /// from [dispose] and from a [ChangeNotifier] callback that can fire during
+  /// another widget's build. The awaiting caller resumes in a microtask and
+  /// does the UI work there, where `mounted` means something.
+  void _settleReadyWait(_ConnectOutcome outcome) {
+    _readyDeadline?.cancel();
+    _readyDeadline = null;
+    _readyWaitSawWork = false;
+    final waiter = _readyWaiter;
+    _readyWaiter = null;
+    _readyWaitId = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(outcome);
+  }
+
+  /// "The user is no longer asking for this." C3's single entry point.
+  void _abandonReadyWait() => _settleReadyWait(_ConnectOutcome.abandoned);
+
+  /// The LAST gate before a `Navigator.push` — C2 re-asked at the instant of
+  /// leaving, plus C3.
+  ///
+  /// Re-asking C2 here rather than trusting [_ConnectOutcome.ready] is what C6
+  /// is: on the unsaved path the naming dialog sits between the two, and a user
+  /// can stand on that dialog for a minute while the unit goes out of range.
+  /// The outcome is a fact about a moment that has passed; this is a fact about
+  /// now.
+  bool _mayNavigateAfterConnect(String id, ConnectionController conn) {
+    if (!mounted) return false;
+    // C3: they walked away. `active` is the shell's "this is the tab on screen"
+    // flag, and this page stays MOUNTED behind every other tab (see
+    // [DevicesPage.active]) — so without this check the push would land on top
+    // of whatever tab they actually went to.
+    if (!widget.active) return false;
+    // C3: they opened something themselves while we were waiting — a row's
+    // detail page, the settings sheet. Pushing on top of it takes away a screen
+    // they chose in favour of one they did not.
+    //
+    // ⚠️ A dialog makes this false too (`showDialog` pushes a route), which is
+    // why the unsaved path calls this only AFTER `promptAndSaveDevice` has
+    // returned and its route is gone. Checked here rather than by a flag
+    // because a flag only knows about the pushes this class makes.
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    // C2, once more, at the moment that matters.
+    return conn.isOnline && conn.connectedDeviceId == id;
+  }
+
+  /// Connect to a saved device, then open ITS page once the link is usable.
+  ///
+  /// 🔴 The old contract was "connect and stay here, always" (design 0046 R22,
+  /// fix C) and the `Navigator.pop()` FB `2026.08.02/004` was about is still
+  /// gone — nothing here pops. What FB-92 adds is a PUSH, and only on the one
+  /// outcome R22 was never about: a link that is up and carrying telemetry. The
+  /// long argument is on the section banner above; the short one is that the
+  /// user asked for this unit and the only screen that can show it to them is
+  /// its own page.
+  ///
+  /// Reading order matters more than usual here, so the four conditions are
+  /// marked in place: C1 termination, C2 whose link, C3 still wanted, C4
+  /// per-unit error.
   Future<void> _connectSaved(SavedDevice d) async {
     final conn = context.read<ConnectionController>();
+    // C3: whatever we were waiting on, the user has just asked for something
+    // else. Settle it before the spinner moves so the older caller cannot come
+    // back and navigate over the top of this one.
+    _abandonReadyWait();
     setState(() => _connectingId = d.id);
     try {
       await conn.connectToSaved(d);
@@ -210,43 +588,136 @@ class _DevicesPageState extends State<DevicesPage>
       // not an error condition of ours), so the completion is only treated as
       // success when the controller has no complaint to make.
       if (!mounted) return;
+      // C4: this unit's error, not the last error there was. The snackbar below
+      // still reads it unattributed on purpose (see [_showError]) — that is
+      // about the ATTEMPT, which after a rebind was filed under an id this
+      // method does not hold. The DECISION is per-unit; the WORDING is not.
+      //
+      // 🔴 AFTER the await, never during it. On the iOS rebind path
+      // `connectToSaved` files a failure under the SAVED id and only then calls
+      // `connect()` again, whose first act is to clear it — so a reader that
+      // sampled `lastErrorFor` across that seam would see a failure that the
+      // very next statement retracts, and would stop a connect that is still
+      // going. Everything this method and [_awaitReady] read is sampled once
+      // the whole of `connectToSaved` has returned, which is the only point at
+      // which the controller is a reliable witness about this attempt.
+      if (conn.lastErrorFor(d.id) != null) {
+        setState(() => _connectingId = null);
+        _showError();
+        return;
+      }
+      // The link is at GATT `connected` and unusable for another 1.5–2.0 s.
+      // Hold the spinner (§6.1) and the row here until it is usable, or until
+      // C1 says it never will be.
+      final outcome = await _awaitReady(d.id);
+      if (!mounted) return;
+      // C3: a second row took the spinner while we waited. It owns the clear
+      // and it owns the navigation; this call has nothing left to do. Asked
+      // BEFORE the clear, or this would wipe the other row's spinner on its way
+      // out.
+      if (_connectingId != d.id) return;
       setState(() => _connectingId = null);
-      if (conn.lastErrorUnattributed != null) _showError();
+      if (outcome != _ConnectOutcome.ready) {
+        // C1: stop turning, say what happened, STAY. Q3 (design 0075 §8): a
+        // connect that failed must not carry the user anywhere — with FB-88
+        // unfixed that is 2 of 6 cross-device switches, and being left on the
+        // list is what lets them simply press the next row.
+        //
+        // Silent when there is nothing to say: [_ConnectOutcome.abandoned] and
+        // [timedOut] are not failures, and a snackbar reading "connection
+        // failed" over a link that is still coming up would be a lie the badge
+        // immediately contradicts.
+        if (conn.lastErrorFor(d.id) != null) _showError();
+        return;
+      }
+      if (!_mayNavigateAfterConnect(d.id, conn)) return;
+      await _openDetail(d.id, fallbackName: d.name);
     } catch (_) {
       if (mounted) {
-        setState(() => _connectingId = null);
+        setState(() {
+          if (_connectingId == d.id) _connectingId = null;
+        });
         _showError();
       }
     }
   }
 
-  /// Connect to a freshly-discovered device, then name it WITHOUT leaving.
+  /// Connect to a freshly-discovered device, name it, THEN open its page.
   ///
   /// The alias prompt used to belong to the sheet's host, reached by popping
   /// with the new id. With no pop there is no host to hand it to, so the two
   /// facts the prompt needs are captured here instead — see the comments on
   /// each; both predate this page and neither may be dropped in the move.
+  ///
+  /// 🔵 THE PROMPT STAYS, AND IT STAYS HERE (design 0075 §6.3, owner's Q4 ⇒
+  /// (c), 2026-08-21). The tempting simplification — move the naming onto the
+  /// detail page, which has its own 尚未儲存 row — was ruled out with Q5's "the
+  /// detail page does not change by one line". So the rhythm is three beats:
+  /// spinner (2–5 s) → dialog → page. That is longer than anyone would design
+  /// from scratch and it is C8: a known, accepted cost, not an oversight to be
+  /// trimmed by a later reader.
+  ///
+  /// ⚠️ Recorded because it bears on how this is judged: that dialog's measured
+  /// field conversion is 0 of 42 (何先生, `2026.08.18/008`). Keeping it is a
+  /// decision to keep prompting, not evidence that prompting works — and 0/42
+  /// is equally not evidence that it does not, since an interface problem and a
+  /// willingness problem look identical from here.
   Future<void> _connectNew(DiscoveredDevice d) async {
     final conn = context.read<ConnectionController>();
+    _abandonReadyWait(); // C3, as in _connectSaved
     setState(() => _connectingId = d.id);
     try {
       await conn.connect(d.id);
       if (!mounted) return;
-      // Same as _connectSaved: a refused connect returns instead of throwing.
-      if (conn.lastErrorUnattributed != null) {
+      // Same as _connectSaved: a refused connect returns instead of throwing,
+      // and C4 makes the test per-unit.
+      if (conn.lastErrorFor(d.id) != null) {
         setState(() => _connectingId = null);
         _showError();
         return;
       }
+      final outcome = await _awaitReady(d.id);
+      if (!mounted) return;
+      if (_connectingId != d.id) return; // C3: another row took over
       setState(() => _connectingId = null);
+      if (outcome != _ConnectOutcome.ready) {
+        // C1 + Q3: no `ready`, no dialog, no page. The prompt is not shown
+        // either — asking someone to name a unit we could not bring up is
+        // asking them to file a link that does not exist.
+        if (conn.lastErrorFor(d.id) != null) _showError();
+        return;
+      }
       // 🔴 The prompt itself now lives in `save_device_flow.dart` — the detail
       // page can connect too (design 0055), and a prompt that only one of the
       // two entrances runs is a "save" the other entrance cannot reach.
       final saved = await promptAndSaveDevice(context, d.id);
-      if (saved && mounted) _revealSavedTab();
+      if (!mounted) return;
+      // C6: re-ask C2 now the dialog is gone. Between the two lines above a
+      // user can sit on that dialog indefinitely, and a unit that dropped out
+      // of range while they were typing must not produce a page about a link
+      // that no longer exists.
+      if (!_mayNavigateAfterConnect(d.id, conn)) {
+        // 🔴 …and rule 2 (design 0055 §7.1) comes back the moment we are not
+        // leaving. C7 retires `_revealSavedTab()` from the SUCCESS path,
+        // because a tab switch that is covered by a detail page in the next
+        // frame is a switch nobody sees, and `_openDetail` already performs it
+        // on the way back (see its tail). It cannot be retired from THIS path:
+        // here the user stays on 搜尋裝置, and a device they just named has
+        // this instant vanished from the tab they are looking at — word for
+        // word the 2026-08-11 dealer report 「新儲存的不會顯示」, which the
+        // sub-tab split is only allowed to exist because it avoids.
+        if (saved) _revealSavedTab();
+        return;
+      }
+      // C5: 跳過 lands here too, and that is the point of it. Declining to name
+      // a unit says "do not remember this", not "do not show me this" —
+      // binding the two would turn 跳過 into a cancel the user never asked for.
+      await _openDetail(d.id, fallbackName: d.name);
     } catch (_) {
       if (mounted) {
-        setState(() => _connectingId = null);
+        setState(() {
+          if (_connectingId == d.id) _connectingId = null;
+        });
         _showError();
       }
     }
@@ -320,7 +791,20 @@ class _DevicesPageState extends State<DevicesPage>
       promptAndDeclareModel(context, deviceId: d.id);
 
   /// Drop the live link — and, again, stay on this page (R22).
+  ///
+  /// 🔴 UNTOUCHED BY FB-92, deliberately (design 0075 §7). When a row is live
+  /// this button reads 中斷, and 中斷 is the user saying they are done with the
+  /// unit — answering it with that unit's page is the opposite of what they
+  /// asked for. R22 survives here in full.
+  ///
+  /// The one line FB-92 does add is a cancellation: pressing 中斷 while some
+  /// connect is still coming up is as clear a change of mind as C3 models
+  /// anywhere else, and `disconnect()` nulls the controller's target, so
+  /// without this the pending wait would end as [_ConnectOutcome.abandoned] a
+  /// beat later anyway. Saying it here makes the intent legible instead of
+  /// incidental.
   Future<void> _disconnect() async {
+    _abandonReadyWait();
     await context.read<ConnectionController>().disconnect();
   }
 
@@ -403,6 +887,37 @@ class _DevicesPageState extends State<DevicesPage>
   /// stops being reachable the moment the page it is needed on appears
   /// (design 0055 §4.2).
   Future<void> _openDetail(String deviceId, {String fallbackName = ''}) async {
+    // C3 (FB-92): whatever this page was waiting to open, it is not opening it
+    // now. Reached both ways — a row tapped DURING a connect (the user chose a
+    // screen, and a second push landing on top of it two seconds later is the
+    // R22 harm), and the FB-92 path itself, where the wait has already settled
+    // and this is a no-op. One line covers both because "a detail page is being
+    // opened" is the same fact either way.
+    _abandonReadyWait();
+    // …and retract the PROMISE as well as the wait (FB-92 (c), 2026-08-21).
+    //
+    // The spinner is this page's promise that it will open a page when the link
+    // is up. Once the user is on that page — by pressing the spinning button,
+    // by pressing the row body, by pressing the badge — the promise has been
+    // kept early and must not be kept a second time.
+    //
+    // 🔴 [_abandonReadyWait] alone does not cover this, and the gap is narrow
+    // but real: a completer only exists once `connectToSaved` has RETURNED
+    // (T1, ~0.54 s), so a press inside that first half second settles nothing,
+    // `_awaitReady` then installs a fresh wait, and a `ready` arriving after
+    // the user has walked back to the list pushes the page a SECOND time —
+    // the R22 harm, aimed at somebody who had already been where it wanted to
+    // send them. Dropping `_connectingId` routes that case into the C3 guard
+    // that `_connectSaved` / `_connectNew` already re-check after the wait
+    // (`if (_connectingId != d.id) return;`), so no new state and no new
+    // branch. It costs nothing on the ordinary path: on the SUCCESS path this
+    // is already null, and on the row-body path the resumed caller was going to
+    // clear it a microtask later anyway.
+    //
+    // ⚠️ Untested on purpose — that window cannot be scheduled from a widget
+    // test (the fake connect returns without ever yielding a frame the test can
+    // tap in). Recorded here rather than left implicit.
+    if (_connectingId != null) setState(() => _connectingId = null);
     // 🔴 The scan is NOT stopped here, and that is the fix rather than the bug
     // (ruled 2026-08-12). W-3 — "reading one device must not leave the radio
     // scanning" — is a rule about a WINDOW, and stating it here stated it about
@@ -978,7 +1493,15 @@ class _DeviceRow extends StatelessWidget {
   /// One-word status, saved rows only (R21). Null on a nearby (unsaved) row.
   final ConnectionBadge? badge;
 
-  /// Where [badge] leads. Non-null exactly when [badge] is.
+  /// This unit's page — where the row body, the [badge] and (since FB-92) the
+  /// SPINNING connect button all lead.
+  ///
+  /// ⚠️ NOT "non-null exactly when [badge] is", which is what this said until
+  /// 2026-08-21 and had not been true since design 0055 §4.1: a nearby row
+  /// carries no badge (§4.6 — a wall of 未連線 is noise) and still has a page.
+  /// Corrected rather than deleted because the old sentence is what would make
+  /// a reader think the connect button's fallback below is unreachable on the
+  /// scan tab.
   final VoidCallback? onOpenDetail;
 
   final VoidCallback? onEdit;
@@ -1103,6 +1626,17 @@ class _DeviceRow extends StatelessWidget {
                     connecting: isConnecting,
                     onTap:
                         isConnected ? (onDisconnect ?? onConnect) : onConnect,
+                    // FB-92 (c): the spinning button is a door to THIS unit's
+                    // page. [onOpenDetail] is the same destination the row body
+                    // and the badge already use, and it is keyed to the same id
+                    // the connect was dialled with at all three call sites — so
+                    // "take me there now" cannot land on a different unit than
+                    // "wait and take me there".
+                    //
+                    // ⛔ Deliberately NOT wired for the connected state: that
+                    // button is 斷線, design 0075 §7 says 「不動」, and a
+                    // disconnect does not navigate (N6).
+                    onTapWhileConnecting: onOpenDetail,
                   ),
                 ],
               ),
@@ -1365,11 +1899,39 @@ class _ConnectButton extends StatelessWidget {
     required this.connected,
     required this.connecting,
     required this.onTap,
+    this.onTapWhileConnecting,
   });
 
   final bool connected;
   final bool connecting;
   final VoidCallback onTap;
+
+  /// What the button does WHILE IT IS SPINNING (FB-92, owner's ruling (c),
+  /// 2026-08-21): 「還在連的時候再按一次 ＝ 我不想等，現在就過去」 — open this
+  /// unit's page now instead of waiting for `ready` to open it.
+  ///
+  /// 🔴 THIS IS A DECISION, NOT AN INHERITANCE. Pressing a spinning button
+  /// already opened the detail page before this parameter existed, and it did
+  /// so BY ACCIDENT: `onTap: connecting ? null : onTap` leaves the [InkWell]
+  /// inert but does NOT absorb the gesture, so the press fell through to the
+  /// row body — and the row body is a door (design 0055 §4.1). The behaviour
+  /// was right and its provenance was a hit-test detail: anyone who later gave
+  /// this button an opaque background, a `GestureDetector`, an
+  /// `AbsorbPointer`, or simply reordered the stack would have deleted a
+  /// shipped behaviour without touching a line that mentions it. Naming it
+  /// makes it survive that.
+  ///
+  /// 🔑 AND IT IS SAFE BECAUSE OF WHAT IT IS NOT. While [connecting] the
+  /// connect callback ([onTap]) is unreachable from this widget, so a second
+  /// press CANNOT reach `connect()` / `connectToSaved()`. That is the entire
+  /// point of FB-92 §6.1: `connect()` opens by tearing down whatever link is
+  /// there, so a second dial 1.0–1.1 s in kills the link that is forming —
+  /// `2026.08.18-008.md` §3.3 mechanism ③, four taps for one link. This
+  /// callback navigates and does nothing else.
+  ///
+  /// Null leaves the old inert button, which is correct for a row that has no
+  /// page to go to.
+  final VoidCallback? onTapWhileConnecting;
 
   @override
   Widget build(BuildContext context) {
@@ -1398,7 +1960,13 @@ class _ConnectButton extends StatelessWidget {
       );
     }
     return InkWell(
-      onTap: connecting ? null : onTap,
+      // 🔵 FB-92 / owner's ruling (c), 2026-08-21. This used to be
+      // `connecting ? null : onTap`. The `null` still stands for "a second
+      // press must not reach the radio" — that half is unchanged and is what
+      // protects the forming link — but the tap is no longer DISCARDED, it is
+      // ANSWERED: see [onTapWhileConnecting] for why the answer is a
+      // navigation and why the old `null` was not really a refusal at all.
+      onTap: connecting ? onTapWhileConnecting : onTap,
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),

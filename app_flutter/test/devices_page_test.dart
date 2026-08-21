@@ -13,6 +13,28 @@
 // test more than a presence does, because the way it regresses is somebody
 // adding a `Navigator.pop()` back for a reason that looks good locally.
 //
+// 🔴 OVERTURNED IN PART, 2026-08-21 — FB-92 / pro design 0075, owner's ruling
+// (§8 Q1–Q5). Everything above is kept word for word: the harm 林陳裕 reported
+// is real, the measurement is real, and R22 still governs `_disconnect`. What
+// the owner ruled (Q1) is that R22's sentence 「UI 留在裝置頁」 carries two
+// readings it never separated, and the NARROW one is the rule — do not drop the
+// user onto a screen that cannot show them the connect is happening. The sheet
+// did exactly that. A push that waits for `ready` does not: the list keeps a
+// spinner on the pressed row for the whole wait, and the page that finally
+// appears has telemetry on it rather than an empty state.
+//
+// So N4 no longer pins an absence. It pins a PRESENCE with four conditions
+// attached, and the conditions are what the `FB-92` group below tests one at a
+// time: a failure must not navigate (C1/C4), the wrong unit's `ready` must not
+// navigate (C2), a user who moved on must not be navigated (C3), and a link
+// that died behind the naming dialog must not navigate (C6). The absence this
+// file used to protect now lives in those four, which is the honest place for
+// it — the danger was never "a Navigator call exists", it was "the user is
+// taken somewhere that cannot answer them".
+//
+// ⛔ Red line carried down from design 0075 §3.3: nothing here fixes
+// 「連線一樣還是要點兩次」. FB-88 is the heaviest cause of that and is untouched.
+//
 // CLEAN-ROOM: expectations derive from this project's own source, design docs
 // and field reports.
 import 'dart:async';
@@ -40,6 +62,25 @@ class _FakeBle extends BleService {
   final _scanOut = StreamController<List<DiscoveredDevice>>.broadcast();
 
   String? connectedId;
+
+  /// How many times a connect was asked for.
+  ///
+  /// FB-92 §6.1 is a claim about a button REFUSING a second press, and the only
+  /// evidence for that is the count not going up. `connectedId` cannot show it:
+  /// a second connect to the same unit leaves it exactly as it was.
+  int connects = 0;
+
+  /// Stop the fake link at `connected` instead of running on to `ready`.
+  ///
+  /// 🔴 This is the FB-51/FB-52 shape, and after FB-92 it is also the ONLY way
+  /// to observe the window the report is about. The default path emits all
+  /// three states in one go, so `connected` and `ready` are the same instant to
+  /// every test written before this: the 1.5–2.0 s the field spends between
+  /// them — the window in which the old button turned back into a live 連線 and
+  /// invited the second tap (`2026.08.18-008.md` §3.3 mechanism ③) — did not
+  /// exist in this harness at all. It does now, and a test that wants to look
+  /// at it has to ask for it.
+  bool stopAtConnected = false;
 
   @override
   String get connectedDeviceName => connectedId == null ? '' : 'RCE-CarBatt';
@@ -96,9 +137,11 @@ class _FakeBle extends BleService {
   @override
   Future<void> connect(String deviceId,
       {Duration? timeout, bool autoConnect = false}) async {
+    connects++;
     connectedId = deviceId;
     _linkOut.add(BleLinkState.connecting);
     _linkOut.add(BleLinkState.connected);
+    if (stopAtConnected) return;
     _linkOut.add(BleLinkState.ready);
   }
 
@@ -228,6 +271,47 @@ void main() {
     await tester.pump();
   }
 
+  /// [settle], and then let a pushed route actually get on screen.
+  ///
+  /// 🔴 Needed since FB-92, and the reason is a trap worth stating: a
+  /// `Navigator.push` that happens inside an `await` chain is RECORDED by the
+  /// navigator and BUILT by the next frame. `settle` gives the database its
+  /// real time and pumps once, which is enough to run the push and not enough
+  /// to build what it pushed — so every assertion written against `settle`
+  /// alone reads a tree the new route is not in yet, and `findsNothing` passes
+  /// for the wrong reason. The first N4 rewrite went green against the OLD
+  /// expectation for exactly this, which is how it was found. Two more pumps:
+  /// one to start the transition, one long enough to finish it.
+  Future<void> settleRoute(WidgetTester tester) async {
+    // Twice, and it is not superstition: the push is started from an `await`
+    // chain, so the first cycle is what RUNS it and the second is what lets the
+    // 300 ms transition it starts finish. `pumpAndSettle` is not available as a
+    // shortcut here — this page's controller keeps periodic timers alive, so it
+    // would spin until its own timeout.
+    for (var i = 0; i < 2; i++) {
+      await settle(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await settle(tester);
+  }
+
+  /// Come back from the page FB-92 now pushes.
+  ///
+  /// Several tests below are about what the LIST does after a connect, and
+  /// since FB-92 a successful connect puts a route in front of it. They are not
+  /// wrong and they have not been weakened — the list is one back gesture away,
+  /// exactly as it is for the user — so they take that gesture rather than
+  /// asserting against a tree the route is covering.
+  Future<void> popBack(WidgetTester tester) async {
+    await tester.pageBack();
+    await settleRoute(tester);
+    expect(find.byType(DeviceDetailPage, skipOffstage: false), findsNothing,
+        reason: 'the helper has to actually get back to the list, or every '
+            'assertion after it reads the wrong screen — a covered route is '
+            'still findable, so this is not self-evident');
+  }
+
   /// Move to the 搜尋裝置 sub-tab (design 0055 §4.5).
   ///
   /// The harness saves DEV-A before the first frame, so the page opens on 已儲存
@@ -241,9 +325,49 @@ void main() {
     await settle(tester);
   }
 
-  testWidgets('N4: connecting a saved device leaves the user on this page',
+  // 🔴 N4 — OVERTURNED IN PLACE, 2026-08-21 (FB-92 / design 0075, owner's
+  // ruling Q1 + Q2). The original test is kept below, commented out and
+  // unedited, because this repo marks a reversal rather than erasing it: if
+  // FB-92 ever has to be rolled back, the criterion it displaced has to be
+  // readable in the file that displaced it, not reconstructed from git.
+  //
+  //   testWidgets('N4: connecting a saved device leaves the user on this page',
+  //       (tester) async {
+  //     // FB `2026.08.02/004`'s closing criterion, stated as an absence.
+  //     …
+  //     expect(s.connection.isOnline, isTrue);
+  //     // THE assertion: the page is still the one the tap happened on. Before
+  //     // design 0046 this was a modal sheet that popped itself here, dropping
+  //     // the user onto the dashboard's empty state for ~5 s.
+  //     expect(find.byType(DevicesPage), findsOneWidget);
+  //     expect(find.byType(DeviceDetailPage), findsNothing);
+  //     // …and the row says so in place.
+  //     expect(find.text('Disconnect'), findsOneWidget);
+  //     expect(find.text('Connected'), findsOneWidget);
+  //   });
+  //
+  // 🔑 WHY THE ABSENCE STOPPED BEING THE RIGHT CRITERION. 林陳裕's report was
+  // 「切換裝置會先跳回主頁面 3～4 秒，以為藍牙斷線」 — and every word of the
+  // damage is in the SECOND half. The sheet did not merely move him; it moved
+  // him to the dashboard's empty state and left him there for the 3.1–5.3 s
+  // (median 4.97 s over 12) a switch takes, with nothing on screen that could
+  // distinguish "working on it" from "the link died". `findsNothing` was a
+  // proxy for that, and a good one while the only way to leave this page was to
+  // leave it too early.
+  //
+  // FB-92 leaves LATE instead: not on the `await` (that is GATT `connected`,
+  // 0.54 s, and design 0075 §4 rejected it as plan B2 — two spinners in two
+  // places), but on `ready`, when telemetry is flowing and the destination has
+  // something to show. Until then the user is on this list watching the row
+  // they pressed. There is no empty state anywhere in the sequence, so the
+  // proxy no longer stands in for the thing it was proxying.
+  //
+  // The absence is not abandoned — it is now stated four times, once per
+  // condition, in the `FB-92` group below. Those are the assertions that would
+  // catch a regression which took the user somewhere useless.
+  testWidgets(
+      'N4′ (FB-92): connecting a saved device opens THAT device\'s page',
       (tester) async {
-    // FB `2026.08.02/004`'s closing criterion, stated as an absence.
     final s = await makeServices(tester);
     addTearDown(() => teardown(tester, s));
     await pumpPage(tester, s);
@@ -251,19 +375,20 @@ void main() {
 
     expect(find.text('Cap #1'), findsOneWidget);
     expect(find.text('Connect'), findsOneWidget);
+    expect(find.byType(DeviceDetailPage), findsNothing,
+        reason: 'the precondition: the tap is what opens it');
 
     await tester.tap(find.text('Connect'));
-    await settle(tester);
+    await settleRoute(tester);
 
+    // The link is up — and it is up BEFORE the navigation, which is the whole
+    // of plan B3. A page that arrives on the `await` arrives 1.5–2.0 s early
+    // and spends them drawing `_OfflineBody`.
     expect(s.connection.isOnline, isTrue);
-    // THE assertion: the page is still the one the tap happened on. Before
-    // design 0046 this was a modal sheet that popped itself here, dropping the
-    // user onto the dashboard's empty state for ~5 s.
-    expect(find.byType(DevicesPage), findsOneWidget);
-    expect(find.byType(DeviceDetailPage), findsNothing);
-    // …and the row says so in place.
-    expect(find.text('Disconnect'), findsOneWidget);
-    expect(find.text('Connected'), findsOneWidget);
+    expect(s.connection.connectedDeviceId, 'DEV-A');
+    expect(find.byType(DeviceDetailPage), findsOneWidget,
+        reason: 'FB-92: the connect button is a door now, on the one outcome '
+            'design 0046 R22 was never about — a link that is ready');
   });
 
   testWidgets('N5: a new device is named without leaving either',
@@ -303,7 +428,17 @@ void main() {
     // The stable advertised name is captured too (D.3): on iOS the saved id is
     // a volatile NSUUID and the name is what rebinds the record.
     expect(s.devices.deviceFor('DEV-NEW')!.name, 'RCE-CarBatt');
-    expect(find.byType(DevicesPage), findsOneWidget);
+    // 🔴 UPDATED FOR FB-92 (design 0075 §6.3, owner's Q4 ⇒ (c)). The half of
+    // N5 that matters is asserted ABOVE and is untouched: the prompt appears on
+    // THIS page, with the list still behind it. What changed is only what
+    // happens after the prompt is answered — C5/C8 add a third beat, and the
+    // unit's own page is it. The old line here (`DevicesPage, findsOneWidget`
+    // as the last word) would now pass or fail on how many frames the test
+    // pumped rather than on any behaviour, which is not an assertion.
+    await settleRoute(tester);
+    expect(find.byType(DeviceDetailPage), findsOneWidget,
+        reason: 'C5/C8: naming is a step on the way to the device, not an '
+            'alternative to arriving');
   });
 
   // N5b: the gap N5 left. N5 stops at "the record exists"; what the user does
@@ -333,20 +468,26 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Car #2');
     await tester.pump();
     await tester.tap(find.text('Save alias'));
-    await settle(tester);
-    await tester.pump(const Duration(milliseconds: 400)); // tab transition
+    await settleRoute(tester);
     expect(s.devices.isSaved('DEV-NEW'), isTrue);
 
-    // Rule 2 (design 0055 §7.1): the naming happened on the SCAN tab, and the
-    // row it produced lives on the other one. Landing back on the scan tab
-    // would show the user a list their new device just vanished from — which is
-    // the 2026-08-11 dealer complaint, manufactured by our own layout.
+    // 🔴 RULE 2 IS STILL PINNED HERE — by a different mechanism, on purpose.
+    // Design 0075 C7 retires the `_revealSavedTab()` that used to run on this
+    // path, because a tab switch covered by a pushed page in the very next
+    // frame is a switch nobody can see. It is NOT retired from the app: the
+    // tail of `_openDetail` performs it on the way BACK, which is the moment
+    // the user can actually see a list. So the assertion moves behind a back
+    // gesture; the guarantee — "a device you just named is on the tab you are
+    // looking at" — is word for word the one the 2026-08-11 dealer report
+    // 「新儲存的不會顯示」 is about, and it still holds.
+    expect(find.byType(DeviceDetailPage), findsOneWidget,
+        reason: 'FB-92 C5: naming ends on the device, not on the list');
+    await popBack(tester);
+
     expect(find.text('Car #2'), findsOneWidget,
         reason: 'naming a device must reveal the tab that now holds it');
     await tester.tap(find.text('Car #2'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await settle(tester);
+    await settleRoute(tester);
 
     expect(find.byType(DeviceDetailPage), findsOneWidget);
   });
@@ -359,15 +500,589 @@ void main() {
     await settle(tester);
 
     await tester.tap(find.text('Connect'));
-    await settle(tester);
+    await settleRoute(tester);
     expect(s.connection.isOnline, isTrue);
+    // 🔴 The detour FB-92 adds, and the reason N6 survives it unchanged in
+    // substance: the connect now ends on the device's page, so getting back to
+    // the row's 中斷 button takes a back gesture. Design 0075 §7 rules
+    // `_disconnect` UNTOUCHED — 中斷 means "I am done with this unit", and
+    // answering it with that unit's page is the opposite of the request — so
+    // what N6 pins is unchanged: pressing it moves nobody anywhere.
+    await popBack(tester);
+    expect(find.byType(DevicesPage), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
-    await settle(tester);
+    await settleRoute(tester);
 
     expect(s.connection.isOnline, isFalse);
     expect(find.byType(DevicesPage), findsOneWidget);
+    expect(find.byType(DeviceDetailPage), findsNothing,
+        reason: 'R22 in full on this control: a disconnect navigates nowhere');
     expect(find.text('Connect'), findsOneWidget);
+  });
+
+  // ==========================================================================
+  // FB-92 — the four conditions the navigation is allowed under
+  // ==========================================================================
+  //
+  // N4′ above pins that the page opens. Everything here pins that it does NOT,
+  // and that is the harder half: design 0046 R22 was overturned narrowly (Q1),
+  // and "narrowly" is only a real distinction if the cases outside the narrow
+  // reading still behave the way R22 demanded. Each test below removes one
+  // guard's justification and states what the user would suffer without it.
+  //
+  // 🔴 The heaviest of them is C1's THIRD condition, which design 0075 does not
+  // list — see `無人在跑 backstop` below.
+  group('FB-92: connect → ready → that unit\'s page (design 0075 §6.2/§6.3)',
+      () {
+    late _StateConn conn;
+
+    /// Pump with a controller whose error and stall latch a test can state.
+    ///
+    /// [active] is the shell's "this tab is on screen" flag; pumping again with
+    /// a different value is how a test leaves for another tab and comes back,
+    /// exactly as `pumpPage` does.
+    Future<void> pumpStated(WidgetTester tester, AppServices s,
+        {bool active = true}) async {
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<BleService>.value(value: s.ble),
+            ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+            ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+            ChangeNotifierProvider<ConnectionController>.value(value: conn),
+            ChangeNotifierProvider<TelemetryController>.value(
+                value: s.telemetry),
+            ChangeNotifierProvider<GForceController>.value(value: s.gforce),
+            ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
+            Provider<AppServices>.value(value: s),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: Scaffold(body: DevicesPage(active: active)),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    /// A saved row whose connect stops at `connected` — i.e. the 1.5–2.0 s the
+    /// field spends between the `await` returning and the link being usable,
+    /// which is the window every one of these tests is about.
+    Future<AppServices> pressConnectAndHang(WidgetTester tester) async {
+      final s = await makeServices(tester);
+      conn = _StateConn(ble, settings: s.settings);
+      addTearDown(() {
+        conn.dispose();
+        return teardown(tester, s);
+      });
+      ble.stopAtConnected = true;
+      await pumpStated(tester, s);
+      await settle(tester);
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'the precondition for all of these: `connected` is NOT '
+              '`ready`, and design 0075 rejected leaving on it (plan B2)');
+      return s;
+    }
+
+    testWidgets('C1/C4: a connect that FAILS keeps the user on the list',
+        (tester) async {
+      await pressConnectAndHang(tester);
+
+      // The failure lands DURING the wait, which is the case
+      // `lastErrorUnattributed` cannot be trusted for and the case a plain
+      // `await` never sees at all.
+      conn.errorDeviceId = 'DEV-A';
+      conn.state(error: 'device_unreachable');
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'design 0075 Q3: a failed connect must not carry the user '
+              'anywhere. FB-88 takes out 2 of 6 cross-device switches and is '
+              'unfixed — navigating on the attempt would push a third of them '
+              'into a detail page nobody asked for');
+      expect(find.byType(DevicesPage), findsOneWidget);
+      // C1: and the spinner is over. The button is a button again.
+      expect(find.text('Connect'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget,
+          reason: 'staying put is only acceptable if the page says why');
+    });
+
+    testWidgets('C1: a setup that STALLS keeps the user on the list',
+        (tester) async {
+      await pressConnectAndHang(tester);
+
+      // FB-52's shape: the link comes up and says nothing, three times, and the
+      // controller latches. `ready` is never coming.
+      conn.stalledDeviceId = 'DEV-A';
+      conn.state(stalled: true);
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing);
+      expect(find.text('Connect'), findsOneWidget,
+          reason: 'C1: a spinner with no terminating condition is the defect '
+              'v0.6.15 shipped a fix for; the stall latch is one of its ends');
+      expect(find.byType(SnackBar), findsNothing,
+          reason: 'nothing new to say — the row badge already reads 沒有回應, '
+              'and a snackbar saying "connection failed" over a link that IS '
+              'connected would contradict it');
+    });
+
+    testWidgets(
+        'C1 backstop: 自動重連 off + a drop before `ready` ends the wait '
+        '(design 0075 does NOT list this one)', (tester) async {
+      final s = await pressConnectAndHang(tester);
+      await tester.runAsync(() => s.settings.setAutoReconnect(false));
+      await tester.pump();
+
+      // 🔴 THE HOLE IN C1. With the setting off, a link that reached
+      // `connected` and then dropped produces:
+      //   * no error   — `connect()` returned long ago, a stream event cannot
+      //                  throw;
+      //   * no retry   — `_scheduleReconnect` is gated on `autoReconnect`;
+      //   * no stall   — that needs THREE silent connections; this is the first.
+      // Both of design 0075 C1's conditions are false and stay false, so a
+      // literal implementation of the doc spins until the app is killed.
+      ble.connectedId = null;
+      ble._linkOut.add(BleLinkState.disconnected);
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsNothing);
+      expect(find.text('Connect'), findsOneWidget,
+          reason: 'nothing is running any more, so nothing is being waited '
+              'for — without the backstop this row spins forever');
+    });
+
+    testWidgets('C2: ANOTHER unit reaching `ready` does not open this one',
+        (tester) async {
+      await pressConnectAndHang(tester);
+
+      // `isOnline` is `_link == ready` and says nothing about whose link it is.
+      // Here DEV-A is the row that was pressed and DEV-B is what came up.
+      ble.connectedId = 'DEV-B';
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(conn.isOnline, isTrue, reason: 'the precondition: SOMETHING is up');
+      expect(conn.connectedDeviceId, 'DEV-B');
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'C2: an `isOnline`-only test opens the pressed row\'s page '
+              'off another unit\'s link — the design 0068 confusion, '
+              'manufactured by our own navigation');
+    });
+
+    testWidgets(
+        'C4: ANOTHER unit\'s failure does not cancel this unit\'s navigation',
+        (tester) async {
+      await pressConnectAndHang(tester);
+
+      // 🔴 The half of C4 that only a per-unit read gets right. `wrong_device`
+      // is filed against the unit it happened to (`_setError('wrong_device',
+      // deviceId: …)`), and design 0075 §4 B2 measured such a code landing
+      // within 20 ms of the `await` returning. Read UNATTRIBUTED and this is
+      // "the last error there was" — DEV-A's own connect would be abandoned on
+      // the strength of something that happened to DEV-B, and the user would
+      // press 連線 again on a row that was about to come up.
+      conn.errorDeviceId = 'DEV-B';
+      conn.state(error: 'wrong_device');
+      await settle(tester);
+      expect(conn.lastErrorUnattributed, isNotNull, reason: 'the precondition');
+      expect(conn.lastErrorFor('DEV-A'), isNull,
+          reason: '…and it is not a fact about DEV-A');
+
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'C4: the decision is scoped to the unit the user pressed');
+    });
+
+    testWidgets('C3: leaving the tab mid-connect cancels the navigation',
+        (tester) async {
+      final s = await pressConnectAndHang(tester);
+
+      // The user goes to another tab. This page stays MOUNTED behind it (it
+      // lives in the shell's IndexedStack), so nothing here is torn down and
+      // the connect keeps going — they asked for the link, they just stopped
+      // watching it happen.
+      await pumpStated(tester, s, active: false);
+      await settle(tester);
+
+      // …and now it comes up.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(conn.isOnline, isTrue, reason: 'the connect was NOT cancelled');
+      await pumpStated(tester, s, active: true);
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'C3 is the last of R22 that survives intact: once the user '
+              'has moved on, the screen must not move for them. A page that '
+              'shoves itself in front of whatever they went to do is the same '
+              'harm FB `2026.08.02/004` reported, aimed somewhere else');
+    });
+
+    // ⚠️ NAME CHANGED 2026-08-21 with the ruling below. It was 「…and the
+    // button is inert for all of it」; the button is no longer inert (it is a
+    // door), and what the test still pins — that a second press cannot reach
+    // the radio — was always the part worth having.
+    testWidgets('§6.1: the spinner runs to `ready`, and the RADIO is out of '
+        'reach for all of it', (tester) async {
+      await pressConnectAndHang(tester);
+
+      // 🔴 The whole of `2026.08.18-008.md` §3.3 mechanism ③ is this instant.
+      // Before FB-92 the spinner stopped when the `await` returned — GATT
+      // `connected`, ~0.5 s — and for the next 1.5–2.0 s the row showed a live
+      // 連線 button over a link that was still forming. 何先生 pressed it again
+      // 1.0–1.1 s in and killed the link he was waiting for; one episode took
+      // four taps. He was not being impatient, the screen invited him.
+      expect(find.text('Connect'), findsNothing,
+          reason: 'the row must still be spinning at `connected`');
+      expect(find.text('Disconnect'), findsNothing,
+          reason: '…and must not be claiming success either');
+
+      final spinner = find.byWidgetPredicate(
+          (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
+      expect(spinner, findsOneWidget);
+
+      // 🔴 OVERTURNED IN PLACE, 2026-08-21 — owner's ruling (c) on the same
+      // day this test was written. THE ORIGINAL ASSERTION AND ITS REASONING
+      // ARE KEPT BELOW, WORD FOR WORD AND COMMENTED OUT:
+      //
+      //   // ⚠️ ASSERTED ON THE WIDGET, NOT BY TAPPING, and this is not
+      //   // fussiness. `_ConnectButton` locks itself with `onTap: connecting ?
+      //   // null : onTap`, which makes the InkWell inert — it does NOT absorb
+      //   // the gesture. The row BODY underneath is a door (design 0055 §4.1),
+      //   // so a tap on the spinning button falls through and opens the detail
+      //   // page. That is pre-existing behaviour, it is not FB-92's to change
+      //   // (whether it is even wrong under B3 is an open question for the
+      //   // owner), and a `tester.tap` here would quietly assert the
+      //   // fall-through instead of the lock. See the report.
+      //   final button = tester.widget<InkWell>(find
+      //       .ancestor(of: spinner, matching: find.byType(InkWell))
+      //       .first);
+      //   expect(button.onTap, isNull,
+      //       reason: 'the button must refuse a second press for the WHOLE '
+      //           'wait, not for the first half second of it');
+      //
+      // 🔑 WHY IT WAS THE WRONG ASSERTION. It is a true statement about the
+      // code and a FALSE statement about the product: what the user got from a
+      // second press was never "nothing", it was the detail page, because the
+      // press fell through to the row. The comment above says so itself and
+      // then pins the `null` anyway — so the file was pinning the mechanism
+      // while the shipped behaviour lived one layer down, unnamed and unpinned.
+      // The owner's answer to the open question it flags is (c): KEEP THE
+      // BEHAVIOUR, LOSE THE ACCIDENT. 「還在連的時候再按一次 ＝ 我不想等，
+      // 現在就過去」.
+      //
+      // What the `null` was actually protecting is untouched and is now stated
+      // as itself below: the second press must not reach the radio.
+      final button = tester.widget<InkWell>(find
+          .ancestor(of: spinner, matching: find.byType(InkWell))
+          .first);
+      expect(button.onTap, isNotNull,
+          reason: 'FB-92 (c): the spinning button ANSWERS the second press — '
+              'and it has to be the BUTTON that answers, not the row body it '
+              'used to leak the gesture to');
+      expect(ble.connects, 1);
+
+      // …and it ends where it should.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+      expect(ble.connects, 1, reason: 'one press, one connect');
+    });
+
+    // ------------------------------------------------------------------
+    // FB-92 (c) — 「我不想等，現在就過去」 (owner, 2026-08-21).
+    //
+    // 🔴 READ THIS BEFORE CHANGING EITHER TEST BELOW. Both are written against
+    // the button's OWN callback (`button.onTap!()`), never with `tester.tap`,
+    // and that is the only construction that can tell the ruling apart from
+    // the accident it replaced. A `null` `onTap` leaves the InkWell inert but
+    // does not absorb the gesture, so a `tester.tap` on the spinner lands on
+    // the row body — which is a door (design 0055 §4.1) and opens the very
+    // same page. Revert the implementation and a tap-based test STAYS GREEN.
+    // Verified, not assumed: that is exactly how the assertion above was found
+    // to be pinning the wrong thing.
+    // ------------------------------------------------------------------
+
+    /// Press connect, hang at `connected`, and hand back the spinning button.
+    Future<AppServices> spinningButton(
+      WidgetTester tester,
+      void Function(InkWell button) use,
+    ) async {
+      final s = await pressConnectAndHang(tester);
+      final spinner = find.byWidgetPredicate(
+          (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
+      expect(spinner, findsOneWidget, reason: 'the premise: it is turning');
+      use(tester.widget<InkWell>(
+          find.ancestor(of: spinner, matching: find.byType(InkWell)).first));
+      return s;
+    }
+
+    testWidgets('(c): the spinning button opens the page WITHOUT dialling '
+        'again', (tester) async {
+      await spinningButton(tester, (button) => button.onTap!());
+      await settleRoute(tester);
+
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'the ruling: a second press means 「我不想等，現在就過去」, '
+              'so it goes — the link is still forming, and the destination '
+              'shows that forming (design 0075 §3.1: `_OfflineBody` is a '
+              'progress report, not the empty dashboard R22 was about)');
+
+      // 🔴 THE HALF THAT MATTERS MORE THAN THE NAVIGATION. `connect()` opens by
+      // tearing down whatever link is there, so a second dial at ~1.0 s kills
+      // the link that is forming — `2026.08.18-008.md` §3.3 mechanism ③, wire
+      // evidence, four taps for one link. FB-92 exists to close that window,
+      // and a door that dialled on the way through would reopen it while
+      // looking like an improvement.
+      expect(ble.connects, 1,
+          reason: 'the door must NOT dial: a second connect here is mechanism '
+              '③, the defect this whole report is about');
+      expect(ble.connectedId, 'DEV-A');
+
+      // And the link it did not touch is still there to come up.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+      expect(conn.isOnline, isTrue,
+          reason: 'the forming link survived the press');
+    });
+
+    testWidgets('(c): going early CANCELS the wait — `ready` does not push a '
+        'second page', (tester) async {
+      await spinningButton(tester, (button) => button.onTap!());
+      await settleRoute(tester);
+      expect(find.byType(DeviceDetailPage), findsOneWidget);
+
+      // Back to the list, deliberately, while the link is still coming up.
+      await popBack(tester);
+
+      // …and NOW it becomes usable. The pending §6.2 navigation must be gone:
+      // this user has already been to that page and has just chosen to leave
+      // it. Shoving them back in two seconds later is FB `2026.08.02/004`'s
+      // harm with a different destination — the screen moving on its own after
+      // the user has moved on. `_openDetail` settles the wait as
+      // `_ConnectOutcome.abandoned` for exactly this.
+      ble._linkOut.add(BleLinkState.ready);
+      await settleRoute(tester);
+
+      expect(conn.isOnline, isTrue, reason: 'the premise: the link DID come up');
+      expect(conn.connectedDeviceId, 'DEV-A');
+      expect(find.byType(DeviceDetailPage, skipOffstage: false), findsNothing,
+          reason: 'C3: the promise was kept early, so it must not be kept '
+              'again — one press, one page');
+      expect(find.text('Disconnect'), findsOneWidget,
+          reason: 'and the list says so in place, which is all that is left '
+              'to do here');
+    });
+
+    // ------------------------------------------------------------------
+    // PER-DEVICE SCOPING — WHICH ROW TURNS, AND ON WHOSE AUTHORITY.
+    //
+    // 📌 Ported from the parallel branch `fix/fb-92-spinner-until-ready`
+    // (`5cb543e`), whose IMPLEMENTATION was not adopted: it rebuilt the spinner
+    // out of the controller (`_rowConnecting(conn, id)`), where this branch
+    // keeps `_connectingId` and hangs a wait state machine off it so that
+    // §6.1's lock and §6.2's navigation are the same object rather than two
+    // things that have to agree. These two tests outlive the branch that wrote
+    // them because they are about the CONTRACT and not about either
+    // implementation — and because a controller-driven spinner is the obvious
+    // simplification for a later reader to reach for, which is precisely when
+    // both of these break.
+    //
+    // Rewritten against this harness rather than copied: `stopAtConnected`
+    // instead of that branch's `readyAfterConnect`, and the REAL controller
+    // (`pumpPage`) rather than `_StateConn`, since what is being asked here is
+    // which row draws a spinner and nothing about error attribution.
+    // ------------------------------------------------------------------
+
+    /// The row spinner: 1.8 px stroke, which is `_ConnectButton`'s and nothing
+    /// else's on this page.
+    final rowSpinner = find.byWidgetPredicate(
+        (w) => w is CircularProgressIndicator && w.strokeWidth == 1.8);
+
+    testWidgets('PER DEVICE: another unit connecting leaves this row alone',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(
+          () => s.devices.saveNew('DEV-B', 'Cap #2', name: 'RCE-SCAP_II'));
+      ble.stopAtConnected = true;
+      await pumpPage(tester, s);
+      await settle(tester);
+      expect(find.text('Connect'), findsNWidgets(2), reason: 'two saved rows');
+
+      // Press one row and hold its link in the connected-but-not-ready window.
+      // Which row the list puts last is not this test's subject, so the busy
+      // unit is READ rather than assumed.
+      await tester.tap(find.text('Connect').last);
+      await settleRoute(tester);
+      final busy = ble.connectedId;
+      expect(busy, anyOf('DEV-A', 'DEV-B'));
+      final other = busy == 'DEV-A' ? 'DEV-B' : 'DEV-A';
+
+      // 🔴 EXACTLY ONE ROW TURNS. A spinner read off the controller's global
+      // `isBusy` would turn both — and since FB-92 the spinner is also the lock
+      // and the promise of a page, so a spinner on the wrong row locks the row
+      // the user might have wanted instead and promises them a page about a
+      // unit they never pressed.
+      expect(rowSpinner, findsOneWidget);
+      expect(find.text('Connect'), findsOneWidget);
+
+      // And the surviving button is the OTHER unit's — still live, and still
+      // aimed at the unit its own row is about.
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(ble.connectedId, other);
+      expect(ble.connects, 2);
+    });
+
+    // The other half of "per device", and the half the test above cannot see:
+    // there, the spinner is off because the busy unit is a DIFFERENT row. Here
+    // it is THIS row's unit that is coming up — and the user never asked for
+    // it, so the button is not this page's to take away.
+    //
+    // 🔴 This is what `_connectingId` is for and nothing else pins it: an
+    // auto-reconnect after a drop, a connect started from the detail page, or
+    // an iOS hand-off drives `isBusy` and `connectedDeviceId` exactly as a
+    // pressed button does. Under FB-92 the stakes went up — a spinner built
+    // from the controller alone would lock a list the user merely walked back
+    // into AND then push a detail page at them, with no press of theirs
+    // anywhere in the story. That is R22's harm reconstructed out of §6.2.
+    testWidgets('a connect the user did NOT ask for takes no button away',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      ble.stopAtConnected = true;
+      await pumpPage(tester, s);
+      await settle(tester);
+
+      // Straight at the controller — the shape of every connect this page did
+      // not start.
+      await tester.runAsync(
+          () => s.connection.connectToSaved(s.devices.deviceFor('DEV-A')!));
+      await settleRoute(tester);
+      expect(s.connection.connectedDeviceId, 'DEV-A');
+      expect(s.connection.isBusy, isTrue, reason: 'the precondition: busy…');
+      expect(s.connection.isOnline, isFalse, reason: '…and not ready');
+
+      expect(rowSpinner, findsNothing);
+      expect(find.text('Connect'), findsOneWidget);
+      expect(find.byType(DeviceDetailPage, skipOffstage: false), findsNothing,
+          reason: 'and no page either: §6.2 navigates for a press, not for '
+              'every link that happens to come up');
+
+      // "Not taken away" has to mean the button still WORKS, not merely that
+      // the word is still painted there.
+      await tester.tap(find.text('Connect'));
+      await settleRoute(tester);
+      expect(ble.connects, 2);
+      expect(rowSpinner, findsOneWidget,
+          reason: 'and NOW it is this page\'s connect, so now it turns');
+    });
+
+    // ------------------------------------------------------------------
+    // §6.3 — the unsaved path. Owner's Q4 ⇒ (c): the naming dialog stays,
+    // it stays on THIS page, and it is not allowed to become a cancel.
+    // ------------------------------------------------------------------
+
+    Future<AppServices> connectNearbyUnsaved(WidgetTester tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await tester.runAsync(() async {
+        ble._scanOut.add([
+          const DiscoveredDevice(
+              id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await openScanTab(tester);
+      await tester.tap(find.text('Connect').last);
+      await settle(tester);
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'Q4 ⇒ (c): the prompt is kept, and kept on this page');
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'C8: three beats — spinner, dialog, page — in that order');
+      return s;
+    }
+
+    testWidgets('C5: 跳過 declines the RECORD, not the device — it still opens '
+        'the page', (tester) async {
+      final s = await connectNearbyUnsaved(tester);
+
+      await tester.tap(find.text('Skip'));
+      await settleRoute(tester);
+
+      expect(s.devices.isSaved('DEV-NEW'), isFalse,
+          reason: 'a device the user declined to name is one they declined to '
+              'remember — 跳過 still writes nothing');
+      expect(find.byType(DeviceDetailPage), findsOneWidget,
+          reason: 'C5: binding "do not save this" to "do not show me this" '
+              'turns 跳過 into a cancel the user never asked for. The field '
+              'declines it 42 times out of 42 (何先生, 2026.08.18/008), so on '
+              'that phone the whole feature would be dead');
+    });
+
+    testWidgets('C6: a unit that DROPS while the dialog is up opens nothing',
+        (tester) async {
+      final s = await connectNearbyUnsaved(tester);
+
+      // The dialog has no deadline. A user can put the phone down on it, walk
+      // away from the vehicle, and answer it five minutes later.
+      ble.connectedId = null;
+      ble._linkOut.add(BleLinkState.disconnected);
+      await settle(tester);
+
+      await tester.tap(find.text('Skip'));
+      await settleRoute(tester);
+
+      expect(s.connection.isOnline, isFalse, reason: 'the precondition');
+      expect(find.byType(DeviceDetailPage), findsNothing,
+          reason: 'C6: `ready` was a fact about a moment that has passed. '
+              'Opening a device page for a link that no longer exists is the '
+              'empty-state landing FB `2026.08.02/004` is about, arriving two '
+              'minutes late');
+      expect(find.byType(DevicesPage), findsOneWidget);
+    });
+
+    testWidgets('C6 + rule 2: when the drop blocks the page, the saved tab is '
+        'revealed instead', (tester) async {
+      // 🔴 A REFINEMENT OF C7, and the one place this implementation does not
+      // do what design 0075 says literally. C7 retires `_revealSavedTab()` from
+      // `_connectNew` on the grounds that a tab switch covered by a pushed page
+      // is invisible — true, and true only when the page is actually pushed.
+      // On the C6 branch it is not: the user stays on 搜尋裝置, and the row
+      // they just named has this instant moved to the other tab. That is
+      // 「新儲存的不會顯示」 (dealer, 2026-08-11) word for word — the complaint
+      // design 0055 §7.1 rule 2 exists to prevent and which the sub-tab split
+      // would otherwise manufacture. So C7 is applied to the success path only.
+      final s = await connectNearbyUnsaved(tester);
+
+      ble.connectedId = null;
+      ble._linkOut.add(BleLinkState.disconnected);
+      await settle(tester);
+
+      await tester.enterText(find.byType(TextField), 'Car #4');
+      await tester.pump();
+      await tester.tap(find.text('Save alias'));
+      await settleRoute(tester);
+
+      expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #4');
+      expect(find.byType(DeviceDetailPage), findsNothing, reason: 'C6');
+      expect(find.text('Car #4'), findsOneWidget,
+          reason: 'rule 2: a device you just named must be on the tab you are '
+              'looking at');
+    });
   });
 
   // ==========================================================================
@@ -536,8 +1251,10 @@ void main() {
 
       // Type nothing at all, and press the save button.
       await tester.tap(find.text('Save alias'));
-      await settle(tester);
-      await tester.pump(const Duration(milliseconds: 400)); // tab transition
+      await settleRoute(tester);
+      // FB-92: the save now ends on the unit's page. This test is about the
+      // ROW the save produced, so come back to where rows are.
+      await popBack(tester);
 
       expect(s.devices.isSaved('DEV-NEW'), isTrue,
           reason: 'pressing 儲存 must produce a record — silently doing nothing '
@@ -721,8 +1438,11 @@ void main() {
     await settle(tester);
 
     await tester.tap(find.text('Connect'));
-    await settle(tester);
+    await settleRoute(tester);
     expect(ble.connectedId, 'DEV-A');
+    // FB-92 puts the unit's page in front of the list on a successful connect;
+    // the delete control this test is about lives on the row.
+    await popBack(tester);
 
     // Fall back out of `ready` without dropping the link — the FB-51/52 shape.
     ble._linkOut.add(BleLinkState.connected);
@@ -779,7 +1499,10 @@ void main() {
     await tester.tap(find.text('Connect').last);
     await settle(tester);
     await tester.tap(find.text('Skip'));
-    await settle(tester);
+    await settleRoute(tester);
+    // FB-92 C5: 跳過 declines the RECORD, not the device — so it lands on the
+    // unit's page just as 儲存 does. This test is about the list behind it.
+    await popBack(tester);
     expect(s.devices.isSaved('DEV-NEW'), isFalse, reason: 'the precondition');
     expect(s.connection.connectedDeviceId, 'DEV-NEW',
         reason: '…and the link is up on a unit no list owns');
@@ -971,7 +1694,10 @@ void main() {
       await tester.tap(find.text('Connect').last);
       await settle(tester);
       await tester.tap(find.text('Skip')); // decline to name it
-      await settle(tester);
+      await settleRoute(tester);
+      // FB-92 C5 again. T55-5's subject is the way OUT that the row offers, so
+      // it starts from the row.
+      await popBack(tester);
       expect(s.devices.isSaved('DEV-NEW'), isFalse);
 
       await tapRow(tester, 'RCE-CarBatt');
