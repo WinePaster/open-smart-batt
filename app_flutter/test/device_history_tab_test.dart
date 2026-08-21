@@ -101,6 +101,23 @@ class _StalledConn extends ConnectionController {
 /// Built over a SEPARATE [_StubBle] on purpose: a second controller listening
 /// to the shared stub would record every emitted sample a second time, and this
 /// file's other tests assert on stored rows.
+/// A controller whose `historyStats` never answers.
+///
+/// 🔴 Design 0079 T79-10's "unknown" case. The obvious way to produce it —
+/// pump without a `runAsync` so the real database future stays unresolved —
+/// leaves the PAGE's own periodic timers pending and the binding fails the
+/// test on `!timersPending`, which is a hygiene assertion that says nothing
+/// about the badge. Withholding the answer at the controller lets the rest of
+/// the page run normally.
+class _NeverStatsTelemetry extends TelemetryController {
+  _NeverStatsTelemetry(super.ble,
+      {required super.settings, required super.history, required super.logs});
+
+  @override
+  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) =>
+      Completer<HistoryStats>().future;
+}
+
 class _CountingTelemetry extends TelemetryController {
   _CountingTelemetry(super.ble,
       {required super.settings, required super.history, required super.logs});
@@ -299,7 +316,7 @@ void main() {
   /// structural: the tab bar sits ABOVE the class router, so the assertion has
   /// to be made where the router is.
   Future<void> pumpDetailPage(WidgetTester tester,
-      {String deviceId = unitA}) async {
+      {String deviceId = unitA, TelemetryController? telemetry}) async {
     tester.view.physicalSize = const Size(900, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -315,7 +332,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
-              value: services.telemetry),
+              value: telemetry ?? services.telemetry),
           ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: services.speed),
         ],
@@ -762,8 +779,14 @@ void main() {
 
       await pumpDetailPage(tester);
 
+      // ⚠️ **Precisely stated since S3**: the page DOES make one query on
+      // arrival — the `all`-range COUNT behind the tab's badge (design 0079
+      // Q3), asserted separately in `T79-10`. What this pins is that the
+      // TAB's three have not run. The two are worth keeping apart: the badge
+      // is one aggregate over an index, and it replaced a load that pulled a
+      // thousand minute windows to answer a boolean (S0).
       expect(debugDeviceHistoryQueries, before,
-          reason: 'the page is open and nothing has been asked of the history');
+          reason: "the tab's own queries wait to be asked for");
       expect(find.byType(DeviceHistoryTab), findsNothing,
           reason: 'T-1: not in the tree at all until first selected');
     });
@@ -1018,6 +1041,97 @@ void main() {
       expect(find.textContaining('span'), findsOneWidget);
     });
   });
+  // ==========================================================================
+  // T79-10 — the badge on the history tab (design 0079 Q3).
+  // ==========================================================================
+  group('T79-10 — the tab label says whether there is anything in there', () {
+    testWidgets('a unit with rows shows the count, grouped', (tester) async {
+      // 🔑 **This is the answer to the objection that killed the cheap fix.**
+      // Design 0065 §4 rejected "a button that jumps to the History tab"
+      // partly because 「他得先跳過去才知道是空的」 — you have to go there to
+      // find out it is empty. A tab has the same flaw unless the label speaks.
+      await boot(tester);
+      await addRows(tester, unitA, vA, count: 3);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+
+      await pumpDetailPage(tester);
+
+      expect(find.text('3'), findsOneWidget,
+          reason: 'the figure is on the label before the tab is ever opened');
+    });
+
+    testWidgets('a unit with NOTHING shows 0 — not a blank', (tester) async {
+      // 🔴 `0` is the answer, not the absence of one. A bare label would leave
+      // "has this unit ever recorded?" exactly as unanswered as it was before
+      // design 0079, which is the whole point of the badge.
+      await boot(tester);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+
+      await pumpDetailPage(tester);
+
+      expect(find.text('0'), findsOneWidget);
+    });
+
+    testWidgets('the badge costs ONE count query, not the tab\'s three',
+        (tester) async {
+      // CATCHES: the badge being wired to the tab's loader, which would undo
+      // T79-2 (nothing is queried until the tab is opened) by the back door —
+      // and it would do it invisibly, because the screen looks identical.
+      await boot(tester);
+      await addRows(tester, unitA, vA, count: 3);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+      final spyBle = _StubBle();
+      final spy = _CountingTelemetry(spyBle,
+          settings: services.settings,
+          history: services.historyRepo,
+          logs: services.logRepo);
+      addTearDown(() async {
+        spy.dispose();
+        await spyBle.dispose();
+      });
+
+      await pumpDetailPage(tester, telemetry: spy);
+
+      expect(spy.stats, 1, reason: 'one aggregate, for the badge');
+      expect(spy.buckets, 0, reason: 'no chart is being drawn');
+      expect(spy.listBuckets, 0, reason: 'and certainly no thousand rows');
+    });
+
+    testWidgets('an unknown count renders NO badge, never a 0', (tester) async {
+      // 🔴 **Unknown and zero are different facts.** A `0` shown while the
+      // count is in flight — or after it failed — tells the user the history
+      // is empty, and they believe it and do not look. The page keeps
+      // `_historyCount` null in both cases and the label stays bare.
+      //
+      // The "in flight" state is produced by a controller that never answers,
+      // rather than by refusing to let the future resolve: see
+      // [_NeverStatsTelemetry] for why that distinction cost a red run.
+      await boot(tester);
+      await addRows(tester, unitA, vA, count: 3);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+      final mute = _StubBle();
+      final tele = _NeverStatsTelemetry(mute,
+          settings: services.settings,
+          history: services.historyRepo,
+          logs: services.logRepo);
+      addTearDown(() async {
+        tele.dispose();
+        await mute.dispose();
+      });
+
+      await pumpDetailPage(tester, telemetry: tele);
+
+      expect(find.text('History'), findsOneWidget, reason: 'the tab is there');
+      expect(find.text('0'), findsNothing,
+          reason: 'an unresolved count must not be dressed up as "empty"');
+      expect(find.text('3'), findsNothing);
+    });
+  });
+
   // ==========================================================================
   // T79-6 … T79-9 — what S2 added: the lazy list, the drill-down, and the
   // thresholds going back to work.

@@ -18,6 +18,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -265,6 +266,20 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// becomes false when opening it is an event that can be observed.
   int _historyEpoch = 0;
 
+  /// How many rows this unit has, over ALL time — the number on the history
+  /// tab's label (design 0079 Q3).
+  ///
+  /// 🔴 **`null` means UNKNOWN and renders NOTHING.** Zero means "this unit has
+  /// never recorded anything" and renders `0`. They are different facts and the
+  /// label must not conflate them: a `0` shown while the count is still in
+  /// flight would tell the user the history is empty, and they would believe it
+  /// and not look.
+  int? _historyCount;
+
+  /// One-shot latch for [_loadHistoryCount] — [didChangeDependencies] re-runs
+  /// on every inherited change, and this is a database query.
+  bool _historyCountAsked = false;
+
   /// One-shot latch for [_maybeAutoConnect] (FB-75). At most one automatic
   /// attempt per page instance — [didChangeDependencies] re-runs whenever an
   /// inherited widget changes, and a page that re-fired on every locale change
@@ -309,6 +324,44 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     _conn = context.read<ConnectionController>();
     _setVisible(true);
     _maybeAutoConnect();
+    _loadHistoryCount();
+  }
+
+  /// The one query this page makes without being asked (design 0079 Q3).
+  ///
+  /// 🔴 **It is a COUNT, and that distinction is the whole justification.**
+  /// Until 2026-08-21 opening any detail page ran THREE queries including one
+  /// that pulled a thousand minute windows (design 0079 S0). This is one
+  /// aggregate over `idx_history_device_ts`. The page went from three-with-a-
+  /// thousand-rows to one COUNT — the badge is not a new cost, it is what is
+  /// left after removing a much larger one.
+  ///
+  /// 🔴 **Range `all`, not the range the tab will open on.** The label has to
+  /// be truthful before the tab exists, and "does this unit have records" is
+  /// not a question about today. A count that said `0` because nothing was
+  /// recorded since midnight would be the exact misreading this badge exists to
+  /// prevent — it is here to answer design 0065 §4's objection to the cheap
+  /// fix: 「他得先跳過去才知道是空的」.
+  ///
+  /// ⚠️ **Read once, on arrival, and never refreshed.** Sit on this page while
+  /// the unit records and the number stays as it was. That is a deliberate
+  /// floor, not an oversight: it answers "is there anything in there", a
+  /// question whose answer does not change on the timescale of a page visit.
+  /// The tab's own contents ARE refreshed on every arrival (T-3).
+  void _loadHistoryCount() {
+    if (_historyCountAsked) return;
+    _historyCountAsked = true;
+    final tele = context.read<TelemetryController>();
+    unawaited(
+      tele.historyStats(since: null, deviceId: widget.deviceId).then((stats) {
+        if (!mounted) return;
+        setState(() => _historyCount = stats.count);
+      }).catchError((Object _) {
+        // 🔴 Swallowed, and the count stays null ⇒ the label stays bare. A
+        // failed count is UNKNOWN, and the one thing it must not become is a
+        // confident `0`. Nothing else on this page depends on it.
+      }),
+    );
   }
 
   /// Open a SAVED unit's page ⇒ connect to it, once (FB-75, ruled 2026-08-14).
@@ -632,7 +685,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         // control nobody could hit.
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(kDetailTabBarHeight),
-          child: _DetailTabBar(index: _tabIndex, onChanged: _selectTab),
+          child: _DetailTabBar(
+            index: _tabIndex,
+            onChanged: _selectTab,
+            historyCount: _historyCount,
+          ),
         ),
       ),
       // 🔴 A `Stack` of `Offstage`, not a `TabBarView` and not an `IndexedStack`.
@@ -754,10 +811,17 @@ const double kDetailTabBarHeight = 40;
 /// there is no view. An animation-driven controller here would be a second
 /// source of truth for `_tabIndex` with nothing to synchronise.
 class _DetailTabBar extends StatelessWidget {
-  const _DetailTabBar({required this.index, required this.onChanged});
+  const _DetailTabBar({
+    required this.index,
+    required this.onChanged,
+    this.historyCount,
+  });
 
   final int index;
   final ValueChanged<int> onChanged;
+
+  /// Rows this unit holds, all time. Null ⇒ unknown ⇒ no badge.
+  final int? historyCount;
 
   @override
   Widget build(BuildContext context) {
@@ -779,6 +843,7 @@ class _DetailTabBar extends StatelessWidget {
               label: l10n.deviceDetailTabHistory,
               selected: index == 1,
               onTap: () => onChanged(1),
+              count: historyCount,
             ),
           ],
         ),
@@ -792,11 +857,21 @@ class _DetailTab extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.count,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Optional figure rendered beside [label] (design 0079 Q3).
+  ///
+  /// 🔑 **Why a number and not a dot.** Both were drawn for the owner. A dot
+  /// says "something is in there" and then has to be learnt — design 0046 §4.7
+  /// bars controls that only explain themselves after the fact. The figure
+  /// explains itself, and `0` is the answer to the question the dot cannot
+  /// even ask.
+  final int? count;
 
   @override
   Widget build(BuildContext context) {
@@ -820,18 +895,68 @@ class _DetailTab extends StatelessWidget {
               ),
             ),
             child: Center(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                  color: selected ? context.colors.text : context.colors.muted,
-                ),
+              // A `Row`, not a `Text` with a suffix: the badge keeps its own
+              // shape and colour, and a long label ellipsises without eating
+              // the figure.
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                        color:
+                            selected ? context.colors.text : context.colors.muted,
+                      ),
+                    ),
+                  ),
+                  if (count != null) ...[
+                    const SizedBox(width: 6),
+                    _TabCount(count: count!),
+                  ],
+                ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The figure on the history tab (design 0079 Q3).
+class _TabCount extends StatelessWidget {
+  const _TabCount({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    // 🔴 Grouped for the reader's locale, not `'$count'`. A dealer's unit can
+    // hold six figures — `181440` is a fortnight of per-minute rows — and an
+    // ungrouped run of digits in a 40 dp bar is a smear, not a number.
+    final text = NumberFormat.decimalPattern(
+      Localizations.localeOf(context).toLanguageTag(),
+    ).format(count);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.colors.panel2,
+        border: Border.all(color: context.colors.line),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        child: Text(
+          text,
+          style: AppTextStyles.mono(context).copyWith(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: context.colors.muted,
           ),
         ),
       ),
