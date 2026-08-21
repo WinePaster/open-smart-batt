@@ -1502,6 +1502,14 @@ void main() {
       await tester.tap(find.text('Save alias'));
       await settle(tester);
       await tester.pump(const Duration(milliseconds: 400));
+      // ⚠️ **One more `settle` since design 0079 S3 (2026-08-21).** Saving
+      // pushes the detail page (FB-92), and that page now issues one database
+      // read on mount — the `all`-range COUNT behind its history tab's badge.
+      // Under the widget test's fake clock that read is still in flight when
+      // the body ends, and the binding fails on `!timersPending` — an assertion
+      // about test hygiene that says nothing about aliases. `settle` gives the
+      // query its real 40 ms.
+      await settle(tester);
       expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #3');
     });
 
@@ -1616,6 +1624,14 @@ void main() {
       await connectNearby(tester);
 
       await tester.tap(find.text('Skip'));
+      await settle(tester);
+      // ⚠️ **One more `settle` since design 0079 S3 (2026-08-21).** Saving
+      // pushes the detail page (FB-92), and that page now issues one database
+      // read on mount — the `all`-range COUNT behind its history tab's badge.
+      // Under the widget test's fake clock that read is still in flight when
+      // the body ends, and the binding fails on `!timersPending` — an assertion
+      // about test hygiene that says nothing about aliases. `settle` gives the
+      // query its real 40 ms.
       await settle(tester);
 
       expect(s.devices.isSaved('DEV-NEW'), isFalse);
