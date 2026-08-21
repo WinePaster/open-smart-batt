@@ -37,7 +37,6 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import '../history/device_history_section.dart';
 import '../widgets/industrial_card.dart';
 import 'dashboard_cards.dart';
 import 'display_modules.dart';
@@ -232,25 +231,19 @@ class PackScaffold extends StatelessWidget {
               child: controls,
             ),
 
-            // ---- this unit's own history (design 0065) -------------------
+            // ---- this unit's own history ---------------------------------
             //
-            // 🔴 IT SITS AFTER THE PROTECTION CARD AND THAT IS NOT A BREACH OF
-            // "controls last, always". Design 0034 §6's invariant is
-            // STRUCTURAL: there is no `DisplayModule` for the protection card,
-            // so no watchface can name it and none can reorder it. This block
-            // has no `DisplayModule` either — it is appended by the SHELL, not
-            // inserted into the watchface loop above. The two are not on the
-            // same axis, and the rule the loop's comment states is untouched.
+            // 🔵 **Moved out on 2026-08-21 (design 0079 S1).** It lived here,
+            // below the protection card, from design 0065 until today; it is
+            // now the detail page's second sub-tab. Two things drove the move
+            // and neither was cosmetic: down here the block was ~5 cards deep
+            // in a scroll nobody had a reason to reach the end of, and being a
+            // child of THIS `ListView` is what kept a per-minute list off it
+            // (a thousand rows inside one child inflate ~3,030 elements, and
+            // the tab's own `CustomScrollView` gets them to ~417 — design 0065
+            // §0.8.1, whose closing paragraph licensed exactly this move).
             //
-            // Below the fold on purpose: connected, what the user came for is
-            // the live readings, and design 0051 D2's card order is unchanged
-            // above this line.
-            //
-            // `live: true` — this shell is only ever built by `DashboardPage`,
-            // whose only two call sites are inside the detail page's
-            // `live ? … : _OfflineBody(…)`. The offline half mounts the same
-            // block with `live: false`.
-            DeviceHistorySection(deviceId: deviceId, live: true),
+            // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
           ],
         ),
       ),

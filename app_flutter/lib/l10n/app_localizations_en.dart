@@ -927,6 +927,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'No records for this device in the selected range.';
 
   @override
+  String get deviceDetailTabLive => 'Live';
+
+  @override
+  String get deviceDetailTabHistory => 'History';
+
+  @override
   String get deviceHistorySectionTitle => 'This device\'s records';
 
   @override

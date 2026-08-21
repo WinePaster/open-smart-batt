@@ -32,7 +32,6 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
-import '../history/device_history_section.dart';
 import 'dashboard_cards.dart';
 import 'power_flow.dart';
 import 'watchfaces.dart';
@@ -121,13 +120,13 @@ class PowerBankView extends StatelessWidget {
                   surface: CardSurface.deviceDetail,
                   tele: tele),
 
-            // ---- this unit's own history (design 0065) ------------------
+            // ---- this unit's own history --------------------------------
             //
-            // Not a watchface module and not a control card: no
-            // `DisplayModule` names it, and the shell appends it. See the
-            // fuller note in `pack_view.dart`, which is the same append for
-            // the same reason.
-            DeviceHistorySection(deviceId: deviceId, live: true),
+            // 🔵 **Moved to the detail page's history sub-tab, 2026-08-21**
+            // (design 0079 S1) — same move, same reasons as `pack_view.dart`,
+            // which carries the fuller note.
+            //
+            // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
           ],
         ),
       ),

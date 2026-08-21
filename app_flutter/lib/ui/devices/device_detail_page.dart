@@ -25,7 +25,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../dashboard/dashboard_page.dart';
-import '../history/device_history_section.dart';
+import '../history/device_history_tab.dart';
 import '../widgets/one_screen_report.dart';
 import 'connection_failure.dart';
 import 'save_device_flow.dart';
@@ -238,6 +238,32 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// the devices list was the only thing that could. See
   /// [ConnectionController.setDetailVisible].
   ConnectionController? _conn;
+
+  /// Which sub-tab is showing — 0 live, 1 history (design 0079 Q1).
+  ///
+  /// 🔴 **Page state, not route state.** Leaving the page and coming back
+  /// starts on `live` again, deliberately: the tab is a view of one unit, not a
+  /// preference about units in general, and a page that reopened on whichever
+  /// tab was last used somewhere else would make the same tap land in two
+  /// different places.
+  int _tabIndex = 0;
+
+  /// Set the first time [_tabIndex] reaches 1, and never cleared.
+  ///
+  /// 🔴 **T-1: nothing is queried until the tab is opened.** This is the single
+  /// largest thing design 0079 buys, and it is the reason the page does not use
+  /// a `TabBarView` — that widget builds the neighbouring page to support the
+  /// swipe, which would run the history queries for every user who never asked
+  /// for them. Today's block queries on EVERY detail-page open, for every unit,
+  /// offline ones included.
+  bool _historyMounted = false;
+
+  /// Incremented on each switch INTO the history tab — design 0079 T-3.
+  ///
+  /// Handed to [DeviceHistoryTab.activationEpoch], where it forces a re-query
+  /// past the P-4 cache. That is FB-84's fix: "opening it does not refresh it"
+  /// becomes false when opening it is an event that can be observed.
+  int _historyEpoch = 0;
 
   /// One-shot latch for [_maybeAutoConnect] (FB-75). At most one automatic
   /// attempt per page instance — [didChangeDependencies] re-runs whenever an
@@ -458,6 +484,23 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     await promptAndSaveDevice(context, widget.deviceId);
   }
 
+  /// The only writer of [_tabIndex].
+  ///
+  /// 🔑 Centralised for the reason `main.dart`'s `_setTab` is (commit
+  /// `430330e`): two call sites assigning the index directly is how one of them
+  /// ends up skipping the bookkeeping beside it — here, the mount latch and the
+  /// epoch. There is one caller today; the rule is for the second one.
+  void _selectTab(int next) {
+    if (next == _tabIndex) return;
+    setState(() {
+      _tabIndex = next;
+      if (next == 1) {
+        _historyMounted = true;
+        _historyEpoch++;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final deviceId = widget.deviceId;
@@ -581,8 +624,78 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               ),
             ),
         ],
+        // 🔴 Design 0079 Q2 — AppBar's `bottom`, 40 dp, and that costs the live
+        // readings a whole row. Design 0065 §4 rejected this layout for that
+        // very reason and the reason was never refuted; it was outweighed. What
+        // was NOT accepted is the 34 dp version that would have saved 6 px: the
+        // tap target shrinks with it, and FB-70 has just finished paying for a
+        // control nobody could hit.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kDetailTabBarHeight),
+          child: _DetailTabBar(index: _tabIndex, onChanged: _selectTab),
+        ),
       ),
-      body: live
+      // 🔴 A `Stack` of `Offstage`, not a `TabBarView` and not an `IndexedStack`.
+      //
+      //  * **Not `TabBarView`**: it builds the neighbouring page for the swipe,
+      //    which defeats T-1 (nothing queried until the tab is opened) — and
+      //    the swipe itself is refused on its own grounds, see [_DetailTabBar].
+      //  * **Not `IndexedStack`**: it lays out every child and paints one, so
+      //    the dashboard would go on being measured at telemetry rate behind
+      //    the history tab. `Offstage` skips layout AND paint while keeping the
+      //    State, which is the combination wanted here.
+      //
+      // ⚠️ **What `Offstage` does NOT skip is BUILD.** The live half watches
+      // `TelemetryController`, so it still rebuilds several times a second
+      // while the user reads history — cheaper than today (no layout, no
+      // paint), but not free, and NOT MEASURED. See design 0079 §6 R9.
+      //
+      // `TickerMode` because `Offstage` alone does not stop animations: the
+      // offline body's `ConnectionPulseIcon` would keep ticking behind a tab
+      // nobody is looking at.
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Offstage(
+            offstage: _tabIndex != 0,
+            child: TickerMode(
+              enabled: _tabIndex == 0,
+              child: _liveBody(
+                live: live,
+                saved: saved,
+                deviceId: deviceId,
+              ),
+            ),
+          ),
+          // T-1: absent from the tree entirely until the tab is first chosen.
+          if (_historyMounted)
+            Offstage(
+              offstage: _tabIndex != 1,
+              child: TickerMode(
+                enabled: _tabIndex == 1,
+                child: DeviceHistoryTab(
+                  deviceId: deviceId,
+                  live: live,
+                  activationEpoch: _historyEpoch,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The live half — design 0065's page body, moved rather than rewritten.
+  ///
+  /// 🔑 Every branch, every comment and every argument below is what
+  /// `build` returned before design 0079; extracting it is what keeps S1
+  /// reviewable as "the container changed, the contents did not".
+  Widget _liveBody({
+    required bool live,
+    required SavedDevice? saved,
+    required String deviceId,
+  }) {
+    return live
           ? (saved == null
                 ? Column(
                     children: [
@@ -607,7 +720,121 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               // visit made an automatic attempt is a fact about the page's own
               // one-shot latch, and nothing in the controller records it.
               skipNotice: _skipNotice,
+            );
+  }
+}
+
+/// Height of the detail page's sub-tab row.
+///
+/// 🔴 **40, and the 6 px below it are not available.** Design 0079 Q2 weighed a
+/// 34 dp row and refused it: the tab is the tap target, and FB-70 is the entry
+/// that cost this project a user who deleted and re-added a device because a
+/// 14x14 control could not be hit. Material's own minimum is 48; 40 is already
+/// the floor this codebase uses for icon buttons (`device_history_section.dart`
+/// gives refresh and export `minWidth: 40, minHeight: 40` for the same reason).
+const double kDetailTabBarHeight = 40;
+
+/// Live / History, for one device (design 0079 Q1).
+///
+/// 🔴 **THERE IS NO `TabBarView` BEHIND THIS, AND THAT IS DELIBERATE.** A
+/// reviewer who finds a `TabBar` driving an index by hand will reach for the
+/// paired widget; do not. Two independent reasons, either sufficient:
+///
+///  1. **Swipe would fight the chart.** `HistoryTrendCard` reads a horizontal
+///     drag to scrub between data points (FB-94 / design 0076), and design 0076
+///     §2 already records that a diagonal start is lost to the scrolling host
+///     because whichever axis crosses the touch slop first wins the arena. A
+///     page-level horizontal drag adds a second competitor for the same gesture
+///     — on a control that shipped three days ago and whose feel nobody has
+///     tested on a device yet.
+///  2. **`TabBarView` builds the neighbour** to make that swipe smooth, which
+///     is precisely the query design 0079 exists to stop making.
+///
+/// ⚠️ Also no [TabController]: it exists to keep a bar and a view in sync, and
+/// there is no view. An animation-driven controller here would be a second
+/// source of truth for `_tabIndex` with nothing to synchronise.
+class _DetailTabBar extends StatelessWidget {
+  const _DetailTabBar({required this.index, required this.onChanged});
+
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.colors.line)),
+      ),
+      child: SizedBox(
+        height: kDetailTabBarHeight,
+        child: Row(
+          children: [
+            _DetailTab(
+              label: l10n.deviceDetailTabLive,
+              selected: index == 0,
+              onTap: () => onChanged(0),
             ),
+            _DetailTab(
+              label: l10n.deviceDetailTabHistory,
+              selected: index == 1,
+              onTap: () => onChanged(1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailTab extends StatelessWidget {
+  const _DetailTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.accent.accent;
+    return Expanded(
+      child: Semantics(
+        selected: selected,
+        button: true,
+        child: InkWell(
+          onTap: onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  // The full row is the target; the 2 px rule is the only part
+                  // that moves, so an unselected tab still occupies its half of
+                  // the bar rather than shrinking to its text.
+                  color: selected ? accent : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: selected ? context.colors.text : context.colors.muted,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -806,21 +1033,18 @@ class _OfflineBody extends StatelessWidget {
     }
 
     return OneScreenReport(
-      // 🔴 OFFLINE IS THE CASE THIS FEATURE EXISTS FOR (design 0065 Q4). The
-      // dealer who asked for it wants a unit's history precisely when the unit
-      // is not in front of him — the car is elsewhere, the battery is out, the
-      // link will not come up. A history block that appeared only on a working
-      // connection would not have answered his report at all.
+      // 🔴 OFFLINE IS STILL THE CASE THIS FEATURE EXISTS FOR (design 0065 Q4) —
+      // the dealer wants a unit's history precisely when the unit is not in
+      // front of him. What changed on 2026-08-21 is WHERE it is answered.
       //
-      // It goes UNDER the failure report, not into it: the report keeps its
-      // full screen and its centring (see [OneScreenReport]), so this is
-      // something the user scrolls to rather than something competing with the
-      // reason they cannot connect.
+      // ~~below: DeviceHistorySection(deviceId: deviceId, live: false)~~
       //
-      // `live: false` — by definition here, which is what withholds the wire
-      // thresholds from the warning classification. See
-      // [DeviceHistorySection.live].
-      below: DeviceHistorySection(deviceId: deviceId, live: false),
+      // Design 0079 S1: the history is a TAB on this page, so an offline unit's
+      // records are one tap away instead of a full screen of failure report
+      // away. `OneScreenReport.below` is left in place as a parameter — it is
+      // that widget's general capability, not something design 0065 invented,
+      // and deleting it would cost the next caller a fresh argument about
+      // centring — it is simply not passed here any more.
       report: [
         ConnectionPulseIcon(working: mine && working),
         const SizedBox(height: 24),
