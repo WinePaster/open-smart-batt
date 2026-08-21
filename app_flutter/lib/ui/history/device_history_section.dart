@@ -231,6 +231,7 @@ class DeviceHistorySection extends StatefulWidget {
     super.key,
     required this.deviceId,
     required this.live,
+    this.activationEpoch = 0,
   });
 
   /// The unit whose page this is. See red line 1 in the library comment.
@@ -247,7 +248,29 @@ class DeviceHistorySection extends StatefulWidget {
   /// do it: with [live] false the classification falls back to the status the
   /// device itself recorded, and the copy says so rather than claiming a clean
   /// bill of health (§3.2.2).
+  ///
+  /// 🔵 **Ruled 2026-08-21: this stays, and so do the three thresholds it
+  /// gates** (owner, verbatim: 「警告用的 ov uv ot 要留之後要做」). Design 0079
+  /// had proposed deleting all four as dead parameters — since the warning
+  /// filter was removed on 2026-08-16 nothing reads them, and they are threaded
+  /// through five call sites and the memo key for no visible effect. That
+  /// proposal is overruled and the reason is not sentiment: design 0079 S2
+  /// classifies each list row through `historyClassifyRow(ov:, uv:, ot:)`, so
+  /// the gate goes back to work the moment the list returns. What is still to
+  /// come is the FILTER ("show only warnings"), not the thresholds.
   final bool live;
+
+  /// Bumped by the host every time this surface becomes visible again.
+  ///
+  /// 🔴 Design 0079 T-3, and the whole of FB-84's fix. The block has never
+  /// refreshed itself — no timer, no listener — so it shows the snapshot it
+  /// took when it was mounted (see [_refresh]). Under a tab, "becoming visible"
+  /// is a real event with a real moment, and each one forces a re-query past
+  /// the P-4 cache.
+  ///
+  /// ⚠️ Defaults to 0 and is IGNORED by hosts that do not pass it, which is why
+  /// the five design 0065 mount points needed no change on the way out.
+  final int activationEpoch;
 
   @override
   State<DeviceHistorySection> createState() => _DeviceHistorySectionState();
@@ -297,6 +320,17 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     // destroyed. Re-query rather than keep showing the previous unit's rows.
     if (old.deviceId != widget.deviceId) {
       _future = _load();
+      return;
+    }
+    // 🔴 `force: true` — design 0079 T-3. Serving this from the P-4 cache would
+    // make the tap that brought the user here do nothing, which is FB-84's
+    // complaint restated rather than fixed.
+    //
+    // 🔑 The `return` above matters: a host that changes BOTH at once (a page
+    // handed a different unit while its history tab is showing) must not run
+    // two loads and leave the later-resolving one to win.
+    if (old.activationEpoch != widget.activationEpoch) {
+      _future = _load(force: true);
     }
   }
 
@@ -441,6 +475,13 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
       ot,
       // The future's identity, so a reload rebuilds even when nothing else
       // moved. (Its RESULT arriving is handled inside the FutureBuilder.)
+      //
+      // 🔑 This is also what carries [DeviceHistorySection.activationEpoch]
+      // into the memo: an epoch bump replaces `_future`, so the identity moves
+      // with it. The epoch is NOT listed separately on purpose — a key input
+      // that cannot change the rendered output would make the memo miss for
+      // nothing, and this key's own comment is about exactly that mistake in
+      // the other direction.
       identityHashCode(_future),
     ]);
     if (_cached == null || key != _cacheKey) {

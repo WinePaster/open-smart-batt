@@ -878,6 +878,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyEmptyDeviceRange => '這台裝置在此範圍內沒有紀錄。';
 
   @override
+  String get deviceDetailTabLive => '即時監控';
+
+  @override
+  String get deviceDetailTabHistory => '歷史資料';
+
+  @override
   String get deviceHistorySectionTitle => '這台裝置的紀錄';
 
   @override

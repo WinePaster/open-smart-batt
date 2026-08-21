@@ -1562,6 +1562,18 @@ abstract class AppLocalizations {
   /// **'No records for this device in the selected range.'**
   String get historyEmptyDeviceRange;
 
+  /// First of the two sub-tabs on a device's detail page (design 0079 Q2): the live dashboard, or — when the unit is not connected — the failure report. Kept to one word because the tab bar sits under an app bar that already carries a two-line title, and the row costs 40 dp of the live readings' height.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get deviceDetailTabLive;
+
+  /// Second of the two sub-tabs on a device's detail page (design 0079 Q2): THIS unit's stored records. Not the same surface as the History tab in the bottom navigation bar, which spans every unit and keeps records for units that have been deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get deviceDetailTabHistory;
+
   /// Heading of the history block embedded in the device detail page (design 0065). It has to say WHOSE records these are: the block is scoped to the unit whose page this is, which may not be the unit currently connected, and the page around it shows the connected unit's live readings.
   ///
   /// In en, this message translates to:

@@ -40,7 +40,6 @@ import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import '../history/device_history_section.dart';
 import '../widgets/one_screen_report.dart';
 
 /// Shown when the device-type byte is one this build does not map.
@@ -73,7 +72,10 @@ class UnidentifiedView extends StatelessWidget {
       // are readable exactly like any other unit's — this view asserts nothing
       // about the hardware, and showing what the unit has already recorded
       // asserts nothing either (design 0065 §0.4).
-      below: DeviceHistorySection(deviceId: deviceId, live: true),
+      // 🔵 **Design 0079 S1 (2026-08-21): the history is a sub-tab on the
+      // detail page now**, so this resting state no longer appends it under the
+      // report. `OneScreenReport.below` stays a parameter; it is just not
+      // passed. ~~below: DeviceHistorySection(deviceId: deviceId, live: true)~~
       report: [
         Icon(Icons.help_outline, size: 44, color: context.colors.muted),
         const SizedBox(height: 22),

@@ -41,7 +41,6 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/dashboard/dvol_bars.dart';
 import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
-import 'package:open_smart_batt/ui/history/device_history_section.dart';
 import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/pvlt_gauge.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
@@ -718,25 +717,26 @@ void main() {
         // Structural: it is the last CARD of the shell's child list, not
         // merely the lowest thing that happened to render.
         //
-        // ⚠️ AMENDED 2026-08-16 (design 0065 §3.3.4). This used to assert
+        // ⚠️ ~~AMENDED 2026-08-16 (design 0065 §3.3.4). This used to assert
         // `.last`, and one thing now comes after the control card: the
-        // embedded history block. That is NOT a breach of design 0034 §6's
-        // "controls last, always" — that rule is about the WATCHFACE, and it
-        // is enforced structurally by there being no `DisplayModule` for the
-        // protection card, so no face can name it or move it. The history
-        // block has no `DisplayModule` either; it is appended by the SHELL,
-        // below everything the face placed. The two are not on the same axis.
+        // embedded history block.~~
         //
-        // So the assertion becomes the precise one: the control card is the
-        // last thing the DASHBOARD puts up, and the only thing after it is the
-        // history block. A face that managed to place a card below the
-        // controls would still fail here.
+        // 🔵 **RE-AMENDED 2026-08-21 (design 0079 S1): back to `.last`.** The
+        // history block left the shell — it is a sub-tab on the detail page
+        // now — so the control card is once more the final child, exactly as
+        // this test's own NAME has said throughout both amendments.
+        //
+        // 🔑 The 08-16 note's substance is kept because it is still the
+        // argument that would be needed if anything else were ever appended
+        // below the controls: design 0034 §6's "controls last, always" is
+        // about the WATCHFACE, enforced structurally by there being no
+        // `DisplayModule` for the protection card, so no face can name it or
+        // move it. A shell-level append is not on that axis. What changed is
+        // only that there is no longer anything appended.
         final children = shellChildren(tester);
-        expect(children.last, isA<DeviceHistorySection>(),
-            reason: 'the history block is appended by the shell, last');
-        expect(children[children.length - 2], isA<IndustrialCard>(),
-            reason: 'and the control card is still the last card of the '
-                'dashboard proper');
+        expect(children.last, isA<IndustrialCard>(),
+            reason: 'the control card is the last thing the dashboard puts up, '
+                'and since design 0079 S1 nothing follows it');
         expect(find.byType(BatteryControls), findsOneWidget,
             reason: 'no face may remove it');
         // Every card a pack face can place, including the one Phase 1 added:

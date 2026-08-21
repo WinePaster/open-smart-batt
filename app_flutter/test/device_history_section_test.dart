@@ -37,6 +37,7 @@ import 'package:open_smart_batt/ui/dashboard/unidentified_view.dart';
 import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/history/device_history_section.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
+import 'package:open_smart_batt/ui/widgets/one_screen_report.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// No radio. [connected] drives the session, which is what makes
@@ -290,6 +291,63 @@ void main() {
     // Three chained database reads; they need the real event loop.
     await tester.runAsync(
         () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  /// Pump the real [DeviceDetailPage] — the surface that owns the tabs.
+  ///
+  /// 🔑 The whole page rather than a view, because design 0079's claim is
+  /// structural: the tab bar sits ABOVE the class router, so the assertion has
+  /// to be made where the router is.
+  Future<void> pumpDetailPage(WidgetTester tester,
+      {String deviceId = unitA}) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<SettingsController>.value(
+              value: services.settings),
+          ChangeNotifierProvider<DeviceController>.value(
+              value: services.devices),
+          ChangeNotifierProvider<DeviceFactsController>.value(
+              value: services.facts),
+          ChangeNotifierProvider<ConnectionController>.value(
+              value: services.connection),
+          ChangeNotifierProvider<TelemetryController>.value(
+              value: services.telemetry),
+          ChangeNotifierProvider<GForceController>.value(value: services.gforce),
+          ChangeNotifierProvider<GpsSpeedController>.value(value: services.speed),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: DeviceDetailPage(deviceId: deviceId),
+        ),
+      ),
+    );
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  /// Tap the history tab and let its two queries land.
+  Future<void> openHistoryTab(WidgetTester tester) async {
+    await tester.tap(find.text('History'));
+    await tester.pump();
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  Future<void> tapLiveTab(WidgetTester tester) async {
+    await tester.tap(find.text('Live'));
     await tester.pump();
     await tester.pump();
   }
@@ -608,17 +666,31 @@ void main() {
   });
 
   // ==========================================================================
-  // T65-11 — all FIVE mount points, not just the easy two.
+  // T65-11 — ~~all FIVE mount points~~ ⇒ THE ROUTE CANNOT LOSE IT (design 0079)
+  //
+  // 🔵 **The invariant was REWRITTEN on 2026-08-21, not deleted, and the
+  // difference matters.** design 0065 Q3 ruled that every route the detail page
+  // can take must carry this unit's history — four dashboard routes plus the
+  // offline report — and the original five tests asserted the block was mounted
+  // inside each of the five. design 0079 S1 dismantled those five mount points
+  // and put the history on a TAB, above the router.
+  //
+  // Deleting the group would have been the easy read ("those mount points are
+  // gone"), and it would have thrown away the most expensive ruling in design
+  // 0065 — Q3 was argued at length precisely because the first draft proposed
+  // shipping only the two pack routes. The ruling has not been reversed; the
+  // mechanism that satisfies it has. So the tests now pin the mechanism:
+  //
+  //   1. no view carries the block any more — a partial revert is caught;
+  //   2. the tab sits ABOVE the class router, so no route can lose it, in
+  //      either connection state.
+  //
+  // 🔑 (2) is strictly STRONGER than what the five tests could say. They
+  // enumerated the routes that existed in August 2026 and could not speak for a
+  // sixth; "above the router" covers routes nobody has written yet.
   // ==========================================================================
-  group('T65-11 — every route the detail page can take carries the block', () {
-    // CATCHES: shipping only the pack routes — which is what the design's own
-    // first draft proposed before the owner ruled for all four (Q3) — or a
-    // later refactor quietly dropping the two short-lived states, which are
-    // the easiest to forget precisely because they are brief.
-    //
-    // 📌 The short-lived routes are NOT empty shells: `history.device_id` is
-    // written from the session, never from the product class, so an
-    // unclassified or still-identifying unit has ordinary readable rows.
+  group('T79-1 — the history tab is above the route, so no route can lose it',
+      () {
     Future<void> pumpRoute(WidgetTester tester, Widget view) async {
       tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1.0;
@@ -654,69 +726,208 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('pack (battery / capacitor)', (tester) async {
-      await boot(tester);
-      await addRows(tester, unitA, vA);
-      await pumpRoute(tester, const PackView(deviceId: unitA));
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
-      expect(showsVoltage(vA), isTrue, reason: 'and it actually queried');
-    });
-
-    testWidgets('power bank', (tester) async {
-      await boot(tester);
-      await addRows(tester, unitA, vA);
-      await pumpRoute(tester, const PowerBankView(deviceId: unitA));
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
-      expect(showsVoltage(vA), isTrue);
-    });
-
-    testWidgets('unidentified — a RESTING state, and it has rows',
+    testWidgets('no dashboard view carries the block itself any more',
         (tester) async {
+      // CATCHES: a partial revert — one view getting its `DeviceHistorySection`
+      // back, which would put a second copy of this unit's history on the page
+      // (the shape design 0079 §5.2 step 2 calls out as a legitimate MID-branch
+      // state that must never reach `main`).
       await boot(tester);
       await addRows(tester, unitA, vA);
-      await pumpRoute(tester, const UnidentifiedView(deviceId: unitA));
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
-      expect(showsVoltage(vA), isTrue);
-    });
-
-    testWidgets('class pending', (tester) async {
-      await boot(tester);
-      await addRows(tester, unitA, vA);
-      // The view draws nothing at all inside its grace window, deliberately —
-      // so the block is asserted on the state where the view has content.
       final stalled = _StalledConn(ble, settings: services.settings);
       addTearDown(stalled.dispose);
-      await pumpRoute(
-        tester,
-        ChangeNotifierProvider<ConnectionController>.value(
-          value: stalled,
-          child: const ClassPendingView(deviceId: unitA),
+
+      for (final (name, view) in <(String, Widget)>[
+        ('pack', const PackView(deviceId: unitA)),
+        ('power bank', const PowerBankView(deviceId: unitA)),
+        ('unidentified', const UnidentifiedView(deviceId: unitA)),
+        (
+          'class pending',
+          ChangeNotifierProvider<ConnectionController>.value(
+            value: stalled,
+            child: const ClassPendingView(deviceId: unitA),
+          )
         ),
-      );
-      expect(find.byType(DeviceHistorySection), findsOneWidget);
-      expect(showsVoltage(vA), isTrue);
+      ]) {
+        await pumpRoute(tester, view);
+        expect(find.byType(DeviceHistorySection), findsNothing,
+            reason: '$name must not append the block: it belongs to the page');
+      }
     });
 
-    testWidgets('and the offline body, which is the whole point (Q4)',
+    testWidgets('the OFFLINE page offers it — Q4, in its new mechanism',
         (tester) async {
+      // design 0065 Q4 verbatim: offline is the case this feature exists for.
+      // The dealer wants a unit's history precisely when the unit is not in
+      // front of him. Under design 0079 he gets it in one tap instead of
+      // scrolling past a full screen of failure report.
       await boot(tester);
       await addRows(tester, unitA, vA);
       await tester.runAsync(
           () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
-      await pumpRoute(
-        tester,
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<GpsSpeedController>.value(
-                value: services.speed),
-          ],
-          child: const DeviceDetailPage(deviceId: unitA),
-        ),
-      );
+      await pumpDetailPage(tester);
+
+      expect(find.text('History'), findsOneWidget,
+          reason: 'the tab is offered with no link at all');
+      expect(find.byType(DeviceHistorySection), findsNothing,
+          reason: 'T-1: not mounted until it is asked for');
+
+      await openHistoryTab(tester);
       expect(find.byType(DeviceHistorySection), findsOneWidget);
+      expect(showsVoltage(vA), isTrue, reason: 'and it queried THIS unit');
+    });
+
+    testWidgets('and the CONNECTED page offers the same two tabs',
+        (tester) async {
+      // The other half of "above the router": whichever view the class router
+      // picks, the tab bar is the page's, not the view's.
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+      await connectTo(tester, unitA);
+      await pumpDetailPage(tester);
+
+      expect(find.text('Live'), findsOneWidget);
+      expect(find.text('History'), findsOneWidget);
+
+      await openHistoryTab(tester);
       expect(showsVoltage(vA), isTrue);
     });
   });
+
+  // ==========================================================================
+  // T79-2 … T79-5, T79-11 — what the TAB buys (design 0079 S1).
+  // ==========================================================================
+  group('T79 — the tab', () {
+    Future<void> savedAndSeeded(WidgetTester tester) async {
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      await tester.runAsync(
+          () => services.devices.saveNew(unitA, 'Cap #1', name: 'RCE-SCAP_II'));
+    }
+
+    testWidgets('T79-2 — not opening it queries NOTHING', (tester) async {
+      // 🔴 The single largest thing design 0079 buys, and the reason the page
+      // does not use a `TabBarView` (which builds the neighbour for the swipe).
+      //
+      // What it replaces: from design 0065 until 2026-08-21 the block was
+      // expanded by default on EVERY detail-page open — every unit, every
+      // route, offline ones included — because the owner's Q5 ruling removed
+      // the "nobody expanded it so nothing was queried" buffer. That was the
+      // right call for a block sitting in the page; it stops being a cost at
+      // all once opening it is a deliberate act.
+      await savedAndSeeded(tester);
+      final before = debugDeviceHistoryQueries;
+
+      await pumpDetailPage(tester);
+
+      expect(debugDeviceHistoryQueries, before,
+          reason: 'the page is open and nothing has been asked of the history');
+      expect(find.byType(DeviceHistorySection), findsNothing,
+          reason: 'T-1: not in the tree at all until first selected');
+    });
+
+    testWidgets('T79-3 — every arrival is a fresh query (FB-84)',
+        (tester) async {
+      // FB-84, verbatim: "entering the device detail page does not refresh that
+      // unit's history". Both halves of that were real — a 30 s cache in front
+      // of the mount query, and no refresh ever after — and the registry
+      // records the minimal fix as blocked on "the cost has no number".
+      //
+      // Under a tab the cost IS the number: zero for anyone who does not open
+      // it (T79-2), one query for anyone who does. So the arrival forces past
+      // the cache.
+      await savedAndSeeded(tester);
+      await pumpDetailPage(tester);
+
+      await openHistoryTab(tester);
+      final first = debugDeviceHistoryQueries;
+      expect(first, greaterThan(0), reason: 'opening it queries');
+
+      // A row lands while the user is on the live tab — the exact scenario the
+      // 30 s cache used to swallow.
+      await tapLiveTab(tester);
+      await addRows(tester, unitA, 9.87, count: 1, startSlot: 30);
+      await openHistoryTab(tester);
+
+      expect(debugDeviceHistoryQueries, greaterThan(first),
+          reason: 'coming back re-queries — cache or no cache');
+    });
+
+    testWidgets('T79-4 — but coming back keeps what the user had chosen',
+        (tester) async {
+      // T-2. The counterweight to T79-3: re-querying must not also throw away
+      // the range the user selected. Design 0065's refresh button made the same
+      // distinction (it deliberately did NOT reset the list position, while a
+      // range change did).
+      await savedAndSeeded(tester);
+      await pumpDetailPage(tester);
+      await openHistoryTab(tester);
+
+      await tester.tap(find.text('All'));
+      await tester.pump();
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+
+      await tapLiveTab(tester);
+      await openHistoryTab(tester);
+
+      // 🔴 Asserted on the CHART's own `multiDay`, and both of the obvious
+      // alternatives were tried and rejected in the writing of this test:
+      //
+      //  * `textContaining('Today')` matches the range row's "Today" SEGMENT,
+      //    which is rendered whether or not it is the chosen one — it passes
+      //    and fails for reasons unrelated to the selection;
+      //  * `find.text("Today's Voltage Trend")` never matches anything, because
+      //    `CardHeading` renders `text.toUpperCase()` (`industrial_card.dart:182`).
+      //    That one is worse than wrong: as a `findsNothing` it passes VACUOUSLY,
+      //    and would go on passing if the range really did snap back.
+      //
+      // `multiDay` is `_range != HistoryRange.today` — the selection itself.
+      final chart = tester.widget<HistoryTrendCard>(find.byType(HistoryTrendCard));
+      expect(chart.multiDay, isTrue,
+          reason: 'the range survived the round trip; it did not snap back');
+    });
+
+    testWidgets('T79-5 — the live tab is what it always was', (tester) async {
+      // Equivalence, which is S1's entire acceptance criterion. The live half
+      // must be the same body as before, and the default tab must be it: a page
+      // that opened on history would answer a question the user did not ask.
+      await savedAndSeeded(tester);
+      await pumpDetailPage(tester);
+
+      // Offline unit ⇒ the live tab is the failure report, unchanged.
+      expect(find.byType(OneScreenReport), findsOneWidget,
+          reason: 'default tab is live, and live for an offline unit is the '
+              'failure report — design 0065 Q4 left it centred and whole');
+    });
+
+    testWidgets('T79-11 — there is no horizontal swipe between tabs',
+        (tester) async {
+      // 🔴 NOT an oversight, and the comment in `_DetailTabBar` says so at
+      // length. `HistoryTrendCard` scrubs on a horizontal drag (FB-94 / design
+      // 0076), and design 0076 §2 already records that a diagonal start is lost
+      // to whichever axis crosses the touch slop first. A page-level horizontal
+      // drag would be a second competitor for that gesture, on a control that
+      // shipped three days ago and whose feel nobody has tested on a device.
+      //
+      // CATCHES: someone "finishing the job" with a `TabBarView` — which would
+      // also silently undo T79-2, because it builds the neighbour.
+      await savedAndSeeded(tester);
+      await pumpDetailPage(tester);
+      expect(find.byType(TabBarView), findsNothing);
+
+      await tester.drag(find.byType(OneScreenReport), const Offset(-400, 0));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(DeviceHistorySection), findsNothing,
+          reason: 'a swipe must not switch tabs, and must not mount history');
+    });
+  });
+
   // ===========================================================================
   // 🔑 R1–R2: the refresh button (owner ruling 2026-08-16).
   //
