@@ -1039,6 +1039,48 @@ double _toDisplayTemp(double c, TempUnit u) =>
 
 String _tempUnitLabel(TempUnit u) => u == TempUnit.fahrenheit ? '°F' : '°C';
 
+/// Plot geometry for the trend chart — the ONE place the paddings live.
+///
+/// 🔴 They used to be written twice: once in [_TrendPainter.paint] and once in
+/// the tap handler that has to invert `xAt` to turn a touch into a bucket
+/// index. The two agreed only because somebody kept them agreeing, and design
+/// 0076 §1.3 was about to add a THIRD copy (the scrub handler). A padding that
+/// drifts here does not crash — it silently selects the wrong bucket, which is
+/// the failure mode this file can least afford (FB-74 was about the chart and
+/// the list disagreeing over the same minute).
+class _TrendGeometry {
+  const _TrendGeometry({
+    required this.width,
+    required this.hasTemp,
+    required this.n,
+  });
+
+  /// Right padding is wider when a temperature axis has to be labelled there.
+  static const double left = 40, top = 8, bottom = 18;
+
+  final double width;
+  final bool hasTemp;
+  final int n;
+
+  double get right => hasTemp ? 40 : 8;
+  double get plotW => width - left - right;
+
+  double xAt(int i) => left + (n == 1 ? plotW / 2 : plotW * (i / (n - 1)));
+
+  /// Inverse of [xAt]: which bucket a touch at [dx] lands on, clamped to the
+  /// ends so a finger dragged past either edge holds the first/last point
+  /// rather than dropping the selection.
+  ///
+  /// Null when there is nothing to hit — fewer than two buckets (the chart is
+  /// not drawn at all, see [HistoryTrendCard.build]) or a plot too narrow to
+  /// divide.
+  int? indexAt(double dx) {
+    if (n < 2 || plotW <= 0) return null;
+    final frac = ((dx - left) / plotW).clamp(0.0, 1.0);
+    return (frac * (n - 1)).round().clamp(0, n - 1);
+  }
+}
+
 /// Legend + dual-axis chart (tap a point for that bucket's detail) + stats.
 ///
 /// PUBLIC since design 0065 §3.2.1 ③ — the detail page's embedded section shows
@@ -1090,14 +1132,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     }
   }
 
+  _TrendGeometry _geometry(double width) => _TrendGeometry(
+        width: width,
+        hasTemp: _hasTemp,
+        n: widget.buckets.length,
+      );
+
   void _onTapDown(double dx, double width) {
-    final n = widget.buckets.length;
-    if (n < 2) return;
-    final left = 40.0, right = _hasTemp ? 40.0 : 8.0;
-    final plotW = width - left - right;
-    if (plotW <= 0) return;
-    final frac = ((dx - left) / plotW).clamp(0.0, 1.0);
-    final i = (frac * (n - 1)).round().clamp(0, n - 1);
+    final i = _geometry(width).indexAt(dx);
+    if (i == null) return;
     setState(() => _selected = _selected == i ? null : i);
   }
 
@@ -1530,10 +1573,13 @@ class _TrendPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final left = 40.0, right = hasTemp ? 40.0 : 8.0, top = 8.0, bottom = 18.0;
-    final plotW = size.width - left - right;
-    final plotH = size.height - top - bottom;
     final n = buckets.length;
+    final g = _TrendGeometry(width: size.width, hasTemp: hasTemp, n: n);
+    const left = _TrendGeometry.left,
+        top = _TrendGeometry.top,
+        bottom = _TrendGeometry.bottom;
+    final right = g.right;
+    final plotH = size.height - top - bottom;
 
     // Axis windows. FB-74: both are scaled to include the buckets' MIN/MAX, not
     // just their means — see [historyChartVoltageRange] for why an averaged
@@ -1543,7 +1589,7 @@ class _TrendPainter extends CustomPainter {
     final tr = historyChartTempRange(hasTemp ? buckets : const [], tempUnit);
     final tlo = tr.lo, thi = tr.hi;
 
-    double xAt(int i) => left + (n == 1 ? plotW / 2 : plotW * (i / (n - 1)));
+    double xAt(int i) => g.xAt(i);
     double yV(double v) => top + plotH * (1 - (v - vlo) / (vhi - vlo));
     double yT(double v) => top + plotH * (1 - (v - tlo) / (thi - tlo));
 
