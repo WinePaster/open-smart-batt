@@ -27,6 +27,20 @@
 // live in it — it is `rebindSavedDeviceId`'s unique-match rule, pinned in
 // `ios_port_test.dart`.
 //
+// 📌 THE GATES ARE NOW TESTED IN TWO FILES — the other half is
+// `devices_page_test.dart`, in the `FB-92` group's ARRIVING block. FB-92
+// (2026-08-21, pro design 0075) turned the list's 連線 button into a door, so
+// this page is now ENTERED on links the list itself started: once on `ready`
+// (§6.2 pushes when it is usable ⇒ `already online`) and once on GATT
+// `connected` (owner's ruling (c): pressing the spinning button means 「我不想
+// 等，現在就過去」 ⇒ `link busy`). Neither entrance existed when design 0072
+// wrote these gates, and neither can be pumped here: they need the list, a real
+// `Navigator.push` and a link driven into a stated phase, where this file
+// states each gate directly against a page pumped as `home`. Nothing below is
+// weakened by that — but a reader who assumes all nine gates' coverage is in
+// this file will be wrong about two doors, so it is said here rather than left
+// to be discovered.
+//
 // CLEAN-ROOM: expectations derive from this project's own source and field
 // captures.
 import 'dart:async';
