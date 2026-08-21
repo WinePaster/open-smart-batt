@@ -289,6 +289,7 @@ void main() {
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
               value: telemetry ?? services.telemetry),
+          ChangeNotifierProvider<AlertController>.value(value: services.alerts),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -334,6 +335,7 @@ void main() {
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
               value: telemetry ?? services.telemetry),
+          ChangeNotifierProvider<AlertController>.value(value: services.alerts),
           ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ChangeNotifierProvider<GpsSpeedController>.value(value: services.speed),
         ],
@@ -666,6 +668,8 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            ChangeNotifierProvider<AlertController>.value(
+                value: services.alerts),
             ChangeNotifierProvider<GForceController>.value(
                 value: services.gforce),
           ],

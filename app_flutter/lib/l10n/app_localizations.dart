@@ -3854,7 +3854,7 @@ abstract class AppLocalizations {
   /// **'System notification permission'**
   String get settingsAlertsPermissionLabel;
 
-  /// design 0080 P2 does not run the permission flow (that is P3). This row states the plan rather than a status it cannot read.
+  /// design 0080 — the NOT-YET-ASKED wording, kept from P2 now that P3 runs the flow. It is still the only honest thing to show before the first-enable dialog: on iOS an un-asked permission and a refused one report the same value, so a status read early would show every new user a red 'refused'.
   ///
   /// In en, this message translates to:
   /// **'Requested when you turn notifications on'**
@@ -3949,6 +3949,206 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Increase'**
   String get settingsAlertsStepUp;
+
+  /// No description provided for @settingsAlertsPermissionGranted.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get settingsAlertsPermissionGranted;
+
+  /// design 0080 §6.2 RED. Precedent design 0008 §3.4: a refused permission left the service running and only hid its notification, so what the user experienced was 'I turned it on and nothing arrives'. This row must never fail silently.
+  ///
+  /// In en, this message translates to:
+  /// **'Refused — nothing will reach your phone'**
+  String get settingsAlertsPermissionDenied;
+
+  /// No description provided for @settingsAlertsPermissionUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Not confirmed yet'**
+  String get settingsAlertsPermissionUnknown;
+
+  /// No description provided for @settingsAlertsPermissionOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get settingsAlertsPermissionOpen;
+
+  /// No description provided for @settingsAlertsPermissionDeniedHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings are still evaluated and still appear on the device screen — only the phone staying quiet is the difference.'**
+  String get settingsAlertsPermissionDeniedHelp;
+
+  /// No description provided for @alertsConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on warning notifications'**
+  String get alertsConsentTitle;
+
+  /// No description provided for @alertsConsentIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Before you turn this on, what it does and does not do:'**
+  String get alertsConsentIntro;
+
+  /// No description provided for @alertsConsentPointConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.'**
+  String get alertsConsentPointConnected;
+
+  /// No description provided for @alertsConsentPointAndroid.
+  ///
+  /// In en, this message translates to:
+  /// **'Android: detection continues while connected, even with the screen off.'**
+  String get alertsConsentPointAndroid;
+
+  /// No description provided for @alertsConsentPointIos.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.'**
+  String get alertsConsentPointIos;
+
+  /// No description provided for @alertsConsentPointPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Next you will be asked to allow system notifications. You can refuse — warnings still appear on screen, your phone just stays quiet.'**
+  String get alertsConsentPointPermission;
+
+  /// No description provided for @alertsConsentPointThresholds.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits are set per device, under 「Warnings」 on each device\'s page.'**
+  String get alertsConsentPointThresholds;
+
+  /// No description provided for @alertsConsentEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get alertsConsentEnable;
+
+  /// design 0080 §3.5.3: a SECOND Android channel, separate from the foreground service's ongoing one, so the user can silence one without the other.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get alertsChannelName;
+
+  /// No description provided for @alertsChannelDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A reading passed a limit you set'**
+  String get alertsChannelDescription;
+
+  /// No description provided for @alertsNotificationOverVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'voltage too high'**
+  String get alertsNotificationOverVoltage;
+
+  /// No description provided for @alertsNotificationUnderVoltage.
+  ///
+  /// In en, this message translates to:
+  /// **'voltage too low'**
+  String get alertsNotificationUnderVoltage;
+
+  /// No description provided for @alertsNotificationOverTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'temperature too high'**
+  String get alertsNotificationOverTemperature;
+
+  /// No description provided for @alertsNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{alias} · {kind}'**
+  String alertsNotificationTitle(String alias, String kind);
+
+  /// design 0080 §3.5.3 — the body carries the reading AND the limit so the severity is readable without opening the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Now {reading} V, limit {threshold} V · {time}'**
+  String alertsNotificationBodyVolts(
+    String reading,
+    String threshold,
+    String time,
+  );
+
+  /// No description provided for @alertsNotificationBodyCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'Now {reading} °C, limit {threshold} °C · {time}'**
+  String alertsNotificationBodyCelsius(
+    String reading,
+    String threshold,
+    String time,
+  );
+
+  /// No description provided for @alertsBannerHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning raised'**
+  String get alertsBannerHeading;
+
+  /// No description provided for @alertsBannerRowVolts.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} · now {reading} V, limit {threshold} V'**
+  String alertsBannerRowVolts(String kind, String reading, String threshold);
+
+  /// No description provided for @alertsBannerRowCelsius.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} · now {reading} °C, limit {threshold} °C'**
+  String alertsBannerRowCelsius(String kind, String reading, String threshold);
+
+  /// No description provided for @alertsBannerFor.
+  ///
+  /// In en, this message translates to:
+  /// **'for {duration}'**
+  String alertsBannerFor(String duration);
+
+  /// No description provided for @alertsBannerDurationSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} s'**
+  String alertsBannerDurationSeconds(String n);
+
+  /// No description provided for @alertsBannerDurationMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min'**
+  String alertsBannerDurationMinutes(String n);
+
+  /// No description provided for @alertsBannerDurationHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{h} h {m} min'**
+  String alertsBannerDurationHours(String h, String m);
+
+  /// design 0080 ruling Q3 / §0.2.1: an unsaved unit is evaluated and DRAWN; only the notification is withheld.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not saved, so this stays on screen and your phone will not ring.'**
+  String get alertsBannerUnsavedNote;
+
+  /// No description provided for @alertsBannerSilencedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications for this device are paused. The warning itself is still being tracked.'**
+  String get alertsBannerSilencedNote;
+
+  /// No description provided for @alertsBannerGloballyOffNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning notifications are off in Settings. The warning itself is still being tracked.'**
+  String get alertsBannerGloballyOffNote;
+
+  /// No description provided for @alertsBannerOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get alertsBannerOpen;
 }
 
 class _AppLocalizationsDelegate

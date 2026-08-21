@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../alerts/alert_consent_dialog.dart';
 import '../dashboard/capture_mark_labels.dart';
 import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
@@ -525,12 +526,56 @@ String _calibratedWhen(DateTime at) {
 /// background delivery. The precedent is v0.6.15's caveat and the whole of
 /// design 0038: what shipped there was an honest failure inside a minute, not a
 /// fix, and saying so is what kept the report answerable.
-class _AlertsCard extends StatelessWidget {
+class _AlertsCard extends StatefulWidget {
   const _AlertsCard();
+
+  @override
+  State<_AlertsCard> createState() => _AlertsCardState();
+}
+
+class _AlertsCardState extends State<_AlertsCard> {
+  @override
+  void initState() {
+    super.initState();
+    // 🔴 Only when the feature is ALREADY on. See [AlertPermission.unknown]:
+    // iOS reports the same value for "never asked" and "refused", so reading
+    // the status for a user who has not been through the first-enable flow
+    // would paint a red "refused" row about a prompt they have never seen — and
+    // ruling Q4 ships the switch off precisely to protect that one-shot prompt.
+    //
+    // ⚠️ This is not the only refresh. The 「前往設定」 button sends the user out
+    // of the app, and what they do there is invisible from here — so the app
+    // root re-reads the status on every resume (`main.dart`). Without that, a
+    // user who granted the permission from the system settings would come back
+    // to a row still saying they had refused.
+    if (context.read<SettingsController>().settings.alertsEnabled) {
+      unawaited(context.read<AlertController>().refreshPermission());
+    }
+  }
+
+  /// The first-enable flow (§3.7.3): explain, then ask, then enable.
+  ///
+  /// 🔴 **Enabling does NOT depend on the permission being granted**, and that
+  /// is design 0008 §3.4's precedent rather than laziness: there, a refused
+  /// `POST_NOTIFICATIONS` left the foreground service running and only hid its
+  /// notification. What made that a defect was not the service running — it was
+  /// that nothing SAID SO. So here the switch goes on, the evaluation and the
+  /// on-screen banner work, and the permission row turns red with a way out.
+  /// Refusing to enable would trade a silent failure for a dead end.
+  Future<void> _enable(BuildContext context) async {
+    final settings = context.read<SettingsController>();
+    final alerts = context.read<AlertController>();
+    if (!await showAlertsConsentDialog(context)) return;
+    // Cancelling asks for nothing: the OS never sees a request, so the one iOS
+    // prompt is still unspent.
+    await alerts.requestPermission();
+    await settings.setAlertsEnabled(true);
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<SettingsController>();
+    final alerts = context.watch<AlertController>();
     final l10n = AppLocalizations.of(context);
     return Column(
       children: [
@@ -544,23 +589,33 @@ class _AlertsCard extends StatelessWidget {
                 sub: l10n.settingsAlertsEnableSub,
                 trailing: _Toggle(
                   value: s.alertsEnabled,
-                  onChanged: s.setAlertsEnabled,
+                  // Turning it ON runs the explainer + the permission request
+                  // once; turning it OFF is immediate and asks nothing. The
+                  // asymmetry is the point of an opt-in.
+                  onChanged: (v) => v
+                      ? unawaited(_enable(context))
+                      : unawaited(s.setAlertsEnabled(false)),
                 ),
               ),
-              // 🔴 **A statement of intent, not a status** (design 0080 P2).
-              // §6.2 requires this row to show a REFUSED permission in red with
-              // a jump to the system settings, and that is P3's — because the
-              // request flow is P3's. Reading the status early would be worse
-              // than saying nothing: on iOS an un-asked permission reports the
-              // same value as a denied one, so this row would show every new
-              // user a red "denied" for a prompt they have never seen, and the
-              // one-shot prompt is exactly the thing Q4 turned the whole feature
-              // off to protect.
-              SettingsRow(
-                label: l10n.settingsAlertsPermissionLabel,
-                sub: l10n.settingsAlertsPermissionPending,
-                trailing: Icon(Icons.schedule,
-                    size: 16, color: context.colors.muted),
+              // 🔵 **P3 turned this from a statement of intent into a status**
+              // (§7.6.4 hand-over 2, §6.2).
+              //
+              // ~~a permanent 「將在啟用通知時要求」 with a clock icon~~ — P2
+              // could not read the status without spending iOS's one-shot
+              // prompt's worth of credibility (see `initState`), so it printed
+              // the plan. Now that the request has a home, the row reports what
+              // the OS actually says, and a REFUSAL is red with a one-tap route
+              // to the system settings.
+              //
+              // 🔴 It must never fail silently. Design 0008 §3.4 is the logged
+              // precedent: a denied permission left the watch running and only
+              // hid the notification, so the user's experience was "I turned it
+              // on and nothing arrives" — with nothing on any screen to explain
+              // it.
+              _PermissionRow(
+                permission: alerts.permission,
+                blocked: alerts.permissionBlocked,
+                onOpenSettings: () => unawaited(alerts.openSystemSettings()),
               ),
               _StepperRow(
                 label: l10n.settingsAlertsSustainLabel,
@@ -640,6 +695,95 @@ class _AlertsCard extends StatelessWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// System-notification-permission status (design 0080 §6.2).
+///
+/// Four states, three of which are the same row with different words — and the
+/// fourth is the one this class exists for.
+///
+/// 🔴 **A refusal is RED and carries a button.** §6.2 names the precedent it is
+/// avoiding (design 0008 §3.4): a denied permission that changes nothing on
+/// screen produces a user who has turned the feature on, receives nothing, and
+/// has no way to find out why. The button is the only route back on iOS, where
+/// a refusal cannot be re-asked from inside the app.
+///
+/// ⚠️ [AlertPermission.unknown] deliberately keeps P2's 「將在啟用通知時要求」
+/// wording rather than saying "unknown": before the feature is switched on that
+/// IS the truth, and on iOS it is the only honest thing that can be said,
+/// because the OS answers "not determined" and "denied" identically.
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.permission,
+    required this.blocked,
+    required this.onOpenSettings,
+  });
+
+  final AlertPermission permission;
+
+  /// [AlertController.permissionBlocked] — refused AND the feature is on.
+  ///
+  /// Both halves, because a refusal only MATTERS once something wants to
+  /// notify: shouting about it while the master switch is off would be an alarm
+  /// about a consequence that does not exist yet.
+  final bool blocked;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final (sub, colour, icon) = switch (permission) {
+      AlertPermission.granted => (
+          l10n.settingsAlertsPermissionGranted,
+          AppSemantics.good,
+          Icons.check_circle_outline,
+        ),
+      AlertPermission.denied || AlertPermission.permanentlyDenied => blocked
+          ? (
+              l10n.settingsAlertsPermissionDenied,
+              AppSemantics.danger,
+              Icons.error_outline,
+            )
+          : (
+              l10n.settingsAlertsPermissionUnknown,
+              context.colors.muted,
+              Icons.schedule,
+            ),
+      // Never asked (or a host with no such permission).
+      AlertPermission.unknown => (
+          l10n.settingsAlertsPermissionPending,
+          context.colors.muted,
+          Icons.schedule,
+        ),
+    };
+    return Column(
+      children: [
+        SettingsRow(
+          label: l10n.settingsAlertsPermissionLabel,
+          sub: sub,
+          trailing: blocked
+              ? OutlinedButton(
+                  onPressed: onOpenSettings,
+                  child: Text(l10n.settingsAlertsPermissionOpen),
+                )
+              : Icon(icon, size: 16, color: colour),
+        ),
+        // 🔑 Said out loud rather than left implicit: what a refusal costs is
+        // the RINGING, not the watching. Without this line a user who reads
+        // "refused" has no way to know the banner on the device page still
+        // works, and the reasonable conclusion is that the feature is dead.
+        if (blocked)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
+            child: Text(
+              l10n.settingsAlertsPermissionDeniedHelp,
+              style: TextStyle(
+                  fontSize: 11, height: 1.55, color: context.colors.muted),
+            ),
+          ),
       ],
     );
   }

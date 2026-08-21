@@ -84,6 +84,50 @@ enum AlertKind {
   /// each of those call sites would have to be kept in step with this enum by
   /// hand, and there is exactly one axis of difference to encode.
   bool get isVoltage => this != AlertKind.overTemperature;
+
+  /// The quantity this kind judges, out of [s], or null when this frame said
+  /// nothing about it.
+  ///
+  /// 🔑 **One extractor, three readers** (P3). The state machine advances on
+  /// it, the detail page's event banner prints it, and the notification body
+  /// quotes it — and if any two of those disagreed about which field OV reads,
+  /// the user would be shown a number that is not the one that woke them up.
+  /// It lives on the enum rather than in the evaluator because the evaluator is
+  /// no longer the only caller.
+  ///
+  /// ⚠️ **Null means "this frame did not mention it", never "it is fine".** A
+  /// `0x21` temperature frame carries no PVLT, so both voltage kinds read null
+  /// on it several times a second; a caller that treated that as a cleared
+  /// breach would let any interleaved selector reset a real one.
+  double? readingIn(TelemetrySample s) => switch (this) {
+        AlertKind.overVoltage || AlertKind.underVoltage => s.pvlt,
+        AlertKind.overTemperature => s.temperatureC?.toDouble(),
+      };
+}
+
+/// The notification id for one (unit, kind) — design 0080 §3.5.2.
+///
+/// 🔴 **It must be the same integer tomorrow, and on the next launch.** That is
+/// the entire de-duplication mechanism: the OS replaces a notification whose id
+/// it already has, so "remind me again in 15 minutes" updates one row instead
+/// of stacking a second, and a phone showing an alert from before a restart
+/// gets it UPDATED rather than doubled.
+///
+/// ⚠️ Hence FNV-1a over the text rather than [Object.hash] or [String.hashCode]:
+/// Dart makes no promise that those are stable across runs or across
+/// implementations, and the failure they would produce is silent — a slowly
+/// growing pile of notifications about one battery, on the one device nobody
+/// tests restarts on.
+///
+/// Masked to 31 bits: Android's id is a Java `int`, and a negative one is legal
+/// but pointlessly hard to read in a bug report.
+int alertNotificationId(String deviceId, AlertKind kind) {
+  var hash = 0x811c9dc5;
+  for (final unit in '$deviceId#${kind.name}'.codeUnits) {
+    hash = (hash ^ unit) * 0x01000193;
+    hash &= 0xffffffff; // Dart ints are 64-bit; keep the FNV-32 arithmetic
+  }
+  return hash & 0x7fffffff;
 }
 
 /// Which of design 0080 §3.1's four layers produced a value.
@@ -647,3 +691,28 @@ AlertThresholds resolveThresholds({
     ot: pick(userOt, reported?.warnOt, defaults?.ot),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Value formatting — one pair of formatters for the screen AND the notification
+// ---------------------------------------------------------------------------
+//
+// 🔵 **P3 moved these down from `ui/alerts/alert_settings_page.dart`.** They
+// were a UI concern while only the settings screen printed a threshold; the
+// notification body prints the same two quantities beside each other
+// (「目前 10.82 V，門檻 11.00 V」) and is built on the telemetry path, with no
+// widget in sight. Keeping a second copy up there is how the row and the alarm
+// end up disagreeing in the last digit about the same number.
+
+/// Two decimals, matching how `0x2B` decodes (`b * 0.025 + 14.4`, i.e. 40 mV
+/// steps) and how every other voltage on this app's screens is rendered.
+String formatVolts(double v) => v.toStringAsFixed(2);
+
+/// 🔴 **Always °C, whatever `TempUnit` the user picked, and this is a known
+/// deviation worth stating.** The thresholds are stored in °C because that is
+/// what `0x2B` carries (`b6 + 60`), and the settings screen shows a limit and
+/// the live reading side by side — converting one and not the other would be a
+/// defect, and converting both would make the value the user TYPES a converted
+/// quantity that has to survive a round trip through a byte-resolution field.
+/// Design 0080 does not rule on it; the mockup is in °C throughout, and this
+/// follows the mockup rather than inventing a rule.
+String formatCelsius(double v) => v.toStringAsFixed(0);

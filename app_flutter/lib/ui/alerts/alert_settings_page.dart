@@ -59,6 +59,12 @@ import '../devices/save_device_flow.dart';
 import '../util/alert_thresholds_lookup.dart';
 import '../widgets/industrial.dart';
 
+// The two value formatters moved to the models layer in P3 (see the note at the
+// foot of this file); re-exported so the four call sites that already import
+// this page keep reaching them by the same name.
+export 'package:open_smart_batt/models/alert_thresholds.dart'
+    show formatVolts, formatCelsius;
+
 /// How close a threshold may sit to the current reading before the screen says
 /// so (design 0080 §6.2, "設定值離目前讀數過近時就地提示").
 ///
@@ -267,17 +273,19 @@ class AlertSettingsPage extends StatefulWidget {
 }
 
 class _AlertSettingsPageState extends State<AlertSettingsPage> {
-  /// Gate ③ — 「本次連線不再提醒」 (§3.4).
-  ///
-  /// 🔴 **Deliberately NOT persisted, and deliberately held HERE.** The
-  /// asymmetry with the 1-hour mute is the design: "for an hour" is a promise
-  /// about wall-clock time and has to survive a restart, "not again this
-  /// connection" is a promise about a link and ends with it. State living on a
-  /// widget that the user can pop is admittedly a weaker home than it deserves
-  /// — P3 moves it onto whatever holds the evaluator, where "the connection"
-  /// is actually observable — but writing it to the database in the meantime
-  /// would be the one thing that makes it wrong rather than merely temporary.
-  bool _sessionMuted = false;
+  // 🔵 **P3 moved gate ③ off this widget** (§7.6.4 hand-over 1).
+  //
+  // ~~bool _sessionMuted = false;~~ — 「本次連線不再提醒」 used to live here,
+  // because P2 had no object that could observe a connection. That made it die
+  // when the user popped the page, and §3.4 asks for it to die when the LINK
+  // does; the two are different by exactly the amount that matters, since
+  // reading the mute setting is the most likely reason to leave the page.
+  //
+  // It now lives on [AlertController], beside the evaluator whose emissions it
+  // suppresses. Still memory-only: the asymmetry with the 1-hour mute (which IS
+  // persisted) is the design, not an omission — "for an hour" is a promise
+  // about wall-clock time and must survive a restart; "not again this
+  // connection" ends when the connection does.
 
   @override
   Widget build(BuildContext context) {
@@ -438,9 +446,13 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
               sub: l10n.alertsSessionMuteSub,
               last: true,
               trailing: Switch(
-                value: _sessionMuted,
+                value: context
+                    .watch<AlertController>()
+                    .isSessionSilenced(widget.deviceId),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: (v) => setState(() => _sessionMuted = v),
+                onChanged: (v) => context
+                    .read<AlertController>()
+                    .setSessionSilenced(widget.deviceId, v),
               ),
             ),
           ],
@@ -958,22 +970,16 @@ class _ThresholdDialogState extends State<_ThresholdDialog> {
 }
 
 // ---------------------------------------------------------------------------
-// Formatting — shared so the entry row, the rows and the dialog cannot drift
+// Formatting
 // ---------------------------------------------------------------------------
-
-/// Two decimals, matching how `0x2B` decodes (`b * 0.025 + 14.4`, i.e. 40 mV
-/// steps) and how every other voltage on this app's screens is rendered.
-String formatVolts(double v) => v.toStringAsFixed(2);
-
-/// 🔴 **Always °C, whatever [TempUnit] the user picked, and this is a known
-/// deviation worth stating.** The thresholds are stored in °C because that is
-/// what `0x2B` carries (`b6 + 60`), and this screen shows a limit and the live
-/// reading side by side — converting one and not the other would be a defect,
-/// and converting both would make the value the user TYPES a converted quantity
-/// that has to survive a round trip through a byte-resolution field. Design 0080
-/// does not rule on it; the mockup is in °C throughout, and this follows the
-/// mockup rather than inventing a rule.
-String formatCelsius(double v) => v.toStringAsFixed(0);
+//
+// 🔵 **P3 moved `formatVolts` / `formatCelsius` into `models/alert_thresholds`**
+// and this file now re-exports them (see the `export` beside the imports). They
+// had to leave the UI layer because the NOTIFICATION body quotes the same two
+// numbers — "目前 10.82 V，門檻 11.00 V" — and it is built on the telemetry
+// path, where importing a widget file to reach a formatter would be the wrong
+// direction. Two `toStringAsFixed`s, one in `lib/state` and one here, is the
+// shape that ends with the screen and the alarm disagreeing in the last digit.
 
 /// The user-facing name of one [AlertKind].
 String kindLabel(AppLocalizations l10n, AlertKind kind) => switch (kind) {

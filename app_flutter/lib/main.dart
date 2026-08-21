@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'models/models.dart';
 import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
+import 'ui/alerts/alert_settings_page.dart';
 import 'ui/devices/device_detail_page.dart';
 import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
@@ -250,6 +252,15 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
         // resume is a claim. Ask the device, and hold the answer to a deadline
         // (design 0039 §3.1).
         widget.services.connection.onAppResumed();
+        // 🔵 design 0080 §6.2 — the same argument for the notification
+        // permission. 「前往設定」 sends the user to the system settings, and
+        // what they do there is invisible from inside the app; without this,
+        // someone who granted it comes back to a screen still calling them
+        // refused. Gated on the feature being on, for [AlertPermission.unknown]'s
+        // reason: on iOS an un-asked permission reads the same as a refused one.
+        if (widget.services.settings.settings.alertsEnabled) {
+          unawaited(widget.services.alerts.refreshPermission());
+        }
       case AppLifecycleState.inactive:
         break;
     }
@@ -291,6 +302,10 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
         ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
         ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
         ChangeNotifierProvider<GForceController>.value(value: s.gforce),
+        // design 0080 P3. Watched by the device page's event banner, the
+        // per-device warning screen and the Settings card — and, unlike the two
+        // above, it is also what a notification tap arrives through.
+        ChangeNotifierProvider<AlertController>.value(value: s.alerts),
       ],
       // Rebuild MaterialApp when the theme preference changes.
       child: Consumer<SettingsController>(
@@ -443,6 +458,11 @@ class _RootShellState extends State<RootShell> {
   /// `devices_page.dart` uses for [ConnectionController].
   late final SettingsController _settings;
 
+  /// design 0080 §3.4.1 — notification taps, captured here because this shell
+  /// owns the only [Navigator] that outlives them.
+  late final AlertController _alerts;
+  StreamSubscription<String>? _alertTapSub;
+
   /// Personal or advanced (design 0063). Mirrored into this State rather than
   /// read from [_settings] in `build`, so that [_onSettingsChanged] can see the
   /// PREVIOUS value and tell an actual mode change apart from the many other
@@ -527,6 +547,13 @@ class _RootShellState extends State<RootShell> {
     // `setState` from `didChangeDependencies`, which this codebase has no
     // precedent for, and would still have to render one frame at index -1.
     _settings.addListener(_onSettingsChanged);
+    // 🔵 design 0080 §3.4.1 (ruling Q2). The notification carries no action
+    // buttons, so the TAP has to land somewhere the user can actually do
+    // something: that unit's warning settings, with its device page underneath
+    // so Back goes where they expect. Ruling Q2 accepted "unlock → open → find
+    // the screen" as the cost of dropping the buttons and paid it down here.
+    _alerts = context.read<AlertController>();
+    _alertTapSub = _alerts.onNotificationTapped.listen(_openAlertSettings);
     // After first frame: disclaimer (once) then a silent GitHub update check.
     WidgetsBinding.instance.addPostFrameCallback((_) => _startup());
   }
@@ -538,7 +565,29 @@ class _RootShellState extends State<RootShell> {
   @override
   void dispose() {
     _settings.removeListener(_onSettingsChanged);
+    unawaited(_alertTapSub?.cancel());
     super.dispose();
+  }
+
+  /// Open [deviceId]'s warning settings, with its device page beneath it.
+  ///
+  /// Two pushes rather than one: landing on the settings screen with the tab bar
+  /// behind it would make Back drop the user somewhere they never were. The
+  /// device page is where a notification about a device belongs, and the
+  /// settings screen is what they came to change.
+  void _openAlertSettings(String deviceId) {
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    // Back to the shell first: a tap can arrive while some other route is
+    // already pushed (the user was reading history when the phone buzzed), and
+    // stacking a third and fourth route on top of that is how a user ends up
+    // pressing Back five times.
+    nav.popUntil((r) => r.isFirst);
+    _setTab(_Tab.devices);
+    _openDetail(deviceId);
+    nav.push(MaterialPageRoute<void>(
+      builder: (_) => AlertSettingsPage(deviceId: deviceId),
+    ));
   }
 
   /// React to a settings write. Only the mode is of interest here; every other
@@ -563,6 +612,12 @@ class _RootShellState extends State<RootShell> {
 
   Future<void> _startup() async {
     await _maybeShowDisclaimer();
+    if (!mounted) return;
+    // A notification that started this process from cold. It is not an event —
+    // by the time anything could listen, the tap has already happened — so it
+    // is pulled once rather than delivered on [AlertController.onNotificationTapped].
+    final launched = await _alerts.takeLaunchPayload();
+    if (launched != null && mounted) _openAlertSettings(launched);
     if (!mounted) return;
     // On-launch update check: Android only. iOS updates arrive via TestFlight /
     // the App Store; GitHub releases carry only the Android APK, so an in-app
@@ -595,6 +650,28 @@ class _RootShellState extends State<RootShell> {
       channelName: l10n.monitorChannelName,
       channelDescription: l10n.monitorChannelDescription,
     );
+    // 🔴 design 0080 §5.2 — the warning notifications' text, for the SAME
+    // reason as the six lines above and not merely by analogy: a notification
+    // is posted from the telemetry path, where there is no `BuildContext` to
+    // read `AppLocalizations` from. Pushing it from here is what keeps the
+    // strings in the language the user chose IN THE APP, which is independent
+    // of the device locale the platform would otherwise use.
+    //
+    // The two body entries are closures because their numbers are not known
+    // yet — the generated method is captured now and called later with the
+    // reading of the moment.
+    context.read<AlertController>().setNotificationStrings(
+          AlertNotificationStrings(
+            channelName: l10n.alertsChannelName,
+            channelDescription: l10n.alertsChannelDescription,
+            overVoltage: l10n.alertsNotificationOverVoltage,
+            underVoltage: l10n.alertsNotificationUnderVoltage,
+            overTemperature: l10n.alertsNotificationOverTemperature,
+            title: l10n.alertsNotificationTitle,
+            bodyVolts: l10n.alertsNotificationBodyVolts,
+            bodyCelsius: l10n.alertsNotificationBodyCelsius,
+          ),
+        );
   }
 
   /// The ONLY way `_tab` may be written after construction.

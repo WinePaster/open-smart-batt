@@ -129,6 +129,29 @@ class _StallWatch {
 }
 
 /// Latest telemetry + derived values for the dashboard, plus history/log I/O.
+/// Where decoded frames go to be judged against the user's warning thresholds
+/// (design 0080 §3.3, P3).
+///
+/// An interface rather than a direct dependency on `AlertController`, for the
+/// reason [TelemetryHealth] exists one file away: this controller must not
+/// learn what an alert IS. It publishes frames and link loss; whether that
+/// becomes a state machine, a banner or a notification is somebody else's
+/// subject, and a test that cares about history rows should not have to
+/// construct an evaluator to get one.
+///
+/// 🔴 It is fed from INSIDE `_onTelemetry`, after design 0078's
+/// session-attribution guard, and not from a second subscription to
+/// `BleService.telemetry`. A second listener would see the frames that guard
+/// drops — a previous link's unit still sending while its teardown finishes —
+/// and would judge them against the NEW unit's limits.
+abstract class TelemetryAlertSink {
+  /// One decoded frame, attributed to the unit the session is recording.
+  void onSample(String? deviceId, TelemetrySample sample);
+
+  /// The last link dropped: forget every machine, and say nothing (§3.3.2).
+  void onLinkLost();
+}
+
 class TelemetryController extends ChangeNotifier
     implements TelemetryHealth, CardTelemetry {
   TelemetryController(
@@ -181,6 +204,15 @@ class TelemetryController extends ChangeNotifier
   /// same tables can never disagree about whose data a row is; see
   /// [SessionContext].
   late final SessionContext _session;
+
+  /// design 0080 P3's hook, or null on a build/test that never wired one.
+  TelemetryAlertSink? _alerts;
+
+  /// Route decoded frames to the alert layer. Called once by the composition
+  /// root, for the reason `bindTelemetryHealth` is: it is the only place both
+  /// objects exist, and neither has to learn about the other's domain to be
+  /// tested on its own.
+  void bindAlerts(TelemetryAlertSink sink) => _alerts = sink;
 
   StreamSubscription<TelemetrySample>? _telemetrySub;
   StreamSubscription<BlePacketEvent>? _packetSub;
@@ -698,6 +730,19 @@ class TelemetryController extends ChangeNotifier
     }
     notifyListeners();
     _maybeAutoLog(s);
+    // design 0080 P3 — LAST, and after the guard at the top of this method.
+    //
+    // Last because everything above is what the app already promised to do
+    // with a frame: an exception escaping the alert layer must not be able to
+    // cost the dashboard its reading or the history its row. Inside this method
+    // rather than on its own subscription because the session gate at line one
+    // is the only thing standing between "this unit's limits" and "the unit
+    // that is still tearing down" (design 0078 / FB-88).
+    //
+    // Attribution is the recording SESSION for the reason stated above — the
+    // same id the history row about to be written carries — so a reading can
+    // never be judged against one unit's thresholds and filed under another's.
+    _alerts?.onSample(_session.deviceId, s);
   }
 
   // ---- per-second aggregation (design 0061 T1) ---------------------------
@@ -1352,6 +1397,13 @@ class TelemetryController extends ChangeNotifier
         _sample = TelemetrySample.empty();
         notifyListeners();
       }
+      // design 0080 §3.3.2 — every alert machine resets and the per-event
+      // counters go to zero. 🔴 Nothing is EMITTED by this: there is no "alert
+      // cleared" message, because we did not observe it clear, we stopped
+      // observing. Same honesty rule as design 0038, and the same reason the
+      // trend buffer above is cleared rather than left to be redrawn against
+      // the next unit's axis.
+      _alerts?.onLinkLost();
     }
   }
 

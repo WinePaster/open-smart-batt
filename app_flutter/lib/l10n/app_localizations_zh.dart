@@ -2209,4 +2209,129 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsAlertsStepUp => '增加';
+
+  @override
+  String get settingsAlertsPermissionGranted => '已允許';
+
+  @override
+  String get settingsAlertsPermissionDenied => '已拒絕 —— 手機不會收到通知';
+
+  @override
+  String get settingsAlertsPermissionUnknown => '尚未確認';
+
+  @override
+  String get settingsAlertsPermissionOpen => '前往設定';
+
+  @override
+  String get settingsAlertsPermissionDeniedHelp =>
+      '警告仍然照常判斷、畫面上也照常顯示 —— 差別只在手機不會響。';
+
+  @override
+  String get alertsConsentTitle => '開啟警告通知';
+
+  @override
+  String get alertsConsentIntro => '開啟之前，先講清楚它做得到什麼、做不到什麼：';
+
+  @override
+  String get alertsConsentPointConnected => '只有在 App 連著裝置的時候才會偵測。斷線之後不會有任何檢查。';
+
+  @override
+  String get alertsConsentPointAndroid => 'Android：連線中即使螢幕關閉也會持續偵測。';
+
+  @override
+  String get alertsConsentPointIos =>
+      'iPhone：切到背景後，只有在裝置送資料喚醒 App 的短暫期間會偵測；系統回收 App 之後就會停止。';
+
+  @override
+  String get alertsConsentPointPermission =>
+      '接下來會請你允許系統通知權限。不允許也可以用 —— 警告照樣顯示在畫面上，只是手機不會響。';
+
+  @override
+  String get alertsConsentPointThresholds => '門檻是逐台設定的，在每一台裝置頁面的「警告通知」裡。';
+
+  @override
+  String get alertsConsentEnable => '開啟';
+
+  @override
+  String get alertsChannelName => '警告通知';
+
+  @override
+  String get alertsChannelDescription => '讀數超過你設定的門檻時';
+
+  @override
+  String get alertsNotificationOverVoltage => '電壓過高';
+
+  @override
+  String get alertsNotificationUnderVoltage => '電壓過低';
+
+  @override
+  String get alertsNotificationOverTemperature => '溫度過高';
+
+  @override
+  String alertsNotificationTitle(String alias, String kind) {
+    return '$alias · $kind';
+  }
+
+  @override
+  String alertsNotificationBodyVolts(
+    String reading,
+    String threshold,
+    String time,
+  ) {
+    return '目前 $reading V，門檻 $threshold V · $time';
+  }
+
+  @override
+  String alertsNotificationBodyCelsius(
+    String reading,
+    String threshold,
+    String time,
+  ) {
+    return '目前 $reading °C，門檻 $threshold °C · $time';
+  }
+
+  @override
+  String get alertsBannerHeading => '目前有警告';
+
+  @override
+  String alertsBannerRowVolts(String kind, String reading, String threshold) {
+    return '$kind · 目前 $reading V，門檻 $threshold V';
+  }
+
+  @override
+  String alertsBannerRowCelsius(String kind, String reading, String threshold) {
+    return '$kind · 目前 $reading °C，門檻 $threshold °C';
+  }
+
+  @override
+  String alertsBannerFor(String duration) {
+    return '已持續 $duration';
+  }
+
+  @override
+  String alertsBannerDurationSeconds(String n) {
+    return '$n 秒';
+  }
+
+  @override
+  String alertsBannerDurationMinutes(String n) {
+    return '$n 分';
+  }
+
+  @override
+  String alertsBannerDurationHours(String h, String m) {
+    return '$h 小時 $m 分';
+  }
+
+  @override
+  String get alertsBannerUnsavedNote => '這台裝置尚未儲存，所以只會顯示在畫面上，手機不會響。';
+
+  @override
+  String get alertsBannerSilencedNote => '這台的通知目前暫停中。警告本身仍在追蹤。';
+
+  @override
+  String get alertsBannerGloballyOffNote => '警告通知在「設定」裡是關閉的。警告本身仍在追蹤。';
+
+  @override
+  String get alertsBannerOpen => '警告設定';
 }

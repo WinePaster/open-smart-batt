@@ -372,6 +372,10 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            // design 0080 P3: the page's 「本次連線不再提醒」 switch reads it,
+            // and the settings card's permission row does too.
+            ChangeNotifierProvider<AlertController>.value(
+                value: services.alerts),
             ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ],
           child: MaterialApp(
@@ -713,6 +717,10 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            // design 0080 P3: the page's 「本次連線不再提醒」 switch reads it,
+            // and the settings card's permission row does too.
+            ChangeNotifierProvider<AlertController>.value(
+                value: services.alerts),
             ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ],
           child: MaterialApp(
@@ -826,13 +834,17 @@ void main() {
   group('settings: the global half', () {
     late AppServices services;
 
-    Future<void> boot(WidgetTester tester) async {
+    Future<void> boot(WidgetTester tester, {AlertNotifier? notifier}) async {
       await tester.runAsync(() async {
         final db = await AppDatabase.open(
           path: inMemoryDatabasePath,
           factory: databaseFactoryFfi,
         );
-        services = await AppServices.create(appDatabase: db, ble: _FakeBleService());
+        services = await AppServices.create(
+          appDatabase: db,
+          ble: _FakeBleService(),
+          alertNotifier: notifier,
+        );
       });
     }
 
@@ -857,6 +869,10 @@ void main() {
                 value: services.connection),
             ChangeNotifierProvider<TelemetryController>.value(
                 value: services.telemetry),
+            // design 0080 P3: the page's 「本次連線不再提醒」 switch reads it,
+            // and the settings card's permission row does too.
+            ChangeNotifierProvider<AlertController>.value(
+                value: services.alerts),
             ChangeNotifierProvider<GForceController>.value(value: services.gforce),
           ],
           child: MaterialApp(
@@ -904,11 +920,81 @@ void main() {
       expect(find.text('3'), findsOneWidget);
 
       // And it is a real switch, not a picture of one.
+      //
+      // 🔵 **P3 put a door in front of it** (§3.7.3): turning it ON now runs
+      // the one-time explainer and then the permission request, so the tap
+      // alone no longer writes. Turning it off still does — the asymmetry is
+      // the point of an opt-in, and it is asserted below.
       await tester.tap(sw);
+      await tester.pumpAndSettle();
+      expect(find.text('Turn on warning notifications'), findsOneWidget,
+          reason: 'ruling Q4 ships it off; this dialog is the only way past');
+      expect(services.settings.alertsEnabled, isFalse,
+          reason: 'nothing is written until the user says yes');
+      await tester.tap(find.text('Turn on'));
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 40)));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(services.settings.alertsEnabled, isTrue);
+    });
+
+    testWidgets('🔴 cancelling the explainer writes nothing and asks nothing',
+        (tester) async {
+      // The difference between an opt-in and a formality. On iOS the OS prompt
+      // is one-shot, so an accidental tap must not spend it.
+      await boot(tester);
+      await pump(tester);
+      await tester.scrollUntilVisible(
+          find.text('Enable warning notifications'), 200);
+      await tester.tap(find.descendant(
+        of: find.ancestor(
+          of: find.text('Enable warning notifications'),
+          matching: find.byType(SettingsRow),
+        ),
+        matching: find.byType(Switch),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(services.settings.alertsEnabled, isFalse);
+      expect(services.alerts.permission, AlertPermission.unknown,
+          reason: 'the OS was never asked, so there is nothing to report');
+    });
+
+    testWidgets(
+        '🔴 §6.2 — a refused permission is RED with a way out, never silent',
+        (tester) async {
+      // Design 0008 §3.4 is the logged precedent: a denied permission left the
+      // watch running and only hid the notification, so what the user
+      // experienced was "I turned it on and nothing arrives" with nothing on
+      // any screen to explain it.
+      await boot(tester, notifier: NoopAlertNotifier()..permission = AlertPermission.denied);
+      await pump(tester);
+      await tester.scrollUntilVisible(
+          find.text('Enable warning notifications'), 200);
+      await tester.tap(find.descendant(
+        of: find.ancestor(
+          of: find.text('Enable warning notifications'),
+          matching: find.byType(SettingsRow),
+        ),
+        matching: find.byType(Switch),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Turn on'));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await tester.pumpAndSettle();
+
+      // Enabled anyway — refusing to enable would trade a silent failure for a
+      // dead end (design 0008 §3.4).
+      expect(services.settings.alertsEnabled, isTrue);
+      await tester.scrollUntilVisible(
+          find.text('Refused — nothing will reach your phone'), 200);
+      expect(find.text('Open settings'), findsOneWidget);
+      // …and it says what is still working, so "refused" does not read as
+      // "the feature is dead".
+      expect(
+          find.textContaining('still appear on the device screen'), findsOneWidget);
     });
 
     testWidgets('🔴 the capability card says what it can and cannot do (§6.1)',

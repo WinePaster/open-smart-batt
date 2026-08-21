@@ -2336,4 +2336,137 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsAlertsStepUp => 'Increase';
+
+  @override
+  String get settingsAlertsPermissionGranted => 'Allowed';
+
+  @override
+  String get settingsAlertsPermissionDenied =>
+      'Refused — nothing will reach your phone';
+
+  @override
+  String get settingsAlertsPermissionUnknown => 'Not confirmed yet';
+
+  @override
+  String get settingsAlertsPermissionOpen => 'Open settings';
+
+  @override
+  String get settingsAlertsPermissionDeniedHelp =>
+      'Warnings are still evaluated and still appear on the device screen — only the phone staying quiet is the difference.';
+
+  @override
+  String get alertsConsentTitle => 'Turn on warning notifications';
+
+  @override
+  String get alertsConsentIntro =>
+      'Before you turn this on, what it does and does not do:';
+
+  @override
+  String get alertsConsentPointConnected =>
+      'Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.';
+
+  @override
+  String get alertsConsentPointAndroid =>
+      'Android: detection continues while connected, even with the screen off.';
+
+  @override
+  String get alertsConsentPointIos =>
+      'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.';
+
+  @override
+  String get alertsConsentPointPermission =>
+      'Next you will be asked to allow system notifications. You can refuse — warnings still appear on screen, your phone just stays quiet.';
+
+  @override
+  String get alertsConsentPointThresholds =>
+      'Limits are set per device, under 「Warnings」 on each device\'s page.';
+
+  @override
+  String get alertsConsentEnable => 'Turn on';
+
+  @override
+  String get alertsChannelName => 'Warnings';
+
+  @override
+  String get alertsChannelDescription => 'A reading passed a limit you set';
+
+  @override
+  String get alertsNotificationOverVoltage => 'voltage too high';
+
+  @override
+  String get alertsNotificationUnderVoltage => 'voltage too low';
+
+  @override
+  String get alertsNotificationOverTemperature => 'temperature too high';
+
+  @override
+  String alertsNotificationTitle(String alias, String kind) {
+    return '$alias · $kind';
+  }
+
+  @override
+  String alertsNotificationBodyVolts(
+    String reading,
+    String threshold,
+    String time,
+  ) {
+    return 'Now $reading V, limit $threshold V · $time';
+  }
+
+  @override
+  String alertsNotificationBodyCelsius(
+    String reading,
+    String threshold,
+    String time,
+  ) {
+    return 'Now $reading °C, limit $threshold °C · $time';
+  }
+
+  @override
+  String get alertsBannerHeading => 'Warning raised';
+
+  @override
+  String alertsBannerRowVolts(String kind, String reading, String threshold) {
+    return '$kind · now $reading V, limit $threshold V';
+  }
+
+  @override
+  String alertsBannerRowCelsius(String kind, String reading, String threshold) {
+    return '$kind · now $reading °C, limit $threshold °C';
+  }
+
+  @override
+  String alertsBannerFor(String duration) {
+    return 'for $duration';
+  }
+
+  @override
+  String alertsBannerDurationSeconds(String n) {
+    return '$n s';
+  }
+
+  @override
+  String alertsBannerDurationMinutes(String n) {
+    return '$n min';
+  }
+
+  @override
+  String alertsBannerDurationHours(String h, String m) {
+    return '$h h $m min';
+  }
+
+  @override
+  String get alertsBannerUnsavedNote =>
+      'This device is not saved, so this stays on screen and your phone will not ring.';
+
+  @override
+  String get alertsBannerSilencedNote =>
+      'Notifications for this device are paused. The warning itself is still being tracked.';
+
+  @override
+  String get alertsBannerGloballyOffNote =>
+      'Warning notifications are off in Settings. The warning itself is still being tracked.';
+
+  @override
+  String get alertsBannerOpen => 'Warnings';
 }

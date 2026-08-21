@@ -318,7 +318,16 @@ class _KindState {
 class AlertEvaluator {
   AlertEvaluator({this.config = const AlertEvaluatorConfig()});
 
-  final AlertEvaluatorConfig config;
+  /// The four tunables. **Mutable, and replaced rather than rebuilt** — P3
+  /// wires three of them to `settings` (§3.6), where the user can move them
+  /// while an event is open.
+  ///
+  /// 🔑 Assigning here keeps every open event's counter and stopwatch, which is
+  /// the same answer §7.5.5 gave for a THRESHOLD edited mid-event: the new
+  /// value applies from the next fold. Rebuilding the evaluator instead would
+  /// silently clear every machine, so nudging "repeat every 15 min" to 16 would
+  /// forgive a battery that had already spent its budget.
+  AlertEvaluatorConfig config;
 
   final Map<String, Map<AlertKind, _KindState>> _states =
       <String, Map<AlertKind, _KindState>>{};
@@ -373,7 +382,11 @@ class AlertEvaluator {
       // Layer ④, or a frame that says nothing about this quantity. Both leave
       // the machine exactly as it was — see the library comment.
       if (!threshold.isSet) continue;
-      final reading = _readingFor(sample, kind);
+      // 🔵 P3: `AlertKind.readingIn` rather than a private copy here. The
+      // banner and the notification body quote the same number this line
+      // steps the machine on, and three extractors would be three chances for
+      // the screen and the alarm to be talking about different fields.
+      final reading = kind.readingIn(sample);
       if (reading == null) continue;
 
       final emission = _step(
@@ -407,16 +420,6 @@ class AlertEvaluator {
   /// Forget every unit. For a full teardown; same no-emission contract as
   /// [clearDevice].
   void clearAll() => _states.clear();
-
-  double? _readingFor(TelemetrySample sample, AlertKind kind) {
-    switch (kind) {
-      case AlertKind.overVoltage:
-      case AlertKind.underVoltage:
-        return sample.pvlt;
-      case AlertKind.overTemperature:
-        return sample.temperatureC?.toDouble();
-    }
-  }
 
   /// Is [reading] past [limit] in the direction [kind] cares about?
   ///
