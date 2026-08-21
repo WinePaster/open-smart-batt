@@ -1280,7 +1280,23 @@ class BleService {
       }
     }
     if (emitted) {
-      _telemetry.add(link.decoder.sample);
+      // 🔴 FB-88 / design 0078 (M1-b): stamp WHOSE frame this is on the way
+      // out. This is the ONE place a telemetry sample leaves this service, and
+      // `link` — the per-device state the whole class is keyed by — is right
+      // here. Publishing without it is what flattened a per-device transport
+      // into an anonymous stream, and an anonymous stream is what let a
+      // torn-down link's frames be measured against the NEXT unit's identity
+      // yardstick: the controller's design 0068 (C) guard, which is FB-25's
+      // fix, then dropped a perfectly good link as `wrong_device`. Two field
+      // teardowns, 49 ms and 3,240 ms wide, are the window (`2026.08.18/008`).
+      //
+      // ⚠️ Stamped with `copyWith` here rather than carried inside the decoder
+      // on purpose. The decoder is per link but knows nothing about ids, and
+      // the instance it accumulates is the SAME object `currentSample` hands
+      // out — mutating identity into it would put a transport fact inside the
+      // decode. `copyWith` leaves the accumulation untouched and gives the
+      // stream its own stamped view.
+      _telemetry.add(link.decoder.sample.copyWith(deviceId: link.deviceId));
     }
     // Device-metadata side-channel. On the open build
     // the Noop parser never changes it, so this never fires.
