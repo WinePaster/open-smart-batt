@@ -90,6 +90,51 @@ class _StalledConn extends ConnectionController {
   Duration? get pendingFor => const Duration(seconds: 30);
 }
 
+/// Counts the three history queries so a test can say WHICH ones ran.
+///
+/// 🔴 Design 0079 S0. `debugDeviceHistoryQueries` counts `_load` CALLS, which
+/// cannot distinguish "loaded" from "loaded and also pulled a thousand rows it
+/// never read" — and that distinction is the entire change S0 makes. Counting
+/// at the controller is the only seam that sees it.
+///
+/// Built over a SEPARATE [_StubBle] on purpose: a second controller listening
+/// to the shared stub would record every emitted sample a second time, and this
+/// file's other tests assert on stored rows.
+class _CountingTelemetry extends TelemetryController {
+  _CountingTelemetry(super.ble,
+      {required super.settings, required super.history, required super.logs});
+
+  int stats = 0;
+  int buckets = 0;
+  int listBuckets = 0;
+
+  @override
+  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) {
+    stats++;
+    return super.historyStats(since: since, deviceId: deviceId);
+  }
+
+  @override
+  Future<List<HistoryBucket>> historyBuckets(
+      {DateTime? since, required int bucketMs, String? deviceId}) {
+    buckets++;
+    return super
+        .historyBuckets(since: since, bucketMs: bucketMs, deviceId: deviceId);
+  }
+
+  @override
+  Future<List<HistoryListRow>> historyListBuckets({
+    DateTime? since,
+    required int bucketMs,
+    int? limit,
+    String? deviceId,
+  }) {
+    listBuckets++;
+    return super.historyListBuckets(
+        since: since, bucketMs: bucketMs, limit: limit, deviceId: deviceId);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
@@ -208,6 +253,7 @@ void main() {
     required String deviceId,
     required bool live,
     Locale locale = const Locale('en'),
+    TelemetryController? telemetry,
   }) async {
     tester.view.physicalSize = const Size(900, 3000);
     tester.view.devicePixelRatio = 1.0;
@@ -224,7 +270,7 @@ void main() {
           ChangeNotifierProvider<ConnectionController>.value(
               value: services.connection),
           ChangeNotifierProvider<TelemetryController>.value(
-              value: services.telemetry),
+              value: telemetry ?? services.telemetry),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -819,6 +865,103 @@ void main() {
 
       expect(find.textContaining('records'), findsNothing);
       expect(find.textContaining('span'), findsOneWidget);
+    });
+  });
+  // ==========================================================================
+  // T79-S0 — the block makes TWO queries, not three (design 0079 S0).
+  // ==========================================================================
+  group('T79-S0 — two queries, not three', () {
+    /// Build a controller that counts, over its own stub radio, and hand it to
+    /// the block instead of the app's.
+    _CountingTelemetry spyFor(WidgetTester tester) {
+      final spyBle = _StubBle();
+      final spy = _CountingTelemetry(
+        spyBle,
+        settings: services.settings,
+        history: services.historyRepo,
+        logs: services.logRepo,
+      );
+      addTearDown(() async {
+        spy.dispose();
+        await spyBle.dispose();
+      });
+      return spy;
+    }
+
+    testWidgets('the thousand-row list query is not issued', (tester) async {
+      // CATCHES: `historyListBuckets` growing back into `_load`. It was there
+      // from design 0065 until 2026-08-21 with `limit: kHistoryRowCap` — a
+      // thousand minute windows fetched on EVERY detail-page open, for every
+      // unit, offline ones included — and the whole result was read by one
+      // `rows.isEmpty`. design 0065 §0.9 had already announced the removal on
+      // 2026-08-16; nobody checked, because nothing on screen changes either
+      // way. That is exactly the failure a test has to carry rather than a
+      // reviewer.
+      await boot(tester);
+      await addRows(tester, unitA, vA);
+      final spy = spyFor(tester);
+
+      await pumpSection(
+          tester, deviceId: unitA, live: false, telemetry: spy);
+
+      expect(spy.stats, 1, reason: 'the range aggregate: still needed');
+      expect(spy.buckets, 1, reason: 'the chart buckets: still needed');
+      expect(spy.listBuckets, 0,
+          reason: 'the row list is not drawn here, so it is not fetched here');
+    });
+
+    testWidgets('and the empty state still knows it is empty', (tester) async {
+      // The reverse pin. `stats.count` replaced `rows.isEmpty` as the gate, so
+      // a unit with nothing must still say so — otherwise S0 bought a query at
+      // the price of a blank card that claims to be a chart.
+      await boot(tester);
+      final spy = spyFor(tester);
+
+      await pumpSection(
+          tester, deviceId: unitA, live: false, telemetry: spy);
+
+      expect(spy.listBuckets, 0);
+      // Default range is `today`, so this is `historyEmptyDeviceRange`; the
+      // matched prefix is shared with `deviceHistoryEmpty`, so the assertion
+      // survives a range change without pinning which sentence appears.
+      expect(find.textContaining('No records for this device'), findsOneWidget,
+          reason: 'the "nothing here" copy, not an empty chart card');
+    });
+
+    testWidgets('a unit inside ONE chart bucket is not called empty',
+        (tester) async {
+      // 🔴 The half of the old gate that was load-bearing and is NOT the row
+      // list: `count == 0 && chartEmpty`. Rows too close together to make two
+      // chart points leave `buckets.length < 2` — and FB-85 ruled that such a
+      // unit must still report its numbers. Had S0 dropped the `&& chartEmpty`
+      // conjunct, or gated on buckets alone, this unit would read as having no
+      // records at all.
+      await boot(tester);
+      // Three rows within a few seconds ⇒ one chart bucket at any hour.
+      await tester.runAsync(() async {
+        final now = DateTime.now();
+        for (var i = 0; i < 3; i++) {
+          await services.historyRepo.insertSample(
+            TelemetrySample(
+              timestamp: now.subtract(Duration(seconds: i)),
+              pvlt: vA,
+              temperatureC: 30,
+              mode: ReportedStatus.normal,
+            ),
+            deviceId: unitA,
+          );
+        }
+      });
+      final spy = spyFor(tester);
+
+      await pumpSection(
+          tester, deviceId: unitA, live: false, telemetry: spy);
+
+      expect(spy.listBuckets, 0);
+      expect(find.textContaining('No records for this device'), findsNothing,
+          reason: 'it HAS records — it just cannot be drawn as a curve');
+      expect(showsVoltage(vA), isTrue,
+          reason: 'FB-85: the stats strip reports what the range holds');
     });
   });
 }

@@ -53,39 +53,59 @@ import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
 import 'history_screen.dart';
 
-/// How many list rows are rendered before the "show more" step.
-///
-/// 🔴 **Measured, not guessed** (design 0065 `T65-4` M4, 2026-08-16). One
-/// [HistoryRow] inflates ~24 elements, and the list is a `Column` — not a lazy
-/// sliver — so the full [kHistoryRowCap] of 1,000 windows comes to **24,207
-/// elements** in one subtree. The plan's own threshold for "this must be lazy"
-/// is 8,000.
-///
-/// ⚠️ The History TAB already pays that, and has since design 0061; this is not
-/// a cost design 0065 introduced. What design 0065 changes is WHEN it is paid:
-/// the tab is opened deliberately, while this block is expanded on EVERY detail
-/// page open, for every unit, including offline ones.
-///
-/// The retreat taken is design 0065 §3.5.4 option ③ — render the list in slices
-/// — because it is the only one of the three that touches neither the scroll
-/// skeleton nor [kHistoryRowCap] (which would make this block and the History
-/// tab disagree about how much they loaded, §6 R5). One hour of windows is what
-/// fits the question the block answers: "what has this unit been doing".
-///
-/// 🔴 **Ruled 2026-08-16 (Q6): no slivers — but NOT because slivers would not
-/// help.** Measured the same day: 1,000 rows as a `ListView`'s DIRECT children
-/// inflate ~242 elements, and the same 1,000 as a `SliverList`'s children
-/// ~417 — both lazy. It is 1,000 rows inside ONE child of a `ListView` (this
-/// block's shape) that comes to ~3,030, because a `ListView`'s laziness reaches
-/// its direct children and stops there. Lifting these rows into slivers really
-/// would fix it.
-///
-/// The reason not to is architectural: this block hangs off FIVE hosts, and
-/// three of them ([OneScreenReport], used by `unidentified_view`,
-/// `class_pending_view` and the offline body) cannot take a sliver — their
-/// whole job is a `LayoutBuilder` + `ConstrainedBox(minHeight: viewport)` that
-/// centres a report in one screen, which sliver protocol has no equivalent for.
-///
+// ⚠️ ~~How many list rows are rendered before the "show more" step.~~
+//
+// 🔴 **THE CONSTANT THIS DOCUMENTED IS GONE** — `kDeviceHistoryRowStep` went
+// with the row list on 2026-08-16 (design 0065 §0.9), and its doc comment was
+// left behind, dangling above the next declaration and opening with a sentence
+// about a "show more" step this file has not had since. Retitled 2026-08-21
+// (design 0079 S0) rather than deleted, and demoted from `///` to `//` so it
+// stops pretending to document the constant below it.
+//
+// 🔑 **The measurements are kept because design 0065 §0.9 ruled they survive
+// the list**: what they establish is "why a component parasitic on five hosts
+// cannot be a sliver", and that conclusion does not depend on the list.
+//
+// 🔵 **Design 0079 ends their applicability, and does it the way §0.8.2 itself
+// licensed** — "the next person doing a full-screen list page (its own scroll
+// container, no parasite problem) — none of the above applies". The history tab
+// IS that page: the five hosts below are dismantled in S1, and the list returns
+// in S2 as a `SliverList.builder`. The 417-vs-3,207 figure stops being a reason
+// not to act and becomes the reason to.
+//
+// ---- retained verbatim, 2026-08-16 ----------------------------------------
+//
+// 🔴 **Measured, not guessed** (design 0065 `T65-4` M4, 2026-08-16). One
+// [HistoryRow] inflates ~24 elements, and the list is a `Column` — not a lazy
+// sliver — so the full [kHistoryRowCap] of 1,000 windows comes to **24,207
+// elements** in one subtree. The plan's own threshold for "this must be lazy"
+// is 8,000.
+//
+// ⚠️ The History TAB already pays that, and has since design 0061; this is not
+// a cost design 0065 introduced. What design 0065 changes is WHEN it is paid:
+// the tab is opened deliberately, while this block is expanded on EVERY detail
+// page open, for every unit, including offline ones.
+//
+// The retreat taken is design 0065 §3.5.4 option ③ — render the list in slices
+// — because it is the only one of the three that touches neither the scroll
+// skeleton nor [kHistoryRowCap] (which would make this block and the History
+// tab disagree about how much they loaded, §6 R5). One hour of windows is what
+// fits the question the block answers: "what has this unit been doing".
+//
+// 🔴 **Ruled 2026-08-16 (Q6): no slivers — but NOT because slivers would not
+// help.** Measured the same day: 1,000 rows as a `ListView`'s DIRECT children
+// inflate ~242 elements, and the same 1,000 as a `SliverList`'s children
+// ~417 — both lazy. It is 1,000 rows inside ONE child of a `ListView` (this
+// block's shape) that comes to ~3,030, because a `ListView`'s laziness reaches
+// its direct children and stops there. Lifting these rows into slivers really
+// would fix it.
+//
+// The reason not to is architectural: this block hangs off FIVE hosts, and
+// three of them ([OneScreenReport], used by `unidentified_view`,
+// `class_pending_view` and the offline body) cannot take a sliver — their
+// whole job is a `LayoutBuilder` + `ConstrainedBox(minHeight: viewport)` that
+// centres a report in one screen, which sliver protocol has no equivalent for.
+//
 
 
 /// How long a completed query stays good for (design 0065 P-4).
@@ -100,23 +120,43 @@ import 'history_screen.dart';
 const Duration kDeviceHistoryCacheTtl = Duration(seconds: 30);
 
 /// One block's worth of query results.
+///
+/// 🔴 **No `rows` field, and that is design 0079 S0 finally doing what design
+/// 0065 §0.9 SAID had been done.** That section, written 2026-08-16, reads
+/// "`historyListBuckets` is no longer queried by this block ⇒ three queries
+/// become two". It never was: `_load` went on issuing it with
+/// `limit: kHistoryRowCap` — **1,000 minute windows** — and the whole result
+/// was consumed by one `rows.isEmpty` in `_results`. A thousand rows to answer
+/// a boolean, on every detail-page open, for every unit, offline ones included.
+///
+/// [HistoryStats.count] answers the same question from a query this block was
+/// making anyway. The two are equivalent by construction, not by inspection:
+/// `aggregate` and `queryListBuckets` build their WHERE from the same
+/// `_scope(since:, deviceId:)`, so `count` is the row total over exactly the
+/// set the buckets would group — and `LIMIT` can truncate a non-empty result
+/// but never empties one.
+///
+/// 🔑 `HistoryTrendCard` had already reached this conclusion for itself
+/// (FB-85, `history_screen.dart:1226`): "`stats.count` rather than
+/// `buckets.isEmpty` is the gate … the callers that draw their own empty state
+/// (`device_history_section`) check rows, which can disagree". This is that
+/// caller agreeing.
+///
+/// ⚠️ The list comes BACK in design 0079 S2, as a `SliverList.builder` inside
+/// the history tab's own scroll view. It does not come back here.
 class DeviceHistoryData {
   const DeviceHistoryData({
-    required this.rows,
     required this.buckets,
     required this.stats,
     required this.bucketMs,
   });
 
   static const DeviceHistoryData empty = DeviceHistoryData(
-    rows: [],
     buckets: [],
     stats: HistoryStats.empty,
     bucketMs: kHistoryListBucketMs,
   );
 
-  /// One entry per display WINDOW (a minute) — design 0061 T3a.
-  final List<HistoryListRow> rows;
   final List<HistoryBucket> buckets;
   final HistoryStats stats;
 
@@ -260,9 +300,14 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     }
   }
 
-  /// The three queries — the same three, in the same order, with the same
-  /// arguments as `_HistoryScreenState._load` (§3.2.1). Nothing here is a new
-  /// query: the per-device data layer landed with FB-38 in v0.6.13.
+  /// The TWO queries — design 0079 S0. They are the first two of
+  /// `_HistoryScreenState._load`'s three (§3.2.1), in the same order, with the
+  /// same arguments; the third (`historyListBuckets`) is not issued here, and
+  /// [DeviceHistoryData] says why at length.
+  ///
+  /// ⚠️ The History TAB still makes all three, and must: it renders the list.
+  /// "Two surfaces, same queries" (§6 R5) was never a rule that both had to
+  /// fetch what only one of them draws.
   Future<DeviceHistoryData> _load({bool force = false}) async {
     // Captured before the first await, for the History tab's reason: this runs
     // from `initState`, and a `context.read` after an await may be addressing a
@@ -284,14 +329,8 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     final bucketMs = historyChartBucketMs(since ?? stats.firstAt);
     final buckets = await tele.historyBuckets(
         since: since, bucketMs: bucketMs, deviceId: deviceId);
-    final rows = await tele.historyListBuckets(
-      since: since,
-      bucketMs: kHistoryListBucketMs,
-      limit: kHistoryRowCap,
-      deviceId: deviceId,
-    );
-    final data = DeviceHistoryData(
-        rows: rows, buckets: buckets, stats: stats, bucketMs: bucketMs);
+    final data =
+        DeviceHistoryData(buckets: buckets, stats: stats, bucketMs: bucketMs);
     _QueryCache.put(key, data);
     return data;
   }
@@ -571,7 +610,13 @@ class _DeviceHistorySectionState extends State<DeviceHistorySection> {
     // design 0046 T-new-6 were both about — and with the block expanded by
     // default it is what every never-recorded unit would show on open. Reading
     // "not started yet" is the whole job of the copy.
-    if (data.rows.isEmpty && chartEmpty) {
+    // 🔴 `stats.count`, not a row list — design 0079 S0. See [DeviceHistoryData]
+    // for why the thousand-row query that used to answer this is gone. The
+    // `&& chartEmpty` half is unchanged and still load-bearing: a unit whose
+    // rows all fall inside ONE chart bucket has `count > 0` and fewer than two
+    // points, and FB-85 is the ruling that it must still report its numbers
+    // rather than claim to be empty.
+    if (data.stats.count == 0 && chartEmpty) {
       return _message(_emptyText(l10n, 0));
     }
     // 🔑 `deviceClassFor` and its three provider reads went with the row list:
