@@ -214,6 +214,60 @@ class AccelEstimator {
   /// Newest slope, or null whenever [state] is not [AccelState.live].
   AccelEstimate? get current => _current;
 
+  /// 🆕 design 0073 §7 Q9 — the slope to EXTRAPOLATE THE SPEED READING with.
+  ///
+  /// 🔴 **This is a second reading of the SAME window, not a second window, and
+  /// the distinction is the whole reason this getter exists rather than a
+  /// shorter `tWindow`.** [estimates] is the RECORDED series: design 0044 §3.5
+  /// defines it as "the average acceleration over the last two seconds", it is
+  /// a sentence the analyst reads back off the history column and off design
+  /// 0061's per-second storage, and nothing in design 0073 is allowed to change
+  /// it (0073 G4). So the fit below runs over [_window] — the buffer that was
+  /// already there, with the samples that were already in it — and touches
+  /// neither the buffer nor anything [onSpeedEstimate] emits.
+  ///
+  /// **What is adaptive about it.** The fixed two-second window is right for
+  /// history and wrong at a standing start, and 0073 §7 Q9 has the arithmetic:
+  /// three 1 Hz samples reading `0, 0, a·1` fit a least squares slope of
+  /// **a/2**, so for the first two seconds of a launch — the two seconds the
+  /// rider is staring at the number — the trend is half its true size, and it
+  /// is half because the window still contains the time the vehicle was
+  /// STOPPED, not because the estimator is insensitive. A low-speed `k` cannot
+  /// fix that (the same constant would have to be 2 at the moment of launch and
+  /// 1 two seconds later, which is the proof it is the wrong knob); dropping
+  /// the stationary part of the window can.
+  ///
+  /// So: fit from the LAST still sample onward. `vSmoothMps` arrives already
+  /// still-clamped ([SpeedEstimatorConfig.vStillMps]), so a stationary sample
+  /// is an exact `0.0` and no threshold of this file's own is needed — the one
+  /// that decides where zero starts stays in one place. On the `0, 0, a`
+  /// window that leaves `0, a` and a slope of **a**.
+  ///
+  /// Null unless [state] is [AccelState.live] (0073 C3①): the full 0044
+  /// fullness rule still gates whether a trend exists at all, so a tunnel is
+  /// still followed by ~2 s of no extrapolation. The trimming only decides
+  /// which of the samples in an already-accepted window are fitted.
+  ///
+  /// ⚠️ The trimmed fit may be two points, which 0044's [AccelEstimatorConfig.nMin]
+  /// comment rightly calls the number that carries no information — two points
+  /// always fit a line perfectly. That objection is about the RECORDED value,
+  /// where a wrong slope is a wrong fact in the history column. Here the
+  /// consequence is bounded by design 0073's C4 (±[TrendConfig.capMps]) and
+  /// erased by the next sample, and the alternative is knowingly showing half
+  /// the acceleration during a launch. If fewer than two samples survive the
+  /// trim — i.e. the newest sample is itself a still-clamped zero — the whole
+  /// window is fitted instead, which is the right answer anyway: a vehicle that
+  /// has just stopped should report the deceleration that stopped it.
+  double? get displaySlopeMps2 {
+    if (_state != AccelState.live) return null;
+    var from = 0;
+    for (var i = 0; i < _window.length; i++) {
+      if (_window[i].v <= 0.0) from = i;
+    }
+    if (_window.length - from < 2) from = 0;
+    return _slope(from);
+  }
+
   AccelState get state => _state;
 
   /// Number of samples currently in the window. Exposed for tests, because
@@ -331,17 +385,23 @@ class AccelEstimator {
   /// (needs a future sample, so it is late by construction) — 0044 §4.2. It
   /// also degrades gracefully: a rejected fix just means one fewer point in the
   /// window, not a gap that has to be special-cased.
-  double _slope() {
-    final t0 = _window.first.t;
+  ///
+  /// [from] is the index of the first sample to fit, and it is 0 for everything
+  /// that reaches [estimates] — the recorded series is the whole window, always
+  /// (0044 §3.5 / 0073 G4). Only [displaySlopeMps2] ever passes anything else.
+  double _slope([int from = 0]) {
+    final t0 = _window[from].t;
     var sx = 0.0, sy = 0.0;
-    for (final s in _window) {
+    for (var i = from; i < _window.length; i++) {
+      final s = _window[i];
       sx += s.t.difference(t0).inMicroseconds / 1e6;
       sy += s.v;
     }
-    final n = _window.length;
+    final n = _window.length - from;
     final mx = sx / n, my = sy / n;
     var num = 0.0, den = 0.0;
-    for (final s in _window) {
+    for (var i = from; i < _window.length; i++) {
+      final s = _window[i];
       final dx = s.t.difference(t0).inMicroseconds / 1e6 - mx;
       num += dx * (s.v - my);
       den += dx * dx;

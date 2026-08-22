@@ -18,7 +18,6 @@
 library;
 
 import 'dart:async';
-import 'dart:math' as math;
 
 /// Whether the displayed speed is being measured, held, or is gone.
 ///
@@ -171,13 +170,19 @@ class SpeedEstimatorConfig {
     // arrives as a sweep, not an integer hop) is what makes it tolerable and is
     // still the thing a road test can overturn.
     this.alpha = 0.85,
-    // The length of the display ramp (design 0071 §3.1). It must MIRROR
-    // `GeolocatorSpeedSource.speedSamplingPeriod`, and it is a second copy of
-    // that number for the same reason `alpha` is not over in
-    // `gps_speed_controller.dart`: this file imports nothing but `dart:async`
-    // and `dart:math`, and is not going to acquire a plugin import for a
-    // constant. The mirror note lives beside `speedSamplingPeriod`.
-    this.displayRampPeriod = const Duration(seconds: 1),
+    // `T`. It must MIRROR `GeolocatorSpeedSource.speedSamplingPeriod`, and it
+    // is a second copy of that number for the same reason `alpha` is not over
+    // in `gps_speed_controller.dart`: this file imports nothing but
+    // `dart:async` and is not going to acquire a plugin import for a constant.
+    // The mirror note lives beside `speedSamplingPeriod`.
+    //
+    // 🔵 Renamed from `displayRampPeriod` by design 0073 §3.10. Until then it
+    // was the LENGTH OF THE DISPLAY RAMP (0071 §3.1); that ramp is gone and
+    // this number now only appears in [trendHorizonMax]. The value and the
+    // mirroring requirement are unchanged, which is why it was renamed rather
+    // than deleted and re-added.
+    this.samplingPeriod = const Duration(seconds: 1),
+    this.trend = const TrendConfig(),
     // 3.0 km/h. Ruled 2026-08-07, raised from the 1.0 km/h the design doc
     // first named. The doc's own justification says stationary GNSS jitter
     // reads 1–3 km/h and calls a red light showing 2 km/h "an error the user
@@ -204,15 +209,16 @@ class SpeedEstimatorConfig {
   /// EWMA weight of the newest sample. Higher = twitchier.
   final double alpha;
 
-  /// How long [SpeedEstimator.displaySpeedMpsAt]'s curve takes to walk one
-  /// EWMA step (design 0071 §3.1). Must equal the SAMPLING period.
+  /// `T` — the interval samples are REQUESTED at. Must equal
+  /// `GeolocatorSpeedSource.speedSamplingPeriod`.
   ///
-  /// 🔴 Getting this wrong is silent in both directions. Too short and the
-  /// curve arrives early and then sits still — the old stepped behaviour with
-  /// extra arithmetic. Too long and the curve never reaches `v_k` before the
-  /// next sample re-anchors it, so the reading permanently undershoots and no
-  /// test of a single step would notice.
-  final Duration displayRampPeriod;
+  /// 🔴 Getting this wrong is silent: it only shows up inside
+  /// [SpeedEstimator.trendHorizonMax], i.e. as an extrapolation ceiling that is
+  /// too generous or too mean, and no test of a single sample would notice.
+  final Duration samplingPeriod;
+
+  /// Design 0073's trend extrapolation knobs. See [TrendConfig].
+  final TrendConfig trend;
 
   /// Below this the displayed speed is clamped to exactly 0 (m/s).
   ///
@@ -247,6 +253,157 @@ class SpeedEstimatorConfig {
   /// Distinct from [tHold] on purpose: quality is about how much to trust the
   /// number, the state machine is about whether it is still being measured.
   final Duration freshAge;
+}
+
+/// Design 0073's trend-extrapolation knobs, in one const object.
+///
+/// 🔴 **These are ROAD-TEST knobs, not derived constants** — the same status
+/// `alpha` has, and for the same reason (0073 §7 Q3, ruled 2026-08-19). They
+/// are written as literals on purpose: spelling [capMps] as `10 / 3.6` would
+/// invite the next reader to "correct" a ruling into arithmetic, which is
+/// exactly the note `alpha` carries about the three-digit 0.632.
+class TrendConfig {
+  const TrendConfig({
+    // 🔒 Ruled 2026-08-19 (0073 §7 Q3 option (b)).
+    //
+    // `k` is how much of the trend is put on screen: `level + k·slope·Δ`. At
+    // k = 1 the steady-state lag under constant acceleration is exactly zero
+    // and every bit of slope error goes straight to the digits; at k = 0
+    // nothing is extrapolated and the reading is the plain EWMA (0073 G6, and
+    // the way out if the road test goes badly — it is a constant, not a
+    // revert). 0.7 keeps a 30 % discount as the standing allowance for the
+    // slope being a three-point fit through noisy GNSS speed (0073 R1/R2).
+    this.k = 0.7,
+    // 🔒 `C` — the absolute ceiling on the compensation, 10 km/h, ruled with
+    // `k` in the same breath and NOT independent of it.
+    //
+    // 0073 §3.5.3 did the arithmetic: at the acceleration this feature exists
+    // for (3 m/s²) and k = 0.7, a ceiling of 8 km/h starts binding at Δ ≈
+    // 1.06 s — i.e. it would cut off the tail of exactly the launch the rider
+    // is complaining about. 10 km/h moves that to Δ ≈ 1.32 s, past the useful
+    // part of the horizon. It is still a ceiling and it is meant to bind
+    // eventually: "the owner accepts overshoot" is not "the owner accepts any
+    // overshoot" (0073 R4).
+    this.capMps = 2.7777777777777777, // 10 km/h
+    // 🔒 `λ_cap` — how much DELIVERY LATENCY the horizon is allowed to carry
+    // (0073 §7 Q4, ruled). Δ itself is measured per sample (`t − lastLiveAt`),
+    // which is not an estimate: it is how long ago that sample was actually
+    // taken. This is the guard against the pathological case — a sample that
+    // arrives ten seconds late must not be extrapolated ten seconds forward.
+    //
+    // ⚠️ **Provisional.** The number the road test will replace it with is
+    // `lag_p90` from `TelemetryController`'s `speed-timing:` log line, which
+    // has no data yet (0073 §2.4: the one observation on record, 2.1 s, is one
+    // observation and not a distribution). 0.5 s is a conservative placeholder,
+    // and the log line's job is to calibrate THIS constant — it is not fed into
+    // the formula anywhere.
+    this.lambdaCap = const Duration(milliseconds: 500),
+    // 🔴 MIRROR of `AccelEstimatorConfig.aDeadMps2`, and the mirror is checked
+    // by a test rather than by care (`speed_estimator_test.dart`, design 0073
+    // C3②). It is copied rather than imported because `accel_estimator.dart`
+    // imports THIS file for [SpeedEstimate]; importing it back would be a
+    // cycle (0073 §2.5 #1), and duplicating a dozen lines of least squares to
+    // avoid one constant would be worse.
+    this.aDeadMps2 = 0.15,
+  });
+
+  /// Fraction of the trend that reaches the screen. 0 disables the feature.
+  final double k;
+
+  /// Absolute ceiling on `k·slope·Δ`, in m/s.
+  final double capMps;
+
+  /// Ceiling on the delivery-latency part of the horizon.
+  final Duration lambdaCap;
+
+  /// Below this slope magnitude nothing is extrapolated (C3②).
+  final double aDeadMps2;
+}
+
+/// The speed to DRAW: the filter's level, carried forward along the trend the
+/// same filter's output already shows (design 0073 §3.3).
+///
+/// ```
+/// v_display = level + k · slope · Δ
+/// ```
+///
+/// 🔑 **A named top-level function rather than four lines inside
+/// [SpeedEstimator.displaySpeedMpsAt], for the reason `displayAccel` in
+/// `accel_estimator.dart` states in full**: this project has three times
+/// shipped a defect that lived at a call site while every test looked at the
+/// callee, and the judgements in here — how far forward is too far, how much
+/// overshoot is too much — are precisely the ones that decide whether the card
+/// tells the truth. Each of them has to be reachable from a test on its own.
+///
+/// Four of design 0073's five clamps are here; the fifth, **C1 (never
+/// extrapolate unless the speed is `live`)**, is in [SpeedEstimator] because
+/// only it knows the state, and it is the one that keeps 0042 G2 intact.
+///
+///  * **C2** — [horizon] is clamped into `[0, horizonMax]`. A negative horizon
+///    (clock skew between the GNSS chip and the system clock) extrapolates
+///    BACKWARDS, which is a fabricated deceleration; a late sample must
+///    degrade to the pre-0073 behaviour (the reading parks) rather than being
+///    carried further and further forward.
+///  * **C3②** — a null [slopeMps2] (the acceleration estimator is warming or
+///    suppressed: C3①) or one inside [TrendConfig.aDeadMps2] yields [level]
+///    unchanged. "We do not know the trend" and "the trend is inside the noise"
+///    are both answered by showing the number we actually have.
+///  * **C4** — `|k·slope·Δ|` is capped at [TrendConfig.capMps].
+///  * **C5** — as [level] approaches the still-clamp the compensation fades
+///    linearly to zero, so extrapolation can never push a reading across the
+///    clamp and back (0073 §7 Q10). Without it a scooter creeping at 3 km/h
+///    would flicker 0 ⇄ 4 km/h, which is a louder version of the "2 km/h at a
+///    red light" that [SpeedEstimatorConfig.vStillMps] exists to remove.
+///
+/// 🔴 Does NOT apply the still-clamp: the caller does, in the order 0073 §3.8
+/// pin 3 fixes (extrapolate → clamp → format), through the same `_clampStill`
+/// the recorded series uses. One clamp, one place.
+double speedWithTrend({
+  required double level,
+  required double? slopeMps2,
+  required Duration horizon,
+  required Duration horizonMax,
+  required double vStillMps,
+  TrendConfig cfg = const TrendConfig(),
+}) {
+  // C3.
+  final slope = slopeMps2;
+  if (slope == null || slope.isNaN || slope.abs() < cfg.aDeadMps2) return level;
+
+  // C2. Both ends bind: the low one against clock skew, the high one against a
+  // late sample.
+  var dt = horizon;
+  if (dt.isNegative) dt = Duration.zero;
+  if (dt > horizonMax) dt = horizonMax;
+
+  var comp = cfg.k * slope * (dt.inMicroseconds / 1e6);
+
+  // C4.
+  if (comp > cfg.capMps) comp = cfg.capMps;
+  if (comp < -cfg.capMps) comp = -cfg.capMps;
+
+  // C5. The fade spans exactly the band a full-size compensation could carry a
+  // reading across, `[vStillMps, vStillMps + C]`, so at the top of the band the
+  // feature is at full strength and at the bottom it is off.
+  comp *= stillFade(level, vStillMps: vStillMps, cfg: cfg);
+
+  return level + comp;
+}
+
+/// C5's ramp, separately callable so the band can be pinned on its own.
+///
+/// 1.0 well clear of the still-clamp, 0.0 at or below it, linear in between.
+double stillFade(
+  double level, {
+  required double vStillMps,
+  TrendConfig cfg = const TrendConfig(),
+}) {
+  final band = cfg.capMps;
+  if (band <= 0) return 1.0;
+  final above = level.abs() - vStillMps;
+  if (above <= 0) return 0.0;
+  if (above >= band) return 1.0;
+  return above / band;
 }
 
 /// One location sample, reduced to the four things this feature needs.
@@ -407,30 +564,17 @@ class SpeedEstimator {
   DateTime? _holdingSince;
   SpeedEstimate? _current;
 
-  // ---- design 0071: the three numbers the display curve is drawn from ------
+  // ---- design 0073 replaced design 0071's three curve fields with none ----
   //
-  // 🔴 None of them is read by [_estimateAt], and that is the whole point.
-  // They exist only for [displaySpeedMpsAt]; the RECORDED series
-  // ([estimates], which feeds design 0044 and design 0061) is produced by
-  // exactly the code that produced it before 0071 (0071 §3.5 pin 2).
-
-  /// Where the curve starts: the smoothed value BEFORE the newest sample was
-  /// folded in — except on a re-seed, where it is the sample itself (pin 4).
-  double? _prevSmoothed;
-
-  /// Where the curve is heading: the newest RAW sample `z_k`.
-  ///
-  /// The curve aims at the measurement, not at `_ewma`, because that is what
-  /// makes `v_disp(t_k + T)` come out equal to `v_k` — see [displaySpeedMpsAt].
-  double? _lastRaw;
-
-  /// When the curve started, **on our own clock**.
-  ///
-  /// 🔴 Deliberately not `fix.timestamp` (0071 §3.1). M2 below measured 2.1 s
-  /// of delivery latency between the GNSS chip and this isolate; anchoring on
-  /// the platform stamp would mean the curve is already finished the moment it
-  /// is created, which is the stepped behaviour this feature exists to replace.
-  DateTime? _anchorAt;
+  // 🔵 0071 kept `_prevSmoothed`, `_lastRaw` and `_anchorAt` so the reading
+  // could SWEEP from the previous smoothed value to the new one over a whole
+  // sampling period. That curve pointed at the PAST — it started at the old
+  // value, so the smoother it was drawn the later the reading began to move —
+  // and 0073 §3.1 is the argument that this is the design's defect rather than
+  // its tuning. There is nothing to carry between samples any more: the drawn
+  // value is a pure function of `_ewma`, the clock, and a slope the caller
+  // passes in, so removing the three fields also removed three ways for the
+  // drawn value and the recorded one to disagree.
 
   /// Timestamped smoothed samples. Broadcast: the controller forwards it to the
   /// UI while design 0044's acceleration estimator listens in parallel.
@@ -442,69 +586,117 @@ class SpeedEstimator {
   /// The newest estimate, or null while no fix has ever been accepted.
   SpeedEstimate? get current => _current;
 
-  /// The speed to DRAW at [at] — the same EWMA, read as a curve instead of as
-  /// a staircase (design 0071 §3.1).
+  /// How far forward the reading may be carried, `Δ_max` (design 0073 C2).
+  ///
+  /// `T + λ_cap + T(1−α)/α`, i.e. one whole sampling period (the sample we are
+  /// showing is at most that old before its successor lands), plus the delivery
+  /// latency we are willing to believe ([TrendConfig.lambdaCap]), plus the
+  /// filter's own steady-state lag — the last term being why `level` does not
+  /// represent the moment the fix was stamped but a moment `T(1−α)/α` before it
+  /// (0073 §3.3.1).
+  ///
+  /// ⚠️ The last term is only 0.176 s at α = 0.85 and would be easy to drop as
+  /// noise. It is 1.0 s at α = 0.5 — 10.8 km/h at 3 m/s² — so it is carried
+  /// symbolically rather than folded into a constant.
+  Duration get trendHorizonMax {
+    final t = config.samplingPeriod.inMicroseconds;
+    final filterLagUs = config.alpha <= 0
+        ? 0
+        : (t * (1 - config.alpha) / config.alpha).round();
+    return Duration(
+        microseconds: t + config.trend.lambdaCap.inMicroseconds + filterLagUs);
+  }
+
+  /// The horizon Δ at [at]: how long ago the value now on screen was actually
+  /// measured (0073 §3.3.1).
+  ///
+  /// `(at − lastLiveAt) + T(1−α)/α`. 🔑 The first term is NOT an estimate of
+  /// the delivery latency, it IS this sample's own latency — `lastLiveAt` is
+  /// the PLATFORM timestamp, so the difference is the complete "measured →
+  /// now" distance and a sample that arrived two seconds late honestly has a
+  /// two-second Δ (0073 §3.6 (A), ruled §7 Q4). The second term is the
+  /// filter's, as in [trendHorizonMax].
+  ///
+  /// Not clamped here — [speedWithTrend] owns C2, so that the clamp is
+  /// testable without an estimator.
+  Duration trendHorizonAt(DateTime at) {
+    final measuredAt = _lastFixAt;
+    if (measuredAt == null) return Duration.zero;
+    final t = config.samplingPeriod.inMicroseconds;
+    final filterLagUs = config.alpha <= 0
+        ? 0
+        : (t * (1 - config.alpha) / config.alpha).round();
+    return at.difference(measuredAt) + Duration(microseconds: filterLagUs);
+  }
+
+  /// Whether the drawn value would still be MOVING at [at] — the card's
+  /// per-frame loop is armed and disarmed by this (design 0073 §3.10).
+  ///
+  /// The predicate is armed by the same three facts that make the reading move
+  /// at all: the speed is live (C1), there is a usable slope (C3), and the
+  /// horizon has not yet hit its ceiling (C2). Asking it rather than watching
+  /// the value change is deliberate and predates 0073: a value-watching loop
+  /// cannot tell "it has stopped" from "no time passed between these two
+  /// frames", so it shuts itself off the first time a frame is cheap and
+  /// nothing restarts it until the next sample.
+  ///
+  /// False in every state but [SpeedState.live], because those do not move at
+  /// all — a new sample is then the only thing that can change the reading, and
+  /// a new sample makes the controller notify, which rebuilds, which re-arms
+  /// the ticker. Nothing is missed by stopping (0042 G4).
+  bool displayTrendActiveAt(DateTime at, {double? slopeMps2}) {
+    if (_state != SpeedState.live) return false;
+    final smoothed = _ewma;
+    if (smoothed == null) return false;
+    if (slopeMps2 == null ||
+        slopeMps2.isNaN ||
+        slopeMps2.abs() < config.trend.aDeadMps2) {
+      return false;
+    }
+    if (stillFade(smoothed, vStillMps: config.vStillMps, cfg: config.trend) <=
+        0) {
+      return false;
+    }
+    return trendHorizonAt(at) < trendHorizonMax;
+  }
+
+  /// The speed to DRAW at [at]: the filter's level carried forward along
+  /// [slopeMps2] (design 0073 §3.3).
   ///
   /// ```
-  /// v_disp(t) = z_k + (v_{k−1} − z_k)·(1−α)^( min(t − t_k, T) / T )
+  /// v_display(t) = level + k · slope · Δ(t)
   /// ```
   ///
-  /// with `z_k` the newest raw sample, `v_{k−1}` the smoothed value before it,
-  /// `t_k` the moment it arrived on OUR clock, and `T` [config.displayRampPeriod].
-  /// Three properties, all three load-bearing:
+  /// [slopeMps2] is passed IN rather than read, and that is an architectural
+  /// constraint rather than a preference: the slope is design 0044's least
+  /// squares fit, which lives in `accel_estimator.dart`, which imports THIS
+  /// file for [SpeedEstimate]. Reaching back for it would be a cycle, so
+  /// [GpsSpeedController] — which already holds both estimators — is the
+  /// assembly point (0073 §2.5 #1 / §3.10). Null means "no trend is available",
+  /// which the caller uses for C3① (the acceleration window is warming or
+  /// suppressed).
   ///
-  ///  1. at `t = t_k` it equals `v_{k−1}` — the curve starts where the previous
-  ///     one ended, so a sample landing does not make the digits jump;
-  ///  2. at `t = t_k + T` it equals `α·z_k + (1−α)·v_{k−1}` — which IS `v_k`,
-  ///     because `(1−α)^1 = 1−α`. So on every sampling instant this agrees with
-  ///     [SpeedEstimate.vSmoothMps] to the last bit. That equality is the whole
-  ///     of 0071's answer to 0042 G2: this is not a new estimate and not a
-  ///     prediction, it is the filter's own trajectory between two points it
-  ///     already occupied. `speed_estimator_test.dart` pins it.
-  ///  3. past `t_k + T` the exponent is clamped, so the curve STOPS. Nothing
-  ///     moves without a new measurement, a freeze freezes at exactly the value
-  ///     the old code froze at, and a late sample simply spends its overrun
-  ///     parked — which is the pre-0071 behaviour.
+  /// 🔴 **C1 lives here, and it is what keeps 0042 G2 intact.** Only
+  /// [SpeedState.live] is extrapolated. Holding, lost and "no fix yet" answer
+  /// with the frozen [SpeedEstimate.vSmoothMps] and go on answering with it
+  /// however far [at] is advanced — extrapolating into a tunnel would be the
+  /// MIRROR of the decay animation 0042 §3.2 forbids by name: one pretends to
+  /// slow down, the other pretends to speed up, and neither was measured.
   ///
   /// 🔴 Pure read. It emits nothing, mutates nothing, and is not consulted by
   /// [_estimateAt]: the RECORDED series is untouched by everything in here
-  /// (0071 §3.5 pin 2, G3). Design 0044 differentiates [estimates] and design
-  /// 0061 stores it; both must see the series they saw before this method
-  /// existed.
-  ///
-  /// Only [SpeedState.live] gets a curve (pin 1). Holding, lost, and "no fix
-  /// yet" answer with the frozen [SpeedEstimate.vSmoothMps], which is what the
-  /// card showed for them before 0071 and what 0042 §3.2 requires: a held
-  /// number must not move, in either direction, for any reason.
+  /// (0073 G4, sustaining 0071 §3.5 pin 2). Design 0044 differentiates
+  /// [estimates] and design 0061 stores it; both must see the series they saw
+  /// before this method existed.
   ///
   /// Returns null only when no fix has ever been accepted (or after a
   /// [reset]) — see the body.
   ///
   /// The still-clamp is applied on the way out, in the same order as
-  /// [_estimateAt] applies it (pin 3): curve first, then clamp, then the
-  /// caller's `formatSpeed`. So sweeping down through 3 km/h still lands on a
-  /// hard 0 rather than trailing decimals at a red light.
-  /// Whether [displaySpeedMpsAt] would still be MOVING at [at].
-  ///
-  /// The card's per-frame loop is armed and disarmed by this rather than by
-  /// watching the value stop changing, and the difference is not cosmetic: a
-  /// value-watching loop cannot tell "the curve has arrived" from "no time has
-  /// passed between these two frames", so it shuts itself off the first time a
-  /// frame is cheap — and then nothing restarts it until the next sample.
-  ///
-  /// False once the curve is clamped at `t_k + T`, and false in every state but
-  /// [SpeedState.live], because those do not have a curve at all (§3.5 pin 1).
-  /// After that only a new sample can move the reading, and a new sample makes
-  /// the controller notify — so there is nothing to draw and no reason to hold
-  /// a vsync callback open (0042 G4).
-  bool displayRampActiveAt(DateTime at) {
-    if (_state != SpeedState.live) return false;
-    final anchor = _anchorAt;
-    if (anchor == null || _ewma == null) return false;
-    return at.difference(anchor) < config.displayRampPeriod;
-  }
-
-  double? displaySpeedMpsAt(DateTime at) {
+  /// [_estimateAt] applies it (0073 §3.8 pin 3): extrapolate, then clamp, then
+  /// the caller's `formatSpeed`. So a reading decelerating through 3 km/h still
+  /// lands on a hard 0 rather than trailing decimals at a red light.
+  double? displaySpeedMpsAt(DateTime at, {double? slopeMps2}) {
     final smoothed = _ewma;
     // 🔴 Null, not 0.0. "This estimator has no series to draw" and "the vehicle
     // is stopped" are different facts, and returning 0.0 for the first is the
@@ -513,24 +705,18 @@ class SpeedEstimator {
     // renders whatever it was already rendering (`SpeedCardBody` falls back to
     // [SpeedEstimate.vSmoothMps]) instead of a zero this method invented.
     if (smoothed == null) return null;
-    final frozen = _clampStill(smoothed);
-    if (_state != SpeedState.live) return frozen;
+    // C1. Note this returns the STILL-CLAMPED level and ignores `at` entirely,
+    // so "push the clock forward ten seconds" cannot move a held number.
+    if (_state != SpeedState.live) return _clampStill(smoothed);
 
-    final anchor = _anchorAt;
-    final from = _prevSmoothed;
-    final target = _lastRaw;
-    if (anchor == null || from == null || target == null) return frozen;
-
-    final period = config.displayRampPeriod.inMicroseconds;
-    if (period <= 0) return frozen;
-    var elapsed = at.difference(anchor).inMicroseconds;
-    // Asked about a moment before the anchor (a caller with its own clock, or
-    // a clock stepped backwards): the curve had not started, so its start is
-    // the honest answer. Never a negative exponent, which would OVERSHOOT.
-    if (elapsed < 0) elapsed = 0;
-    if (elapsed > period) elapsed = period; // property 3
-    final v = target + (from - target) * math.pow(1 - config.alpha, elapsed / period);
-    return _clampStill(v);
+    return _clampStill(speedWithTrend(
+      level: smoothed,
+      slopeMps2: slopeMps2,
+      horizon: trendHorizonAt(at),
+      horizonMax: trendHorizonMax,
+      vStillMps: config.vStillMps,
+      cfg: config.trend,
+    ));
   }
 
   /// Feed one location sample.
@@ -566,11 +752,20 @@ class SpeedEstimator {
       // — no decay toward zero, which 0042 §3.2 forbids for the same reason it
       // forbids a decay animation.
       //
-      // 🔴 The display curve is not re-anchored here either (0071 §3.5 pin 4),
-      // and it is the easiest line in this file to add by accident. Nothing
-      // entered the smoother, so the curve's TARGET has not changed — moving
-      // `_anchorAt` would replay the last step of a ramp that already finished,
-      // i.e. make a parked scooter's reading crawl once a second forever.
+      // 🔵 0071 §3.5 pin 4 used to be a WARNING here — "do not re-anchor the
+      // display curve" — because re-anchoring would have replayed the last step
+      // of a ramp that had already finished, making a parked scooter's reading
+      // crawl once a second for ever. 0073 §3.8 keeps the pin and changes its
+      // shape: there is no anchor left to reset, and the protection is now
+      // structural. Nothing entered the smoother, so `level` is unchanged; the
+      // repeated value goes into design 0044's window, so the slope decays
+      // toward zero and C3②'s deadband stops the extrapolation. ⚠️ **A parked
+      // scooter must not creep upward on a leftover slope** — that is what
+      // `speed_estimator_test.dart`'s FB-56 case is now checking.
+      //
+      // ⚠️ `_lastFixAt` IS refreshed, and that half matters more than it did
+      // before 0073: it is the origin of the horizon Δ, so a sustained zero
+      // keeps Δ small rather than letting it drift out to its ceiling.
       _lastFixAt = fix.timestamp;
       _lastAccuracyM = fix.horizontalAccuracyM;
       _holdingSince = null;
@@ -588,28 +783,27 @@ class SpeedEstimator {
     final resuming = _state != null && _state != SpeedState.live;
     final previousSmoothed = _ewma;
     if (previousSmoothed == null || resuming) {
-      _ewma = fix.speedMps!;
-      // 🔴 0071 §3.5 pin 5. A re-seed gets a FLAT curve — start and end are
-      // both the new sample — because the general rule (sweep from
-      // `previousSmoothed` to `v_k`) would spend the first second after a
-      // tunnel walking the reading down from the speed the rider was doing
-      // BEFORE the tunnel. That is the exact number 0042 §3.2 forbids blending
-      // in, and drawing it instead of averaging it in is not a loophole.
+      // 🔴 0071 §3.5 pin 5 lived here as a second assignment (`_prevSmoothed =
+      // fix.speedMps!`), which gave the re-seed a FLAT curve: without it the
+      // first second out of a tunnel was spent walking the reading down from
+      // the speed the rider was doing BEFORE the tunnel — the exact number
+      // 0042 §3.2 forbids blending in, drawn instead of averaged.
       //
-      // Note this is the same branch that re-seeds `_ewma`, on purpose: the two
-      // decisions are one decision ("this sample starts a new series"), and
-      // splitting them is how they would drift apart.
-      _prevSmoothed = fix.speedMps!;
+      // 🔵 0073 §3.8 removed the curve, and with it that line. The protection
+      // did not move into this file: it is now that `AccelEstimator` empties
+      // its window on the way back to `live`, so there is no slope for about
+      // two seconds and C3① shows the plain re-seeded level. 🔴 **That makes
+      // this the one place where 0073 weakened a guard we owned into one
+      // another module happens to provide** — hence a test that asserts the
+      // RESULT (no value between the pre- and post-tunnel speeds ever appears)
+      // rather than trusting 0044 to keep behaving this way.
+      _ewma = fix.speedMps!;
     } else {
       _ewma = config.alpha * fix.speedMps! + (1 - config.alpha) * previousSmoothed;
-      _prevSmoothed = previousSmoothed;
     }
-    _lastRaw = fix.speedMps!;
-    // On OUR clock, for the reason in [_anchorAt]. `at` is read once and used
-    // for both the anchor and the estimate's `t` so the two cannot disagree by
-    // the microseconds a second `now()` call would cost.
+    // Read once and used for the estimate's `t`; a second `now()` call would
+    // let two stamps in one operation disagree by microseconds.
     final at = now();
-    _anchorAt = at;
 
     _lastFixAt = fix.timestamp;
     _lastAccuracyM = fix.horizontalAccuracyM;
@@ -712,13 +906,11 @@ class SpeedEstimator {
     _lastSpeedAccuracyMps = null;
     _holdingSince = null;
     _current = null;
-    // The display curve goes with it. Leaving these set would let
-    // [displaySpeedMpsAt] answer with the previous session's speed while
-    // [current] is already null — the card would be drawing a number it is
-    // simultaneously reporting it does not have (design 0071 §5 #5).
-    _prevSmoothed = null;
-    _lastRaw = null;
-    _anchorAt = null;
+    // 🔵 0071 cleared three curve fields here so that [displaySpeedMpsAt] could
+    // not answer with the previous session's speed while [current] was already
+    // null — a card drawing a number it is simultaneously reporting it does not
+    // have (0071 §5 #5). 0073 removed those fields; `_ewma = null` above is now
+    // the whole of it, because the drawn value is a pure function of `_ewma`.
     // Nothing to leave if the series never started, and `from` is non-nullable.
     if (previous != null && previous != SpeedState.lost) {
       _transitions.add(SpeedStateTransition(

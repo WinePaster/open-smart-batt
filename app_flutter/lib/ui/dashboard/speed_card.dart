@@ -124,7 +124,8 @@ class _SpeedCardState extends State<SpeedCard>
   /// and `context.read` is no longer legal.
   GpsSpeedController? _gps;
 
-  /// Design 0071 §3.7. A vsync [Ticker] rather than [AlignedTicker]: this
+  /// Design 0071 §3.7, carried forward unchanged by design 0073 §3.10 — only
+  /// the predicate that arms it moved. A vsync [Ticker] rather than [AlignedTicker]: this
   /// reading has no boundary to align to, and — the half that matters — a
   /// `Timer` keeps firing while the app is not drawing, whereas a Ticker
   /// created through [SingleTickerProviderStateMixin] is muted by `TickerMode`
@@ -176,13 +177,13 @@ class _SpeedCardState extends State<SpeedCard>
     super.dispose();
   }
 
-  /// One frame of the display curve.
+  /// One frame of the continuous readout.
   ///
   /// Compute every frame; rebuild only when the DIGITS change (§3.7). Then hand
-  /// the loop back as soon as the curve is clamped at `t_k + T`, because past
-  /// that point only a new sample can move the reading — and a new sample makes
-  /// the controller notify, which rebuilds, which re-arms the ticker. Nothing
-  /// is missed by stopping.
+  /// the loop back as soon as the reading stops moving — the horizon has hit
+  /// its ceiling, or there is no usable trend — because past that point only a
+  /// new sample can move it, and a new sample makes the controller notify,
+  /// which rebuilds, which re-arms the ticker. Nothing is missed by stopping.
   void _onFrame(Duration _) {
     final gps = _gps;
     if (gps == null) return;
@@ -194,13 +195,13 @@ class _SpeedCardState extends State<SpeedCard>
       // entire point of comparing the formatted string.
       setState(() {});
     }
-    if (next == null || !gps.displayRampActiveNow()) _ticker.stop();
+    if (next == null || !gps.displayTrendActiveNow()) _ticker.stop();
   }
 
   /// Start or stop the per-frame loop.
   ///
-  /// The curve only moves while the reading is [SpeedState.live] (§3.5 pin 1)
-  /// and while there is an estimator behind it, so that is the only case worth
+  /// The reading only moves while it is [SpeedState.live] (design 0073 C1) and
+  /// while there is an estimator behind it, so that is the only case worth
   /// burning frames on. Called from [build], i.e. on every `notifyListeners` —
   /// one per fix and one per tick.
   void _syncTicker({required bool wants}) {
@@ -235,7 +236,7 @@ class _SpeedCardState extends State<SpeedCard>
         (s) => s.settings.speedUnit);
     _unit = unit;
     final estimate = gps.current;
-    // Read the curve HERE rather than caching what the ticker computed: this
+    // Read the value HERE rather than caching what the ticker computed: this
     // build may have been triggered by a fix or by the 1 Hz tick, both of which
     // land between frames, and the freshest read is also the correct one. The
     // ticker's only job is to make a build happen at all.

@@ -13,6 +13,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/state/accel_estimator.dart';
 import 'package:open_smart_batt/state/speed_estimator.dart';
 
 /// Hand-driven clock. `now` is a closure over [t], so advancing it is the whole
@@ -600,14 +601,14 @@ void main() {
     // location plugin, the tunnel state machine can only be exercised on a
     // phone in a tunnel, and it stops being exercised.
     //
-    // 🔵 `dart:math` joined the list on 2026-08-19 (design 0071): the display
-    // curve is `(1−α)^(Δt/T)` and there is no `pow` in `dart:core`. The
-    // property this test defends is unchanged — it is "no Flutter, no plugin",
-    // i.e. nothing that needs a device to run — and `dart:math` is a pure-Dart
-    // core library with no platform binding, available on every target this app
-    // has. The list stays EXACT rather than becoming a "does not contain
-    // flutter" check, because an exact list is what forces the next addition to
-    // be argued for in a diff instead of slipping in.
+    // 🔵 `dart:math` joined the list on 2026-08-19 (design 0071), because the
+    // display curve was `(1−α)^(Δt/T)` and there is no `pow` in `dart:core`.
+    // 🔵 It LEFT again the same day (design 0073): the curve was replaced by
+    // `level + k·slope·Δ`, which is three multiplications and two comparisons.
+    // The list stays EXACT rather than becoming a "does not contain flutter"
+    // check, because an exact list is what forces the next addition to be
+    // argued for in a diff instead of slipping in — and it is why the removal
+    // showed up here rather than being noticed by nobody.
     var dir = Directory.current;
     while (!File('${dir.path}/pubspec.yaml').existsSync()) {
       dir = dir.parent;
@@ -618,7 +619,7 @@ void main() {
         .allMatches(source)
         .map((m) => m.group(1)!)
         .toList();
-    expect(imports, ['dart:async', 'dart:math']);
+    expect(imports, ['dart:async']);
   });
 
   // -------------------------------------------------------------------------
@@ -693,116 +694,106 @@ void main() {
   });
 
   // ==========================================================================
-  // design 0071 — the display curve (`displaySpeedMpsAt`)
+  // design 0073 — trend extrapolation (`speedWithTrend` / `displaySpeedMpsAt`)
   // ==========================================================================
   //
-  // THE FIELD REPORT. "增減速的時候數字跳動慢" — clarified by the owner to mean
-  // the reading moves ONCE A SECOND and jumps several km/h when it does, not
-  // that it trails the true speed. At 2 m/s² that is a 7 km/h step, and a whole
-  // 0 → 50 km/h launch shows the rider about seven different numbers.
+  // 🔵 THIS GROUP REPLACES design 0071's "the display curve". The curve is
+  // gone; so are its tests. What replaced them is listed here rather than in a
+  // commit message, because the reason for the swap is not obvious from either
+  // version on its own.
   //
-  // WHAT CHANGED. Nothing about the filter. The same EWMA is now READ as the
-  // curve it always was — `v_disp(t) = z_k + (v_{k−1} − z_k)·(1−α)^(Δt/T)` —
-  // instead of as the staircase the card used to draw. On every sampling
-  // instant the two agree to the last bit (test #1), which is the whole of
-  // 0071's answer to 0042 G2: it is not a new estimate and not a prediction.
+  // WHAT 0071 DID, AND WHY IT WAS NOT ENOUGH. 0071 read the same EWMA as a
+  // ramp instead of a staircase, so the digits stopped hopping once a second.
+  // But the ramp ran from the PREVIOUS smoothed value to the new one — it
+  // pointed at the past — so the smoother it was drawn, the later the reading
+  // began to move. Two rides later the owner's complaint was unchanged and
+  // 0071 §8.2 had already written down why: matching the AVERAGE lag is not
+  // the same as matching the LEADING EDGE, and α is the only knob a ramp has.
+  // 0073 §2.2 finishes the argument with the ceiling — even α = 1, i.e. no
+  // smoothing whatever, still lags 0.5 s at a 1 Hz sample rate.
   //
-  // WHAT IT COST. Sweeping between two samples always adds lag, so α went from
-  // 0.5 to 0.632 in the same change to buy it back (§3.3). Test #7 is that
-  // trade, made executable; test #6(b) is the guard that the RECORDED series
-  // design 0044 and design 0061 consume did not move as a side effect.
+  // WHAT 0073 DOES. `v_display = level + k·slope·Δ`. The trend is design
+  // 0044's least squares slope, already computed, from the speed series itself
+  // — no new sensor, and specifically not the inertial dead reckoning design
+  // 0042 §4 "丙" archived. Δ is how long ago the sample now on screen was
+  // actually measured. So a new sample no longer has to TRAVEL anywhere: it
+  // moves `level` up a step and resets `Δ` to nearly zero at the same instant,
+  // and the two changes cancel.
   //
-  // 🔴 THEN THE RIDE HAPPENED. The 2026-08-19 field check on v0.7.25 came back
-  // with the decimal below 10 km/h reading well (`formatSpeed` untouched) and
-  // the number STILL FEELING SLOW — so α went again, 0.632 ⇒ 0.85 (0071 §7 Q2's
-  // "revisit after the ride"). Matching the pre-0071 MEAN lag was never the same
-  // as matching what a rider notices, which is the leading edge of the response;
-  // `SpeedEstimatorConfig.alpha` has the arithmetic. Tests #0 and #7 carry the
-  // new numbers, #6(b) is untouched because it pins α at 0.5 by hand.
-  group('design 0071: the display curve', () {
+  // 🔴 WHAT PAYS FOR IT, and what these tests are really guarding. This is the
+  // first time this project has put a number on screen that is not on the
+  // series it records — 0071's curve at least passed through `v_k` at every
+  // sampling instant, and this does not. The ruling that allowed it (0073 §7
+  // Q2, 2026-08-19) rests entirely on FIVE CLAMPS being real:
+  //
+  //   C1  never extrapolate unless the speed is live      → #1
+  //   C2  the horizon has a ceiling                       → #2
+  //   C3  no trend, or a trend inside the noise → level   → #3, #4
+  //   C4  the compensation has a ceiling                  → #5
+  //   C5  it fades out at the still-clamp                 → #6, #7
+  //
+  // Each is tested on its own, because "the five together produce a sensible
+  // number" is what an implementation that had only three of them would also
+  // pass. #12 is the one that must never go green for the wrong reason: the
+  // recorded series design 0044 differentiates and design 0061 stores has to
+  // be bit-for-bit what it was.
+  group('design 0073: trend extrapolation', () {
     const T = Duration(seconds: 1);
+    const cfg = SpeedEstimatorConfig();
+    const trend = TrendConfig();
+
+    /// `T(1−α)/α` — the filter's own steady-state lag, the part of Δ that is
+    /// not measurable from the sample (0073 §3.3.1).
+    const filterLag = Duration(microseconds: 176471); // 1 s · 0.15/0.85
+
+    /// `Δ_max = T + λ_cap + T(1−α)/α` (C2).
+    const horizonMax = Duration(microseconds: 1676471);
 
     /// Everything except α at the shipped defaults, so a test that is ABOUT α
     /// can say so out loud instead of inheriting it.
     SpeedEstimatorConfig cfgWithAlpha(double alpha) =>
         SpeedEstimatorConfig(alpha: alpha);
 
-    test('#0 the shipped α is 0.85, the value the road test asked for', () {
-      // Pinned because NOTHING ELSE IN THIS SUITE PINS IT. Every existing
-      // smoothing assertion is a `greaterThan`/`lessThan` on a monotone ramp or
-      // a `closeTo` on a converged value, all of which hold for any α in
-      // (0, 1) — so before this line α could have been changed to anything at
-      // all and the suite would have stayed green. It is an input to design
-      // 0044's slope and to design 0061's stored series; it does not get to
-      // move silently.
+    test('#0 the shipped constants are the ones the ruling names', () {
+      // Pinned because NOTHING ELSE IN THIS SUITE PINS THEM. Every other
+      // assertion here is an inequality or a `closeTo` that would hold for a
+      // range of values, so without this line k could be changed to 2.0 and
+      // the suite would stay green.
       //
-      // WHERE 0.85 COMES FROM. Not a formula — 0.632 was the formula (it is the
-      // α that makes the swept mean lag equal the pre-0071 stepped one), and
-      // the ride said the formula answered the wrong question. 0.85 is chosen
-      // against the LEADING EDGE: of one sampling step, the fraction visible
-      // 0.3 s in is `1 − (1−α)^0.3`, which is 26 % at 0.632 and 43 % at 0.85.
-      // The mean lag `0.5 + τ/T` comes down 1.50 s ⇒ 1.03 s with it (τ = T /
-      // ln(1/(1−α)) = 0.527 s), so both measures move the right way — test #7.
-      // It stops at 0.85 because the 0.5·T in that formula is the 1 Hz
-      // zero-order-hold floor: α = 0.9 is worth another 0.09 s, α = 1 (no
-      // filter at all) still lags 0.5 s, and all of it is paid in jitter.
-      expect(const SpeedEstimatorConfig().alpha, 0.85,
-          reason: 'design 0071 §7 Q2 revisited, 2026-08-19 field check (FB-89)');
-      expect(const SpeedEstimatorConfig().displayRampPeriod, T,
+      // ⚠️ These are ROAD-TEST knobs (0073 §7 Q3, ruled 2026-08-19: k = 0.7,
+      // C = ±10 km/h). They are expected to move — what they are not allowed
+      // to do is move silently, because both feed a number the rider reads as
+      // their speed.
+      expect(cfg.alpha, 0.85,
+          reason: 'design 0073 §7 Q6 ruled α UNCHANGED — one thing at a time, '
+              'or the road test cannot tell whose fault the result is');
+      expect(cfg.samplingPeriod, T,
           reason: 'must mirror GeolocatorSpeedSource.speedSamplingPeriod');
+      expect(trend.k, 0.7);
+      expect(trend.capMps, closeTo(10 / 3.6, 1e-12),
+          reason: 'C = ±10 km/h. 0073 §3.5.3: ±8 starts biting at Δ ≈ 1.06 s '
+              'at 3 m/s², i.e. it would cut off the tail of the very launch '
+              'this feature exists for');
+      expect(trend.lambdaCap, const Duration(milliseconds: 500),
+          reason: 'provisional until `lag_p90` from the speed-timing log');
+
+      // 🔴 THE MIRROR. `TrendConfig.aDeadMps2` is a copy of design 0044's
+      // deadband, copied because `accel_estimator.dart` imports
+      // `speed_estimator.dart` and importing back would be a cycle (0073 §2.5
+      // #1). A copy nobody checks is a copy that drifts, and the drift would be
+      // silent: the acceleration ROW would go quiet at one threshold while the
+      // speed reading kept extrapolating on a slope below it.
+      expect(trend.aDeadMps2, const AccelEstimatorConfig().aDeadMps2,
+          reason: 'C3② must use design 0044\'s deadband, not a second one');
     });
 
-    test('#1 🔴 at every sampling instant the curve IS the recorded value', () {
-      // The red-line test. If this ever fails, the card is drawing a number
-      // that is not on the series design 0044 differentiates and design 0061
-      // stores, and 0042 G2's "no number nobody measured" is gone with it.
-      final (:clock, :est) = build();
-      double? previousRecorded;
-      for (final v in [5.0, 7.0, 9.0, 11.0, 13.0]) {
-        final anchor = clock.t;
-        est.addFix(_fix(anchor, v));
-        final recorded = est.current!.vSmoothMps;
-
-        // Property 1: the curve STARTS where the last one ended, so a sample
-        // landing does not make the digits jump.
-        if (previousRecorded != null) {
-          expect(est.displaySpeedMpsAt(anchor), closeTo(previousRecorded, 1e-9),
-              reason: 'a sample arriving must not move the reading by itself');
-        }
-        // Property 2: one sampling period later it has arrived at exactly the
-        // value the old stepped card jumped to.
-        expect(est.displaySpeedMpsAt(anchor.add(T)), closeTo(recorded, 1e-9),
-            reason: 'v_disp(t_k + T) must equal α·z_k + (1−α)·v_{k−1}');
-
-        previousRecorded = recorded;
-        clock.advance(T);
-      }
-    });
-
-    test('#2 the curve stops on arrival — it never runs past the sample', () {
-      // `min(Δt, T)` in one assertion. Without the clamp the reading would keep
-      // sliding while no fix is arriving, which is a decay animation wearing a
-      // different hat (0042 §3.2 forbids it by name).
-      final (:clock, :est) = build();
-      est.addFix(_fix(clock.t, 20.0));
-      clock.advance(T);
-      final anchor = clock.t;
-      est.addFix(_fix(anchor, 30.0));
-
-      final arrived = est.displaySpeedMpsAt(anchor.add(T));
-      expect(arrived, closeTo(est.current!.vSmoothMps, 1e-9));
-      for (final over in [T * 2, T * 3, T * 10]) {
-        expect(est.displaySpeedMpsAt(anchor.add(over)), arrived,
-            reason: 'the curve must be frozen at v_k from t_k + T onwards, '
-                'not still moving at t_k + $over');
-      }
-    });
-
-    test('#3 a held reading does not sweep — holding and lost are frozen', () {
-      // §3.5 pin 1. The moment the state stops being `live`, the number stops
-      // being a measurement, and 0042 G2 says a frozen number must be visibly
-      // frozen — a value still gliding under a "held" badge is the exact
-      // contradiction the badge exists to prevent.
+    test('#1 🔴 C1 — a held or lost reading is frozen, however far time runs',
+        () {
+      // THE RED-LINE TEST (0042 G2). Extrapolating into a tunnel would be the
+      // mirror image of the decay animation 0042 §3.2 forbids by name: one
+      // pretends to slow down, the other pretends to speed up, and neither was
+      // measured. 0073 §4.3 row 4 is the line the whole ruling rests on — "no
+      // measurement ⇒ it stops" — and this is that line, executable.
       final (:clock, :est) = build();
       est.addFix(_fix(clock.t, 12.0));
       clock.advance(const Duration(milliseconds: 2500));
@@ -811,81 +802,304 @@ void main() {
           reason: 'precondition: the sample aged past T_hold');
 
       final frozen = est.current!.vSmoothMps;
-      for (final d in [Duration.zero, T, T * 2]) {
-        expect(est.displaySpeedMpsAt(clock.t.add(d)), frozen);
+      for (final d in [Duration.zero, T, T * 10, T * 600]) {
+        expect(est.displaySpeedMpsAt(clock.t.add(d), slopeMps2: 3.0), frozen,
+            reason: 'held, +$d, with a 3 m/s² trend in hand — the number must '
+                'not move by so much as a bit');
       }
 
       clock.advance(const Duration(seconds: 2));
       est.tick();
       expect(est.current!.state, SpeedState.lost);
-      for (final d in [Duration.zero, T, T * 5]) {
-        expect(est.displaySpeedMpsAt(clock.t.add(d)), frozen,
+      for (final d in [Duration.zero, T, T * 10]) {
+        expect(est.displaySpeedMpsAt(clock.t.add(d), slopeMps2: -3.0), frozen,
             reason: 'lost demotes the number to a footnote; footnotes do not '
-                'animate');
+                'extrapolate, in either direction');
       }
     });
 
-    test('#4 🔴 the FB-56 sustain branch does not re-anchor the curve', () {
-      // §3.5 pin 4, and the vectors are chosen so a re-anchor would be VISIBLE.
-      // A parked scooter's numbers are all under the still-clamp, so a naive
-      // version of this test reads 0 either way and proves nothing.
-      //
-      // The setup instead straddles the clamp: the average is 2.0 m/s when a
-      // 0.1 m/s sample lands, so the curve sweeps 2.0 → 0.385 (0.85·0.1 +
-      // 0.15·2.0), i.e. from 7.2 km/h on screen down through the 3 km/h floor
-      // to a clamped 0. A null-speed fix arriving after that must NOT restart
-      // the sweep — nothing entered the smoother, so the target has not moved,
-      // and re-anchoring would make a stationary scooter's reading jump back to
-      // 7 km/h and crawl down again once a second, for ever.
+    test('#2 🔴 C2 — the horizon has a ceiling, so the reading parks', () {
+      // Without this a sample that stopped arriving would be carried forward
+      // for ever, which is design 0042 §4 "丙" (integrate until you have a
+      // fantasy) reached by accident rather than on purpose. G5: the distance
+      // between what is drawn and what was measured must have a bound you can
+      // write on paper, and `Δ_max` is it.
       final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 20.0));
+      const slope = 2.0;
+      final level = est.current!.vSmoothMps;
+
+      // Δ = (at − lastLiveAt) + T(1−α)/α, and the fix is stamped now, so at
+      // t = 0 the horizon is the filter's lag alone.
+      expect(est.trendHorizonAt(clock.t), filterLag);
+      expect(est.trendHorizonMax, horizonMax);
+
+      final capped = level +
+          trend.k * slope * (horizonMax.inMicroseconds / 1e6);
+      for (final d in [
+        horizonMax,
+        horizonMax + T,
+        const Duration(seconds: 60),
+        const Duration(hours: 1),
+      ]) {
+        expect(est.displaySpeedMpsAt(clock.t.add(d), slopeMps2: slope),
+            closeTo(capped, 1e-9),
+            reason: 'at +$d the reading was still climbing — a late sample '
+                'must degrade to the pre-0073 behaviour (it parks), not to an '
+                'ever-growing invention');
+      }
+      // And it is genuinely still moving BEFORE the ceiling, or the assertion
+      // above would pass on an implementation that never extrapolates at all.
+      expect(est.displaySpeedMpsAt(clock.t.add(T), slopeMps2: slope),
+          lessThan(capped - 1e-6));
+    });
+
+    test('#3 C3① — no trend available ⇒ the plain level, bit for bit', () {
+      // The acceleration window is warming (fewer than three samples, or
+      // spanning less than T_w − T_slack) or suppressed. The controller passes
+      // null, and null must mean "show what we have", not "assume zero and
+      // show what we have" — those happen to agree here, and they would not if
+      // anyone ever gave the null case a default slope.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 15.0));
+      clock.advance(T);
+      est.addFix(_fix(clock.t, 18.0));
+      final level = est.current!.vSmoothMps;
+      for (final d in [Duration.zero, T, T * 2]) {
+        expect(est.displaySpeedMpsAt(clock.t.add(d)), level,
+            reason: 'no slope argument at all');
+        expect(est.displaySpeedMpsAt(clock.t.add(d), slopeMps2: null), level);
+      }
+    });
+
+    test('#4 C3② — a slope inside design 0044\'s deadband is not a trend', () {
+      // GNSS speed noise is 0.1–0.5 m/s (0044 §2.2) and differentiating it
+      // gives numbers of the same order as a real scooter launch. Below the
+      // deadband the sign of the slope is not information, and multiplying a
+      // coin flip by Δ and putting it on the speedo is worse than showing the
+      // level.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 20.0));
+      final level = est.current!.vSmoothMps;
+      final at = clock.t.add(const Duration(milliseconds: 500));
+
+      for (final s in [0.0, 0.14, -0.14, 0.1499]) {
+        expect(est.displaySpeedMpsAt(at, slopeMps2: s), level,
+            reason: 'slope $s is inside the 0.15 m/s² deadband');
+      }
+      for (final s in [0.16, -0.16, 3.0]) {
+        expect(est.displaySpeedMpsAt(at, slopeMps2: s), isNot(level),
+            reason: 'slope $s is outside it and must reach the reading — '
+                'otherwise this test would pass on a build that never '
+                'extrapolates');
+      }
+    });
+
+    test('#5 🔴 C4 — the compensation is capped at C, whatever the slope', () {
+      // "The owner accepts overshoot" (2026-08-19) is not "the owner accepts
+      // any overshoot" (0073 R4). A slope that is briefly enormous — a GNSS
+      // glitch, a three-point fit through a jump — must not be multiplied by
+      // the horizon and shown.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 20.0));
+      final level = est.current!.vSmoothMps;
+      final far = clock.t.add(const Duration(seconds: 2)); // Δ pinned at Δ_max
+
+      for (final s in [10.0, 50.0, 1000.0]) {
+        expect(est.displaySpeedMpsAt(far, slopeMps2: s),
+            closeTo(level + trend.capMps, 1e-9),
+            reason: 'slope $s m/s² must still only be worth C = 10 km/h');
+      }
+      for (final s in [-10.0, -50.0]) {
+        expect(est.displaySpeedMpsAt(far, slopeMps2: s),
+            closeTo(level - trend.capMps, 1e-9),
+            reason: 'and the cap is symmetric — braking may not UNDER-report '
+                'without limit either');
+      }
+      // Below the cap nothing is clipped: 0.7 · 2 · 1.676 = 2.35 < 2.78.
+      expect(est.displaySpeedMpsAt(far, slopeMps2: 2.0),
+          lessThan(level + trend.capMps - 1e-6));
+    });
+
+    test('#6 🔴 C5 — the still-clamp cannot be crossed by extrapolation', () {
+      // 0073 §7 Q10, and it was a HOLE in the four clamps as first drafted:
+      // extrapolation could push a crawling reading over `vStillMps` and back,
+      // producing a 0 ⇄ 4 km/h flicker — a louder version of the "2 km/h at a
+      // red light" the clamp exists to remove.
+      //
+      // 🔑 The fade band is exactly `[vStillMps, vStillMps + C]`, and that is
+      // not a coincidence — it makes crossing STRUCTURALLY impossible rather
+      // than unlikely. The compensation is at most `C` (C4) and is then scaled
+      // by `(level − vStillMps)/C`, so it is at most `level − vStillMps`: it
+      // can reach the clamp and never pass it. The sweep below is the proof.
+      const vStill = 3.0 / 3.6;
+      for (var i = 0; i <= 60; i++) {
+        final level = vStill + i * 0.1;
+        for (final s in [-1000.0, -50.0, -3.0, -0.2, 0.2, 3.0, 1000.0]) {
+          for (final dtMs in [0, 200, 700, 1676, 5000]) {
+            final v = speedWithTrend(
+              level: level,
+              slopeMps2: s,
+              horizon: Duration(milliseconds: dtMs),
+              horizonMax: horizonMax,
+              vStillMps: vStill,
+            );
+            expect(v, greaterThanOrEqualTo(vStill - 1e-12),
+                reason: 'level $level, slope $s, Δ ${dtMs}ms fell through the '
+                    'still-clamp to $v — that is the 0 ⇄ 4 km/h flicker');
+          }
+        }
+      }
+      // The band itself, so the ramp is pinned and not just its consequence.
+      expect(stillFade(vStill, vStillMps: vStill), 0.0);
+      expect(stillFade(vStill + trend.capMps, vStillMps: vStill), 1.0);
+      expect(stillFade(vStill + trend.capMps / 2, vStillMps: vStill),
+          closeTo(0.5, 1e-12));
+      expect(stillFade(vStill + 100, vStillMps: vStill), 1.0,
+          reason: 'well clear of the clamp the feature is at full strength — '
+              'C5 is a floor guard, not a global discount');
+    });
+
+    test('#7 the order is extrapolate → clamp → format', () {
+      // 0073 §3.8 pin 3, inherited from 0071. The clamp is `_clampStill`, the
+      // same one the RECORDED value goes through, so the drawn number and the
+      // stored number cannot disagree about where zero starts.
+      final (:clock, :est) = build();
+      // Straddle the clamp: 2.0 m/s averaged with a 0.1 m/s sample gives 0.385,
+      // which is under `vStillMps` and therefore reads 0.
       est.addFix(_fix(clock.t, 2.0));
       clock.advance(T);
-      final anchor = clock.t;
-      est.addFix(_fix(anchor, 0.1));
-      expect(est.displaySpeedMpsAt(anchor), closeTo(2.0, 1e-9),
-          reason: 'precondition: the sweep starts ABOVE the still-clamp');
+      est.addFix(_fix(clock.t, 0.1));
       expect(est.current!.vSmoothMps, 0.0,
-          reason: 'precondition: it ends below it, so the card reads 0');
+          reason: 'precondition: the recorded value is a clamped zero');
 
-      clock.advance(T);
-      expect(est.displaySpeedMpsAt(clock.t), 0.0);
+      for (final s in [3.0, -3.0, 0.5]) {
+        expect(est.displaySpeedMpsAt(clock.t.add(const Duration(seconds: 1)),
+                slopeMps2: s),
+            0.0,
+            reason: 'a clamped zero must stay a hard 0, not creep to 0.4 with '
+                'a slope of $s applied to it');
+      }
+      // `speedWithTrend` itself does NOT clamp — one clamp, one place.
+      expect(
+          speedWithTrend(
+            level: 0.385,
+            slopeMps2: 3.0,
+            horizon: T,
+            horizonMax: horizonMax,
+            vStillMps: 3.0 / 3.6,
+          ),
+          0.385,
+          reason: 'C5 zeroes the compensation here; the CLAMP is the caller\'s');
+    });
 
-      // The stationary iOS fix: good position, no Doppler speed at all.
+    test('#8 Δ never runs backwards — a fix stamped in the future', () {
+      // Clock skew between the GNSS chip and the system clock is real and
+      // signed (`TelemetryController`'s speed-timing line records `lag` signed
+      // precisely so a negative median shows up rather than being hidden). A
+      // negative horizon would extrapolate BACKWARDS, i.e. invent a
+      // deceleration out of a clock difference.
+      final (:clock, :est) = build();
       est.addFix(SpeedFix(
-        speedMps: null,
+        speedMps: 20.0,
         horizontalAccuracyM: 5.0,
-        timestamp: clock.t,
+        timestamp: clock.t.add(const Duration(seconds: 2)), // the future
       ));
-      expect(est.current!.state, SpeedState.live,
-          reason: 'precondition: FB-56 kept the reading alive');
-      for (final d in [
-        Duration.zero,
-        const Duration(milliseconds: 200),
-        const Duration(milliseconds: 500),
-        T,
-      ]) {
-        expect(est.displaySpeedMpsAt(clock.t.add(d)), 0.0,
-            reason: 'the curve was re-anchored at +$d — a fix that never '
-                'entered the smoother must not restart the sweep (§3.5 pin 4)');
+      final level = est.current!.vSmoothMps;
+      expect(est.trendHorizonAt(clock.t).isNegative, isTrue,
+          reason: 'precondition: the raw horizon really is negative here');
+      expect(est.displaySpeedMpsAt(clock.t, slopeMps2: 3.0), level);
+      expect(est.displaySpeedMpsAt(clock.t, slopeMps2: -3.0), level);
+    });
+
+    test('#9 🔴 G6 — k = 0 is bit-for-bit the pre-0073 reading', () {
+      // The way out if the road test goes badly is editing a constant, not
+      // reverting a merge, and a claim like that is worth exactly as much as
+      // its test. `vSmoothMps` is what the card drew before design 0071 and
+      // what it draws with the feature off.
+      final clock = _Clock(t0);
+      final est = SpeedEstimator(
+        config: const SpeedEstimatorConfig(trend: TrendConfig(k: 0)),
+        now: () => clock.t,
+      );
+      for (final v in [5.0, 9.0, 14.0, 20.0, 27.0, 1.0]) {
+        est.addFix(_fix(clock.t, v));
+        final recorded = est.current!.vSmoothMps;
+        for (final ms in [0, 100, 500, 900, 3000]) {
+          for (final s in [3.0, -3.0, 0.0, 100.0]) {
+            expect(
+                est.displaySpeedMpsAt(
+                    clock.t.add(Duration(milliseconds: ms)), slopeMps2: s),
+                recorded,
+                reason: 'k = 0 must be the plain EWMA at +${ms}ms, slope $s');
+          }
+        }
+        clock.advance(T);
       }
     });
 
-    test('#5 reset() takes the curve with it', () {
+    test('#10 Δ is measured per sample, not assumed', () {
+      // 0073 §7 Q4 (a). `t − lastLiveAt` is not an ESTIMATE of the delivery
+      // latency — `lastLiveAt` is the platform's own stamp, so the difference
+      // is how long ago this very sample was taken. A sample that arrived
+      // 300 ms late is extrapolated 300 ms further, and that is correct rather
+      // than noisy.
       final (:clock, :est) = build();
-      est.addFix(_fix(clock.t, 18.0));
-      expect(est.displaySpeedMpsAt(clock.t.add(T)), closeTo(18.0, 1e-9));
+      const lateBy = Duration(milliseconds: 300);
+      est.addFix(SpeedFix(
+        speedMps: 20.0,
+        horizontalAccuracyM: 5.0,
+        timestamp: clock.t.subtract(lateBy),
+      ));
+      expect(est.trendHorizonAt(clock.t), lateBy + filterLag);
 
-      est.reset();
-      expect(est.current, isNull);
-      expect(est.displaySpeedMpsAt(clock.t), isNull,
-          reason: 'null is "there is no series to draw". Answering 0.0 would '
-              'be a reading nobody measured, and answering 18.0 would be last '
-              "session's speed on a card that says it is waiting for a fix");
-      clock.advance(T);
-      expect(est.displaySpeedMpsAt(clock.t), isNull);
+      final level = est.current!.vSmoothMps;
+      const slope = 2.0;
+      expect(
+          est.displaySpeedMpsAt(clock.t, slopeMps2: slope),
+          closeTo(
+              level +
+                  trend.k *
+                      slope *
+                      ((lateBy + filterLag).inMicroseconds / 1e6),
+              1e-9));
+
+      // A punctual sample gets a shorter horizon, which is the whole point.
+      final (clock: c2, est: e2) = build();
+      e2.addFix(_fix(c2.t, 20.0));
+      expect(e2.trendHorizonAt(c2.t), filterLag);
+      expect(e2.displaySpeedMpsAt(c2.t, slopeMps2: slope),
+          lessThan(est.displaySpeedMpsAt(clock.t, slopeMps2: slope)!));
     });
 
-    group('#6 🔴 the recorded series is untouched (G3)', () {
+    test('#11 the ticker predicate matches what actually moves', () {
+      // The card's per-frame loop is armed by this rather than by watching the
+      // value change (a value-watching loop cannot tell "it stopped" from "no
+      // time passed", so it shuts off on the first cheap frame). If the
+      // predicate says false while the value is still moving, the reading
+      // freezes between samples and no arithmetic test would notice.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 20.0));
+
+      expect(est.displayTrendActiveAt(clock.t, slopeMps2: 2.0), isTrue);
+      expect(est.displayTrendActiveAt(clock.t), isFalse,
+          reason: 'no trend, nothing to draw');
+      expect(est.displayTrendActiveAt(clock.t, slopeMps2: 0.1), isFalse,
+          reason: 'inside the deadband, nothing to draw');
+      expect(est.displayTrendActiveAt(clock.t.add(horizonMax), slopeMps2: 2.0),
+          isFalse,
+          reason: 'the horizon has hit its ceiling; only a new sample can move '
+              'the reading now');
+
+      clock.advance(const Duration(milliseconds: 2500));
+      est.tick();
+      expect(est.current!.state, SpeedState.holding);
+      expect(est.displayTrendActiveAt(clock.t, slopeMps2: 2.0), isFalse,
+          reason: 'C1 — a held reading does not move, so the ticker must not '
+              'be held open for it (0042 G4)');
+    });
+
+    group('#12 🔴 the recorded series is untouched (G4)', () {
       test('(a) displaySpeedMpsAt emits nothing — it is a pure read', () async {
         final (:clock, :est) = build();
         final estimates = <SpeedEstimate>[];
@@ -900,13 +1114,16 @@ void main() {
 
         // Sixty reads, i.e. one second of the card's ticker at 60 Hz.
         for (var i = 0; i < 60; i++) {
-          est.displaySpeedMpsAt(clock.t.add(Duration(milliseconds: i * 16)));
+          est.displaySpeedMpsAt(clock.t.add(Duration(milliseconds: i * 16)),
+              slopeMps2: 3.0);
+          est.displayTrendActiveAt(clock.t.add(Duration(milliseconds: i * 16)),
+              slopeMps2: 3.0);
         }
         await pumpEventQueue();
         expect(estimates, isEmpty,
             reason: 'the card asks this 60 times a second; if it published, '
-                'design 0044 would differentiate the ANIMATION and design 0061 '
-                'would store it');
+                'design 0044 would differentiate the EXTRAPOLATION and design '
+                '0061 would store it');
         expect(edges, isEmpty);
         expect(est.current!.vSmoothMps, closeTo(10.0, 1e-9),
             reason: 'and `current` did not move either');
@@ -919,12 +1136,12 @@ void main() {
       test('(b) with α pinned, the series is bit-for-bit the pre-0071 one',
           () async {
         // ⚠️ α IS PINNED TO 0.5 HERE ON PURPOSE, and the test is worthless
-        // without that. Design 0071 §3.3 CHANGES the shipped α from 0.5 to
-        // 0.632, which by design changes every value on this series — so a
-        // version of this test that used the default would be asserting the
-        // ruling had not happened. What is under test is the OTHER half: that
-        // introducing the display curve did not perturb the recorded series
-        // behind α's back.
+        // without that: the shipped α has moved twice since this series was
+        // first written down (0.5 ⇒ 0.632 ⇒ 0.85), so a version of this test
+        // that used the default would be asserting that the rulings had not
+        // happened. What is under test is the OTHER half — that neither 0071's
+        // curve nor 0073's extrapolation perturbed the recorded series behind
+        // α's back.
         //
         // The expected values are the discrete EWMA by hand at α=0.5:
         //   5                                    (first sample seeds)
@@ -950,10 +1167,12 @@ void main() {
         for (final v in [5.0, 7.0, 9.0, 11.0, 13.0]) {
           anchors.add(clock.t);
           est.addFix(_fix(clock.t, v));
-          // Read the curve between every pair of samples, exactly as the card
-          // does. If any of these mutated state, the series below would move.
+          // Read the display value between every pair of samples, exactly as
+          // the card does. If any of these mutated state, the series below
+          // would move.
           for (var i = 1; i < 10; i++) {
-            est.displaySpeedMpsAt(clock.t.add(Duration(milliseconds: i * 100)));
+            est.displaySpeedMpsAt(clock.t.add(Duration(milliseconds: i * 100)),
+                slopeMps2: 2.0);
           }
           clock.advance(T);
         }
@@ -969,158 +1188,57 @@ void main() {
       });
     });
 
-    test('#7 🔴 the lag budget, and why α moved twice', () {
-      // 0071 G2 made executable: "the average lag after this change must not be
-      // greater than it was before it". Four readings of the same synthetic
-      // ride are compared, and the middle ones are the whole argument for
-      // touching α at all.
+    test('#13 🔴 FB-56: a parked scooter does not creep upward', () {
+      // 0073 §3.8 pin 4. 0071 protected this with a comment in `addFix` ("do
+      // not re-anchor the curve"); there is no anchor now, so the protection
+      // has to come from the clamps. C5 is what supplies it: the level is
+      // under the still-clamp, so the fade is 0 and NO slope — however stale,
+      // however large — can lift the reading off zero.
       //
-      // 🔴 The 2026-08-19 field check moved the target. G2 asked for PARITY
-      // with the pre-0071 card, α = 0.632 delivered exactly that (kept below as
-      // `parity`, because it is the number every comment in this file derives),
-      // and the owner rode it and said it still felt slow. So the assertion is
-      // no longer "not worse" — it is a value, computed in
-      // `SpeedEstimatorConfig.alpha`, that has to come out where the arithmetic
-      // there says it does. ⛔ If this goes red, recompute it; do not widen the
-      // tolerance. Every figure here is a closed form, so a drift of more than
-      // the quadrature error means the curve changed, not that the test was
-      // strict.
-      //
-      // The ride: constant 2 m/s² (a brisk scooter launch), 1 Hz samples that
-      // report the true speed exactly. Lag is integrated over seconds 20–30 by
-      // the midpoint rule, so the seeding transient is long gone and the
-      // quadrature error (~1e-5 m/s) is far below the differences being judged.
-      const a = 2.0;
-      const first = 20, last = 30, sub = 100;
-      const stepUs = 1000000 ~/ sub;
+      // The vectors straddle the clamp on purpose. A naive version of this
+      // test parks the scooter at 0 m/s, reads 0 either way, and proves
+      // nothing.
+      final (:clock, :est) = build();
+      est.addFix(_fix(clock.t, 2.0));
+      clock.advance(T);
+      est.addFix(_fix(clock.t, 0.1)); // level 0.385 ⇒ clamped 0
+      expect(est.current!.vSmoothMps, 0.0);
 
-      /// The card BEFORE 0071: a discrete EWMA held flat for a whole period.
-      /// Reimplemented here rather than fetched from git history, because a
-      /// baseline you cannot read next to the assertion is not a baseline.
-      double steppedLag(double alpha) {
-        var ewma = 0.0;
-        var sum = 0.0;
-        var n = 0;
-        for (var k = 0; k < last; k++) {
-          final z = a * k;
-          ewma = k == 0 ? z : alpha * z + (1 - alpha) * ewma;
-          if (k < first) continue;
-          for (var j = 0; j < sub; j++) {
-            final t = k + (j + 0.5) / sub;
-            sum += a * t - ewma; // the number on screen is flat across [k, k+1)
-            n++;
-          }
-        }
-        return sum / n;
-      }
-
-      /// The card AFTER 0071, driven through the real estimator.
-      double sweptLag(double alpha) {
-        final clock = _Clock(t0);
-        final est = SpeedEstimator(
-          config: cfgWithAlpha(alpha),
-          now: () => clock.t,
-        );
-        var sum = 0.0;
-        var n = 0;
-        for (var k = 0; k < last; k++) {
-          final anchor = clock.t;
-          est.addFix(_fix(anchor, a * k));
-          if (k >= first) {
-            for (var j = 0; j < sub; j++) {
-              final offset = Duration(microseconds: stepUs ~/ 2 + j * stepUs);
-              sum += a * (k + (j + 0.5) / sub) -
-                  est.displaySpeedMpsAt(anchor.add(offset))!;
-              n++;
-            }
-          }
-          clock.advance(T);
-        }
-        return sum / n;
-      }
-
-      // Every comment is `a·(0.5 + τ/T)` with a = 2 and τ = T/ln(1/(1−α)).
-      final before = steppedLag(0.5); // 2·(0.5 + 1.000) = 3.000 m/s
-      final naive = sweptLag(0.5); // 2·(0.5 + 1.443) = 3.885 m/s
-      final parity = sweptLag(0.632); // 2·(0.5 + 1.000) = 3.001 m/s
-      final shipped = sweptLag(0.85); // 2·(0.5 + 0.527) = 2.054 m/s
-
-      expect(before, closeTo(3.0, 0.01));
-      expect(naive, closeTo(3.885, 0.01));
-      expect(parity, closeTo(3.001, 0.01));
-      expect(shipped, closeTo(2.054, 0.01),
-          reason: 'τ at α=0.85 is 1/ln(1/0.15) = 0.527 s, so the mean lag is '
-              '1.03 s and at 2 m/s² that is 2.054 m/s of speed difference');
-
-      // R1, and the reason §3.3 is not optional: shipping the sweep on its own
-      // would have made the reading ~0.44 s SLOWER, which is the other half of
-      // what the user complained about.
-      expect(naive, greaterThan(before * 1.2),
-          reason: 'a continuous curve at the OLD α is a regression, not a fix');
-      // What 0.632 bought and what it did not: parity with the stepped card, to
-      // within the 0.1 % that the three-digit literal costs against 1 − e⁻¹
-      // (τ 0.033 % long ⇒ 0.3 ms of lag).
-      expect(parity, lessThanOrEqualTo(before * 1.001),
-          reason: '0071 G2 as originally ruled: the sweep must not cost lag');
-      // And what the ride asked for on top: a mean lag materially BELOW the
-      // pre-0071 card, not merely level with it. 1.03 s against 1.50 s.
-      expect(shipped, lessThan(before * 0.72),
-          reason: 'α=0.85 must be an improvement on the stepped card, not a '
-              'draw with it');
-
-      // 🔴 The measure the RIDE was actually about, and the one G2 does not
-      // capture: the LEADING EDGE. Mean lag is an integral over a whole period;
-      // a rider opening the throttle is watching the first third of a second.
-      // Parity on the integral is what let 0.632 satisfy G2 while the complaint
-      // survived — so the fraction of one step that is on screen at +0.3 s is
-      // pinned here, or the next retune has nothing to aim at.
-      double travelledAt(double alpha, Duration d) {
-        final clock = _Clock(t0);
-        final est = SpeedEstimator(
-          config: cfgWithAlpha(alpha),
-          now: () => clock.t,
-        );
-        est.addFix(_fix(clock.t, 10.0)); // seeds; the re-seed curve is flat
+      for (var i = 0; i < 10; i++) {
         clock.advance(T);
-        final anchor = clock.t;
-        est.addFix(_fix(anchor, 20.0)); // a 10 m/s step to walk
-        return (est.displaySpeedMpsAt(anchor.add(d))! - 10.0) / 10.0;
+        // The stationary iOS fix: good position, no Doppler speed at all.
+        est.addFix(SpeedFix(
+          speedMps: null,
+          horizontalAccuracyM: 5.0,
+          timestamp: clock.t,
+        ));
+        expect(est.current!.state, SpeedState.live,
+            reason: 'precondition: FB-56 kept the reading alive');
+        for (final ms in [0, 250, 500, 900]) {
+          expect(
+              est.displaySpeedMpsAt(clock.t.add(Duration(milliseconds: ms)),
+                  slopeMps2: 3.0),
+              0.0,
+              reason: 'second $i, +${ms}ms: a parked scooter crawled off zero');
+        }
       }
-
-      const edge = Duration(milliseconds: 300);
-      expect(travelledAt(0.632, edge), closeTo(0.259, 0.002),
-          reason: '1 − 0.368^0.3 — what the owner rode and called slow');
-      expect(travelledAt(0.85, edge), closeTo(0.434, 0.002),
-          reason: '1 − 0.15^0.3: two thirds again as much of the step visible '
-              'in the same 0.3 s, which is the whole point of the change');
     });
 
-    test('#8 🔴 coming out of a tunnel does not sweep the old speed', () {
-      // §3.5 pin 5, and it is the one pin that can violate an EXISTING ruling
-      // rather than just look wrong. 0042 §3.2 forbids blending the speed from
-      // before a gap into the samples after it, and `addFix` obeys that by
-      // re-seeding the average. A display curve that still ran the general rule
-      // would sweep 25 → 3 m/s over the first second back — showing every
-      // number in between, none of which was ever measured. Drawing the
-      // forbidden blend instead of averaging it in is not a loophole.
+    test('#14 reset() takes the reading with it', () {
       final (:clock, :est) = build();
-      est.addFix(_fix(clock.t, 25.0));
-      expect(est.current!.vSmoothMps, closeTo(25.0, 1e-9));
+      est.addFix(_fix(clock.t, 18.0));
+      expect(est.displaySpeedMpsAt(clock.t, slopeMps2: 2.0),
+          greaterThan(18.0));
 
-      clock.advance(const Duration(seconds: 10));
-      est.tick();
-      expect(est.current!.state, SpeedState.lost,
-          reason: 'precondition: the tunnel ended the series');
-
-      final anchor = clock.t;
-      est.addFix(_fix(anchor, 3.0));
-      expect(est.current!.state, SpeedState.live);
-      for (var ms = 0; ms <= 2000; ms += 50) {
-        final v = est.displaySpeedMpsAt(anchor.add(Duration(milliseconds: ms)))!;
-        expect(v, closeTo(3.0, 1e-9),
-            reason: 'at +${ms}ms the reading was $v — the curve out of a gap '
-                'must be FLAT (§3.5 pin 5 / 0042 §3.2)');
-      }
+      est.reset();
+      expect(est.current, isNull);
+      expect(est.displaySpeedMpsAt(clock.t, slopeMps2: 2.0), isNull,
+          reason: 'null is "there is no series to draw". Answering 0.0 would '
+              'be a reading nobody measured, and answering 18.0 would be last '
+              "session's speed on a card that says it is waiting for a fix");
+      clock.advance(T);
+      expect(est.displaySpeedMpsAt(clock.t, slopeMps2: 2.0), isNull);
+      expect(est.displayTrendActiveAt(clock.t, slopeMps2: 2.0), isFalse);
     });
   });
 
