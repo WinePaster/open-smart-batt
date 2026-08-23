@@ -1472,10 +1472,10 @@ abstract class AppLocalizations {
   /// **'Today'**
   String get historyRangeToday;
 
-  /// No description provided for @historyRangeWeek.
+  /// Shortened from "7 days" by design 0083 S3. Measured with segmentedControlNaturalWidth: the three English labels needed 225.5 px at 1.0x against the device detail row's 204 px budget, so they were ALREADY ellipsising before this change; "7d" brings them to 180.5 and clears 1.0x and 1.15x on both surfaces. 1.3x and above still truncate on the detail page — see design 0083 R4.
   ///
   /// In en, this message translates to:
-  /// **'7 days'**
+  /// **'7d'**
   String get historyRangeWeek;
 
   /// No description provided for @historyRangeAll.
@@ -1483,6 +1483,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All'**
   String get historyRangeAll;
+
+  /// The custom date range. NOT a fourth segment in the control (it does not fit — design 0083 §4.1 case A); this labels the calendar button beside it and the range line under the chart.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get historyRangeCustom;
+
+  /// No description provided for @historyCustomRangeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select time range'**
+  String get historyCustomRangeTitle;
+
+  /// No description provided for @historyCustomRangeFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get historyCustomRangeFrom;
+
+  /// No description provided for @historyCustomRangeTo.
+  ///
+  /// In en, this message translates to:
+  /// **'To'**
+  String get historyCustomRangeTo;
+
+  /// No description provided for @historyCustomRangeApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get historyCustomRangeApply;
+
+  /// The selected span, shown on its own line above the chart's bucket-width note. Both ends are the days the user picked, i.e. INCLUSIVE — the exclusive end stored internally is never shown, because "to Aug 16" for a range ending on the 15th reads as an off-by-one.
+  ///
+  /// In en, this message translates to:
+  /// **'{from} – {to}'**
+  String historyCustomRangeLabel(String from, String to);
+
+  /// Tooltip on the disabled calendar button. Offering a date picker with nothing to pick from would let the user choose a span that is guaranteed empty.
+  ///
+  /// In en, this message translates to:
+  /// **'No records for this unit yet'**
+  String get historyCustomRangeNoData;
+
+  /// The overflow menu holding Refresh and Export on the device detail history row (design 0083 case C). The two buttons collapsed into it to free the width for the calendar button, keeping the row at ONE row (design 0065 R-refresh).
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get deviceHistoryMore;
 
   /// No description provided for @historyLegendVoltage.
   ///

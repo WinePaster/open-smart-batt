@@ -60,6 +60,7 @@ import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'custom_range_sheet.dart';
 import 'history_chart_page.dart';
 import 'history_screen.dart';
 import 'minute_seconds_sheet.dart';
@@ -333,6 +334,9 @@ class DeviceHistoryTab extends StatefulWidget {
   State<DeviceHistoryTab> createState() => _DeviceHistoryTabState();
 }
 
+/// What the `⋮` offers (design 0083 案 C).
+enum _RowAction { refresh, export }
+
 class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// Same default as the History tab (`today`), and that matters: two surfaces
   /// opening on different ranges would show one unit two different pictures
@@ -347,6 +351,16 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// ⛔ **Deliberately NOT shared with the History tab** (🔵 Q6, 2026-08-23):
   /// each surface keeps its own, exactly as it already did for the presets.
   HistoryRangeSel _sel = HistoryRangeSel.initial;
+
+  /// The unit's FULL span — the calendar's bounds, and the reason the button
+  /// can be disabled before it is tapped rather than after (design 0083
+  /// §3.3.4). Null while it is still loading, which reads the same as "not
+  /// offerable yet".
+  ///
+  /// 🔑 Loaded ONCE PER UNIT, not per range: [_extentFor] is the id it belongs
+  /// to. A range change must not pay for it.
+  HistoryStats? _extent;
+  String? _extentFor;
   bool _exporting = false;
 
   late Future<HistorySlice> _future;
@@ -363,6 +377,11 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     // The page can be handed a different unit without this State being
     // destroyed. Re-query rather than keep showing the previous unit's rows.
     if (old.deviceId != widget.deviceId) {
+      // 🔴 Dropped, not left to be overwritten: between here and the reload
+      // completing, `build` would otherwise offer the PREVIOUS unit's dates as
+      // this one's calendar bounds.
+      _extent = null;
+      _extentFor = null;
       _future = _load();
       return;
     }
@@ -401,6 +420,17 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     // with the History tab. What stays here is what is genuinely this
     // surface's — the cache, the counter, and the fact that `deviceId` is
     // never null.
+    // 🔑 Before the slice, and only when the unit changed. It is not one of
+    // "the three" (see [TelemetryController.historyExtent]) and the tab's
+    // query-count invariant still counts those three.
+    if (_extentFor != deviceId) {
+      final extent = await tele.historyExtent(deviceId: deviceId);
+      if (!mounted) return HistorySlice.empty;
+      setState(() {
+        _extent = extent;
+        _extentFor = deviceId;
+      });
+    }
     final (:since, :until) = historyBoundsFor(sel);
     final data = await loadHistorySlice(
       tele,
@@ -413,6 +443,22 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   }
 
   void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
+
+  /// Open the date picker, and apply whatever comes back.
+  ///
+  /// 🔑 Goes through [_select] like the segments do, so a custom span cannot
+  /// skip the re-query the presets get.
+  Future<void> _pickCustomRange() async {
+    final e = _extent;
+    if (e?.firstAt == null || e?.lastAt == null) return;
+    final picked = await showCustomRangeSheet(
+      context,
+      firstData: e!.firstAt!,
+      lastData: e.lastAt!,
+      initial: _sel.isCustom ? _sel : null,
+    );
+    if (picked != null) _select(picked);
+  }
 
   /// 🔑 The ONE way the selection changes — see the History tab's twin.
   void _select(HistoryRangeSel next) {
@@ -589,6 +635,23 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     );
   }
 
+  /// Range, calendar and overflow — 🔵 **案 C, ONE row still** (design 0083
+  /// §3.3.1).
+  ///
+  /// 🔴 **The two buttons collapsed into one `⋮` so the calendar could have
+  /// their place.** The segmented control keeps exactly the width it had (204
+  /// px on a 320 pt phone), and the row keeps its single line — so design 0065
+  /// **R-refresh** ("range, refresh and export: ONE row") is untouched. What
+  /// this DOES overturn is that ruling's button arrangement: refresh is now a
+  /// menu item and costs a second tap.
+  ///
+  /// Refresh was the right one to demote. Its own documentation says so
+  /// (see [_refresh]): arriving at this tab already re-queries via
+  /// `activationEpoch`, and what the button still buys is the case where the
+  /// user is ALREADY here. That is a real use, and a rare one.
+  ///
+  /// ⚠️ **The busy spinner moved to the `⋮` with the export.** Losing it would
+  /// take away the only feedback a multi-second export gives.
   Widget _rangeRow(AppLocalizations l10n) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
@@ -605,13 +668,10 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
               ),
             ),
             const SizedBox(width: 6),
-            IconButton(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh, size: 18),
-              tooltip: l10n.deviceHistoryRefresh,
-              // 40 dp floor, named rather than inherited — see FB-70.
-              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              padding: EdgeInsets.zero,
+            HistoryCustomRangeButton(
+              active: _sel.isCustom,
+              enabled: _extent != null && (_extent!.count) > 0,
+              onPressed: _pickCustomRange,
             ),
             if (_exporting)
               const SizedBox(
@@ -626,12 +686,42 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                 ),
               )
             else
-              IconButton(
-                onPressed: _exportCsv,
-                icon: const Icon(Icons.file_download_outlined, size: 18),
-                tooltip: l10n.historyExportCsv,
+              PopupMenuButton<_RowAction>(
+                icon: const Icon(Icons.more_vert, size: 18),
+                tooltip: l10n.deviceHistoryMore,
+                // 40 dp floor, named rather than inherited — see FB-70; and
+                // `shrinkWrap` for the reason spelled out on
+                // [HistoryCustomRangeButton], which is the same 8 px per button.
                 constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                onSelected: (a) => switch (a) {
+                  _RowAction.refresh => _refresh(),
+                  _RowAction.export => _exportCsv(),
+                },
+                itemBuilder: (_) => <PopupMenuEntry<_RowAction>>[
+                  PopupMenuItem<_RowAction>(
+                    value: _RowAction.refresh,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.refresh, size: 18),
+                        const SizedBox(width: 10),
+                        Text(l10n.deviceHistoryRefresh),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<_RowAction>(
+                    value: _RowAction.export,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.file_download_outlined, size: 18),
+                        const SizedBox(width: 10),
+                        Text(l10n.historyExportCsv),
+                      ],
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
@@ -698,6 +788,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
             heading: framing.heading,
             headingIcon: Icons.show_chart,
             child: HistoryTrendCard(
+              sel: _sel,
               buckets: data.buckets,
               stats: data.stats,
               tempUnit: tempUnit,

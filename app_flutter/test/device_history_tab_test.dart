@@ -130,6 +130,15 @@ class _CountingTelemetry extends TelemetryController {
   int buckets = 0;
   int listBuckets = 0;
 
+  /// 🔵 design 0083 S3's fourth question — see [TelemetryController.historyExtent].
+  int extent = 0;
+
+  @override
+  Future<HistoryStats> historyExtent({String? deviceId}) {
+    extent++;
+    return super.historyExtent(deviceId: deviceId);
+  }
+
   @override
   Future<HistoryStats> historyStats(
       {DateTime? since, DateTime? until, String? deviceId}) {
@@ -1044,7 +1053,20 @@ void main() {
   // explicit re-query does, which is why these tests assert new ROWS appear
   // rather than asserting anything about the cache.
   // ===========================================================================
+  // 🔵 **design 0083 案 C moved both buttons into a `⋮` menu** so the calendar
+  // button could take their place on the row — the segmented control keeps its
+  // 204 px and the row keeps its single line (design 0065 R-refresh). Refresh
+  // therefore costs one extra tap now, and these two tests reach it the way a
+  // user does.
   group('R: the refresh button', () {
+    /// Open the overflow and tap [icon].
+    Future<void> tapInOverflow(WidgetTester tester, IconData icon) async {
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(icon).last);
+      await tester.pump();
+    }
+
     testWidgets('R1: it re-queries and picks up rows written since mount',
         (tester) async {
       await boot(tester);
@@ -1059,8 +1081,7 @@ void main() {
       expect(debugDeviceHistoryQueries, before,
           reason: 'nothing re-queries on its own — this is the gap R1 closes');
 
-      await tester.tap(find.byTooltip('Refresh'));
-      await tester.pump();
+      await tapInOverflow(tester, Icons.refresh);
       // Same three chained reads as `pumpSection` — they need the real loop.
       await tester.runAsync(
           () async => Future<void>.delayed(const Duration(milliseconds: 200)));
@@ -1069,17 +1090,21 @@ void main() {
           reason: 'the button must bypass the P-4 cache, not just setState');
     });
 
-    testWidgets('R2: the target is at least 40x40 dp', (tester) async {
+    testWidgets('R2: the overflow target is at least 40x40 dp',
+        (tester) async {
       // Measured, not asserted-to-exist — FB-70 was a working feature behind a
       // 14×14 dp hit box. The default IconButton is 48, but a later
       // `visualDensity` change would shrink it silently and nothing else here
       // would notice.
+      //
+      // 🔵 It is the `⋮` that is measured now: it is what the finger has to
+      // hit, and the menu items are Material's own full-width rows.
       await boot(tester);
       await addRows(tester, 'A', 12.6, count: 2, startSlot: 1);
       await pumpSection(tester, deviceId: 'A', live: false);
       final size = tester.getSize(find.ancestor(
-          of: find.byIcon(Icons.refresh),
-          matching: find.byType(IconButton)));
+          of: find.byIcon(Icons.more_vert),
+          matching: find.bySubtype<PopupMenuButton<dynamic>>()));
       expect(size.width, greaterThanOrEqualTo(40.0));
       expect(size.height, greaterThanOrEqualTo(40.0));
     });
@@ -1572,6 +1597,14 @@ void main() {
       expect(spy.buckets, 1, reason: 'the chart buckets');
       expect(spy.listBuckets, 1,
           reason: 'the row list — fetched because design 0079 S2 draws it');
+      // 🔵 **design 0083 S3 added a FOURTH query, and it is counted here on
+      // purpose.** It answers a different question — "what is there to select
+      // from", for the date picker's bounds — and is issued once per UNIT
+      // rather than per range, which is why it is not inside
+      // `loadHistorySlice`. Counting it keeps this group's promise honest:
+      // "one of each query" now means four numbers, not three plus one nobody
+      // is watching.
+      expect(spy.extent, 1, reason: 'the unit-wide extent, for the calendar');
       expect(find.byType(HistoryRow), findsWidgets,
           reason: '🔴 the other half of the rule: what is fetched is DRAWN. '
               'Without this, the assertion above would be satisfied by the '

@@ -822,6 +822,32 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyRangeAll => '全部';
 
   @override
+  String get historyRangeCustom => '自訂';
+
+  @override
+  String get historyCustomRangeTitle => '選擇時間區間';
+
+  @override
+  String get historyCustomRangeFrom => '起';
+
+  @override
+  String get historyCustomRangeTo => '迄';
+
+  @override
+  String get historyCustomRangeApply => '套用';
+
+  @override
+  String historyCustomRangeLabel(String from, String to) {
+    return '$from – $to';
+  }
+
+  @override
+  String get historyCustomRangeNoData => '這台裝置還沒有任何紀錄';
+
+  @override
+  String get deviceHistoryMore => '更多';
+
+  @override
   String get historyLegendVoltage => '電壓';
 
   @override
