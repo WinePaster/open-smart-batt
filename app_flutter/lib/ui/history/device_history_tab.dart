@@ -155,8 +155,18 @@ class _QueryCache {
   static final Map<String, ({DateTime at, HistorySlice data})> _entries =
       <String, ({DateTime at, HistorySlice data})>{};
 
-  static String keyOf(String deviceId, HistoryRange range) =>
-      '$deviceId|${range.name}';
+  /// 🔴 **The single most dangerous line in this file, and design 0083 S2 is
+  /// exactly the change it was warning about.** Until 2026-08-23 the key was
+  /// `'$deviceId|${range.name}'`, which was complete only because every range
+  /// was fully described by its name. A custom span is not: two different
+  /// user-chosen windows would collide on `…|custom`, and for the next
+  /// [kDeviceHistoryCacheTtl] the second one would be served the first one's
+  /// rows — the dates on screen would change and the numbers would not, with
+  /// nothing logged and nothing thrown.
+  static String keyOf(String deviceId, HistoryRangeSel sel) =>
+      '$deviceId|${sel.kind.name}'
+      '|${sel.from?.millisecondsSinceEpoch ?? ''}'
+      '|${sel.to?.millisecondsSinceEpoch ?? ''}';
 
   static HistorySlice? get(String key) {
     final e = _entries[key];
@@ -185,6 +195,16 @@ class _QueryCache {
 /// a process-global map.
 @visibleForTesting
 void debugClearDeviceHistoryCache() => _QueryCache.clear();
+
+/// The cache key for [deviceId] under [sel] — exposed for design 0083 T4.
+///
+/// 🔑 Exposed rather than re-derived in the test, because a test that spelled
+/// the key out itself would keep passing while the real one lost a component:
+/// the whole failure being guarded against is the key describing LESS than the
+/// selection does.
+@visibleForTesting
+String debugDeviceHistoryCacheKey(String deviceId, HistoryRangeSel sel) =>
+    _QueryCache.keyOf(deviceId, sel);
 
 // 🔵 **`debugDeviceHistoryBodyBuilds` and the P-2' memo it witnessed are GONE
 // (design 0079 S2).** The memo existed because `PackScaffold` — the shell the
@@ -317,7 +337,16 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// Same default as the History tab (`today`), and that matters: two surfaces
   /// opening on different ranges would show one unit two different pictures
   /// (design 0065 §6 R5).
-  HistoryRange _range = HistoryRange.today;
+  /// 🔵 A selection rather than a preset name (design 0083 S2) — see the
+  /// History tab's twin for why the two ends travel with the kind.
+  ///
+  /// Same default as the History tab (`today`), and that matters: two surfaces
+  /// opening on different ranges would show one unit two different pictures
+  /// (design 0065 §6 R5).
+  ///
+  /// ⛔ **Deliberately NOT shared with the History tab** (🔵 Q6, 2026-08-23):
+  /// each surface keeps its own, exactly as it already did for the presets.
+  HistoryRangeSel _sel = HistoryRangeSel.initial;
   bool _exporting = false;
 
   late Future<HistorySlice> _future;
@@ -361,8 +390,8 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     // `context.read` after an await may be addressing a page that has gone.
     final tele = context.read<TelemetryController>();
     final deviceId = widget.deviceId;
-    final range = _range;
-    final key = _QueryCache.keyOf(deviceId, range);
+    final sel = _sel;
+    final key = _QueryCache.keyOf(deviceId, sel);
     if (!force) {
       final hit = _QueryCache.get(key);
       if (hit != null) return hit;
@@ -372,22 +401,24 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     // with the History tab. What stays here is what is genuinely this
     // surface's — the cache, the counter, and the fact that `deviceId` is
     // never null.
+    final (:since, :until) = historyBoundsFor(sel);
     final data = await loadHistorySlice(
       tele,
-      since: historySinceFor(range),
-      // 🔵 See the History tab's twin: `null` because every preset runs to now
-      // (design 0083 S1).
-      until: null,
+      since: since,
+      until: until,
       deviceId: deviceId,
     );
     _QueryCache.put(key, data);
     return data;
   }
 
-  void _setRange(HistoryRange r) {
-    if (r == _range) return;
+  void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
+
+  /// 🔑 The ONE way the selection changes — see the History tab's twin.
+  void _select(HistoryRangeSel next) {
+    if (next == _sel) return;
     setState(() {
-      _range = r;
+      _sel = next;
       _future = _load();
     });
   }
@@ -435,7 +466,9 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// questions, and only the first one was ruled on.
   Future<void> _exportCsv() async {
     if (_exporting) return;
-    final since = historySinceFor(_range);
+    // 🔴 `until` is deliberately not passed on yet — the export path gains its
+    // upper bound in design 0083 S4. See the History tab's twin.
+    final (:since, :until) = historyBoundsFor(_sel);
     final target = await chooseExportScope(
       context,
       // No "this connection" entry: the detail page has no session to scope to
@@ -452,7 +485,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
         context,
         target: target,
         since: since,
-        window: historyWindowLabel(_range, since),
+        window: historyWindowLabel(_sel, since),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -561,7 +594,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
           children: [
             Expanded(
               child: SegmentedControl<HistoryRange>(
-                selected: _range,
+                selected: _sel.kind,
                 onChanged: _setRange,
                 options: <({HistoryRange value, String label})>[
                   (value: HistoryRange.today, label: l10n.historyRangeToday),
@@ -640,7 +673,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     double? uv,
     double? ot,
   }) {
-    final framing = historyChartFraming(l10n, _range);
+    final framing = historyChartFraming(l10n, _sel);
     final chartEmpty = data.buckets.length < 2;
     // 🔴 The tab is still DRAWN when there is nothing in it. A surface that
     // vanishes for a unit with no records is the dead-end shape FB-53 and
@@ -740,7 +773,12 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     // "All" and still nothing ⇒ this unit genuinely has no records. Any other
     // range ⇒ say it is the range, because there may well be plenty just
     // outside it.
-    return _range == HistoryRange.all
+    //
+    // 🔵 A custom span takes the second branch (design 0083 S2), and it is the
+    // case where that sentence is most likely to be TRUE: a user who picked two
+    // dates by hand is far more likely to have missed the data than a user who
+    // tapped "today".
+    return _sel.kind == HistoryRange.all
         ? l10n.deviceHistoryEmpty
         : l10n.historyEmptyDeviceRange;
   }

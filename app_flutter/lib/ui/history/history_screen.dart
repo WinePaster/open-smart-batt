@@ -66,7 +66,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // shared with design 0065's embedded section. Their documentation moved with
   // them; nothing about their values changed.
 
-  HistoryRange _range = HistoryRange.today; // default
+  /// 🔵 **A selection, not just a preset name** (design 0083 S2). It carries
+  /// the two ends when the user picks a custom span; the three presets still
+  /// derive theirs from the clock at read time. S2 wires the type through so
+  /// that S3 only has to add the entry point.
+  ///
+  /// ⛔ **Not persisted, not shared with the device page** (🔵 Q5／Q6 ruled
+  /// 2026-08-23): leaving this screen resets it, and the detail page keeps its
+  /// own.
+  HistoryRangeSel _sel = HistoryRangeSel.initial;
   bool _warningOnly = false;
   bool _exporting = false;
 
@@ -100,7 +108,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   TelemetryController get _tele => context.read<TelemetryController>();
 
-  DateTime? _sinceFor(HistoryRange r) => historySinceFor(r);
+  ({DateTime? since, DateTime? until}) get _bounds => historyBoundsFor(_sel);
 
   Future<_HistoryData> _load() async {
     final tele = _tele;
@@ -113,7 +121,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Same capture rule for design 0057's cache, and the same nullable lookup
     // that lets a harness without one keep working.
     final facts = context.read<DeviceFactsController?>();
-    final since = _sinceFor(_range);
+    final (:since, :until) = _bounds;
 
     // Options first, and the default chosen FROM them (design 0043 §3.3.1).
     // The seed used to run on the first frame against an already-loaded
@@ -155,11 +163,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Same three, same order, same arguments as before — the change is that
     // the detail page's tab can no longer drift from them, which is what
     // design 0065 §6 R5 had only a comment to enforce.
-    // 🔵 `until: null` — the three presets all run to now (design 0083 S1).
-    // Explicit rather than defaulted, so S2's custom range cannot land here by
-    // forgetting an argument.
     final slice = await loadHistorySlice(tele,
-        since: since, until: null, deviceId: scoped);
+        since: since, until: until, deviceId: scoped);
     return _HistoryData(
         rows: slice.rows,
         buckets: slice.buckets,
@@ -183,10 +188,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _reload() => setState(() => _future = _load());
 
-  void _setRange(HistoryRange r) {
-    if (r == _range) return;
+  void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
+
+  /// 🔑 The ONE way the selection changes — presets and (from S3) the custom
+  /// picker both come through here, so neither can forget to re-query.
+  void _select(HistoryRangeSel next) {
+    if (next == _sel) return;
     setState(() {
-      _range = r;
+      _sel = next;
       _future = _load();
     });
   }
@@ -206,7 +215,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // The picker chooses WHICH device to export and HOW MUCH DETAIL; it does
     // not replace the time range already chosen on this screen — the two
     // intersect, and the range is what the sheet's size estimate is scoped by.
-    final since = _sinceFor(_range);
+    // 🔴 `until` is read here but NOT yet passed to the export — the export
+    // path has no upper bound until design 0083 S4. On the three presets it is
+    // null, so nothing is lost today; the moment S3 lands a custom range
+    // without S4, this call would export past the selected end. That ordering
+    // is written into the design (§2: S3 must not ship before S4).
+    final (:since, :until) = _bounds;
     final target = await chooseExportScope(
       context,
       offerSession: false,
@@ -225,7 +239,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         context,
         target: target,
         since: since,
-        window: historyWindowLabel(_range, since),
+        window: historyWindowLabel(_sel, since),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -260,7 +274,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final ov = thresholds.ov.value,
         uv = thresholds.uv.value,
         ot = thresholds.ot.value;
-    final framing = historyChartFraming(l10n, _range);
+    final framing = historyChartFraming(l10n, _sel);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -494,7 +508,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 8, 15, 8),
       child: SegmentedControl<HistoryRange>(
-        selected: _range,
+        selected: _sel.kind,
         onChanged: _setRange,
         options: <({HistoryRange value, String label})>[
           (value: HistoryRange.today, label: l10n.historyRangeToday),
