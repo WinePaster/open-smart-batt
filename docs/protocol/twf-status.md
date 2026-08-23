@@ -26,13 +26,14 @@ booleans and a status message. **The exact bit→meaning mapping is unverified**
 see §10.
 
 **Values observed on the wire** (baseline: whole-corpus re-walk 2026-07-30;
-the `0x21` row was added 2026-08-13):
+the `0x21` row was added 2026-08-13; the **`0x02`** row was added 2026-08-23):
 
 | `b4` | Seen on | Context |
 |---|---|---|
 | `0x00` | most units, most sessions | the normal/idle value |
 | `0x01` | a unit at PVLT 9.84 V with a 1.75 V cell imbalance; also a unit at a wholly normal PVLT 13.25 V; and ~10 % of power-bank samples while discharging | see below |
 | `0x20` | **power banks only** (`0x10 = 0x22`) — 2,769 frames; **0 frames across 14,857 battery/capacitor samples** (13,574 corpus + 1,283 added by a 2026-07-30 two-device capture) | **charging.** PVLT ≈3.8–4.2 V is the SINGLE-CELL voltage, SVLT ≈9.0 V is the PD charging INPUT — not a 12 V pack in trouble |
+| **`0x02`** | **two batteries** (`0x10 = 0x02`) — one HCI capture of **1,862 frames with no exception** on a 4S pack (2026-08-23), plus a single exported row on a second, unrelated pack (2026-08-05); also **1 frame** on a power bank, in the first post-reconnect burst where `0x19`/`0x37` both still read `0x0000` | bit 1 — the first bit outside 0 and 5 ever seen set. On the 1,862-frame unit: PVLT 12.12–12.24 V, per-cell 3.040–3.061 V (`0x24`×VADJ and `0x47` agree), mode `0x23` = `00`, and **that unit's own `0x2B` UV threshold is 11.90 V — i.e. the pack was 0.22 V ABOVE its own threshold the whole time the bit was set**. A second pack in the *same* capture (13.38–13.46 V, cells 3.345–3.365 V) read `0x00` throughout. ⚠️ **No instantaneous comparator fits**: the other pack sets the bit only once a cell falls to 2.91 V, yet this one holds it set at 3.04 V. **Do not decode this bit from a voltage** |
 | **`0x21`** | one power bank, **exactly 1 frame** (2026-08-13) | bit 0 **and** bit 5 set together. The frame sits on the `0x20` → `0x01` boundary, at the poll where a charge terminated at a full pack. It is complete inside a single RX line and its XOR checks, so it is not a re-sync artefact |
 
 ⚠️ **A further 84 `0x20` frames sit in sessions with no `0x10` attribution.**
@@ -40,9 +41,20 @@ Walked frame by frame, all 84 are power banks (PVLT ≈ 4 V, SVLT ≈ 9 V). They
 listed separately rather than folded in, because "unattributed" is exactly the
 condition that produced the misreading described below.
 
-Only **two** of the eight bits have ever been non-zero — bit 0 and bit 5 — but
+~~Only **two** of the eight bits have ever been non-zero — bit 0 and bit 5 — but
 **all four combinations of those two bits have now been observed**: `0x00`,
-`0x01`, `0x20` and `0x21`. The other six bits are still untested.
+`0x01`, `0x20` and `0x21`. The other six bits are still untested.~~
+
+🔴 **Corrected 2026-08-23 — bit 1 breaks this sentence.** **Three** of the eight bits
+have now been non-zero: **bit 0, bit 1 and bit 5**. All four combinations of bits 0
+and 5 have been observed (`0x00`, `0x01`, `0x20`, `0x21`); bit 1 has so far only been
+seen **alone** (`0x02`), never combined with either of the other two. The remaining
+five bits are still untested.
+
+⚠️ **This is a correction to the list of values seen, not to what any bit means.**
+The bit→meaning mapping in this section stays **unverified** — see §10 — and the
+counts in the direction tables below were computed before the 2026-08-23 capture and
+still stand as written.
 
 > 🔴 **Value list corrected 2026-08-13 — `0x21` is the fourth value.** The
 > paragraph above previously read:
