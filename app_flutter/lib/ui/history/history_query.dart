@@ -123,22 +123,37 @@ DateTime? historySinceFor(HistoryRange r) {
   }
 }
 
-/// The chart's bucket width for a span starting at [from]: aim for
+/// The chart's bucket width for the span [from] → [to]: aim for
 /// [kHistoryTargetBucketPoints] points, never narrower than a minute nor wider
 /// than a day.
 ///
-/// [from] is the range's cut-off, or — for "all" — the oldest stored row; null
-/// means there is nothing to span, and the minimum applies.
+/// 🔵 **Both ends are the DATA's, not the range's — design 0081 S1.** Until
+/// 2026-08-23 this took one end and measured to `DateTime.now()`, so the
+/// divisor was "how long the selected range is" rather than "how long this
+/// unit actually recorded for". The two are wildly different things:
+///
+///  * a unit that rode 07:12–08:05 and again 13:40–14:26 has ~1 h 39 m of
+///    data, but "today" opened at 15:00 spans 15 hours ⇒ the width came out at
+///    5 minutes and the whole day drew as **21 points**, out of ~5,900 stored
+///    seconds (design 0081 §1.1);
+///  * worse, the SAME data drew differently depending on **what time of day
+///    the screen was opened** — 1 minute before 03:00, 8 minutes at midnight.
+///
+/// Passing the data's own extremes ([HistoryStats.firstAt] / [lastAt]) makes
+/// the width a property of the recording, which is what a reader assumes it
+/// already was.
+///
+/// Either end null means there is nothing to span (an empty range) and the
+/// minimum applies — the same fallback as before, reached the same way.
 ///
 /// 🔴 Top-level for [historySinceFor]'s reason, and this one is the sharper
 /// half of it: the width decides how much each plotted point averages, so two
 /// surfaces computing it "about the same way" would draw two different-looking
 /// charts from identical data (design 0065 §6 R5, pinned by `T65-12`).
-int historyChartBucketMs(DateTime? from, {DateTime? now}) {
-  final spanMs = from == null
+int historyChartBucketMs(DateTime? from, DateTime? to) {
+  final spanMs = (from == null || to == null)
       ? kHistoryListBucketMs
-      : (now ?? DateTime.now()).millisecondsSinceEpoch -
-          from.millisecondsSinceEpoch;
+      : to.millisecondsSinceEpoch - from.millisecondsSinceEpoch;
   return (spanMs ~/ kHistoryTargetBucketPoints)
       .clamp(kHistoryListBucketMs, 24 * 3600000);
 }
@@ -219,9 +234,10 @@ class HistorySlice {
 /// The three queries, in the one order, with the one set of arguments.
 ///
 /// 🔴 **The order is load-bearing and is not alphabetical taste.** `stats` runs
-/// first because the chart's bucket width is derived from `stats.firstAt` when
-/// the range has no `since` ("all"). Reordering silently changes the width of
-/// every plotted point on the "all" range — a difference that looks like a
+/// first because the chart's bucket width is derived from it — 🔵 since design
+/// 0081 S1 that is true on **every** range, not just "all": both ends of the
+/// span now come from `stats.firstAt` / `stats.lastAt`. Reordering silently
+/// changes the width of every plotted point — a difference that looks like a
 /// prettier chart, not like a bug.
 ///
 /// ⚠️ **`deviceId` null means EVERY unit.** Only the History tab may pass null,
@@ -238,7 +254,13 @@ Future<HistorySlice> loadHistorySlice(
   // 🔴 `historyChartBucketMs`, never an inline "about the same" calculation.
   // The width decides how much each plotted point averages; two surfaces
   // computing it separately is how one unit ends up with two charts.
-  final bucketMs = historyChartBucketMs(since ?? stats.firstAt);
+  //
+  // 🔵 **design 0081 S1**: the DATA's own span, not the range's. `stats` is
+  // already scoped by `since`, so `firstAt` cannot be earlier than the range's
+  // cut-off — no `max()` is needed here, and adding one would imply a case the
+  // query makes impossible. Empty range ⇒ both null ⇒ the minute floor, which
+  // is exactly what `since ?? firstAt` produced before for an empty "all".
+  final bucketMs = historyChartBucketMs(stats.firstAt, stats.lastAt);
   final buckets = await tele.historyBuckets(
       since: since, bucketMs: bucketMs, deviceId: deviceId);
   // One entry per MINUTE, not one per stored row (design 0061 T3a). See

@@ -532,22 +532,20 @@ void main() {
       // different target point count. Each plotted point averages that much
       // time, so the two surfaces would draw visibly different charts from
       // identical data (design 0065 §6 R5).
+      // 🔵 design 0081 S1: BOTH ends are arguments now. The old form took one
+      // end and measured to `DateTime.now()`; see
+      // `history_chart_bucket_span_test.dart` for why that had to go.
       final now = DateTime(2026, 8, 16, 12);
       // A minute floor, whatever the span.
-      expect(historyChartBucketMs(now, now: now), kHistoryListBucketMs);
+      expect(historyChartBucketMs(now, now), kHistoryListBucketMs);
       expect(
-          historyChartBucketMs(now.subtract(const Duration(minutes: 30)),
-              now: now),
+          historyChartBucketMs(now.subtract(const Duration(minutes: 30)), now),
           kHistoryListBucketMs);
       // ~180 points across the span, once the span is wide enough for it.
-      expect(
-          historyChartBucketMs(now.subtract(const Duration(hours: 24)),
-              now: now),
+      expect(historyChartBucketMs(now.subtract(const Duration(hours: 24)), now),
           (24 * 3600000) ~/ kHistoryTargetBucketPoints);
       // …and a day-wide ceiling.
-      expect(
-          historyChartBucketMs(now.subtract(const Duration(days: 3650)),
-              now: now),
+      expect(historyChartBucketMs(now.subtract(const Duration(days: 3650)), now),
           24 * 3600000);
       expect(kHistoryTargetBucketPoints, 180);
       expect(kHistoryRowCap, 1000);
@@ -564,10 +562,50 @@ void main() {
       final since = historySinceFor(HistoryRange.today);
       final stats = await tester.runAsync(() =>
           services.telemetry.historyStats(since: since, deviceId: unitA));
-      final expected = historyChartBucketMs(since ?? stats!.firstAt);
+      final expected = historyChartBucketMs(stats!.firstAt, stats.lastAt);
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       final minutes = (expected / 60000).round();
       expect(find.text(l10n.historyChartBucketMinutes(minutes)), findsOneWidget);
+    });
+
+    testWidgets('T65-12b — the width follows the DATA, not the clock (0081 S1)',
+        (tester) async {
+      // 🔵 design 0081 S1, end-to-end through the shared loader — the half a
+      // pure-function test cannot reach, because the defect lived in WHICH two
+      // instants `loadHistorySlice` handed over (`since` and `now`), not in the
+      // arithmetic it handed them to.
+      //
+      // 🔴 Anchored TEN DAYS BACK on purpose. A fixture whose "now" sits just
+      // after the rows makes the old and the new derivation agree, and the
+      // first draft of `history_chart_bucket_span_test.dart` did exactly that
+      // and passed against the very code it was written to reject. The V2
+      // reverse-proof caught it; this shape cannot be fooled that way, at any
+      // hour, in any time zone.
+      await boot(tester);
+      await tester.runAsync(() async {
+        final start = DateTime.now().subtract(const Duration(days: 10));
+        for (var i = 0; i < 30; i++) {
+          await services.historyRepo.insertSample(
+            TelemetrySample(
+              timestamp: start.add(Duration(minutes: i)),
+              pvlt: vA,
+              temperatureC: 30,
+              mode: ReportedStatus.normal,
+            ),
+            deviceId: unitA,
+          );
+        }
+      });
+
+      final slice = await tester.runAsync(() =>
+          loadHistorySlice(services.telemetry, since: null, deviceId: unitA));
+      expect(slice!.stats.count, 30);
+      // Thirty minutes of rows ⇒ thirty one-minute points, although the ride
+      // ended ten days ago. Measuring to `DateTime.now()` would make it ~80
+      // minutes — the whole ride as a single point, getting worse every day it
+      // ages while the data never changes.
+      expect(slice.bucketMs, kHistoryListBucketMs);
+      expect(slice.buckets.length, greaterThan(2));
     });
   });
 
