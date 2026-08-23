@@ -82,7 +82,12 @@ abstract final class HomeGridOps {
       }
       i += 2;
     }
-    return out;
+    // Every op funnels through here, so this is the one place that has to keep
+    // [HomeTile.column] in step with the pairing it just repaired (design 0084
+    // S1). Deriving rather than preserving is deliberate: `swap` and `move`
+    // change which side a tile is on WITHOUT touching the tile, so a preserved
+    // value would be stale exactly after the edits that matter.
+    return HomeLayout.withDerivedColumns(out);
   }
 
   /// Two tiles change places. **Each keeps its own span** (design 0049 Q1).

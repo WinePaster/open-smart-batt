@@ -204,7 +204,11 @@ void main() {
       ]);
       final back = HomeLayout.decode(l.encode());
       expect(back, isNotNull);
-      expect(back, l);
+      // 🔵 design 0084 S1: `decode` seats every `half` in a column, so the
+      // comparison is against the SEATED list. Not a weakening — `==` still
+      // covers `column`, and T-0084-2 is what proves the seating is the one the
+      // positions already implied.
+      expect(back, HomeLayout(HomeLayout.withDerivedColumns(l.tiles)));
     });
 
     test('a partly-unreadable layout keeps the tiles it can read', () {
