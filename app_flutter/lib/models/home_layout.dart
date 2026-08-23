@@ -389,6 +389,28 @@ class HomeTile {
       '${column == null ? '' : ', ${column!.slug}'})';
 }
 
+/// One horizontal band of the home grid: either a single full-width tile, or a
+/// pair of columns (design 0084 S2).
+///
+/// 🔑 Two lists rather than a list of rows, and that IS the design: rows force
+/// the two sides to advance together, which is what leaves a hole under the
+/// shorter card. Columns advance independently, and their bottoms are allowed
+/// to disagree — owner ruled 2026-08-23「可以不等長」.
+class HomeBlock {
+  const HomeBlock.full(HomeTile tile)
+      : full = tile,
+        left = const [],
+        right = const [];
+
+  const HomeBlock.columns(this.left, this.right) : full = null;
+
+  /// Non-null for a full-width band; null for a two-column one.
+  final HomeTile? full;
+
+  final List<HomeTile> left;
+  final List<HomeTile> right;
+}
+
 /// The home page's grid.
 class HomeLayout {
   const HomeLayout(this.tiles);
@@ -654,6 +676,53 @@ class HomeLayout {
                 ? t.copyWith(column: i == 0 ? HomeColumn.left : HomeColumn.right)
                 : t,
       ];
+
+  /// The grid as the home page draws it since design 0084 S2: a run of
+  /// full-width tiles and two-column blocks, in order.
+  ///
+  /// ## 🔴 This is where the authority moves
+  ///
+  /// [rowsOf] packs by POSITION — pairs of adjacent halves. This packs by
+  /// [HomeTile.column], and the difference is the feature: a column keeps
+  /// stacking, so the card under a short one starts where that short one ENDS
+  /// rather than where the tallest card of its row ends. That gap is the thing
+  /// design 0084 was opened about.
+  ///
+  /// Both are correct in S2 and give the same grouping, because S1's
+  /// [withDerivedColumns] seats every half at the side its position already
+  /// implied. They stop agreeing in S4, when the editor can put two cards in
+  /// one column — and at that point [rowsOf] is what goes, not this.
+  ///
+  /// ⚠️ A `full` tile ENDS a block. Two columns cannot span it (it is the whole
+  /// width), so consecutive halves either side of a full are two separate
+  /// blocks — which is also what makes the default layout, every tile of which
+  /// is full, cost nothing here.
+  static List<HomeBlock> blocksOf(List<HomeTile> tiles) {
+    final out = <HomeBlock>[];
+    var left = <HomeTile>[];
+    var right = <HomeTile>[];
+    void flush() {
+      if (left.isEmpty && right.isEmpty) return;
+      out.add(HomeBlock.columns(left, right));
+      left = <HomeTile>[];
+      right = <HomeTile>[];
+    }
+
+    for (final t in tiles) {
+      if (t.span == HomeSpan.full) {
+        flush();
+        out.add(HomeBlock.full(t));
+        continue;
+      }
+      // ⚠️ A half with no column can only reach here if something bypassed
+      // `withDerivedColumns` (decode, normalise and renderedFor all run it).
+      // Treating it as LEFT keeps the card on screen rather than dropping it —
+      // the same choice `fromJson` makes for an unreadable shell.
+      (t.column == HomeColumn.right ? right : left).add(t);
+    }
+    flush();
+    return out;
+  }
 
   /// Row packing. A `full` owns a row; a `half` takes the next element with it.
   ///
