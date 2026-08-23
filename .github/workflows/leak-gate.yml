@@ -1,0 +1,96 @@
+# =============================================================================
+# leak-gate -- clean-room leak gate for the PUBLIC repo (design 0003 Phase 5b)
+# =============================================================================
+#
+# WHAT THIS GATE BLOCKS
+# ---------------------
+# This repo (`open-smart-batt`) is the public, open-core half of the project.
+# The clean-room rule is absolute: it must NEVER contain
+#   * reverse-engineering working data -- `research/`, `raw/`, the vendor APK,
+#     and the archives those trees travel in (`*.zip`),
+#   * internal-only documents -- distribution-decision, ios-port-plan,
+#     engineer-app-notes, testflight-metadata, i18n-plan,
+#   * pro's design docs (`docs/design/`),
+#   * keywords that only appear in internal / decompilation material.
+#
+# Until now this was checked by a human remembering to run two greps by hand,
+# and it has already gone wrong. This workflow runs those same two checks on
+# every push and every pull request, and fails the build on any hit.
+#
+#   check 1 -- PATHS:   every line of `git ls-files` vs .github/leak-gate/forbidden-paths.txt
+#   check 2 -- CONTENT: every tracked file vs .github/leak-gate/forbidden-content.txt
+#
+# Both checks, the failure message, and the reasoning live in
+# `.github/leak-gate/leak-gate.sh`, which you can run locally:
+#
+#     bash .github/leak-gate/leak-gate.sh
+#
+#
+# 🔴 WHAT THIS GATE CANNOT CATCH  (read this before trusting a green tick)
+# -----------------------------------------------------------------------
+# Recorded lesson, verbatim:
+#
+#   「gate 只認路徑與關鍵字，認不出「內容其實是那個東西」。2026-08-23 發現
+#     三份文件內容確實是反編譯衍生的，但對舊樣式全部 0 命中，因為它寫的是
+#     中文「消費版原始碼」四個字。⇒ 這是規則本身的盲點，不是有人偷懶。」
+#
+# In English: a pattern gate matches filenames and literal strings. It cannot
+# tell that a document is *derived from* decompilation when the document does
+# not happen to say so. On 2026-08-23 three such documents were found; the
+# hand-run pattern scored 0 hits on all three, because the only tell it knew
+# was one specific four-character Chinese phrase.
+#
+#   ⇒ A GREEN LEAK-GATE DOES NOT MEAN NOTHING LEAKED.
+#     It means no known pattern matched. Provenance -- "where did this content
+#     actually come from?" -- is still a human review question, and always
+#     will be. Do not let this workflow become the reason nobody looks.
+#
+# Other known blind spots, stated plainly rather than left to be rediscovered:
+#   * paraphrase, translation, or summary of internal material;
+#   * a leak inside the gate's own three files (see the self-scan note in
+#     leak-gate.sh -- that surface is pinned and must be read in review);
+#   * anything untracked or already ignored -- this scans what git tracks;
+#   * binary blobs whose extension has been changed AND whose strings avoid
+#     every keyword.
+#
+#
+# MAINTAINING THE PATTERNS
+# ------------------------
+#  * NEVER hard-code a numeric range. The hand-run version used
+#    `design/000[1-5]`, which covered design docs 0001-0005 only, while pro
+#    was already well past 0006 -- so the gate could not see the new ones.
+#    Write the structural form (`docs/design/`) instead. Same rule for any
+#    future FB-numbered or version-numbered material.
+#  * Adding a pattern is a normal change. REMOVING or narrowing one, or
+#    excluding another path from the content scan, requires an owner ruling.
+#  * If a legitimate public document collides with a pattern, that is an owner
+#    ruling too -- either the wording changes or the pattern gets more precise.
+#    Relaxing the gate so the build goes green is the exact failure mode this
+#    gate exists to prevent.
+# =============================================================================
+
+name: leak-gate
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leak-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  leak-gate:
+    name: clean-room leak gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The gate reads the working tree via `git ls-files` / `git grep`;
+          # a shallow checkout is enough and keeps this job fast.
+          fetch-depth: 1
+
+      - name: Scan for clean-room red lines
+        run: bash .github/leak-gate/leak-gate.sh

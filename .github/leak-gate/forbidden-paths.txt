@@ -1,0 +1,51 @@
+# leak-gate: forbidden PATH patterns (clean-room red lines)
+#
+# One POSIX ERE per line. Blank lines and lines starting with "#" are comments.
+# Each pattern is matched (unanchored, case-insensitively) against every line of
+# `git ls-files`. ANY match fails the build.
+#
+# ── Maintenance rules (read before editing) ────────────────────────────────
+# 1. NEVER hard-code a numeric range. The pre-CI manual pattern used
+#    `design/000[1-5]`, which only covered design docs 0001-0005 while pro had
+#    long since reached 0006+ -> the check could not see the new ones. Always
+#    write the STRUCTURAL form (`docs/design/`), never an enumeration.
+# 2. Substring (unanchored) matching is deliberate. `research/` also matches
+#    `some/nested/research/`. Broader is the safe direction for a leak gate;
+#    do not "tighten" a pattern to make a build go green.
+# 3. Adding a pattern is a normal change. REMOVING or narrowing one requires
+#    an owner ruling -- see the header of ../workflows/leak-gate.yml.
+# ───────────────────────────────────────────────────────────────────────────
+
+# --- Reverse-engineering working data. Must never exist in the public repo. ---
+research/
+raw/
+
+# --- Vendor binaries / archives that can carry vendor IP. ---
+# `.zip` is here because the clean-room ignore list is
+# `research/`, `raw/`, `*.apk`, `*.zip` -- the archives are how the whole
+# `research/` tree travels, so blocking only the directory is not enough.
+\.apk$
+\.zip$
+
+# Extension (not in the original manual pattern): binaries this repo's own
+# .gitignore already calls out as "Compiled / native / decompiled binaries --
+# NEVER commit (vendor IP risk)". .gitignore only stops accidents; it does
+# nothing about `git add -f` or a file committed before the rule existed.
+\.aab$
+\.so$
+\.dex$
+\.aar$
+\.smali$
+
+# --- Internal-only documents. These live in pro and nowhere else. ---
+distribution-decision
+ios-port-plan
+docs/design/
+engineer-app-notes/
+testflight-metadata
+i18n-plan
+
+# --- Internal working-state markers used by pro's research notes. ---
+UNVERIFIED
+CAPTURE_VERIFIED
+HCI_CAPTURE_GUIDE
