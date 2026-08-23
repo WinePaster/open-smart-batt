@@ -52,8 +52,9 @@ Future<HistoryRangeSel?> showCustomRangeSheet(
     showDragHandle: true,
     builder: (ctx) => SafeArea(
       child: ConstrainedBox(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
         child: CustomRangeSheet(
           firstData: firstData,
           lastData: lastData,
@@ -105,9 +106,11 @@ class _CustomRangeSheetState extends State<CustomRangeSheet> {
     // re-open silently extend the range by a day.
     final prevTo = prev?.to;
     _from = _clamp(prev?.from == null ? _lastDay : _dayOf(prev!.from!));
-    _to = _clamp(prevTo == null
-        ? _lastDay
-        : _dayOf(prevTo.subtract(const Duration(days: 1))));
+    _to = _clamp(
+      prevTo == null
+          ? _lastDay
+          : _dayOf(prevTo.subtract(const Duration(days: 1))),
+    );
   }
 
   DateTime _clamp(DateTime d) =>
@@ -185,10 +188,10 @@ class _CustomRangeSheetState extends State<CustomRangeSheet> {
               child: Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: Theme.of(context).colorScheme.copyWith(
-                        primary: accent.accent,
-                        onPrimary: accent.onAccent,
-                        surface: colors.panel,
-                      ),
+                    primary: accent.accent,
+                    onPrimary: accent.onAccent,
+                    surface: colors.panel,
+                  ),
                 ),
                 child: CalendarDatePicker(
                   key: ValueKey(_editing),
@@ -205,8 +208,9 @@ class _CustomRangeSheetState extends State<CustomRangeSheet> {
             height: 42,
             child: FilledButton(
               onPressed: _valid
-                  ? () => Navigator.of(context)
-                      .pop(historyCustomRange(_from, _to))
+                  ? () => Navigator.of(
+                      context,
+                    ).pop(historyCustomRange(_from, _to))
                   : null,
               style: FilledButton.styleFrom(
                 backgroundColor: accent.accent,
@@ -257,8 +261,7 @@ class _EndField extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: TextStyle(fontSize: 10, color: colors.muted)),
+            Text(label, style: TextStyle(fontSize: 10, color: colors.muted)),
             const SizedBox(height: 2),
             Text(
               value,
@@ -277,63 +280,23 @@ class _EndField extends StatelessWidget {
   }
 }
 
-/// The calendar button — 🔵 **one widget, both surfaces** (design 0083 §3.3).
-///
-/// The History tab's range row and the device page's differ in what else is on
-/// them (design 0081 §1.4), which is exactly why the button itself must not:
-/// a user who learns it in one place has to recognise it in the other.
-///
-/// 🔴 **[active] is how the screen says "a custom range is in force".** The
-/// segmented control shows nothing selected in that state — there is no fourth
-/// segment to light up (§4.1 case A: it does not fit) — so this button IS the
-/// indicator. Without it the three segments would all look unselected for no
-/// visible reason.
-///
-/// 🔴 **[enabled] false when the unit has no rows at all** (§3.3.4). Offering a
-/// picker over an empty database lets someone choose a span that cannot
-/// contain anything, and then explains the emptiness afterwards.
-class HistoryCustomRangeButton extends StatelessWidget {
-  const HistoryCustomRangeButton({
-    super.key,
-    required this.active,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final bool active;
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final accent = context.accent;
-    return IconButton(
-      onPressed: enabled ? onPressed : null,
-      icon: Icon(
-        Icons.event_outlined,
-        size: 18,
-        color: active ? accent.accent : null,
-      ),
-      tooltip:
-          enabled ? l10n.historyRangeCustom : l10n.historyCustomRangeNoData,
-      // 40 dp floor, named rather than inherited — see FB-70.
-      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-      padding: EdgeInsets.zero,
-      // 🔴 **`shrinkWrap` and the 40 dp floor together, and both are needed.**
-      // Material's default `padded` tap target lays an IconButton out at 48
-      // even with zero padding and a 40 dp constraint — measured 2026-08-23,
-      // and it is why the detail row's real budget for the segmented control
-      // was 188.5 px rather than the 204 design 0083 §1.4 computed from the
-      // nominal 40s. `shrinkWrap` lets `constraints` decide, which gives back
-      // ~15 px and is what makes the English labels fit at 1.15× text scale.
-      // ⛔ Removing `constraints` along with this would drop the button to the
-      // 14 dp hit box FB-70 was about.
-      style: IconButton.styleFrom(
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-    );
-  }
-}
+// 🔵 **`HistoryCustomRangeButton` was DELETED here on 2026-08-24.**
+//
+// design 0083 Q1 was re-ruled from 案 C to 案 A (owner: 「今天/近7天/全部的右邊
+// 放一個自訂」), so the calendar `IconButton` this file used to publish is now
+// the segmented control's fourth segment. Its two responsibilities moved with
+// it and neither was dropped:
+//
+//   * `active` — saying a custom range is in force — is now the fourth segment
+//     being the SELECTED one, which is what the old doc comment said it wanted
+//     and could not have ("there is no fourth segment to light up").
+//   * `enabled: false` over an empty database is `SegmentedControl.disabled`,
+//     added in the same change for exactly this.
+//
+// Kept as a note rather than removed silently: `device_history_toolbar_test.dart`
+// T10b asserted at SOURCE level that both surfaces mount this widget, and a
+// reader who finds that test in the history needs to know the widget went away
+// on purpose.
 
 /// The selected span, on its own line — or nothing at all for a preset.
 ///
@@ -365,8 +328,9 @@ class HistoryCustomRangeLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 2),
       child: Text(
-        AppLocalizations.of(context).historyCustomRangeLabel(
-            fmt.format(from), fmt.format(lastDay)),
+        AppLocalizations.of(
+          context,
+        ).historyCustomRangeLabel(fmt.format(from), fmt.format(lastDay)),
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 10,

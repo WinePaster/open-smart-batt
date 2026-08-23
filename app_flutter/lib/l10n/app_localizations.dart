@@ -1484,7 +1484,7 @@ abstract class AppLocalizations {
   /// **'All'**
   String get historyRangeAll;
 
-  /// The custom date range. NOT a fourth segment in the control (it does not fit — design 0083 §4.1 case A); this labels the calendar button beside it and the range line under the chart.
+  /// The custom date range — the FOURTH segment of the range control on both history surfaces, and the range line under the chart. Was the calendar button's tooltip until 2026-08-24, when design 0083 Q1 was re-ruled from case C to case A; it is on screen now, so it is read at a glance rather than on long-press.
   ///
   /// In en, this message translates to:
   /// **'Custom'**

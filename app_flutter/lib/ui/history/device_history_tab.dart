@@ -127,8 +127,6 @@ import 'minute_seconds_sheet.dart';
 // centres a report in one screen, which sliver protocol has no equivalent for.
 //
 
-
-
 /// How long a completed query stays good for (design 0065 P-4).
 ///
 /// 🔵 **Its original justification is GONE, and the cache is kept anyway.**
@@ -234,7 +232,6 @@ String debugDeviceHistoryCacheKey(String deviceId, HistoryRangeSel sel) =>
 //  * why the empty check goes through `HistoryStats.count` and not through
 //    `rows` — see `_resultSlivers`, where the FB-85 case it protects lives.
 
-
 // 🔵 **`debugDeviceHistoryBodyBuilds` and the P-2' memo it witnessed are GONE
 // (design 0079 S2).** The memo existed because `PackScaffold` — the shell the
 // block hung off — calls `context.watch<TelemetryController>()`, so the block's
@@ -249,7 +246,6 @@ String debugDeviceHistoryCacheKey(String deviceId, HistoryRangeSel sel) =>
 //
 // ⚠️ `T65-4b` / `T65-4c` went with it — see design 0079 §5.4. They pinned a
 // mechanism, and the mechanism is the thing that was removed.
-
 
 /// Counts completed queries, for tests.
 ///
@@ -442,7 +438,11 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     return data;
   }
 
-  void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
+  /// 🔵 [HistoryRange.custom] opens the picker instead of selecting — the twin
+  /// of the History tab's, and for the same reasons spelled out there.
+  void _setRange(HistoryRange r) => r == HistoryRange.custom
+      ? _pickCustomRange()
+      : _select(HistoryRangeSel.preset(r));
 
   /// Open the date picker, and apply whatever comes back.
   ///
@@ -613,7 +613,8 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                       }
                       if (snap.hasError) {
                         return _messageSliver(
-                            l10n.historyLoadFailed('${snap.error}'));
+                          l10n.historyLoadFailed('${snap.error}'),
+                        );
                       }
                       return _resultSlivers(
                         l10n,
@@ -635,97 +636,143 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     );
   }
 
-  /// Range, calendar and overflow — 🔵 **案 C, ONE row still** (design 0083
-  /// §3.3.1).
+  /// Range and overflow — 🔵 **案 A since 2026-08-24, ONE row where it fits**
+  /// (design 0083 Q1, re-ruled; see `history_screen.dart` `_toolbar` for the
+  /// owner's words).
   ///
-  /// 🔴 **The two buttons collapsed into one `⋮` so the calendar could have
-  /// their place.** The segmented control keeps exactly the width it had (204
-  /// px on a 320 pt phone), and the row keeps its single line — so design 0065
-  /// **R-refresh** ("range, refresh and export: ONE row") is untouched. What
-  /// this DOES overturn is that ruling's button arrangement: refresh is now a
-  /// menu item and costs a second tap.
+  /// 🔴 **The calendar button became the fourth segment.** The `⋮` stays: the
+  /// two buttons design 0083 collapsed into it do not come back, because what
+  /// justified collapsing them was never the calendar specifically — it was
+  /// that three separate 40 dp targets left the labels 158 px (案 B, rejected
+  /// on exactly that arithmetic). With the calendar gone the control's budget
+  /// goes 204 px ⇒ **244 px**.
   ///
-  /// Refresh was the right one to demote. Its own documentation says so
-  /// (see [_refresh]): arriving at this tab already re-queries via
-  /// `activationEpoch`, and what the button still buys is the case where the
-  /// user is ALREADY here. That is a real use, and a rare one.
+  /// 🔴 **And when 244 is still not enough, the row becomes TWO lines** rather
+  /// than ellipsising the labels. Measured 2026-08-24 at 320 pt, four zh
+  /// segments need 211.0 / 229.1 / 247.3 / 265.4 px across the four text
+  /// scales `toolbar_narrow_screen_test.dart` uses — so 1.3× and 1.45× do not
+  /// fit one line, and wrapped they have the full 290 px and do.
+  ///
+  /// ⚠️ **This is a narrow-case exception to design 0065 R-refresh** ("range,
+  /// refresh and export: ONE row"), taken deliberately and ruled by the owner
+  /// on 2026-08-24 in preference to the alternative, which was 「今天│近 7…│
+  /// 全…│自…」. R-refresh still holds wherever the row fits, which is every
+  /// phone from 375 pt up in Chinese at every text scale.
   ///
   /// ⚠️ **The busy spinner moved to the `⋮` with the export.** Losing it would
   /// take away the only feedback a multi-second export gives.
-  Widget _rangeRow(AppLocalizations l10n) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: SegmentedControl<HistoryRange>(
-                selected: _sel.kind,
-                onChanged: _setRange,
-                options: <({HistoryRange value, String label})>[
-                  (value: HistoryRange.today, label: l10n.historyRangeToday),
-                  (value: HistoryRange.week, label: l10n.historyRangeWeek),
-                  (value: HistoryRange.all, label: l10n.historyRangeAll),
-                ],
+  Widget _rangeRow(AppLocalizations l10n) {
+    final options = <({HistoryRange value, String label})>[
+      (value: HistoryRange.today, label: l10n.historyRangeToday),
+      (value: HistoryRange.week, label: l10n.historyRangeWeek),
+      (value: HistoryRange.all, label: l10n.historyRangeAll),
+      (value: HistoryRange.custom, label: l10n.historyRangeCustom),
+    ];
+    final control = SegmentedControl<HistoryRange>(
+      selected: _sel.kind,
+      onChanged: _setRange,
+      // Disabled, not hidden — see the History tab's twin.
+      disabled: (_extent != null && _extent!.count > 0) || _sel.isCustom
+          ? const {}
+          : const {HistoryRange.custom},
+      disabledTooltip: l10n.historyCustomRangeNoData,
+      options: options,
+    );
+    final trailing = _exporting
+        ? const SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
-            const SizedBox(width: 6),
-            HistoryCustomRangeButton(
-              active: _sel.isCustom,
-              enabled: _extent != null && (_extent!.count) > 0,
-              onPressed: _pickCustomRange,
+          )
+        : PopupMenuButton<_RowAction>(
+            icon: const Icon(Icons.more_vert, size: 18),
+            tooltip: l10n.deviceHistoryMore,
+            // 40 dp floor, named rather than inherited — see FB-70; and
+            // `shrinkWrap` because Material's default `padded` tap target
+            // lays an IconButton out at 48 even with zero padding and a 40 dp
+            // constraint (measured 2026-08-23), which is 8 px this row does
+            // not have to give.
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            padding: EdgeInsets.zero,
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            if (_exporting)
-              const SizedBox(
-                width: 40,
-                height: 40,
-                child: Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+            onSelected: (a) => switch (a) {
+              _RowAction.refresh => _refresh(),
+              _RowAction.export => _exportCsv(),
+            },
+            itemBuilder: (_) => <PopupMenuEntry<_RowAction>>[
+              PopupMenuItem<_RowAction>(
+                value: _RowAction.refresh,
+                child: Row(
+                  children: [
+                    const Icon(Icons.refresh, size: 18),
+                    const SizedBox(width: 10),
+                    Text(l10n.deviceHistoryRefresh),
+                  ],
                 ),
-              )
-            else
-              PopupMenuButton<_RowAction>(
-                icon: const Icon(Icons.more_vert, size: 18),
-                tooltip: l10n.deviceHistoryMore,
-                // 40 dp floor, named rather than inherited — see FB-70; and
-                // `shrinkWrap` for the reason spelled out on
-                // [HistoryCustomRangeButton], which is the same 8 px per button.
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                padding: EdgeInsets.zero,
-                style: IconButton.styleFrom(
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                onSelected: (a) => switch (a) {
-                  _RowAction.refresh => _refresh(),
-                  _RowAction.export => _exportCsv(),
-                },
-                itemBuilder: (_) => <PopupMenuEntry<_RowAction>>[
-                  PopupMenuItem<_RowAction>(
-                    value: _RowAction.refresh,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.refresh, size: 18),
-                        const SizedBox(width: 10),
-                        Text(l10n.deviceHistoryRefresh),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<_RowAction>(
-                    value: _RowAction.export,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.file_download_outlined, size: 18),
-                        const SizedBox(width: 10),
-                        Text(l10n.historyExportCsv),
-                      ],
-                    ),
-                  ),
-                ],
               ),
-          ],
-        ),
-      );
+              PopupMenuItem<_RowAction>(
+                value: _RowAction.export,
+                child: Row(
+                  children: [
+                    const Icon(Icons.file_download_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Text(l10n.historyExportCsv),
+                  ],
+                ),
+              ),
+            ],
+          );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // 🔑 The natural width of the LABELS decides, not a screen-width
+          // breakpoint. A breakpoint answers "is this phone small", and the
+          // question is "do these four words fit" — which also depends on the
+          // language and on the user's text scale, neither of which a
+          // breakpoint can see. This is the same test
+          // `toolbar_narrow_screen_test.dart` has always applied to the
+          // History tab's toolbar.
+          final needed =
+              segmentedControlNaturalWidth(context, [
+                for (final o in options) o.label,
+              ]) +
+              6 +
+              40;
+          if (needed <= c.maxWidth) {
+            return Row(
+              children: [
+                Expanded(child: control),
+                const SizedBox(width: 6),
+                trailing,
+              ],
+            );
+          }
+          // Two lines. The control takes the whole first one; `⋮` sits at the
+          // right of the second, where it was horizontally before — so the
+          // wrap moves it down, not sideways.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              control,
+              const SizedBox(height: 6),
+              Align(alignment: Alignment.centerRight, child: trailing),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   /// A FIXED-height placeholder, not a shrink-wrapped spinner.
   ///
@@ -734,26 +781,27 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// jump upward when the query landed, while the user was mid-scroll through
   /// the live readings. There is no rest of the page now. What remains is this
   /// surface's own scroll offset, which is reason enough on the range switch.
-  Widget _loadingSliver(AppLocalizations l10n) =>
-      SliverToBoxAdapter(child: IndustrialCard(
-        child: SizedBox(
-          height: 300,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(color: context.accent.accent),
-                const SizedBox(height: 14),
-                Text(
-                  l10n.deviceHistoryLoading,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.5, color: context.colors.muted),
-                ),
-              ],
-            ),
+  Widget _loadingSliver(AppLocalizations l10n) => SliverToBoxAdapter(
+    child: IndustrialCard(
+      child: SizedBox(
+        height: 300,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: context.accent.accent),
+              const SizedBox(height: 14),
+              Text(
+                l10n.deviceHistoryLoading,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11.5, color: context.colors.muted),
+              ),
+            ],
           ),
         ),
-      ));
+      ),
+    ),
+  );
 
   Widget _resultSlivers(
     AppLocalizations l10n,
@@ -801,15 +849,17 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
               onExpand: _expandTo(data.stats) == null
                   ? null
                   : () => showHistoryChartPage(
-                        context,
-                        deviceId: widget.deviceId,
-                        title: deviceLabelFor(
-                            context.read<DeviceController>(), widget.deviceId,
-                            facts: context.read<DeviceFactsController?>()),
-                        tempUnit: tempUnit,
-                        dataFrom: data.stats.firstAt!,
-                        dataTo: _expandTo(data.stats)!,
+                      context,
+                      deviceId: widget.deviceId,
+                      title: deviceLabelFor(
+                        context.read<DeviceController>(),
+                        widget.deviceId,
+                        facts: context.read<DeviceFactsController?>(),
                       ),
+                      tempUnit: tempUnit,
+                      dataFrom: data.stats.firstAt!,
+                      dataTo: _expandTo(data.stats)!,
+                    ),
             ),
           ),
         ),
@@ -822,8 +872,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
               padding: const EdgeInsets.fromLTRB(2, 2, 2, 9),
               child: Text(
                 l10n.historyListMinuteNote,
-                style:
-                    TextStyle(fontSize: 10.5, color: context.colors.muted),
+                style: TextStyle(fontSize: 10.5, color: context.colors.muted),
               ),
             ),
           ),
@@ -876,17 +925,17 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   }
 
   Widget _messageSliver(String text) => SliverToBoxAdapter(
-        child: IndustrialCard(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 26),
-            child: Center(
-              child: Text(
-                text,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: context.colors.muted),
-              ),
-            ),
+    child: IndustrialCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 26),
+        child: Center(
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: context.colors.muted),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
