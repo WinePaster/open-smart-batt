@@ -47,12 +47,76 @@ class Readout {
   final Color? badgeColor;
 }
 
+/// One [_StatTile]'s own horizontal padding, on each side.
+///
+/// Named because [ReadoutGrid] has to subtract it to know how much room a cell
+/// really offers its text, and a second copy of `14` is how that calculation
+/// silently stops matching the tile it describes.
+const double kReadoutTilePadH = 14;
+
+/// The narrowest a two-column cell's CONTENT may be before the grid folds to
+/// one column (design 0084 §4.5 / S5).
+///
+/// 🔴 The binding constraint is that a VALUE must never wrap: [_StatTile]
+/// prints it with [Text.rich], which has no `maxLines`, so a cell narrower than
+/// the widest value string breaks `10000 mAh` across two lines — and a number
+/// split over two lines is briefly readable as a different number. That is the
+/// same defect the G readout shipped with (`test/narrow_tile_layout_test.dart`
+/// header), one card along.
+///
+/// The widest string this app produces is `10000 mAh` — five tabular digits at
+/// the value type's 23 px plus a three-letter unit at 11 px — which needs
+/// roughly 101 px in a shipping font. 110 is that with a margin for the text
+/// scaler's first notch.
+///
+/// ⚠️ **It could not be measured in a widget test, and that is worth knowing
+/// before anyone "tightens" it.** Flutter's test font draws every glyph as a
+/// SQUARE of the font size, so the same string measures ~154 px there. A
+/// breakpoint derived from that number would fold a 360 pt phone's FULL-width
+/// card to one column — a real regression bought with a test-font artefact. So
+/// `readout_grid_narrow_test.dart` pins the arithmetic and the resulting column
+/// counts, and deliberately does NOT assert "nothing wraps"; its header says
+/// why at length.
+///
+/// ⚠️ The LABEL is deliberately NOT part of this derivation. `SECONDARY VOLTAGE
+/// SVLT` does not fit a two-column cell at any width this app produces, which is
+/// why [_StatTile] has always given it `Flexible` + ellipsis. Demanding that it
+/// fit would fold every layout to one column and still not achieve it.
+const double kReadoutGridMinCellWidth = 110;
+
 /// The four-up readout grid.
+///
+/// ## Two columns, or one
+///
+/// 🔴 The 2x2 shape is not unconditional (design 0084 §4.5). At a half-width
+/// home tile on a 390 pt phone this grid gets 150 px, so a two-column cell
+/// offers `(150 - 1) / 2 - 28` = **46.5 px** of content — less than the icon
+/// and its gap — and the card measured **607 px tall**, taller than the same
+/// card at FULL width (409), because every value wrapped. The height was the
+/// symptom; the wrapped numbers were the defect.
+///
+/// So the column count is decided from the room actually available, not from
+/// the container's identity: a cell whose content would fall below
+/// [kReadoutGridMinCellWidth] folds the grid to a single column, where the same
+/// 150 px yields 122 px of content — wider than a two-column cell gets even on
+/// a 560 px-wide screen.
+///
+/// 🔑 This is a layout adaptation of ONE view, not a change of view. The user's
+/// stored [ReadoutsView] (design 0054) is untouched: an app that quietly
+/// swapped the card they chose for a different one because the window was
+/// narrow would be fixing a rendering fault by editing a setting.
 class ReadoutGrid extends StatelessWidget {
   const ReadoutGrid({super.key, required this.items});
 
   /// Tiles to render (expected length 4 for the 2x2 layout).
   final List<Readout> items;
+
+  /// Whether [width] leaves a two-column cell enough room for its value.
+  ///
+  /// Public so the test can assert the breakpoint against the same arithmetic
+  /// the widget uses, rather than against a copy of it.
+  static bool fitsTwoColumns(double width) =>
+      (width - 1) / 2 - kReadoutTilePadH * 2 >= kReadoutGridMinCellWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -66,29 +130,45 @@ class ReadoutGrid extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: line),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var row = 0; row < items.length; row += 2)
-              Padding(
-                padding: EdgeInsets.only(top: row == 0 ? 0 : 1),
-                // IntrinsicHeight bounds the row height so the stretched tiles
-                // (equal height) don't try to fill the ListView's unbounded
-                // height — that bug left the whole grid unrendered.
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: _StatTile(item: items[row])),
-                      if (row + 1 < items.length) ...[
-                        const SizedBox(width: 1),
-                        Expanded(child: _StatTile(item: items[row + 1])),
-                      ],
-                    ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // `maxWidth` is finite here: this grid is always laid out inside a
+            // card's stretched Column. Guarded anyway — an unbounded width must
+            // read as "plenty of room", never as a fold to one column.
+            final perRow = !constraints.maxWidth.isFinite ||
+                    fitsTwoColumns(constraints.maxWidth)
+                ? 2
+                : 1;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var row = 0; row < items.length; row += perRow)
+                  Padding(
+                    padding: EdgeInsets.only(top: row == 0 ? 0 : 1),
+                    // IntrinsicHeight bounds the row height so the stretched
+                    // tiles (equal height) don't try to fill the ListView's
+                    // unbounded height — that bug left the whole grid
+                    // unrendered. A single-column row has nothing to equalise
+                    // against, so it does not pay for the extra pass.
+                    child: perRow == 1
+                        ? _StatTile(item: items[row])
+                        : IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: _StatTile(item: items[row])),
+                                if (row + 1 < items.length) ...[
+                                  const SizedBox(width: 1),
+                                  Expanded(
+                                      child: _StatTile(item: items[row + 1])),
+                                ],
+                              ],
+                            ),
+                          ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -104,7 +184,8 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: context.colors.panel2,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      padding: const EdgeInsets.symmetric(
+          horizontal: kReadoutTilePadH, vertical: 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
