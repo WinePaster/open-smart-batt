@@ -36,6 +36,7 @@
 /// only make one surface carry the other's furniture.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 
 import '../../data/history_repo.dart';
@@ -43,7 +44,112 @@ import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 
 /// Selectable chart/list time range.
-enum HistoryRange { today, week, all }
+///
+/// 🔵 [custom] added by design 0083 S2. It is the only member that cannot
+/// answer "what does this cover?" on its own — the two ends live on
+/// [HistoryRangeSel], which is why that type exists and why this enum should
+/// not be passed around by itself any more.
+enum HistoryRange { today, week, all, custom }
+
+/// What the user currently has selected: a preset, or a custom span.
+///
+/// 🔴 **The kind and the two ends are ONE value, deliberately.** The obvious
+/// alternative — keep the enum in one field and hang a nullable
+/// `DateTimeRange` beside it — allows a state that means nothing
+/// (`kind == custom` with no ends, or ends set while a preset is selected), and
+/// every reader then has to remember to check. This repo has paid for that
+/// shape before: `CLAUDE.md`'s exception-three renewal lists "one status in two
+/// places" as its own class of incident. The constructors below make the
+/// contradictory states not exist rather than merely unlikely.
+///
+/// 🔴 **[to] is EXCLUSIVE.** See [historyCustomRange] for the conversion a UI
+/// must go through, and [HistoryRepo] `_scope` for why (design 0074 T1: every
+/// range in the read layer is half-open, so one stored row belongs to exactly
+/// one window).
+@immutable
+class HistoryRangeSel {
+  /// One of the three fixed ranges. Their ends are derived from the clock at
+  /// read time, not stored here — see [historyBoundsFor].
+  const HistoryRangeSel.preset(this.kind)
+      : from = null,
+        to = null,
+        assert(kind != HistoryRange.custom,
+            'custom needs two ends — use HistoryRangeSel.custom');
+
+  /// A user-chosen span. [from] inclusive, [to] exclusive.
+  const HistoryRangeSel.custom({
+    required DateTime this.from,
+    required DateTime this.to,
+  }) : kind = HistoryRange.custom;
+
+  /// The default every surface opens on (design 0065 §6 R5: the same one on
+  /// both, or one unit shows two pictures before the user touches anything).
+  static const HistoryRangeSel initial =
+      HistoryRangeSel.preset(HistoryRange.today);
+
+  final HistoryRange kind;
+
+  /// Inclusive lower end; null for a preset.
+  final DateTime? from;
+
+  /// 🔴 EXCLUSIVE upper end; null for a preset.
+  final DateTime? to;
+
+  bool get isCustom => kind == HistoryRange.custom;
+
+  /// How long the custom span is, or null for a preset (whose length is a
+  /// property of the clock, not of the selection).
+  Duration? get span =>
+      from == null || to == null ? null : to!.difference(from!);
+
+  @override
+  bool operator ==(Object other) =>
+      other is HistoryRangeSel &&
+      other.kind == kind &&
+      other.from == from &&
+      other.to == to;
+
+  @override
+  int get hashCode => Object.hash(kind, from, to);
+
+  @override
+  String toString() => isCustom
+      ? 'HistoryRangeSel.custom($from .. $to)'
+      : 'HistoryRangeSel.preset(${kind.name})';
+}
+
+/// Build a custom selection from the two DATES a picker returns.
+///
+/// 🔴 **The half-open conversion lives here and nowhere else** (design 0083
+/// §3.2.5). [lastDay] is the last day the user wants INCLUDED, and the stored
+/// upper end is local midnight on the day AFTER it:
+///
+/// ```
+/// historyCustomRange(DateTime(2026, 8, 1), DateTime(2026, 8, 15))
+///   ⇒ from 2026-08-01 00:00:00.000 (inclusive)
+///     to   2026-08-16 00:00:00.000 (exclusive)  ⇒ the 15th is fully covered
+/// ```
+///
+/// ⛔ **Never `23:59:59`.** It drops whatever was recorded in that last second
+/// — at second resolution that is a real row, and it is the kind of loss
+/// nobody notices because the chart still looks complete.
+/// ⛔ **Never UTC.** Every bucket in the read layer is grouped on the viewer's
+/// local offset (`bucketExpr` / `currentTzOffsetMs`); a UTC boundary here would
+/// cut the range on a different line from the one the buckets are drawn on.
+///
+/// Both arguments are truncated to their local date, so a picker that hands
+/// back a time-of-day cannot change what the range means (🔵 Q4 ruled
+/// date-only, 2026-08-23).
+HistoryRangeSel historyCustomRange(DateTime firstDay, DateTime lastDay) {
+  final from = DateTime(firstDay.year, firstDay.month, firstDay.day);
+  final endDay = DateTime(lastDay.year, lastDay.month, lastDay.day);
+  // `DateTime` normalises an out-of-range day, so "the day after the 31st" is
+  // the 1st of the next month without any calendar arithmetic here — and it
+  // stays correct across a DST boundary, which adding `Duration(days: 1)`
+  // would not.
+  final to = DateTime(endDay.year, endDay.month, endDay.day + 1);
+  return HistoryRangeSel.custom(from: from, to: to);
+}
 
 /// The export preamble's `window:` value for [r] (FB-60).
 ///
@@ -57,13 +163,22 @@ enum HistoryRange { today, week, all }
 /// it (the rule `exportScopeLabel` already follows). [since] is the computed
 /// cut-off, appended so the window is reproducible rather than relative to an
 /// export timestamp the reader has to do arithmetic on; `all` has none.
-String historyWindowLabel(HistoryRange r, DateTime? since) {
-  final slug = switch (r) {
+/// 🔵 **[HistoryRange.custom] writes BOTH ends** (design 0083 S2). A preamble
+/// saying only `custom  since=…` would be unreadable: the reader could not tell
+/// a two-day export from a two-year one, and unlike a preset there is no rule
+/// they could apply to work it out. The upper end is emitted exactly as stored,
+/// i.e. exclusive — the same boundary the rows were selected on.
+String historyWindowLabel(HistoryRangeSel sel, DateTime? since) {
+  final slug = switch (sel.kind) {
     HistoryRange.today => 'today',
     HistoryRange.week => '7d',
     HistoryRange.all => 'all',
+    HistoryRange.custom => 'custom',
   };
-  return since == null ? slug : '$slug  since=${since.toIso8601String()}';
+  final parts = <String>[slug];
+  if (since != null) parts.add('since=${since.toIso8601String()}');
+  if (sel.to != null) parts.add('until=${sel.to!.toIso8601String()}');
+  return parts.join('  ');
 }
 
 /// Row classification derived from a stored [TelemetrySample].
@@ -121,22 +236,56 @@ const int kHistoryLandscapeTargetPoints = 360;
 /// than the 30-minute one it came from, not more.
 const int kHistoryMinVisibleSpanMs = 30 * 60000;
 
-/// The cut-off for [r] — `null` for [HistoryRange.all], which has none.
+/// Both ends of [sel] — 🔵 **the ONE derivation** (design 0065 §6 R5, extended
+/// to the upper end by design 0083 S2).
 ///
-/// 🔴 Top-level, and the ONLY derivation (design 0065 §6 R5). The History tab
-/// and the detail page's embedded section must agree on what "today" means down
-/// to the millisecond, or one unit shows two sets of numbers on two screens and
-/// the difference is invisible to whoever reports it.
-DateTime? historySinceFor(HistoryRange r) {
+/// The History tab and the detail page's embedded section must agree on what
+/// "today" means down to the millisecond, or one unit shows two sets of numbers
+/// on two screens and the difference is invisible to whoever reports it.
+///
+/// 🔑 The presets read the CLOCK here rather than storing their ends, which is
+/// why they are not simply pre-built [HistoryRangeSel.custom] values: "today"
+/// selected before midnight has to still mean today afterwards. A custom span,
+/// by contrast, is a decision the user made once and must not drift.
+({DateTime? since, DateTime? until}) historyBoundsFor(HistoryRangeSel sel) {
   final n = DateTime.now();
-  switch (r) {
+  switch (sel.kind) {
     case HistoryRange.today:
-      return DateTime(n.year, n.month, n.day);
+      return (since: DateTime(n.year, n.month, n.day), until: null);
     case HistoryRange.week:
-      return DateTime(n.year, n.month, n.day).subtract(const Duration(days: 6));
+      return (
+        since: DateTime(n.year, n.month, n.day)
+            .subtract(const Duration(days: 6)),
+        until: null
+      );
     case HistoryRange.all:
-      return null;
+      return (since: null, until: null);
+    case HistoryRange.custom:
+      return (since: sel.from, until: sel.to);
   }
+}
+
+/// The cut-off for the PRESET [r] — `null` for [HistoryRange.all].
+///
+/// 📌 Kept as-is for the callers and tests that only ever deal in presets; it
+/// now delegates to [historyBoundsFor] so there is still exactly one place
+/// where "today" is defined.
+///
+/// 🔴 **Throws on [HistoryRange.custom], and must keep throwing.** Returning
+/// `null` there would be read downstream as "no lower bound" — i.e. a narrow
+/// user-chosen window silently widened to the whole database, with a plausible
+/// chart drawn on top of it. A range whose ends live on the value cannot be
+/// derived from the enum alone, so the honest answer is to refuse rather than
+/// to guess (design 0083 §3.2.2, pinned by `T3`).
+DateTime? historySinceFor(HistoryRange r) {
+  if (r == HistoryRange.custom) {
+    throw ArgumentError.value(
+      r,
+      'r',
+      'a custom range carries its own ends — call historyBoundsFor(sel)',
+    );
+  }
+  return historyBoundsFor(HistoryRangeSel.preset(r)).since;
 }
 
 /// The chart's bucket width for the span [from] → [to]: aim for
@@ -339,10 +488,29 @@ Future<({List<HistoryBucket> buckets, int bucketMs})> loadHistoryWindow(
 /// today or about a span of days" — and it now has one home. A surface that
 /// titled a multi-day chart "Today's" while plotting it as multi-day would be
 /// wrong in a way no test was watching for.
+/// 🔵 **[HistoryRange.custom] is framed by its SPAN, not by its name**
+/// (design 0083 S2). A preset answers "is this one day or several" from the
+/// selection alone; a custom range cannot — the same word covers an afternoon
+/// and a year. Deciding it by `kind` would put a `MM/dd` axis on a six-hour
+/// window, or an `HH:mm` one on eighteen months.
+///
+/// 🔑 The threshold is 24 hours of SELECTED span (`to - from`), matching the
+/// landscape page's own `_win.spanMs > 24h`. A custom range is never given the
+/// "Today's …" heading even when it happens to be exactly today: the user
+/// picked dates, and a title claiming otherwise would be a second, quieter
+/// statement about what is on screen.
 ({String heading, bool multiDay}) historyChartFraming(
   AppLocalizations l10n,
-  HistoryRange range,
-) =>
-    range == HistoryRange.today
-        ? (heading: l10n.historyChartTodayTitle, multiDay: false)
-        : (heading: l10n.historyChartTitle, multiDay: true);
+  HistoryRangeSel sel,
+) {
+  if (sel.isCustom) {
+    final span = sel.span ?? Duration.zero;
+    return (
+      heading: l10n.historyChartTitle,
+      multiDay: span > const Duration(hours: 24)
+    );
+  }
+  return sel.kind == HistoryRange.today
+      ? (heading: l10n.historyChartTodayTitle, multiDay: false)
+      : (heading: l10n.historyChartTitle, multiDay: true);
+}

@@ -232,12 +232,13 @@ void main() {
   group('FB-60: the preamble says which window was asked for', () {
     test('historyWindowLabel is machine-stable and carries the cut-off', () {
       final since = DateTime(2026, 8, 4);
-      expect(historyWindowLabel(HistoryRange.today, since),
+      const preset = HistoryRangeSel.preset;
+      expect(historyWindowLabel(preset(HistoryRange.today), since),
           'today  since=${since.toIso8601String()}');
-      expect(historyWindowLabel(HistoryRange.week, since),
+      expect(historyWindowLabel(preset(HistoryRange.week), since),
           '7d  since=${since.toIso8601String()}');
       // "all" has no cut-off, so it states none rather than inventing one.
-      expect(historyWindowLabel(HistoryRange.all, null), 'all');
+      expect(historyWindowLabel(preset(HistoryRange.all), null), 'all');
     });
 
     List<String> header({String? window}) => exportHeaderLines(
