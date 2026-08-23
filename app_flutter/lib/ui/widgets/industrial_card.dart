@@ -131,6 +131,20 @@ class CardHeading extends StatelessWidget {
   /// the label **60 px**. 「分串電壓 DVOL」 needs ~90, which is why [build]'s
   /// ellipsis was already firing on that tile BEFORE this feature existed.
   ///
+  /// 🔵 FB-99 (2026-08-24) dropped the trailing 「 DVOL」 from that heading, and
+  /// the Chinese label now clears the 60 px row: measured with
+  /// `card_heading_width_test.dart`'s own `labelWidth()`, 「分串電壓」 lays out at
+  /// **50.0 px** natural against a **60 px** budget, where 「分串電壓 DVOL」 needed
+  /// **112.5 px** and was ellipsised to 58.0. ⚠️ Those are TEST-FONT numbers —
+  /// the fixed-advance test font is wider per character than the proportional
+  /// font a phone resolves, so this says the budget stopped being the binding
+  /// constraint in that harness, NOT that a real device never truncates.
+  /// English is unchanged in kind: 'Per-Cell Voltage' still needs 200.0 px and
+  /// is still cut on a 1x1 tile — but it now fits the full-width 1x2 card
+  /// whole (200.0 vs a 205 px budget; 'Per-Cell Voltage DVOL' needed 262.5).
+  /// ⛔ The reasoning above is NOT retracted: the second line is still what
+  /// makes the module name fit in English, and on a 1x1 tile it still is.
+  ///
   /// The second line is a plain [Text]: no icon, no rule, so it takes the whole
   /// 115 px inner width. Putting the MODULE there is what makes the module name
   /// fit — for the first time. Putting the device there instead would leave the

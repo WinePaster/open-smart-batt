@@ -55,7 +55,7 @@ void main() {
         scale: scale,
         child: PvltGauge.voltage(
           volts: 14.02,
-          caption: 'PVLT',
+          caption: 'Primary Voltage',
           subText: null,
           size: 206,
         ),
@@ -139,7 +139,7 @@ void main() {
           scale: osScale * AppTheme.baseTextScale,
           child: PvltGauge.voltage(
             volts: 14.02,
-            caption: 'PVLT',
+            caption: 'Primary Voltage',
             subText: null,
             size: size,
           ),

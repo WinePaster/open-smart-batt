@@ -186,10 +186,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardReadoutsHeading => 'Live Readings';
 
   @override
-  String get dashboardReadoutTemperatureLabel => 'Temperature TEMP';
+  String get dashboardReadoutTemperatureLabel => 'Temperature';
 
   @override
-  String get dashboardReadoutSvltLabel => 'Secondary Voltage SVLT';
+  String get dashboardReadoutSvltLabel => 'Secondary Voltage';
 
   @override
   String get dashboardReadoutCurrentLabel => 'Main Current';
@@ -201,7 +201,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardSerialLabel => 'Serial No.';
 
   @override
-  String get dashboardDvolHeading => 'Per-Cell Voltage DVOL';
+  String get dashboardDvolHeading => 'Per-Cell Voltage';
 
   @override
   String get dashboardDvolPendingNote =>
@@ -291,7 +291,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardProtectionHeading => 'Protection Status / Mode';
 
   @override
-  String get gaugePvltLabel => 'PVLT · Primary Voltage';
+  String get gaugePvltLabel => 'Primary Voltage';
 
   @override
   String get gaugeSohUnknown => 'SOH --';
@@ -1823,7 +1823,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardTrackCurrentDirectionKey => '+ charge · − discharge';
 
   @override
-  String get dashboardTrackPvlt => 'PVLT · main voltage';
+  String get dashboardTrackPvlt => 'Primary voltage';
 
   @override
   String get dashboardTrackTemperature => 'Temperature';
@@ -1841,7 +1841,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankTrackSoc => 'Charge level SOC';
 
   @override
-  String get capacitorTrackSvlt => 'Secondary voltage SVLT';
+  String get capacitorTrackSvlt => 'Secondary voltage';
 
   @override
   String get capacitorChartNoCurrentNote =>

@@ -73,7 +73,7 @@ List<Readout> _items() => const [
           unit: 'A',
           badge: '放電'),
       Readout(
-          icon: Icons.power, label: '次電壓 SVLT', value: '12.42', unit: 'V'),
+          icon: Icons.power, label: '次電壓', value: '12.42', unit: 'V'),
       Readout(icon: Icons.favorite, label: '健康 SOH', value: '98', unit: '%'),
     ];
 
@@ -204,7 +204,7 @@ void main() {
     final context = tester.element(find.byType(ReadoutGrid));
     final needed = (TextPainter(
       text: TextSpan(
-          text: 'SECONDARY VOLTAGE SVLT',
+          text: 'SECONDARY VOLTAGE',
           style: AppTextStyles.label(context)),
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),

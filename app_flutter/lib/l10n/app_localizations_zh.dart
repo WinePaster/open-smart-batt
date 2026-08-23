@@ -179,10 +179,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardReadoutsHeading => '即時讀數';
 
   @override
-  String get dashboardReadoutTemperatureLabel => '溫度 TEMP';
+  String get dashboardReadoutTemperatureLabel => '溫度';
 
   @override
-  String get dashboardReadoutSvltLabel => '次電壓 SVLT';
+  String get dashboardReadoutSvltLabel => '次電壓';
 
   @override
   String get dashboardReadoutCurrentLabel => '主電流';
@@ -194,7 +194,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardSerialLabel => '產品序號';
 
   @override
-  String get dashboardDvolHeading => '分串電壓 DVOL';
+  String get dashboardDvolHeading => '分串電壓';
 
   @override
   String get dashboardDvolPendingNote =>
@@ -281,7 +281,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardProtectionHeading => '防護狀態 / 模式';
 
   @override
-  String get gaugePvltLabel => 'PVLT · 主電壓';
+  String get gaugePvltLabel => '主電壓';
 
   @override
   String get gaugeSohUnknown => 'SOH --';
@@ -1714,7 +1714,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardTrackCurrentDirectionKey => '＋充電 · −放電';
 
   @override
-  String get dashboardTrackPvlt => 'PVLT · 主電壓';
+  String get dashboardTrackPvlt => '主電壓';
 
   @override
   String get dashboardTrackTemperature => '溫度';
@@ -1732,7 +1732,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankTrackSoc => '電量 SOC';
 
   @override
-  String get capacitorTrackSvlt => '次電壓 SVLT';
+  String get capacitorTrackSvlt => '次電壓';
 
   @override
   String get capacitorChartNoCurrentNote => '不顯示電流：本類別回報恆定 0 A，並非真實量測。';
