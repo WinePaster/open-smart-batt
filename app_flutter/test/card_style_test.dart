@@ -366,7 +366,10 @@ void main() {
         HomeTile.device('AA:BB', span: HomeSpan.half, shell: CardShell.dense),
       ];
       final back = HomeLayout.decode(const HomeLayout(tiles).encode());
-      expect(back!.tiles, equals(tiles),
+      // 🔵 design 0084 S1 seats every `half` in a column on the way back in, so
+      // the expectation is the seated list. `==` still covers shell, view AND
+      // column, so this is still not just a shape comparison.
+      expect(back!.tiles, equals(HomeLayout.withDerivedColumns(tiles)),
           reason: 'the `==` covers shell and view, so this is not just a '
               'shape comparison');
     });
