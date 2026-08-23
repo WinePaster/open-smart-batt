@@ -76,48 +76,62 @@ class HomePage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(15, 10, 15, 14),
           children: [
-            for (final row in layout.rows)
+            // 🔴 COLUMNS, NOT ROWS, since design 0084 S2 — and the difference
+            // is the whole feature. A row makes both sides advance together,
+            // so the card under a short one starts where the TALLEST card of
+            // that row ends; measured on a 390 pt phone that hole is 135–190
+            // px. A column starts it where the short card itself ends.
+            //
+            // 🔴 1x1 STILL MEANS 1x1, and this does not touch that ruling.
+            //
+            // It was ruled twice. On 2026-08-07 a lone half was promoted to
+            // fill its row, because the default layout was orphaning the G
+            // meter (`speed_detection` defaults off, so its partner was
+            // filtered away) and a ragged empty column read as broken.
+            // Reported the next day from TestFlight: setting one tile to 1x1
+            // and its neighbour to 1x2 drew BOTH full width — the same control
+            // failing to work, from the other direction. The second ruling
+            // stands: an orphan made by FILTERING is not a layout the user
+            // asked for (and `_phoneTiles` is full-span now, so the default has
+            // no pair to lose), while an orphan the user MADE is drawn as
+            // asked.
+            //
+            // 🔑 In this model a lone 1x1 is simply a block whose other column
+            // is empty. The tile keeps its half width because the column keeps
+            // its half of the row — nothing has to remember to leave a gap
+            // beside it, which is what the old `Expanded(SizedBox.shrink())`
+            // was for. Same picture, one fewer thing to get wrong.
+            for (final block in HomeLayout.blocksOf(layout.tiles))
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                // 🔴 1x1 MEANS 1x1 — including when it is alone.
-                //
-                // Ruled twice, and the second ruling is the one that stands.
-                // On 2026-08-07 a lone half was promoted to fill its row,
-                // because the default layout was orphaning the G meter
-                // (`speed_detection` defaults off, so its partner was filtered
-                // away) and a ragged empty column read as broken. Reported the
-                // next day from TestFlight: setting one tile to 1x1 and its
-                // neighbour to 1x2 drew BOTH full width, which is the same
-                // control failing to work — just from the other direction.
-                //
-                // The two reports are not in conflict; the first rule was
-                // fixing the wrong thing. An orphan made by FILTERING is not a
-                // layout the user asked for, and the answer to it is to stop
-                // producing it: `_phoneTiles` is full-span now, so the default
-                // has no pair to lose. An orphan the user MADE is a layout
-                // they asked for, and it is drawn as asked.
-                child: row.length == 1 && row.single.span == HomeSpan.full
+                child: block.full != null
                     ? HomeTileView(
-                        tile: row.single,
+                        tile: block.full!,
                         onOpenDevices: onOpenDevices,
                         onOpenDetail: onOpenDetail,
                       )
                     : Row(
+                        // The two columns are independent, and their bottoms
+                        // are ALLOWED to disagree — owner ruled 2026-08-23
+                        // 「可以不等長」. `start` is what permits that; any
+                        // stretch here would quietly re-impose the row.
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final t in row)
+                          for (final column in [block.left, block.right])
                             Expanded(
-                              child: HomeTileView(
-                                tile: t,
-                                onOpenDevices: onOpenDevices,
-                                onOpenDetail: onOpenDetail,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final t in column)
+                                    HomeTileView(
+                                      tile: t,
+                                      onOpenDevices: onOpenDevices,
+                                      onOpenDetail: onOpenDetail,
+                                    ),
+                                ],
                               ),
                             ),
-                          // The empty half of a lone 1x1. Without it the tile
-                          // is stretched and the shape control is invisible on
-                          // this page.
-                          if (row.length == 1)
-                            const Expanded(child: SizedBox.shrink()),
                         ],
                       ),
               ),
