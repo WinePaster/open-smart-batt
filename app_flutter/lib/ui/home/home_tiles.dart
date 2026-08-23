@@ -175,12 +175,6 @@ class HomeTileView extends StatelessWidget {
           view: tile.view,
           preview: preview,
         ));
-      // 🔴 Nothing at all on the HOME page — the gap beside a lone 1x1 is the
-      // point of it, and drawing a dotted box there would put a control-looking
-      // thing on a page with no controls. The editor draws it visibly, because
-      // there the slot IS a target. See [HomeTileKind.empty].
-      case HomeTileKind.empty:
-        return const SizedBox.shrink();
     }
   }
 

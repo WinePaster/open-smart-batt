@@ -567,6 +567,46 @@ void main() {
           ])),
         ];
 
+    // =======================================================================
+    // 🔵 design 0084 S4 — which COLUMN each half sits in
+    // =======================================================================
+    test('a half carries :l or :r; a full carries neither', () {
+      final v = exportHomeValue(HomeLayout(const [
+        HomeTile.module(DisplayModule.clock,
+            span: HomeSpan.half, column: HomeColumn.left),
+        HomeTile.module(DisplayModule.chart,
+            span: HomeSpan.half, column: HomeColumn.left),
+        HomeTile.module(DisplayModule.speed,
+            span: HomeSpan.half, column: HomeColumn.right),
+        HomeTile.device('AA:BB'),
+      ]));
+      expect(v, 'tiles=clock:half:l,chart:half:l,speed:half:r,deviceCard@d1');
+    });
+
+    test('🔴 two pages that differ only by column no longer read alike', () {
+      // The same argument `:half` itself was added on. One tall column beside
+      // one short one is a different SHAPE from two even columns, and this line
+      // exists so a capture can reconstruct what the user was looking at.
+      String v(HomeColumn second) => exportHomeValue(HomeLayout([
+            const HomeTile.module(DisplayModule.clock,
+                span: HomeSpan.half, column: HomeColumn.left),
+            HomeTile.module(DisplayModule.chart,
+                span: HomeSpan.half, column: second),
+          ]));
+      expect(v(HomeColumn.left), isNot(v(HomeColumn.right)));
+    });
+
+    test('⚠️ the placeholder is no longer emitted', () {
+      // Pre-S4 captures still contain `empty`, correctly — they describe what
+      // that build drew. Nothing writes it any more.
+      final v = exportHomeValue(HomeLayout(const [
+        HomeTile.module(DisplayModule.clock,
+            span: HomeSpan.half, column: HomeColumn.left),
+      ]));
+      expect(v, isNot(contains('empty')));
+      expect(v, 'tiles=clock:half:l');
+    });
+
     test('one line, and never merged into another', () {
       for (final v in homeValues()) {
         expect(v, isNot(contains('\n')));

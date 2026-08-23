@@ -41,6 +41,7 @@ import 'package:open_smart_batt/ui/home/home_preview.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/home/home_editor_page.dart';
+import 'package:open_smart_batt/ui/widgets/dashed_border.dart';
 import 'package:open_smart_batt/ui/home/home_editor_tutorial.dart';
 import 'package:open_smart_batt/ui/dashboard/display_modules.dart';
 import 'package:open_smart_batt/ui/home/home_tiles.dart';
@@ -349,11 +350,63 @@ void main() {
         reason: 'a ticker left running is a list that scrolls by itself');
   });
 
-  testWidgets('🔴 the empty slot is on screen without dragging (Q2)',
+  testWidgets('🔵 S4: dropping into a column tail joins that column',
+      (tester) async {
+    // 🔴 The gesture the whole of design 0084 exists to make possible, end to
+    // end: model → op → widget. `home_grid_ops_test.dart` proves `moveTo`
+    // seats the card; this proves the editor is WIRED to it, which is the half
+    // a pure-function test cannot see.
+    //
+    // Three device cards, all full width. Drag the first onto the RIGHT
+    // column's tail of the band the second one is in — after making the second
+    // a half so a two-column band exists at all.
+    final s = await boot(tester, devices: 3);
+    addTearDown(() => teardown(tester, s));
+    await tester.runAsync(() => s.settings.setHomeLayout(HomeLayout(const [
+          HomeTile.device('DEV-0', span: HomeSpan.half, column: HomeColumn.left),
+          HomeTile.device('DEV-1'),
+          HomeTile.device('DEV-2'),
+        ]).encode()));
+    await pumpEditor(tester, s);
+
+    final tails = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is DashedBorderPainter);
+    expect(tails, findsNWidgets(2),
+        reason: 'the first band has one card and two column tails');
+
+    // The RIGHT tail of the first band — the empty column.
+    final onto = tester.getCenter(tails.at(1));
+    final from = tester.getCenter(find.byIcon(Icons.drag_indicator).at(2));
+
+    final gesture = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 150));
+    for (var i = 1; i <= 6; i++) {
+      await gesture.moveTo(Offset.lerp(from, onto, i / 6)!);
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    await gesture.up();
+    await tester.pump();
+    await settle(tester);
+
+    final after = HomeLayout.decode(s.settings.homeLayout)!;
+    final moved = after.tiles.firstWhere((t) => t.deviceId == 'DEV-2');
+    expect(moved.span, HomeSpan.half,
+        reason: 'dropping into a half-width position states the width — '
+            'design 0049 §3.3, and it must not be asked for twice');
+    expect(moved.column, HomeColumn.right,
+        reason: 'it joined the column whose tail was under the finger');
+  });
+
+  testWidgets('🔴 the column tail is on screen without dragging (Q2)',
       (tester) async {
     // It is the only thing on this page that says "something can go here", and
     // §3.7 forbids saying it in words. If it appeared only mid-drag, nobody
     // would learn it exists.
+    //
+    // 🔵 design 0084 S4: the slot is no longer a STORED tile, it is the foot of
+    // each column. Q2's requirement is unchanged and so is this test's subject
+    // — what changed is that there is now one per column instead of one per
+    // row, which is also what makes 「可以不等長」 reachable.
     final s = await boot(tester, devices: 1);
     addTearDown(() => teardown(tester, s));
     await tester.runAsync(() => s.settings.setHomeLayout(
@@ -364,15 +417,22 @@ void main() {
     await pumpEditor(tester, s);
 
     final stored = HomeLayout.decode(s.settings.homeLayout)!;
-    expect(stored.tiles.where((t) => t.isEmpty), hasLength(1),
-        reason: 'the slot is STORED, not drawn — design 0049 §3.8');
-    expect(HomeLayout.rowsOf(stored.tiles).first, hasLength(2));
+    expect(stored.tiles, hasLength(1),
+        reason: 'nothing is stored for the empty side any more (S4)');
+    expect(stored.tiles.single.column, HomeColumn.left);
+    // Both columns of the band draw a tail, so the affordance is on screen for
+    // the side that is empty — which is the one Q2 is about.
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is DashedBorderPainter),
+        findsNWidgets(2),
+        reason: 'one tail per column, both visible with nothing being dragged');
   });
 
   testWidgets('🔴 the editor and the home page group tiles identically (G1)',
       (tester) async {
     // The assertion that makes "所見即所得" executable rather than a hope.
-    // Both surfaces call `HomeLayout.rowsOf`; if either ever grows its own
+    // Both surfaces call `HomeLayout.blocksOf`; if either ever grows its own
     // grouping, this fails — and that drift is the root of all three reports
     // that led to design 0049.
     final s = await boot(tester, devices: 3);
@@ -387,15 +447,17 @@ void main() {
         .renderedFor(s.devices.devices, s.settings.settings,
             gForceAvailable: s.gforce.available)
         .tiles;
-    final rows = HomeLayout.rowsOf(tiles);
-    // Every row is a full tile alone, or exactly two half slots. That is the
-    // invariant both surfaces lay out against.
-    for (final row in rows) {
-      if (row.length == 1) {
-        expect(row.single.span, HomeSpan.full);
+    // 🔵 design 0084 S4: the invariant is stated per BAND. A band is either one
+    // full-width tile, or two columns of halves — and the columns may be of
+    // different lengths, which is Q2.
+    for (final b in HomeLayout.blocksOf(tiles)) {
+      if (b.full case final int i) {
+        expect(tiles[i].span, HomeSpan.full);
       } else {
-        expect(row, hasLength(2));
-        expect(row.every((t) => t.span == HomeSpan.half), isTrue);
+        expect([...b.left, ...b.right], isNotEmpty);
+        for (final i in [...b.left, ...b.right]) {
+          expect(tiles[i].span, HomeSpan.half);
+        }
       }
     }
     // …and the editor drew one cell per tile.

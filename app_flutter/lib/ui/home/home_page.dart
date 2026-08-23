@@ -106,7 +106,7 @@ class HomePage extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 2),
                 child: block.full != null
                     ? HomeTileView(
-                        tile: block.full!,
+                        tile: layout.tiles[block.full!],
                         onOpenDevices: onOpenDevices,
                         onOpenDetail: onOpenDetail,
                       )
@@ -123,9 +123,9 @@ class HomePage extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  for (final t in column)
+                                  for (final i in column)
                                     HomeTileView(
-                                      tile: t,
+                                      tile: layout.tiles[i],
                                       onOpenDevices: onOpenDevices,
                                       onOpenDetail: onOpenDetail,
                                     ),

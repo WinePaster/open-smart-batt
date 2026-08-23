@@ -1,218 +1,131 @@
-/// OpenSmartBatt — the home grid's three move operations, as pure functions.
+/// OpenSmartBatt — the home editor's layout operations (design 0049, rewritten
+/// for design 0084 S4).
 ///
-/// PURE Dart. No Flutter, no widgets, no gestures — and that is the whole
-/// reason this file exists rather than the logic living inside the editor.
+/// ## What changed, and why the file got shorter
 ///
-/// ## Why the arithmetic is out here
+/// Until S4 a `half` had no way to say which side it was on, so the LIST had to
+/// say it: two adjacent halves were a row, and the unoccupied half of a row was
+/// a stored [HomeTileKind]`.empty` placeholder (design 0049 §3.8). Every
+/// operation here existed to keep that arrangement true — vacating a tile
+/// without letting its neighbours become adjacent, flipping `[gap, tile]` so
+/// the gap was always on the right, dropping rows of two gaps.
 ///
-/// Drag-and-drop defects are almost never in the drawing. They are in the index
-/// arithmetic: an item is removed and every index after it shifts, and the
-/// insertion point computed before the removal is now off by one. That is a
-/// pure-data question with a right answer, and it needs no pointer events to
-/// ask — so the part most likely to be wrong, and hardest to drive from a
-/// widget test, becomes the part that is easiest to test.
+/// A tile that carries its own [HomeColumn] needs none of it. "This column ends
+/// here" is expressed by there being no more tiles in that column, so there is
+/// nothing to pad, nothing to flip, and no adjacency to protect. What is left
+/// is a flat list whose ORDER is the order within each column, and a side per
+/// half.
 ///
-/// ## The invariant
-///
-/// **Every row is either one `full` tile, or exactly two `half` slots** — where
-/// a slot is a real tile or a [HomeTileKind.empty]. [normalise] establishes it
-/// and every operation here ends by calling it.
-///
-/// That invariant is what makes `HomeLayout.rowsOf` exact rather than greedy,
-/// and greedy is what made a drop land somewhere the gesture had not asked for
-/// (design 0049 §3.8):
-///
-/// ```
-/// drag A into chart's empty slot
-/// before  [gauge(full)] [A(half) B(half)] [chart(half) ▢]
-/// greedy  → removing A orphans B, B swallows chart, A lands elsewhere   ✗
-/// stored  → [gauge(full)] [B(half) ▢] [chart(half) A(half)]             ✓
-/// ```
+/// 🔴 The defect that produced the placeholder is still prevented, by
+/// construction rather than by repair. It was: removing one member of a pair
+/// orphaned the other, and the greedy re-pairing then reached FORWARD and
+/// swallowed the next half, so a drag landed somewhere the gesture had not
+/// asked for. Here, removing a tile changes no other tile's column — and the
+/// column is the whole of the placement — so no card can move because a
+/// different card left.
 library;
 
 import 'home_layout.dart';
 
-/// The three moves a drag can make, plus the invariant they all preserve.
+/// Pure functions over a tile list. No storage, no widgets.
 abstract final class HomeGridOps {
-  /// Repair the row structure: every `half` paired, every `empty` justified.
+  /// Give every `half` a column and every `full` none.
   ///
-  /// Rules, in the order they are applied while walking the list:
-  ///
-  ///  * a `full` tile owns its row and is left alone;
-  ///  * two adjacent `half` slots are a row — unless BOTH are empty, in which
-  ///    case the row has nothing in it and is dropped;
-  ///  * `[empty, tile]` is flipped to `[tile, empty]`, so the gap is always on
-  ///    the right and two layouts that look the same are the same list;
-  ///  * a trailing lone `half` gets an `empty` beside it.
-  ///
-  /// A leading `empty` cannot survive: it is either flipped behind its partner
-  /// or dropped with it.
-  static List<HomeTile> normalise(List<HomeTile> tiles) {
-    final out = <HomeTile>[];
-    var i = 0;
-    while (i < tiles.length) {
-      final t = tiles[i];
-      if (t.span != HomeSpan.half) {
-        // A stray full-width empty is not a row, it is a blank. Drop it.
-        if (!t.isEmpty) out.add(t);
-        i += 1;
-        continue;
-      }
-      final next = i + 1 < tiles.length && tiles[i + 1].span == HomeSpan.half
-          ? tiles[i + 1]
-          : null;
-      if (next == null) {
-        // Lone half at the end (or before a full): give it its gap.
-        if (t.isEmpty) {
-          i += 1; // an empty with nobody to hold a place for
-          continue;
-        }
-        out.addAll([t, const HomeTile.empty()]);
-        i += 1;
-        continue;
-      }
-      if (t.isEmpty && next.isEmpty) {
-        i += 2; // a row of two gaps is not a row
-        continue;
-      }
-      if (t.isEmpty) {
-        out.addAll([next, const HomeTile.empty()]);
-      } else {
-        out.addAll([t, next]);
-      }
-      i += 2;
-    }
-    // Every op funnels through here, so this is the one place that has to keep
-    // [HomeTile.column] in step with the pairing it just repaired (design 0084
-    // S1). Deriving rather than preserving is deliberate: `swap` and `move`
-    // change which side a tile is on WITHOUT touching the tile, so a preserved
-    // value would be stale exactly after the edits that matter.
-    return HomeLayout.withDerivedColumns(out);
-  }
+  /// The only repair left. It is not a re-derivation: [HomeLayout.seated]
+  /// honours a column that is already set and only fills in one that is
+  /// missing, which after S4 can only happen to a tile some code just built.
+  static List<HomeTile> normalise(List<HomeTile> tiles) =>
+      HomeLayout.seated(tiles);
 
-  /// Two tiles change places. **Each keeps its own span** (design 0049 Q1).
+  /// Two tiles change places — **each keeps its own span** (design 0049 Q1),
+  /// and since S4 each also takes the other's COLUMN.
   ///
-  /// ⚠️ The consequence the owner asked to be able to feel: dragging a `full`
-  /// onto a `half` lands the full inside what was a half-row, and that row
-  /// expands. It is the one case where swapping is harder to predict than
-  /// inserting would be, so it has a test of its own.
+  /// 🔑 The column has to travel with the position, and it is the one place
+  /// where "keep your own everything" would be wrong. Dropping A onto B is a
+  /// request for A to be where B is; leaving A's side alone would leave both
+  /// cards in the same column, one above the other, which is not what the
+  /// gesture said and not what the finger was pointing at.
+  ///
+  /// ⚠️ The consequence the owner asked to be able to feel is unchanged:
+  /// dragging a `full` onto a `half` lands the full where the half was, and the
+  /// half takes the full's place — so a two-column block can lose a column and
+  /// a full-width card can end up between two halves. It has a test of its own.
   static List<HomeTile> swap(List<HomeTile> tiles, int from, int to) {
     if (from == to || !_inRange(tiles, from) || !_inRange(tiles, to)) {
       return List<HomeTile>.of(tiles);
     }
     final out = List<HomeTile>.of(tiles);
-    final a = out[from];
-    out[from] = out[to];
-    out[to] = a;
+    final a = out[from], b = out[to];
+    out[from] = b.withColumn(a.column);
+    out[to] = a.withColumn(b.column);
     return normalise(out);
   }
 
-  /// Take the tile at [from] out **without disturbing any row boundary**.
+  /// Move the tile at [from] to sit at [at] in [column].
   ///
-  /// 🔴 This is the correction that makes the stored empty slot actually work,
-  /// and it was found by Phase A before a single widget existed.
+  /// The single move. A null [column] means full width; a non-null one means
+  /// the tile becomes a `half` on that side — dropping something into a
+  /// half-width position is an unambiguous statement of what width it should
+  /// be, so requiring the shape button first would be a step with no
+  /// information in it (design 0049 §3.3).
   ///
-  /// The obvious implementation — remove the element, then repair — puts the
-  /// departing tile's neighbours next to each other, and the repair pass then
-  /// pairs them, because "two adjacent halves are a row" is still greedy at
-  /// heart. That is the ORIGINAL defect wearing a different hat:
+  /// [at] is an index into the list AS IT IS NOW — the one the caller is
+  /// looking at — and means "insert before this position". Taking the tile out
+  /// shifts everything after it down by one, and that adjustment is made here
+  /// rather than in every caller: the editor computes drop targets from the
+  /// blocks it just drew, and asking it to also predict its own removal is how
+  /// an off-by-one becomes a card landing one slot from where the finger was.
   ///
-  /// ```
-  /// [gauge] [A|B] [chart|▢]   drag A into chart's slot
-  /// remove A → gauge,B,chart,▢ → B and chart are now adjacent halves
-  /// repair   → [gauge] [B|chart] [A|▢]      ✗ chart moved; nobody asked
-  /// ```
-  ///
-  /// So a departing HALF leaves an empty in its place. The row it was in keeps
-  /// its width, nothing becomes newly adjacent, and — usefully — no index
-  /// shifts, so the arithmetic for the insertion disappears entirely.
-  ///
-  /// A departing FULL owns its whole row, so removing it removes the row and
-  /// creates no new adjacency. That one really is a removal, and it is the only
-  /// case where later indices shift.
-  static (List<HomeTile>, bool) _vacate(List<HomeTile> tiles, int from) {
-    final out = List<HomeTile>.of(tiles);
-    if (tiles[from].span == HomeSpan.half) {
-      out[from] = const HomeTile.empty();
-      return (out, false);
-    }
-    out.removeAt(from);
-    return (out, true);
-  }
-
-  /// Move the tile at [from] so it starts row [rowIndex]. Span unchanged.
-  ///
-  /// A `half` moved this way stays a `half` and gets an empty slot beside it —
-  /// design 0049 §3.8, and the reason `moveToOwnRow` could not keep its promise
-  /// under the derived model.
-  static List<HomeTile> moveToOwnRow(
-      List<HomeTile> tiles, int from, int rowIndex) {
+  /// 🔴 This one function replaces `moveToOwnRow` + `moveIntoSlot` + `_vacate`.
+  /// All three existed to keep the placeholder arrangement intact across a
+  /// removal; with the side stored on the tile, taking a card out cannot
+  /// disturb where any other card sits.
+  static List<HomeTile> moveTo(List<HomeTile> tiles, int from, int at,
+      {HomeColumn? column}) {
     if (!_inRange(tiles, from)) return List<HomeTile>.of(tiles);
-    final moving = tiles[from];
-    // Computed on the ORIGINAL list, because that is the list the caller's
-    // `rowIndex` refers to.
-    var at = _flatIndexOfRow(tiles, rowIndex);
-    final (out, shifted) = _vacate(tiles, from);
-    if (shifted && from < at) at -= 1;
-    out.insert(at.clamp(0, out.length), moving);
+    final out = List<HomeTile>.of(tiles);
+    final moving = out.removeAt(from);
+    final into = from < at ? at - 1 : at;
+    out.insert(
+      into.clamp(0, out.length),
+      moving.copyWith(
+          span: column == null ? HomeSpan.full : HomeSpan.half)
+        .withColumn(column),
+    );
     return normalise(out);
   }
 
-  /// Move the tile at [from] into the empty slot at [slot], pairing it with
-  /// that slot's partner. The tile becomes a `half`.
+  /// Flip one tile between full and half (the shape button).
   ///
-  /// Dropping something into a half-width hole is an unambiguous statement of
-  /// what width it should be, so requiring the shape button first would be a
-  /// step with no information in it (design 0049 §3.3).
-  static List<HomeTile> moveIntoSlot(
-      List<HomeTile> tiles, int from, int slot) {
-    if (!_inRange(tiles, from) || !_inRange(tiles, slot) || from == slot) {
-      return List<HomeTile>.of(tiles);
-    }
-    if (!tiles[slot].isEmpty) return List<HomeTile>.of(tiles);
-    final moving = tiles[from].copyWith(span: HomeSpan.half);
-    final (out, shifted) = _vacate(tiles, from);
-    final at = shifted && from < slot ? slot - 1 : slot;
-    out[at] = moving;
-    return normalise(out);
-  }
-
-  /// Flip one tile between full and half, in place (the shape button).
-  ///
-  /// Going half leaves an empty beside it; going full removes the empty its
-  /// partner no longer needs. Both fall out of [normalise] rather than being
-  /// special-cased here.
+  /// Going half seats it on the LEFT — the side a lone card has always been
+  /// drawn on, and the one a user reading left-to-right expects the card not to
+  /// jump away from. Going full clears the side, because a full-width tile has
+  /// none.
   static List<HomeTile> toggleSpan(List<HomeTile> tiles, int index) {
     if (!_inRange(tiles, index)) return List<HomeTile>.of(tiles);
     final t = tiles[index];
+    final goingHalf = t.span == HomeSpan.full;
     final out = List<HomeTile>.of(tiles);
-    out[index] = t.copyWith(
-        span: t.span == HomeSpan.full ? HomeSpan.half : HomeSpan.full);
+    out[index] = t
+        .copyWith(span: goingHalf ? HomeSpan.half : HomeSpan.full)
+        .withColumn(goingHalf ? HomeColumn.left : null);
     return normalise(out);
   }
 
-  /// Remove one tile. Its partner, if it had one, keeps its half and its gap.
+  /// Remove one tile.
+  ///
+  /// 🔵 Since S4 this really is a removal. It used to have to leave a
+  /// placeholder behind so the row it was in kept its width; now no other
+  /// tile's placement mentions it.
   static List<HomeTile> remove(List<HomeTile> tiles, int index) {
     if (!_inRange(tiles, index)) return List<HomeTile>.of(tiles);
-    final (out, _) = _vacate(tiles, index);
+    final out = List<HomeTile>.of(tiles)..removeAt(index);
     return normalise(out);
   }
 
-  /// Append a tile as a row of its own.
+  /// Append a tile as a full-width row of its own.
   static List<HomeTile> add(List<HomeTile> tiles, HomeTile tile) =>
       normalise([...tiles, tile]);
-
-  /// The flat index at which row [rowIndex] begins. `rows.length` means "past
-  /// the end", which is how a drop below the last row is expressed.
-  static int _flatIndexOfRow(List<HomeTile> tiles, int rowIndex) {
-    final rows = HomeLayout.rowsOf(tiles);
-    var flat = 0;
-    for (var r = 0; r < rows.length; r++) {
-      if (r == rowIndex) return flat;
-      flat += rows[r].length;
-    }
-    return tiles.length;
-  }
 
   static bool _inRange(List<HomeTile> tiles, int i) =>
       i >= 0 && i < tiles.length;
