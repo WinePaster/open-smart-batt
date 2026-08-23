@@ -22,11 +22,37 @@ class SegmentedControl<T> extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onChanged,
+    this.disabled = const {},
+    this.disabledTooltip,
   });
 
   final List<({T value, String label})> options;
   final T selected;
   final ValueChanged<T> onChanged;
+
+  /// Values that are present but cannot be chosen — drawn faded and inert.
+  ///
+  /// 🔵 **design 0083 revisited, 2026-08-24.** The custom range used to be a
+  /// separate `IconButton` beside this control, and an `IconButton` has
+  /// `onPressed: null` to say "not now". A segment had no equivalent, so
+  /// folding that button into a fourth segment would have turned a visibly
+  /// dead control into one that silently does nothing — the range picker is
+  /// disabled when the unit has no records at all, which is exactly when a
+  /// user is most likely to press it.
+  ///
+  /// ⚠️ A SET rather than a flag on each option: the record type
+  /// `({T value, String label})` is built inline at ~10 call sites, and
+  /// widening it would touch every one of them to say `enabled: true`.
+  final Set<T> disabled;
+
+  /// Why the [disabled] ones cannot be chosen. Shown on long-press, which is
+  /// the same affordance the button this replaced used for its own tooltip.
+  final String? disabledTooltip;
+
+  /// Wraps a disabled segment so a long-press can say why.
+  Widget _tip(Widget child) => disabledTooltip == null
+      ? child
+      : Tooltip(message: disabledTooltip!, child: child);
 
   @override
   Widget build(BuildContext context) {
@@ -50,11 +76,20 @@ class SegmentedControl<T> extends StatelessWidget {
         builder: (context, c) {
           final buttons = <Widget>[
             for (final o in options)
-              _SegButton(
-                label: o.label,
-                selected: o.value == selected,
-                onTap: () => onChanged(o.value),
-              ),
+              if (disabled.contains(o.value))
+                _tip(
+                  _SegButton(
+                    label: o.label,
+                    selected: o.value == selected,
+                    onTap: null,
+                  ),
+                )
+              else
+                _SegButton(
+                  label: o.label,
+                  selected: o.value == selected,
+                  onTap: () => onChanged(o.value),
+                ),
           ];
           // The settings rows lay this control out at its natural width, i.e.
           // with an UNBOUNDED main axis, where a flex child would throw.
@@ -102,11 +137,13 @@ double _widestAt(
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: ambient.merge(TextStyle(
-          fontSize: fontSize,
-          fontWeight: weight,
-          letterSpacing: letterSpacing,
-        )),
+        style: ambient.merge(
+          TextStyle(
+            fontSize: fontSize,
+            fontWeight: weight,
+            letterSpacing: letterSpacing,
+          ),
+        ),
       ),
       textDirection: TextDirection.ltr,
       textScaler: scaler,
@@ -121,7 +158,8 @@ double _widestAt(
 double segmentedControlNaturalWidth(BuildContext context, List<String> labels) {
   var width = 2.0; // the 1 px border on either side
   for (final label in labels) {
-    width += _widestAt(
+    width +=
+        _widestAt(
           context,
           label,
           weights: const [FontWeight.w500, FontWeight.w700],
@@ -141,7 +179,9 @@ class _SegButton extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// null ⇒ the segment is inert. See [SegmentedControl.disabled].
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -149,8 +189,7 @@ class _SegButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         color: selected ? context.accent.accent : Colors.transparent,
-        padding: const EdgeInsets.symmetric(
-            horizontal: _kSegPadH, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: _kSegPadH, vertical: 7),
         child: Text(
           label,
           maxLines: 1,
@@ -159,7 +198,14 @@ class _SegButton extends StatelessWidget {
           style: TextStyle(
             fontSize: _kSegFontSize,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? context.accent.onAccent : context.colors.muted,
+            color: switch ((selected, onTap == null)) {
+              // Faded, not merely muted: `muted` is what an ORDINARY
+              // unselected segment is, so reusing it would make "you cannot
+              // pick this" and "you have not picked this" the same picture.
+              (_, true) => context.colors.muted.withValues(alpha: 0.38),
+              (true, _) => context.accent.onAccent,
+              (false, _) => context.colors.muted,
+            },
           ),
         ),
       ),
@@ -221,20 +267,25 @@ class FilterChip2 extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: _kChipPadH, vertical: 7),
+          horizontal: _kChipPadH,
+          vertical: 7,
+        ),
         decoration: BoxDecoration(
           color: on ? context.accent.accent : context.colors.panel2,
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          border:
-              Border.all(color: on ? Colors.transparent : context.colors.line),
+          border: Border.all(
+            color: on ? Colors.transparent : context.colors.line,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon,
-                  size: _kChipIconSize,
-                  color: on ? context.accent.onAccent : context.colors.text),
+              Icon(
+                icon,
+                size: _kChipIconSize,
+                color: on ? context.accent.onAccent : context.colors.text,
+              ),
               const SizedBox(width: _kChipIconGap),
             ],
             Text(
@@ -290,9 +341,10 @@ class SettingsRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 13, color: context.colors.text)),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 13, color: context.colors.text),
+                ),
                 if (sub != null) ...[
                   const SizedBox(height: 3),
                   Text(
@@ -300,8 +352,9 @@ class SettingsRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10.5,
                       height: 1.5,
-                      color:
-                          subHighlight ? context.accent.accent : context.colors.muted,
+                      color: subHighlight
+                          ? context.accent.accent
+                          : context.colors.muted,
                     ),
                   ),
                 ],
@@ -352,12 +405,20 @@ class SettingsLinkRow extends StatelessWidget {
             Icon(icon, size: 15, color: context.accent.accentSecondary),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(label,
-                  style: TextStyle(fontSize: 13, color: context.accent.accentSecondary)),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.accent.accentSecondary,
+                ),
+              ),
             ),
             trailing ??
-                Icon(Icons.chevron_right,
-                    size: 16, color: context.colors.muted),
+                Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: context.colors.muted,
+                ),
           ],
         ),
       ),

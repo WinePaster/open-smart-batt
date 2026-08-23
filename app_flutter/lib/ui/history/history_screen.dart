@@ -149,11 +149,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
     if (!mounted) {
       return const _HistoryData(
-          rows: [],
-          buckets: [],
-          stats: HistoryStats.empty,
-          total: 0,
-          bucketMs: kHistoryListBucketMs);
+        rows: [],
+        buckets: [],
+        stats: HistoryStats.empty,
+        total: 0,
+        bucketMs: kHistoryListBucketMs,
+      );
     }
     // The picker sits OUTSIDE the FutureBuilder so that it does not blink out
     // on every range change — which also means the future completing does not
@@ -177,25 +178,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final extent = await tele.historyExtent(deviceId: scoped);
       if (!mounted) {
         return const _HistoryData(
-            rows: [],
-            buckets: [],
-            stats: HistoryStats.empty,
-            total: 0,
-            bucketMs: kHistoryListBucketMs);
+          rows: [],
+          buckets: [],
+          stats: HistoryStats.empty,
+          total: 0,
+          bucketMs: kHistoryListBucketMs,
+        );
       }
       setState(() {
         _extent = extent;
         _extentFor = scoped;
       });
     }
-    final slice = await loadHistorySlice(tele,
-        since: since, until: until, deviceId: scoped);
+    final slice = await loadHistorySlice(
+      tele,
+      since: since,
+      until: until,
+      deviceId: scoped,
+    );
     return _HistoryData(
-        rows: slice.rows,
-        buckets: slice.buckets,
-        stats: slice.stats,
-        total: total,
-        bucketMs: slice.bucketMs);
+      rows: slice.rows,
+      buckets: slice.buckets,
+      stats: slice.stats,
+      total: total,
+      bucketMs: slice.bucketMs,
+    );
   }
 
   /// The far end of what the landscape page may pan to, or null when there is
@@ -213,7 +220,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _reload() => setState(() => _future = _load());
 
-  void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
+  /// 🔵 **[HistoryRange.custom] opens the picker instead of selecting.**
+  /// design 0083 Q1 was re-ruled 2026-08-24 (see [_toolbar]) and this is where
+  /// the fourth segment stops being like the other three: the preset segments
+  /// ARE the selection, while "custom" is a request for two dates that the
+  /// user has not given yet.
+  ///
+  /// ⚠️ Re-tapping it while a custom range is already in force re-opens the
+  /// sheet on the CURRENT span (`initial:` below) rather than doing nothing —
+  /// a selected segment that ignores taps is how a user with the wrong month
+  /// showing gets stuck.
+  void _setRange(HistoryRange r) => r == HistoryRange.custom
+      ? _pickCustomRange()
+      : _select(HistoryRangeSel.preset(r));
 
   /// Open the date picker — see the device page's twin.
   Future<void> _pickCustomRange() async {
@@ -337,25 +356,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     Padding(
                       padding: EdgeInsets.only(top: 80),
                       child: Center(
-                        child:
-                            CircularProgressIndicator(color: context.accent.accent),
+                        child: CircularProgressIndicator(
+                          color: context.accent.accent,
+                        ),
                       ),
                     ),
                   );
                 }
                 if (snap.hasError) {
                   return _scrollable(
-                      _message(l10n.historyLoadFailed('${snap.error}')));
+                    _message(l10n.historyLoadFailed('${snap.error}')),
+                  );
                 }
-                final data = snap.data ??
+                final data =
+                    snap.data ??
                     const _HistoryData(
-                        rows: [],
-                        buckets: [],
-                        stats: HistoryStats.empty,
-                        total: 0,
-                        bucketMs: kHistoryListBucketMs);
-                final listRows =
-                    _applyWarning(data.rows, ov: ov, uv: uv, ot: ot);
+                      rows: [],
+                      buckets: [],
+                      stats: HistoryStats.empty,
+                      total: 0,
+                      bucketMs: kHistoryListBucketMs,
+                    );
+                final listRows = _applyWarning(
+                  data.rows,
+                  ov: ov,
+                  uv: uv,
+                  ot: ot,
+                );
                 final chartEmpty = data.buckets.length < 2;
                 if (data.rows.isEmpty && chartEmpty) {
                   return _scrollable(_message(_emptyText(data.rows.length)));
@@ -381,14 +408,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         onExpand: _expandTarget(data.stats) == null
                             ? null
                             : () => showHistoryChartPage(
-                                  context,
-                                  deviceId: _deviceId,
-                                  title: deviceLabelFor(devices, _deviceId,
-                                      facts: facts),
-                                  tempUnit: tempUnit,
-                                  dataFrom: data.stats.firstAt!,
-                                  dataTo: _expandTarget(data.stats)!,
+                                context,
+                                deviceId: _deviceId,
+                                title: deviceLabelFor(
+                                  devices,
+                                  _deviceId,
+                                  facts: facts,
                                 ),
+                                tempUnit: tempUnit,
+                                dataFrom: data.stats.firstAt!,
+                                dataTo: _expandTarget(data.stats)!,
+                              ),
                       ),
                     ),
                     _actionRow(),
@@ -408,15 +438,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               child: Text(
                                 l10n.historyListMinuteNote,
                                 style: TextStyle(
-                                    fontSize: 10.5, color: context.colors.muted),
+                                  fontSize: 10.5,
+                                  color: context.colors.muted,
+                                ),
                               ),
                             ),
                             for (final r in listRows)
                               HistoryRow(
                                 row: r,
                                 tempUnit: tempUnit,
-                                status: historyClassifyRow(r,
-                                    ov: ov, uv: uv, ot: ot),
+                                status: historyClassifyRow(
+                                  r,
+                                  ov: ov,
+                                  uv: uv,
+                                  ot: ot,
+                                ),
                                 // design 0074. EVERY row, not only the ones
                                 // with seconds in them (Q3): the sheet is
                                 // where "this minute predates per-second
@@ -492,9 +528,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// exactly for the owner who needs it would be the worst possible place to
   /// lose it.
   Widget _actionRow() => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Align(alignment: Alignment.centerRight, child: _actions()),
-      );
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Align(alignment: Alignment.centerRight, child: _actions()),
+  );
 
   Widget _actions() {
     final l10n = AppLocalizations.of(context);
@@ -513,7 +549,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: context.accent.accent),
+                  strokeWidth: 2,
+                  color: context.accent.accent,
+                ),
               ),
             ),
           )
@@ -535,7 +573,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// The range picker, alone on its line.
+  /// The range picker, alone on its line — and since 2026-08-24 the WHOLE of
+  /// it: the calendar button that shared this line became the fourth segment.
+  ///
   ///
   /// 🔴 It used to share the line with the two actions, and the measured
   /// breakpoint below is why: on a 320 pt phone the one-line form needed
@@ -551,30 +591,45 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 8, 15, 8),
-      // 🔵 **design 0083 案 C.** This row has nothing else on it to collapse,
-      // so the control goes from 290 px to 244 on a 320 pt phone. Measured
-      // against the four text scales the narrow-screen test uses, that costs
-      // English its headroom at 1.15× — which is why `historyRangeWeek` was
-      // shortened to "7d" in the same change (225.5 px ⇒ 180.5 at 1.0×).
-      child: Row(
-        children: [
-          Expanded(
-            child: SegmentedControl<HistoryRange>(
-              selected: _sel.kind,
-              onChanged: _setRange,
-              options: <({HistoryRange value, String label})>[
-                (value: HistoryRange.today, label: l10n.historyRangeToday),
-                (value: HistoryRange.week, label: l10n.historyRangeWeek),
-                (value: HistoryRange.all, label: l10n.historyRangeAll),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          HistoryCustomRangeButton(
-            active: _sel.isCustom,
-            enabled: _extent != null && (_extent!.count) > 0,
-            onPressed: _pickCustomRange,
-          ),
+      // 🔵 **design 0083 Q1 RE-RULED 2026-08-24: 案 C ⇒ 案 A.** Owner, verbatim:
+      // 「我以為你要把歷史紀錄的日期區間的設定按鈕 放在 今天/近7天/全部的右邊
+      // 放一個自訂」. 案 C put a bare calendar `IconButton` there instead, and
+      // a glyph whose only label is a long-press tooltip does not read as a
+      // fourth choice in the same group as the other three.
+      //
+      // 🔑 Giving the segment back its label costs NOTHING here, and that is
+      // the arithmetic 案 C got wrong: the button it replaces was eating
+      // `6 + 40` px of this very row, so the control goes 244 px ⇒ **290 px**
+      // — the whole line, exactly what it had before design 0083 touched it.
+      // Measured 2026-08-24 with `segmentedControlNaturalWidth`, 320 pt:
+      // zh four segments need 211.0 / 229.1 / 247.3 / 265.4 at the four text
+      // scales this repo tests ⇒ ✅ every one of them.
+      //
+      // ⚠️ English four segments need 266.0 at 1.0× (✅) and 292.4 at 1.15×,
+      // which is 2.4 px over — a KNOWN, logged limit, not an oversight. Unlike
+      // the detail row there is nothing else on this line to move to a second
+      // one, so the fallback there does not exist here; the failure is an
+      // ellipsis, not a missing segment (design 0083 §1.5①).
+      child: SegmentedControl<HistoryRange>(
+        selected: _sel.kind,
+        onChanged: _setRange,
+        // 🔴 Disabled rather than absent when the unit has no records. A
+        // segment that comes and goes would move the other three under the
+        // user's finger the moment a first row lands.
+        //
+        // ⚠️ `|| _sel.isCustom` because a SELECTED segment that is also inert
+        // is a trap: the user would be looking at a custom range with no way
+        // back into the sheet to change it. If a span is in force there was
+        // data to pick it from, whatever the extent query says now.
+        disabled: (_extent != null && _extent!.count > 0) || _sel.isCustom
+            ? const {}
+            : const {HistoryRange.custom},
+        disabledTooltip: l10n.historyCustomRangeNoData,
+        options: <({HistoryRange value, String label})>[
+          (value: HistoryRange.today, label: l10n.historyRangeToday),
+          (value: HistoryRange.week, label: l10n.historyRangeWeek),
+          (value: HistoryRange.all, label: l10n.historyRangeAll),
+          (value: HistoryRange.custom, label: l10n.historyRangeCustom),
         ],
       ),
     );
@@ -629,20 +684,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _scrollable(Widget child) => ListView(
-        padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
-        children: [_actionRow(), child],
-      );
+    padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
+    children: [_actionRow(), child],
+  );
 
   Widget _message(String text) => Padding(
-        padding: const EdgeInsets.only(top: 70),
-        child: Center(
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: context.colors.muted),
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(top: 70),
+    child: Center(
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12.5, color: context.colors.muted),
+      ),
+    ),
+  );
 
   /// [loaded] is how many windows the query actually returned — see the
   /// warnings branch.
@@ -748,9 +803,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     double? ov,
     double? uv,
     double? ot,
-  }) =>
-      historyApplyWarningFilter(rows,
-          warningOnly: _warningOnly, ov: ov, uv: uv, ot: ot);
+  }) => historyApplyWarningFilter(
+    rows,
+    warningOnly: _warningOnly,
+    ov: ov,
+    uv: uv,
+    ot: ot,
+  );
 }
 
 /// The "warnings only" filter, as one function both surfaces call.
@@ -768,9 +827,11 @@ List<HistoryListRow> historyApplyWarningFilter(
 }) {
   if (!warningOnly) return rows;
   return rows
-      .where((r) =>
-          historyClassifyRow(r, ov: ov, uv: uv, ot: ot) !=
-          HistoryRowStatus.normal)
+      .where(
+        (r) =>
+            historyClassifyRow(r, ov: ov, uv: uv, ot: ot) !=
+            HistoryRowStatus.normal,
+      )
       .toList(growable: false);
 }
 
@@ -865,8 +926,9 @@ class _DeviceScopeMenuState extends State<_DeviceScopeMenu> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final label =
-        widget.options.firstWhere((o) => o.id == widget.selected).label;
+    final label = widget.options
+        .firstWhere((o) => o.id == widget.selected)
+        .label;
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -914,7 +976,8 @@ class _DeviceScopeMenuState extends State<_DeviceScopeMenu> {
             // The WHOLE row, icon included — that is also what makes the anchor
             // rect the full width of the card's content box, which is what the
             // menu aligns itself to.
-            onTap: () => controller.isOpen ? controller.close() : controller.open(),
+            onTap: () =>
+                controller.isOpen ? controller.close() : controller.open(),
             child: SizedBox(
               height: _kScopeRowHeight,
               child: Row(
@@ -984,8 +1047,9 @@ class _DeviceScopeMenuItem extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w400,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                         color: selected ? context.accent.accent : colors.text,
                       ),
                     ),
@@ -1105,11 +1169,11 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   /// of them there are — the x axis is time, so where a point lands depends on
   /// when it was recorded.
   HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
-        width: width,
-        hasTemp: _hasTemp,
-        buckets: widget.buckets,
-        bucketMs: widget.bucketMs,
-      );
+    width: width,
+    hasTemp: _hasTemp,
+    buckets: widget.buckets,
+    bucketMs: widget.bucketMs,
+  );
 
   /// The bucket the pointer went down on, and whether it was ALREADY the
   /// selected one — the two facts `onTapUp` needs to decide whether this tap
@@ -1201,15 +1265,20 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           SizedBox(
             height: widget.stats.count > 0 ? 64 : 120,
             child: Center(
-              child: Text(l10n.historyChartInsufficientData,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: context.colors.muted)),
+              child: Text(
+                l10n.historyChartInsufficientData,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: context.colors.muted),
+              ),
             ),
           ),
           if (widget.stats.count > 0) ...[
             const SizedBox(height: 10),
             _StatsStrip(
-                stats: widget.stats, tempUnit: widget.tempUnit, hasTemp: hasTemp),
+              stats: widget.stats,
+              tempUnit: widget.tempUnit,
+              hasTemp: hasTemp,
+            ),
           ],
         ],
       );
@@ -1221,18 +1290,25 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _LegendDot(color: context.accent.accent, label: l10n.historyLegendVoltage),
+            _LegendDot(
+              color: context.accent.accent,
+              label: l10n.historyLegendVoltage,
+            ),
             if (hasTemp) ...[
               const SizedBox(width: 16),
               _LegendDot(
-                  color: context.accent.accentSecondary, label: l10n.historyLegendTemperature),
+                color: context.accent.accentSecondary,
+                label: l10n.historyLegendTemperature,
+              ),
             ],
             // FB-74. Unlabelled shading reads as a rendering flourish; this is
             // the one thing on the chart that says an instantaneous event is
             // visible at all, so it gets a legend entry rather than a footnote.
             const SizedBox(width: 16),
             _LegendBand(
-                color: context.accent.accent, label: l10n.historyLegendRange),
+              color: context.accent.accent,
+              label: l10n.historyLegendRange,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -1332,8 +1408,10 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                       tooltip: l10n.historyChartExpand,
                       // 40x40 floor — FB-70 is the entry that cost this
                       // project a user who could not hit a 14x14 control.
-                      constraints:
-                          const BoxConstraints(minWidth: 40, minHeight: 40),
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
                       padding: EdgeInsets.zero,
                       color: context.colors.muted,
                     ),
@@ -1341,13 +1419,21 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           ],
         ),
         const SizedBox(height: 10),
-        _StatsStrip(stats: widget.stats, tempUnit: widget.tempUnit, hasTemp: hasTemp),
+        _StatsStrip(
+          stats: widget.stats,
+          tempUnit: widget.tempUnit,
+          hasTemp: hasTemp,
+        ),
       ],
     );
   }
 
-  Widget _detail(BuildContext context, AppLocalizations l10n, HistoryBucket b,
-      bool hasTemp) {
+  Widget _detail(
+    BuildContext context,
+    AppLocalizations l10n,
+    HistoryBucket b,
+    bool hasTemp,
+  ) {
     final fmt = DateFormat(widget.multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
     // FB-74: the temperature half of this line used to be the mean alone, while
@@ -1360,8 +1446,8 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     final tempStr = b.avgTemp == null
         ? null
         : (tLo == null || tHi == null)
-            ? '${t(b.avgTemp!)}$u'
-            : '${t(b.avgTemp!)}$u (${t(tLo)}–${t(tHi)}$u)';
+        ? '${t(b.avgTemp!)}$u'
+        : '${t(b.avgTemp!)}$u (${t(tLo)}–${t(tHi)}$u)';
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -1376,11 +1462,14 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(fmt.format(b.at),
-                    style: AppTextStyles.mono(context).copyWith(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: context.colors.text)),
+                Text(
+                  fmt.format(b.at),
+                  style: AppTextStyles.mono(context).copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.text,
+                  ),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   '${l10n.historyLegendVoltage} ${v(b.avgPvlt)}V '
@@ -1392,8 +1481,10 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(l10n.historyDetailSamples(b.count),
-              style: TextStyle(fontSize: 10, color: context.colors.muted)),
+          Text(
+            l10n.historyDetailSamples(b.count),
+            style: TextStyle(fontSize: 10, color: context.colors.muted),
+          ),
           const SizedBox(width: 6),
           InkWell(
             onTap: () => setState(() => _selected = null),
@@ -1415,12 +1506,15 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
         const SizedBox(width: 5),
-        Text(label,
-            style: TextStyle(fontSize: 10.5, color: context.colors.muted)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10.5, color: context.colors.muted),
+        ),
       ],
     );
   }
@@ -1447,16 +1541,21 @@ class _LegendBand extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 5),
-        Text(label,
-            style: TextStyle(fontSize: 10.5, color: context.colors.muted)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10.5, color: context.colors.muted),
+        ),
       ],
     );
   }
 }
 
 class _StatsStrip extends StatelessWidget {
-  const _StatsStrip(
-      {required this.stats, required this.tempUnit, required this.hasTemp});
+  const _StatsStrip({
+    required this.stats,
+    required this.tempUnit,
+    required this.hasTemp,
+  });
   final HistoryStats stats;
   final TempUnit tempUnit;
   final bool hasTemp;
@@ -1470,40 +1569,55 @@ class _StatsStrip extends StatelessWidget {
         : '${historyDisplayTemp(x, tempUnit).toStringAsFixed(0)}${historyTempUnitLabel(tempUnit)}';
     return Column(
       children: [
-        _statRow(context, context.accent.accent, l10n.historyLegendVoltage,
-            min: v(stats.minPvlt),
-            avg: v(stats.avgPvlt),
-            max: v(stats.maxPvlt),
-            l10n: l10n),
+        _statRow(
+          context,
+          context.accent.accent,
+          l10n.historyLegendVoltage,
+          min: v(stats.minPvlt),
+          avg: v(stats.avgPvlt),
+          max: v(stats.maxPvlt),
+          l10n: l10n,
+        ),
         if (hasTemp) ...[
           const SizedBox(height: 6),
-          _statRow(context, context.accent.accentSecondary, l10n.historyLegendTemperature,
-              min: t(stats.minTemp),
-              avg: t(stats.avgTemp),
-              max: t(stats.maxTemp),
-              l10n: l10n),
+          _statRow(
+            context,
+            context.accent.accentSecondary,
+            l10n.historyLegendTemperature,
+            min: t(stats.minTemp),
+            avg: t(stats.avgTemp),
+            max: t(stats.maxTemp),
+            l10n: l10n,
+          ),
         ],
       ],
     );
   }
 
-  Widget _statRow(BuildContext context, Color accent, String title,
-      {required String min,
-      required String avg,
-      required String max,
-      required AppLocalizations l10n}) {
+  Widget _statRow(
+    BuildContext context,
+    Color accent,
+    String title, {
+    required String min,
+    required String avg,
+    required String max,
+    required AppLocalizations l10n,
+  }) {
     return Row(
       children: [
         Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(right: 7),
-            decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+          width: 8,
+          height: 8,
+          margin: const EdgeInsets.only(right: 7),
+          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+        ),
         SizedBox(
           width: 56,
-          child: Text(title,
-              style: TextStyle(fontSize: 10.5, color: context.colors.muted),
-              overflow: TextOverflow.ellipsis),
+          child: Text(
+            title,
+            style: TextStyle(fontSize: 10.5, color: context.colors.muted),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         Expanded(child: _stat(context, l10n.historyStatMin, min)),
         Expanded(child: _stat(context, l10n.historyStatAvg, avg)),
@@ -1516,11 +1630,16 @@ class _StatsStrip extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: TextStyle(fontSize: 8.5, color: context.colors.muted)),
-        Text(value,
-            style: AppTextStyles.mono(context)
-                .copyWith(fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 8.5, color: context.colors.muted),
+        ),
+        Text(
+          value,
+          style: AppTextStyles.mono(
+            context,
+          ).copyWith(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
@@ -1553,7 +1672,10 @@ class _StatsStrip extends StatelessWidget {
 /// PUBLIC so a test can call it without pumping the whole screen; the widget
 /// test that proves the row actually renders it lives beside it.
 String? historyCurrentBit(
-    AppLocalizations l10n, ProductClass cls, double amps) {
+  AppLocalizations l10n,
+  ProductClass cls,
+  double amps,
+) {
   if (cls == ProductClass.supercapacitor) return null;
   if (cls == ProductClass.unknown) {
     return l10n.historyRowCurrent(amps.toStringAsFixed(1));
@@ -1588,8 +1710,9 @@ String? historyCurrentBit(
   // STANDBY. `powerFlowOf` is called with no flags, which is exactly its
   // documented pre-veto behaviour; widening the band here instead would be a
   // second derivation, which is the thing this comment exists to forbid.
-  final flow =
-      cls == ProductClass.powerBank ? powerFlowOf(shown) : packFlowOf(shown);
+  final flow = cls == ProductClass.powerBank
+      ? powerFlowOf(shown)
+      : packFlowOf(shown);
   // Its own vocabulary too. Nothing new was coined for this: `powerBankDirection*`
   // has been on the SOC dial and the energy-path row since design 0037. Sharing
   // ONE set of keys across the families would mean a wording change made for a
@@ -1606,7 +1729,9 @@ String? historyCurrentBit(
           PowerFlow.idle || PowerFlow.unknown => l10n.packDirectionIdle,
         };
   return l10n.historyRowCurrentDirected(
-      shown.abs().toStringAsFixed(1), direction);
+    shown.abs().toStringAsFixed(1),
+    direction,
+  );
 }
 
 /// One display window as a list row.
@@ -1692,12 +1817,12 @@ class HistoryRow extends StatelessWidget {
               // 2026-08-19). Inside the drill-down a row is ONE SECOND's
               // measurement, so neither reason applies. Read [showSeconds]
               // before concluding this screen prints seconds anywhere else.
-              DateFormat(showSeconds ? 'HH:mm:ss' : 'HH:mm')
-                  .format(sample.timestamp),
-              style: AppTextStyles.mono(context).copyWith(
-                fontSize: 10.5,
-                color: context.colors.muted,
-              ),
+              DateFormat(
+                showSeconds ? 'HH:mm:ss' : 'HH:mm',
+              ).format(sample.timestamp),
+              style: AppTextStyles.mono(
+                context,
+              ).copyWith(fontSize: 10.5, color: context.colors.muted),
             ),
           ),
           const SizedBox(width: 12),
@@ -1705,14 +1830,16 @@ class HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_primaryLine(),
-                    style: AppTextStyles.mono(context)
-                        .copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(
+                  _primaryLine(),
+                  style: AppTextStyles.mono(
+                    context,
+                  ).copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   _subLine(l10n),
-                  style:
-                      TextStyle(fontSize: 10.5, color: context.colors.muted),
+                  style: TextStyle(fontSize: 10.5, color: context.colors.muted),
                 ),
               ],
             ),
@@ -1722,8 +1849,11 @@ class HistoryRow extends StatelessWidget {
           if (tap != null)
             Padding(
               padding: const EdgeInsets.only(left: 2),
-              child: Icon(Icons.chevron_right,
-                  size: 16, color: context.colors.muted),
+              child: Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: context.colors.muted,
+              ),
             ),
         ],
       ),
