@@ -859,10 +859,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyRangeToday => 'Today';
 
   @override
-  String get historyRangeWeek => '7 days';
+  String get historyRangeWeek => '7d';
 
   @override
   String get historyRangeAll => 'All';
+
+  @override
+  String get historyRangeCustom => 'Custom';
+
+  @override
+  String get historyCustomRangeTitle => 'Select time range';
+
+  @override
+  String get historyCustomRangeFrom => 'From';
+
+  @override
+  String get historyCustomRangeTo => 'To';
+
+  @override
+  String get historyCustomRangeApply => 'Apply';
+
+  @override
+  String historyCustomRangeLabel(String from, String to) {
+    return '$from – $to';
+  }
+
+  @override
+  String get historyCustomRangeNoData => 'No records for this unit yet';
+
+  @override
+  String get deviceHistoryMore => 'More';
 
   @override
   String get historyLegendVoltage => 'Voltage';

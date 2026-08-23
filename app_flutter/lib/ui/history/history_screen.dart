@@ -28,6 +28,7 @@ import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'custom_range_sheet.dart';
 import 'history_chart_core.dart';
 import 'history_chart_page.dart';
 import 'history_query.dart';
@@ -75,6 +76,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// 2026-08-23): leaving this screen resets it, and the detail page keeps its
   /// own.
   HistoryRangeSel _sel = HistoryRangeSel.initial;
+
+  /// The SCOPED unit's full span — the calendar's bounds and the button's
+  /// enabled state (design 0083 §3.3.4). See the device page's twin; loaded
+  /// once per unit, and the picker above this screen can change which unit
+  /// that is.
+  HistoryStats? _extent;
+  String? _extentFor;
   bool _warningOnly = false;
   bool _exporting = false;
 
@@ -163,6 +171,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Same three, same order, same arguments as before — the change is that
     // the detail page's tab can no longer drift from them, which is what
     // design 0065 §6 R5 had only a comment to enforce.
+    // 🔑 Once per unit, and the device picker is what changes the unit. Not
+    // one of "the three" — see [TelemetryController.historyExtent].
+    if (_extentFor != scoped) {
+      final extent = await tele.historyExtent(deviceId: scoped);
+      if (!mounted) {
+        return const _HistoryData(
+            rows: [],
+            buckets: [],
+            stats: HistoryStats.empty,
+            total: 0,
+            bucketMs: kHistoryListBucketMs);
+      }
+      setState(() {
+        _extent = extent;
+        _extentFor = scoped;
+      });
+    }
     final slice = await loadHistorySlice(tele,
         since: since, until: until, deviceId: scoped);
     return _HistoryData(
@@ -190,6 +215,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _setRange(HistoryRange r) => _select(HistoryRangeSel.preset(r));
 
+  /// Open the date picker — see the device page's twin.
+  Future<void> _pickCustomRange() async {
+    final e = _extent;
+    if (e?.firstAt == null || e?.lastAt == null) return;
+    final picked = await showCustomRangeSheet(
+      context,
+      firstData: e!.firstAt!,
+      lastData: e.lastAt!,
+      initial: _sel.isCustom ? _sel : null,
+    );
+    if (picked != null) _select(picked);
+  }
+
   /// 🔑 The ONE way the selection changes — presets and (from S3) the custom
   /// picker both come through here, so neither can forget to re-query.
   void _select(HistoryRangeSel next) {
@@ -206,6 +244,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (id == _deviceId) return;
     setState(() {
       _deviceId = id;
+      // 🔴 Dropped with the unit — see the device page's twin. Otherwise the
+      // calendar would briefly offer the previous unit's dates as this one's.
+      _extent = null;
+      _extentFor = null;
       _future = _load();
     });
   }
@@ -326,6 +368,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       heading: framing.heading,
                       headingIcon: Icons.show_chart,
                       child: HistoryTrendCard(
+                        sel: _sel,
                         buckets: data.buckets,
                         stats: data.stats,
                         tempUnit: tempUnit,
@@ -508,13 +551,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 8, 15, 8),
-      child: SegmentedControl<HistoryRange>(
-        selected: _sel.kind,
-        onChanged: _setRange,
-        options: <({HistoryRange value, String label})>[
-          (value: HistoryRange.today, label: l10n.historyRangeToday),
-          (value: HistoryRange.week, label: l10n.historyRangeWeek),
-          (value: HistoryRange.all, label: l10n.historyRangeAll),
+      // 🔵 **design 0083 案 C.** This row has nothing else on it to collapse,
+      // so the control goes from 290 px to 244 on a 320 pt phone. Measured
+      // against the four text scales the narrow-screen test uses, that costs
+      // English its headroom at 1.15× — which is why `historyRangeWeek` was
+      // shortened to "7d" in the same change (225.5 px ⇒ 180.5 at 1.0×).
+      child: Row(
+        children: [
+          Expanded(
+            child: SegmentedControl<HistoryRange>(
+              selected: _sel.kind,
+              onChanged: _setRange,
+              options: <({HistoryRange value, String label})>[
+                (value: HistoryRange.today, label: l10n.historyRangeToday),
+                (value: HistoryRange.week, label: l10n.historyRangeWeek),
+                (value: HistoryRange.all, label: l10n.historyRangeAll),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          HistoryCustomRangeButton(
+            active: _sel.isCustom,
+            enabled: _extent != null && (_extent!.count) > 0,
+            onPressed: _pickCustomRange,
+          ),
         ],
       ),
     );
@@ -985,6 +1045,7 @@ class HistoryTrendCard extends StatefulWidget {
     required this.tempUnit,
     required this.multiDay,
     required this.bucketMs,
+    this.sel,
     this.onExpand,
   });
 
@@ -992,6 +1053,14 @@ class HistoryTrendCard extends StatefulWidget {
   final HistoryStats stats;
   final TempUnit tempUnit;
   final bool multiDay;
+
+  /// What the user selected, so the card can name a custom span
+  /// (design 0083 §3.3.5).
+  ///
+  /// 🔑 In the CARD, like the expand button and for the same reason: both
+  /// landing sites get it from one edit. Null (or a preset) draws nothing —
+  /// the three existing ranges keep exactly the layout height they had.
+  final HistoryRangeSel? sel;
 
   /// How wide one point is. Design 0061 T10: it ranges from 1 minute to 24
   /// hours depending on the span, and the screen used to say only how many
@@ -1232,6 +1301,11 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         // The note stays centred on the CARD, not on the space left of the
         // button: two `Spacer`s, so adding or removing the button never moves
         // the sentence.
+        // 🔵 **Its own line, above the note** (design 0083 §3.3.5). The row
+        // below is a fixed three-column layout that has already overflowed once
+        // when its middle `Text` could not wrap — see the comment inside it.
+        // Appending the dates there would be re-running that.
+        if (widget.sel != null) HistoryCustomRangeLine(sel: widget.sel!),
         Row(
           children: [
             // 🔴 A fixed 40 on the left, matching the button's box on the

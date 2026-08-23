@@ -518,6 +518,24 @@ class TelemetryController extends ChangeNotifier
           deviceId: deviceId,
           attributedOnly: true);
 
+  /// The FULL span this unit has rows for, ignoring any selected range.
+  ///
+  /// 🔵 **A fourth question, added by design 0083 S3 — deliberately not part of
+  /// [loadHistorySlice].** The three in there answer "what is in the selected
+  /// range"; this one answers "what is there to select from", which is what the
+  /// date picker's first/last day and the calendar button's enabled state need.
+  /// Folding it into the slice would make every range change pay for it.
+  ///
+  /// 🔑 It goes straight to [HistoryRepo.aggregate] rather than through
+  /// [historyStats] so that the surfaces' "the three queries run exactly once"
+  /// invariant keeps counting the three it is about
+  /// (`device_history_tab_test.dart` T79-S0). Callers issue this ONCE PER UNIT,
+  /// not per range.
+  ///
+  /// Attributed rows only, for [historyStats]' reason.
+  Future<HistoryStats> historyExtent({String? deviceId}) =>
+      _history.aggregate(deviceId: deviceId, attributedOnly: true);
+
   /// Rows in range that were recorded before the unit was identified.
   ///
   /// The export header's, not the screen's — see
