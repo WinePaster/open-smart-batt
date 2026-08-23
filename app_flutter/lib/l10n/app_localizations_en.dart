@@ -1008,6 +1008,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historySecondsEmpty => 'No readings stored for this minute.';
 
   @override
+  String get historyChartExpand => 'Expand chart';
+
+  @override
+  String historyChartGapMinutes(num count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.compact(
+      locale: localeName,
+    );
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Not connected for $countString minutes',
+      one: 'Not connected for 1 minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historyChartGapHours(num count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.compact(
+      locale: localeName,
+    );
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Not connected for $countString hours',
+      one: 'Not connected for 1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String historyChartBucketMinutes(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

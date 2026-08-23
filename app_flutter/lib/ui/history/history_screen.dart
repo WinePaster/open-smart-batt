@@ -29,6 +29,7 @@ import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
 import 'history_chart_core.dart';
+import 'history_chart_page.dart';
 import 'history_query.dart';
 import 'minute_seconds_sheet.dart';
 
@@ -161,6 +162,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
         stats: slice.stats,
         total: total,
         bucketMs: slice.bucketMs);
+  }
+
+  /// The far end of what the landscape page may pan to, or null when there is
+  /// nothing to expand into.
+  ///
+  /// 🔴 **Null when the recording has no width**: a unit whose rows all fall
+  /// inside one instant would open a page whose window is zero milliseconds
+  /// wide, and every division in [HistoryChartWindow] would be against that.
+  /// Hiding the button is the honest answer — there is nothing to zoom.
+  DateTime? _expandTarget(HistoryStats stats) {
+    final a = stats.firstAt, b = stats.lastAt;
+    if (a == null || b == null) return null;
+    return b.difference(a).inMilliseconds < kHistoryListBucketMs ? null : b;
   }
 
   void _reload() => setState(() => _future = _load());
@@ -298,6 +312,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         tempUnit: tempUnit,
                         multiDay: framing.multiDay,
                         bucketMs: data.bucketMs,
+                        // 🔵 design 0081 S3. The card owns the BUTTON; this
+                        // owns the destination — including which unit and how
+                        // far back it may pan, both of which this screen has
+                        // already resolved and the card deliberately has not.
+                        onExpand: _expandTarget(data.stats) == null
+                            ? null
+                            : () => showHistoryChartPage(
+                                  context,
+                                  deviceId: _deviceId,
+                                  title: deviceLabelFor(devices, _deviceId,
+                                      facts: facts),
+                                  tempUnit: tempUnit,
+                                  dataFrom: data.stats.firstAt!,
+                                  dataTo: _expandTarget(data.stats)!,
+                                ),
                       ),
                     ),
                     _actionRow(),
@@ -937,6 +966,7 @@ class HistoryTrendCard extends StatefulWidget {
     required this.tempUnit,
     required this.multiDay,
     required this.bucketMs,
+    this.onExpand,
   });
 
   final List<HistoryBucket> buckets;
@@ -948,6 +978,17 @@ class HistoryTrendCard extends StatefulWidget {
   /// hours depending on the span, and the screen used to say only how many
   /// SAMPLES were behind a point — never how much TIME.
   final int bucketMs;
+
+  /// 🔵 **Q1 = E2 — the expand button, and where the destination lives.**
+  ///
+  /// The BUTTON is in this card (so both landing sites get it, identically,
+  /// from one edit); the PAGE it opens is the caller's business. That split is
+  /// why this is a callback and not a `deviceId`: the card stays a widget whose
+  /// every input is a plain value and which reads no provider, which is the
+  /// property that made it reusable at two sites in the first place.
+  ///
+  /// Null ⇒ no button. Tests that only care about the curve need not route.
+  final VoidCallback? onExpand;
 
   @override
   State<HistoryTrendCard> createState() => _HistoryTrendCardState();
@@ -1161,10 +1202,50 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         // moves between 1 minute and 24 hours with the range. At second
         // resolution the guess a reader would make is further out than ever.
         const SizedBox(height: 8),
-        Text(
-          _bucketWidthNote(l10n, widget.bucketMs),
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 10, color: context.colors.muted),
+        // 🔵 **Q1 = E2**: the footnote row is the "one more row under the chart"
+        // the owner asked for — and it already existed, INSIDE the shared
+        // widget. The two alternatives the owner also proposed were measured
+        // and rejected in design 0081 §4.1: the range row (D) overflows the
+        // detail page's segmented control by 20 px, silently clipping 「全部」;
+        // a row outside the card (E) exists on one landing site and not the
+        // other.
+        //
+        // The note stays centred on the CARD, not on the space left of the
+        // button: two `Spacer`s, so adding or removing the button never moves
+        // the sentence.
+        Row(
+          children: [
+            // 🔴 A fixed 40 on the left, matching the button's box on the
+            // right, so the note stays centred ON THE CARD whether or not the
+            // button is there. The first attempt used `Spacer` + `Expanded`
+            // and overflowed by 20 px the moment the English string ("Each
+            // point on the chart averages 1 minute") could not wrap — a Row
+            // does not give a `Text` the width to break in.
+            const SizedBox(width: 40),
+            Expanded(
+              child: Text(
+                historyBucketWidthNote(l10n, widget.bucketMs),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10, color: context.colors.muted),
+              ),
+            ),
+            SizedBox(
+              width: 40,
+              child: widget.onExpand == null
+                  ? null
+                  : IconButton(
+                      onPressed: widget.onExpand,
+                      icon: const Icon(Icons.open_in_full, size: 16),
+                      tooltip: l10n.historyChartExpand,
+                      // 40x40 floor — FB-70 is the entry that cost this
+                      // project a user who could not hit a 14x14 control.
+                      constraints:
+                          const BoxConstraints(minWidth: 40, minHeight: 40),
+                      padding: EdgeInsets.zero,
+                      color: context.colors.muted,
+                    ),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         _StatsStrip(stats: widget.stats, tempUnit: widget.tempUnit, hasTemp: hasTemp),
@@ -1229,19 +1310,6 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
       ),
     );
   }
-}
-
-/// "Each point on the chart averages N minutes / hours" — design 0061 T10.
-///
-/// Hours once the width reaches one, because "each point averages 1440 minutes"
-/// is a number nobody converts. Rounded to whole units: the width is derived
-/// from a span divided by a target point count, so it lands on values like
-/// 3.7 minutes, and a note reading "3.7 minutes" would be answering a precision
-/// question nobody asked.
-String _bucketWidthNote(AppLocalizations l10n, int bucketMs) {
-  final minutes = (bucketMs / 60000).round().clamp(1, 1 << 30);
-  if (minutes < 60) return l10n.historyChartBucketMinutes(minutes);
-  return l10n.historyChartBucketHours((minutes / 60).round().clamp(1, 1 << 30));
 }
 
 class _LegendDot extends StatelessWidget {

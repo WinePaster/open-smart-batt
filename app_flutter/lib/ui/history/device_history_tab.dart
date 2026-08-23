@@ -52,6 +52,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../data/data.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -59,6 +60,7 @@ import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'history_chart_page.dart';
 import 'history_screen.dart';
 import 'minute_seconds_sheet.dart';
 
@@ -402,6 +404,14 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   // rebuild simply never happens: the button looks wired, `_load` even runs and
   // returns the newer rows, and the screen does not change. Cost me a bisect;
   // `_setRange` above already had it right.
+  /// See `history_screen.dart`'s twin: null when the recording has no width,
+  /// so the button does not open a page with nothing to pan.
+  DateTime? _expandTo(HistoryStats stats) {
+    final a = stats.firstAt, b = stats.lastAt;
+    if (a == null || b == null) return null;
+    return b.difference(a).inMilliseconds < kHistoryListBucketMs ? null : b;
+  }
+
   void _refresh() {
     setState(() {
       _future = _load(force: true);
@@ -656,6 +666,22 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
               tempUnit: tempUnit,
               multiDay: framing.multiDay,
               bucketMs: data.bucketMs,
+              // 🔵 design 0081 S3 — the same button, the same page, from the
+              // one widget. This surface is already pinned to a unit, so there
+              // is no scope to resolve; only the title differs from the
+              // History tab's call.
+              onExpand: _expandTo(data.stats) == null
+                  ? null
+                  : () => showHistoryChartPage(
+                        context,
+                        deviceId: widget.deviceId,
+                        title: deviceLabelFor(
+                            context.read<DeviceController>(), widget.deviceId,
+                            facts: context.read<DeviceFactsController?>()),
+                        tempUnit: tempUnit,
+                        dataFrom: data.stats.firstAt!,
+                        dataTo: _expandTo(data.stats)!,
+                      ),
             ),
           ),
         ),

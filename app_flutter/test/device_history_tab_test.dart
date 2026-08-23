@@ -19,6 +19,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +38,7 @@ import 'package:open_smart_batt/ui/dashboard/power_bank_view.dart';
 import 'package:open_smart_batt/ui/dashboard/unidentified_view.dart';
 import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/history/device_history_tab.dart';
+import 'package:open_smart_batt/ui/history/history_chart_page.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/widgets/one_screen_report.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -135,10 +137,13 @@ class _CountingTelemetry extends TelemetryController {
 
   @override
   Future<List<HistoryBucket>> historyBuckets(
-      {DateTime? since, required int bucketMs, String? deviceId}) {
+      {DateTime? since,
+      DateTime? until,
+      required int bucketMs,
+      String? deviceId}) {
     buckets++;
-    return super
-        .historyBuckets(since: since, bucketMs: bucketMs, deviceId: deviceId);
+    return super.historyBuckets(
+        since: since, until: until, bucketMs: bucketMs, deviceId: deviceId);
   }
 
   @override
@@ -566,6 +571,92 @@ void main() {
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       final minutes = (expected / 60000).round();
       expect(find.text(l10n.historyChartBucketMinutes(minutes)), findsOneWidget);
+    });
+
+    testWidgets('T81-S3 — the expand button opens the landscape page, and the '
+        'page locks and restores the orientation', (tester) async {
+      // 🔵 design 0081 Q1 = E2 (the button lives in the shared card, at the
+      // right end of the bucket-width footnote) ＋ Q7 = A / Q7a = A1 (the page
+      // LOCKS landscape and is left by the back button alone).
+      //
+      // 🔴 The restore is the assertion that matters. It runs in `dispose`, not
+      // in the close button's callback, because the SYSTEM back gesture never
+      // reaches that callback — and an app left locked to landscape is the
+      // worst thing this feature can do to someone who just wanted to look at
+      // a chart.
+      final orientations = <List<String>>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') {
+          orientations.add(List<String>.from(call.arguments as List));
+        }
+        return null;
+      });
+      addTearDown(() => TestDefaultBinaryMessengerBinding
+          .instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+
+      await boot(tester);
+      await addRows(tester, unitA, vA, count: 40);
+      await pumpSection(tester, deviceId: unitA, live: false);
+
+      final button = find.byIcon(Icons.open_in_full);
+      expect(button, findsOneWidget, reason: 'the card must offer the door');
+      // FB-70's floor, restated where it can regress.
+      expect(tester.getSize(find.ancestor(
+              of: button, matching: find.byType(IconButton))).height,
+          greaterThanOrEqualTo(40));
+
+      await tester.tap(button);
+      await tester.pump();
+      // The page queries its window on the first frame; the same real-event-
+      // loop wait `pumpSection` needs, for the same reason.
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(HistoryChartPage), findsOneWidget);
+      expect(orientations.last, contains('DeviceOrientation.landscapeLeft'));
+
+      // Leave the way Q7a = A1 says one leaves.
+      final ctx = tester.element(find.byType(HistoryChartPage));
+      Navigator.of(ctx).pop();
+      // The route disposes only when its exit transition finishes, and the
+      // restore lives in `dispose` — so the assertion has to wait for the
+      // ANIMATION, not just for a frame.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 150));
+      }
+      expect(find.byType(HistoryChartPage), findsNothing);
+      expect(orientations.last, contains('DeviceOrientation.portraitUp'),
+          reason: 'leaving the page must put the app back in portrait');
+      await tester.runAsync(
+          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+    });
+
+    testWidgets('T81-S3b — no door when there is nothing to zoom into',
+        (tester) async {
+      // A recording narrower than one bucket would open a page whose window is
+      // zero milliseconds wide, and every division in `HistoryChartWindow`
+      // would be against that. Hiding the button is the honest answer.
+      await boot(tester);
+      await tester.runAsync(() async {
+        final now = DateTime.now();
+        for (var i = 0; i < 4; i++) {
+          await services.historyRepo.insertSample(
+            TelemetrySample(
+              timestamp: now.subtract(Duration(seconds: i)),
+              pvlt: vA,
+              temperatureC: 30,
+              mode: ReportedStatus.normal,
+            ),
+            deviceId: unitA,
+          );
+        }
+      });
+      await pumpSection(tester, deviceId: unitA, live: false);
+      expect(find.byIcon(Icons.open_in_full), findsNothing);
     });
 
     testWidgets('T65-12b — the width follows the DATA, not the clock (0081 S1)',

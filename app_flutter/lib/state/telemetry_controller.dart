@@ -476,10 +476,16 @@ class TelemetryController extends ChangeNotifier
   /// FB-38: [deviceId] must match whatever the list is showing. A chart and a
   /// list disagreeing about which unit they cover is worse than neither being
   /// filtered.
+  /// 🔵 [until] added by design 0081 S3 — the landscape chart asks for a
+  /// window, not "everything since". Null keeps the historical behaviour.
   Future<List<HistoryBucket>> historyBuckets(
-          {DateTime? since, required int bucketMs, String? deviceId}) =>
+          {DateTime? since,
+          DateTime? until,
+          required int bucketMs,
+          String? deviceId}) =>
       _history.queryBuckets(
           since: since,
+          until: until,
           bucketMs: bucketMs,
           deviceId: deviceId,
           attributedOnly: true);

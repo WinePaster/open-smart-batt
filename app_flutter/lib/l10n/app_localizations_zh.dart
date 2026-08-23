@@ -953,6 +953,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historySecondsEmpty => '這一分鐘沒有任何紀錄。';
 
   @override
+  String get historyChartExpand => '放大檢視';
+
+  @override
+  String historyChartGapMinutes(num count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.compact(
+      locale: localeName,
+    );
+    final String countString = countNumberFormat.format(count);
+
+    return '未連線 $countString 分鐘';
+  }
+
+  @override
+  String historyChartGapHours(num count) {
+    final intl.NumberFormat countNumberFormat = intl.NumberFormat.compact(
+      locale: localeName,
+    );
+    final String countString = countNumberFormat.format(count);
+
+    return '未連線 $countString 小時';
+  }
+
+  @override
   String historyChartBucketMinutes(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

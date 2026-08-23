@@ -102,8 +102,24 @@ const int kHistoryRowCap = 1000;
 /// one number once and it made both worse.
 const int kHistoryListBucketMs = 60000;
 
-/// How many points the chart aims for across the visible span.
+/// How many points the EMBEDDED chart aims for across the visible span.
 const int kHistoryTargetBucketPoints = 180;
+
+/// How many the FULL-SCREEN landscape chart aims for — design 0081 §3.4.2.
+///
+/// 🔴 A second CONSTANT, deliberately, but **not** a second derivation: it is
+/// passed to [historyChartBucketMs] like the other one. Two surfaces computing
+/// the width their own way is design 0065 §6 R5; two surfaces asking the one
+/// derivation for a different point count is just a wider screen.
+const int kHistoryLandscapeTargetPoints = 360;
+
+/// 🔵 **Q5a: the narrowest window the landscape chart will zoom to.**
+///
+/// The bucket floor is one minute (Q5 ruled 分鐘), so past this point zooming
+/// stops adding detail and only spreads the same points further apart — an
+/// 8-minute window is eight dots on a 780 px screen, which is LESS legible
+/// than the 30-minute one it came from, not more.
+const int kHistoryMinVisibleSpanMs = 30 * 60000;
 
 /// The cut-off for [r] — `null` for [HistoryRange.all], which has none.
 ///
@@ -150,12 +166,12 @@ DateTime? historySinceFor(HistoryRange r) {
 /// half of it: the width decides how much each plotted point averages, so two
 /// surfaces computing it "about the same way" would draw two different-looking
 /// charts from identical data (design 0065 §6 R5, pinned by `T65-12`).
-int historyChartBucketMs(DateTime? from, DateTime? to) {
+int historyChartBucketMs(DateTime? from, DateTime? to,
+    {int targetPoints = kHistoryTargetBucketPoints}) {
   final spanMs = (from == null || to == null)
       ? kHistoryListBucketMs
       : to.millisecondsSinceEpoch - from.millisecondsSinceEpoch;
-  return (spanMs ~/ kHistoryTargetBucketPoints)
-      .clamp(kHistoryListBucketMs, 24 * 3600000);
+  return (spanMs ~/ targetPoints).clamp(kHistoryListBucketMs, 24 * 3600000);
 }
 
 /// Classify one display window — design 0061 §3.3.2, and the one rule in this
@@ -273,6 +289,25 @@ Future<HistorySlice> loadHistorySlice(
       deviceId: deviceId);
   return HistorySlice(
       rows: rows, buckets: buckets, stats: stats, bucketMs: bucketMs);
+}
+
+/// One window of buckets for the landscape chart — design 0081 S3.
+///
+/// 🔑 **Deliberately NOT a fourth query in [loadHistorySlice].** The landscape
+/// page has no list and no stats strip; asking for them would make every pan
+/// pay for two aggregates nothing on screen reads. What it DOES share is the
+/// width derivation, which is the half that must not drift (design 0065 §6 R5).
+Future<({List<HistoryBucket> buckets, int bucketMs})> loadHistoryWindow(
+  TelemetryController tele, {
+  required DateTime from,
+  required DateTime to,
+  required String? deviceId,
+}) async {
+  final bucketMs = historyChartBucketMs(from, to,
+      targetPoints: kHistoryLandscapeTargetPoints);
+  final buckets = await tele.historyBuckets(
+      since: from, until: to, bucketMs: bucketMs, deviceId: deviceId);
+  return (buckets: buckets, bucketMs: bucketMs);
 }
 
 /// How the trend chart introduces itself for [range].

@@ -1658,6 +1658,24 @@ abstract class AppLocalizations {
   /// **'No readings stored for this minute.'**
   String get historySecondsEmpty;
 
+  /// Tooltip/label for the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand chart'**
+  String get historyChartExpand;
+
+  /// Drawn inside a hatched gap on the LANDSCAPE chart only (design 0081 Q6 = C). Says a stretch of time holds no rows at all — the app was not connected. The embedded card uses the hatch alone (Q6 = B) because 244 px cannot hold this sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Not connected for 1 minute} other{Not connected for {count} minutes}}'**
+  String historyChartGapMinutes(num count);
+
+  /// Hours form of historyChartGapMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Not connected for 1 hour} other{Not connected for {count} hours}}'**
+  String historyChartGapHours(num count);
+
   /// The chart's bucket width is dynamic (1 minute to 24 hours) and appeared nowhere on screen before design 0061 T10.
   ///
   /// In en, this message translates to:
