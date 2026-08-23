@@ -613,7 +613,10 @@ void main() {
         tester.getSize(find.byType(HomeTileView).at(i)).width,
     ];
     expect(widths[1], greaterThan(200), reason: 'sanity: the full tile');
-    expect(widths[0], closeTo(widths[1] / 2, 1.0),
+    // Half of the row, less this column's 3 px share of `kHomeColumnGap`
+    // (2026-08-24) — a lone half keeps its column, and a column keeps its
+    // inner-edge padding whether or not anything sits opposite it.
+    expect(widths[0], closeTo((widths[1] - kHomeColumnGap) / 2, 1.0),
         reason: 'the 1x1 the user asked for must be drawn at 1x1');
   });
 
