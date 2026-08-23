@@ -1,0 +1,37 @@
+# leak-gate: forbidden CONTENT patterns (clean-room red lines)
+#
+# One POSIX ERE per line. Blank lines and lines starting with "#" are comments.
+# Every pattern is matched case-insensitively against the contents of every
+# tracked file. ANY match fails the build.
+#
+# ── Maintenance rules (read before editing) ────────────────────────────────
+# 1. Matching is case-insensitive on purpose. The original manual pattern was
+#    written `ibattpro`, but the actual vendor artifact is `ibattPRO0225.apk`
+#    -- a case-sensitive grep would have missed the exact file it was written
+#    to catch. Keep the patterns lowercase and let the runner pass -i.
+# 2. Adding a pattern is a normal change. REMOVING or narrowing one requires
+#    an owner ruling. If a legitimate document needs a word that is on this
+#    list, that is an owner decision about the document OR about the pattern
+#    -- never a unilateral edit here to make CI go green.
+# 3. This file and the two other files of the gate itself are the ONLY paths
+#    excluded from the content scan (they necessarily quote the patterns).
+#    The runner enforces that this directory contains nothing else.
+# ───────────────────────────────────────────────────────────────────────────
+
+# --- Decompiler toolchain and its output tree. ---
+blutter
+out_blutter
+
+# --- Vendor app artifacts / internal database names. ---
+ibattpro
+ibattdb
+
+# --- Chinese-language giveaways from the internal research notes. ---
+# NOTE: literal Chinese strings are exactly the kind of pattern that goes
+# stale. See "What this gate CANNOT catch" in ../workflows/leak-gate.yml.
+消費版原始碼
+工程版
+
+# --- Internal naming for the engineering-build protocol material. ---
+protocol-engineer
+engineer build
