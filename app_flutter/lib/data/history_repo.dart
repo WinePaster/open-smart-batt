@@ -1157,6 +1157,7 @@ class HistoryRepo {
   Future<int> exportCsvToFile(
     File file, {
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
@@ -1177,6 +1178,7 @@ class HistoryRepo {
           await sink.flush();
         },
         since: since,
+        until: until,
         deviceId: deviceId,
         labelFor: labelFor,
         classFor: classFor,
@@ -1196,6 +1198,7 @@ class HistoryRepo {
   /// path exists to avoid. Do not reach for it from the UI.
   Future<({String text, int rows})> exportCsv({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
@@ -1207,6 +1210,7 @@ class HistoryRepo {
       granularity: granularity,
       emit: (chunk) async => buf.write(chunk),
       since: since,
+      until: until,
       deviceId: deviceId,
       labelFor: labelFor,
       classFor: classFor,
@@ -1250,6 +1254,7 @@ class HistoryRepo {
   Future<int> _exportCsvStream({
     required Future<void> Function(String chunk) emit,
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
@@ -1264,7 +1269,14 @@ class HistoryRepo {
     // precisely because this path keeps them reachable — a CSV names the device
     // on every row, so one file holding several units cannot mislead the way a
     // single averaged chart line does.
-    final (scopeClause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    //
+    // 🔵 **[until] added by design 0083 S4.** Half-open, like every other range
+    // here. ⚠️ It composes with the id PIN below rather than replacing it: the
+    // pin freezes WHICH rows exist, the bound says which of them are in scope.
+    // A bounded export of a past window is unaffected by the pin, and an export
+    // whose upper end is "now" still needs it.
+    final (scopeClause, scopeArgs) =
+        _scope(since: since, until: until, deviceId: deviceId);
     final pin = await _maxRowId();
     final where =
         scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
@@ -1286,14 +1298,15 @@ class HistoryRepo {
     // separately. `_contentSummary` can say "(+unattributed)" only for an
     // all-devices export, which is exactly the asymmetry that let per-device
     // CSVs look complete while dropping 11.3 % of their samples.
-    final excluded =
-        deviceId == null ? 0 : await countUnattributed(since: since);
+    final excluded = deviceId == null
+        ? 0
+        : await countUnattributed(since: since, until: until);
     // The other half of the same silent loss: rows attributed to a DIFFERENT
     // unit are dropped by [_scope] and were reported nowhere. See
     // [countOtherDevices].
     final fromOthers = deviceId == null
         ? 0
-        : await countOtherDevices(deviceId, since: since);
+        : await countOtherDevices(deviceId, since: since, until: until);
 
     final preamble = <String>[
       for (final h in header) '# $h',
@@ -1441,13 +1454,21 @@ class HistoryRepo {
   /// Used by the export sheet's size estimate (design 0061 T4c / Q4), where it
   /// must run OFF the UI thread's critical path — at second resolution this
   /// counts a table 60× the size of the one that used to be here.
+  ///
+  /// 🔵 [until] added by design 0083 S4, and it must move WITH the export: an
+  /// estimate computed over a wider scope than the file is not a rounding
+  /// error, it is a different question. The sheet shows it before the user
+  /// commits, so an unbounded estimate under a bounded export would overstate
+  /// exactly when the user is deciding whether to proceed.
   Future<int> countExportRows({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     required HistoryGranularity granularity,
     int? tzOffsetMs,
   }) async {
-    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final (clause, scopeArgs) =
+        _scope(since: since, until: until, deviceId: deviceId);
     final where = clause ?? '1';
     final args = <Object?>[...?scopeArgs];
     if (granularity == HistoryGranularity.second) {
@@ -1462,11 +1483,19 @@ class HistoryRepo {
   /// §3.2.3). Empty when the scope holds no rows at all, which is a DIFFERENT
   /// statement from "one granularity" and is why the caller must not default
   /// it.
+  /// 🔵 [until] added by design 0083 S4 — **not listed in §3.4's table, and
+  /// added on the same argument as the two counts there.** This feeds the
+  /// preamble's `resolution: contains=` line, which states what the EXPORTED
+  /// scope holds; left unbounded it would announce a granularity that appears
+  /// only outside the window, and a reader checking the file against that line
+  /// would find it absent.
   Future<List<int>> distinctBucketWidths({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
   }) async {
-    final (clause, scopeArgs) = _scope(since: since, deviceId: deviceId);
+    final (clause, scopeArgs) =
+        _scope(since: since, until: until, deviceId: deviceId);
     final where = clause == null ? '' : 'WHERE $clause';
     final rows = await _db.rawQuery(
       'SELECT DISTINCT bucket_s AS b FROM ${Db.tableHistory} $where '
@@ -1506,12 +1535,24 @@ class HistoryRepo {
   /// prevents it), so the screen simply does not deal in it. The export still
   /// declares the count because a file that cannot state what it omits is the
   /// original problem this whole line of work exists to fix.
-  Future<int> countUnattributed({DateTime? since}) async {
+  ///
+  /// 🔵 [until] added by design 0083 S4. 🔴 **A header line that counted rows
+  /// outside the exported window would describe omissions the file was never
+  /// going to contain** — the reader would see "12,400 rows recorded before the
+  /// unit was identified" against a two-day export whose window holds none of
+  /// them, and could not tell which number was wrong. Half-open, matching
+  /// [_scope]; the clause is spelled out here rather than delegated because
+  /// this query's `device_id IS NULL` predicate is the opposite of `_scope`'s.
+  Future<int> countUnattributed({DateTime? since, DateTime? until}) async {
     final where = <String>['device_id IS NULL'];
     final args = <Object?>[];
     if (since != null) {
       where.add('timestamp >= ?');
       args.add(since.millisecondsSinceEpoch);
+    }
+    if (until != null) {
+      where.add('timestamp < ?');
+      args.add(until.millisecondsSinceEpoch);
     }
     final r = await _db.rawQuery(
       'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE ${where.join(' AND ')}',
@@ -1534,7 +1575,8 @@ class HistoryRepo {
   /// before we knew the unit" and "belongs to a different unit" are different
   /// facts, and only the first is a shortcoming of ours.
   ///
-  /// Scoped by [since] — unlike the log's equivalent, which has no time window.
+  /// Scoped by [since] and [until] — unlike the log's equivalent, which has no
+  /// time window.
   /// A count that reached outside the exported range would describe rows the
   /// file was never going to contain, which is not the question the header
   /// line answers.
@@ -1543,12 +1585,19 @@ class HistoryRepo {
   /// evaluates to NULL, not true, so unattributed rows never match), but it is
   /// spelled out so the partition against [countUnattributed] is exact and
   /// visibly so: every excluded row lands in exactly one of the two.
-  Future<int> countOtherDevices(String deviceId, {DateTime? since}) async {
+  Future<int> countOtherDevices(String deviceId,
+      {DateTime? since, DateTime? until}) async {
     final where = <String>['device_id IS NOT NULL', 'device_id != ?'];
     final args = <Object?>[deviceId];
     if (since != null) {
       where.add('timestamp >= ?');
       args.add(since.millisecondsSinceEpoch);
+    }
+    // 🔵 design 0083 S4 — see [countUnattributed] for why both counts have to
+    // move with the export's window rather than only with its lower end.
+    if (until != null) {
+      where.add('timestamp < ?');
+      args.add(until.millisecondsSinceEpoch);
     }
     final r = await _db.rawQuery(
       'SELECT COUNT(*) AS n FROM ${Db.tableHistory} WHERE ${where.join(' AND ')}',

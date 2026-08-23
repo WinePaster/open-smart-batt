@@ -511,6 +511,7 @@ Future<ExportTarget?> chooseExportScope(
   required bool offerSession,
   bool offerGranularity = false,
   DateTime? since,
+  DateTime? until,
   String? deviceId,
 }) async {
   // The two halves of the snapshot, taken together. `layout` first because
@@ -553,6 +554,7 @@ Future<ExportTarget?> chooseExportScope(
         deviceLabel: '',
         offerGranularity: true,
         since: since,
+        until: until,
         tele: tele,
         lockedToDevice: false,
       ),
@@ -584,6 +586,7 @@ Future<ExportTarget?> chooseExportScope(
       deviceLabel: label,
       offerGranularity: offerGranularity,
       since: since,
+      until: until,
       tele: tele,
       // 🔴 DERIVED, never a second parameter of its own. Two flags that can
       // disagree is a state nobody checks — design 0046 R18 collapsed the same
@@ -603,6 +606,7 @@ class _ExportScopeSheet extends StatefulWidget {
     required this.deviceLabel,
     required this.offerGranularity,
     required this.since,
+    required this.until,
     required this.tele,
     required this.lockedToDevice,
   });
@@ -624,6 +628,11 @@ class _ExportScopeSheet extends StatefulWidget {
   final String deviceLabel;
   final bool offerGranularity;
   final DateTime? since;
+
+  /// 🔵 The other end (design 0083 S4) — the estimate must be scoped to the
+  /// same window the export will walk, or the sheet quotes a size for a file
+  /// that is not the one about to be written.
+  final DateTime? until;
   final TelemetryController tele;
 
   @override
@@ -660,6 +669,7 @@ class _ExportScopeSheetState extends State<_ExportScopeSheet> {
       try {
         final rows = await widget.tele.countExportRows(
           since: widget.since,
+          until: widget.until,
           deviceId: widget.current?.deviceId,
           granularity: g,
         );

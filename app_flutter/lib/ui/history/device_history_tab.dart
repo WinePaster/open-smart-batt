@@ -466,8 +466,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// questions, and only the first one was ruled on.
   Future<void> _exportCsv() async {
     if (_exporting) return;
-    // 🔴 `until` is deliberately not passed on yet — the export path gains its
-    // upper bound in design 0083 S4. See the History tab's twin.
+    // 🔵 Both ends (design 0083 S4) — see the History tab's twin.
     final (:since, :until) = historyBoundsFor(_sel);
     final target = await chooseExportScope(
       context,
@@ -476,6 +475,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
       offerSession: false,
       offerGranularity: true,
       since: since,
+      until: until,
       deviceId: widget.deviceId,
     );
     if (target == null || !mounted) return;
@@ -485,6 +485,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
         context,
         target: target,
         since: since,
+        until: until,
         window: historyWindowLabel(_sel, since),
       );
     } finally {
