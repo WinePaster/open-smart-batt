@@ -215,17 +215,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // The picker chooses WHICH device to export and HOW MUCH DETAIL; it does
     // not replace the time range already chosen on this screen — the two
     // intersect, and the range is what the sheet's size estimate is scoped by.
-    // 🔴 `until` is read here but NOT yet passed to the export — the export
-    // path has no upper bound until design 0083 S4. On the three presets it is
-    // null, so nothing is lost today; the moment S3 lands a custom range
-    // without S4, this call would export past the selected end. That ordering
-    // is written into the design (§2: S3 must not ship before S4).
+    // 🔵 **Both ends, everywhere (design 0083 S4).** The picker chooses WHICH
+    // device and HOW MUCH DETAIL; it does not replace the time range already
+    // chosen on this screen — the two intersect, and the range is what the
+    // sheet's size estimate is scoped by.
     final (:since, :until) = _bounds;
     final target = await chooseExportScope(
       context,
       offerSession: false,
       offerGranularity: true,
       since: since,
+      until: until,
     );
     if (target == null || !mounted) return;
     setState(() => _exporting = true);
@@ -239,6 +239,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         context,
         target: target,
         since: since,
+        until: until,
         window: historyWindowLabel(_sel, since),
       );
     } finally {

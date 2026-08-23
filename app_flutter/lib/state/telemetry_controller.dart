@@ -522,8 +522,8 @@ class TelemetryController extends ChangeNotifier
   ///
   /// The export header's, not the screen's — see
   /// [HistoryRepo.countUnattributed].
-  Future<int> historyUnattributedCount({DateTime? since}) =>
-      _history.countUnattributed(since: since);
+  Future<int> historyUnattributedCount({DateTime? since, DateTime? until}) =>
+      _history.countUnattributed(since: since, until: until);
 
   /// CSV export of matching history rows, streamed into [file] and returning
   /// how many DATA rows were written.
@@ -542,6 +542,7 @@ class TelemetryController extends ChangeNotifier
   Future<int> exportHistoryCsvToFile(
     File file, {
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     String Function(String? deviceId)? labelFor,
     ProductClass Function(String? deviceId)? classFor,
@@ -551,6 +552,7 @@ class TelemetryController extends ChangeNotifier
       _history.exportCsvToFile(
         file,
         since: since,
+        until: until,
         deviceId: deviceId,
         labelFor: labelFor,
         classFor: classFor,
@@ -562,17 +564,23 @@ class TelemetryController extends ChangeNotifier
   /// size estimate (design 0061 T4c).
   Future<int> countExportRows({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     required HistoryGranularity granularity,
   }) =>
       _history.countExportRows(
-          since: since, deviceId: deviceId, granularity: granularity);
+          since: since,
+          until: until,
+          deviceId: deviceId,
+          granularity: granularity);
 
   /// The stored granularities an export of this scope would touch, for the
   /// preamble's `resolution: contains=` line. Empty means "no rows at all",
   /// which the caller must NOT collapse into a default (design 0061 §3.2.3).
-  Future<List<int>> historyBucketWidths({DateTime? since, String? deviceId}) =>
-      _history.distinctBucketWidths(since: since, deviceId: deviceId);
+  Future<List<int>> historyBucketWidths(
+          {DateTime? since, DateTime? until, String? deviceId}) =>
+      _history.distinctBucketWidths(
+          since: since, until: until, deviceId: deviceId);
 
   /// Land everything still in flight, then wait for it — call this immediately
   /// before an export reads the table (design 0061 T7b).

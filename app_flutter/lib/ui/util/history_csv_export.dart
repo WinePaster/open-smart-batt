@@ -34,10 +34,17 @@ import 'export_share.dart';
 /// Stream [target]'s history rows into a temporary CSV and offer it to the
 /// share sheet.
 ///
-/// [since] is the range cut-off the caller's own view is showing; [window] is
-/// its `window:` preamble value (see `historyWindowLabel`) — the two are passed
-/// together because they are two statements about the same choice, and a file
-/// whose rows and whose stated window disagreed would be worse than either.
+/// [since] and [until] are the range the caller's own view is showing;
+/// [window] is its `window:` preamble value (see `historyWindowLabel`) — the
+/// three are passed together because they are statements about the same
+/// choice, and a file whose rows and whose stated window disagreed would be
+/// worse than either.
+///
+/// 🔵 [until] added by design 0083 S4, and it reaches EVERY question this
+/// function asks the database — the rows, the row count, the two omission
+/// counts in the header, and the `resolution: contains=` line. One of them
+/// left unbounded would put a sentence in the preamble that the file below it
+/// contradicts.
 ///
 /// Reports its own failures through the caller's [ScaffoldMessenger]; the
 /// caller owns only the busy flag around it.
@@ -45,6 +52,7 @@ Future<void> exportHistoryCsv(
   BuildContext context, {
   required ExportTarget target,
   required DateTime? since,
+  required DateTime? until,
   required String window,
 }) async {
   final l10n = AppLocalizations.of(context);
@@ -105,7 +113,8 @@ Future<void> exportHistoryCsv(
     // over the same window the export walks — never assumed.
     final resolution = ExportResolution.forCsv(
       target.granularity,
-      await tele.historyBucketWidths(since: since, deviceId: target.deviceId),
+      await tele.historyBucketWidths(
+          since: since, until: until, deviceId: target.deviceId),
     );
     // design 0070. The same identity list the diagnostic log has always
     // carried, so `devices:` and `declared:` say the same thing in both files a
@@ -121,6 +130,7 @@ Future<void> exportHistoryCsv(
     final rows = await tele.exportHistoryCsvToFile(
       file,
       since: since,
+      until: until,
       deviceId: target.deviceId,
       granularity: target.granularity,
       labelFor: labelFor,
