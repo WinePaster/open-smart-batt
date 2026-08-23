@@ -148,7 +148,9 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     _autoScrollV = v;
     if (v == 0) return _stopAutoScroll();
     _autoScrollTicker ??= Timer.periodic(
-        const Duration(milliseconds: 16), (_) => _autoScrollTick());
+      const Duration(milliseconds: 16),
+      (_) => _autoScrollTick(),
+    );
   }
 
   void _autoScrollTick() {
@@ -216,16 +218,18 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           // offers back anything AVAILABLE but absent: the pruning is one-way,
           // so the menu has to be the way back. Losing the tile's POSITION is
           // acceptable; losing the tile is not.
-          .renderedFor(devices.devices, settings.settings,
-              gForceAvailable: context.read<GForceController>().available)
+          .renderedFor(
+            devices.devices,
+            settings.settings,
+            gForceAvailable: context.read<GForceController>().available,
+          )
           .tiles,
     );
   }
 
-  Future<void> _persist() =>
-      context.read<SettingsController>().setHomeLayout(
-            HomeLayout(_tiles!).encode(),
-          );
+  Future<void> _persist() => context.read<SettingsController>().setHomeLayout(
+    HomeLayout(_tiles!).encode(),
+  );
 
   void _apply(List<HomeTile> next) {
     setState(() => _tiles = next);
@@ -234,8 +238,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
 
   void _remove(int index) => _apply(HomeGridOps.remove(_tiles!, index));
 
-  void _toggleSpan(int index) =>
-      _apply(HomeGridOps.toggleSpan(_tiles!, index));
+  void _toggleSpan(int index) => _apply(HomeGridOps.toggleSpan(_tiles!, index));
 
   void _add(HomeTile tile) => _apply(HomeGridOps.add(_tiles!, tile));
 
@@ -250,12 +253,14 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// 🔑 It KEEPS its own span (design 0049's promise), so a half dropped here
   /// begins a new two-column band on the LEFT rather than being widened. The
   /// shape button is the width control; a drop is a placement.
-  void _onDropOnLine(int from, int at) => _apply(HomeGridOps.moveTo(
-        _tiles!,
-        from,
-        at,
-        column: _tiles![from].span == HomeSpan.half ? HomeColumn.left : null,
-      ));
+  void _onDropOnLine(int from, int at) => _apply(
+    HomeGridOps.moveTo(
+      _tiles!,
+      from,
+      at,
+      column: _tiles![from].span == HomeSpan.half ? HomeColumn.left : null,
+    ),
+  );
 
   /// A tile was dropped on the tail of a column: it joins that column at the
   /// bottom and becomes a `half`.
@@ -288,8 +293,8 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// against the per-card value, and a second source of truth for what a card
   /// looks like is how design 0041 happened.
   void _applyShellToAll(CardShell shell) => _apply([
-        for (final t in _tiles!) t.withStyle(shell: shell, view: t.view),
-      ]);
+    for (final t in _tiles!) t.withStyle(shell: shell, view: t.view),
+  ]);
 
   // ---------------------------------------------------------------------------
   // The preview (design 0051 §5)
@@ -331,7 +336,9 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       speedUnit: settings.speedUnit,
       now: _previewNow,
       trend: _previewTrends.putIfAbsent(
-          cls, () => buildPreviewTrend(cls, _previewNow)),
+        cls,
+        () => buildPreviewTrend(cls, _previewNow),
+      ),
     );
   }
 
@@ -384,8 +391,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
             // colour would have to assert the button's property and would then
             // pass even if the icon overrode it. The thing that paints is the
             // thing that carries the value.
-            icon: Icon(Icons.help_outline,
-                size: 19, color: context.accent.accent),
+            icon: Icon(
+              Icons.help_outline,
+              size: 19,
+              color: context.accent.accent,
+            ),
           ),
           const SizedBox(width: 4),
         ],
@@ -444,22 +454,26 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     // Which device tile gets the LIVE shape: the first one, because at most one
     // link is up at a time. Computed over the flat list rather than per band,
     // so it does not move when a card is dragged into a different column.
-    final firstDeviceCard =
-        tiles.indexWhere((t) => t.kind == HomeTileKind.deviceCard);
+    final firstDeviceCard = tiles.indexWhere(
+      (t) => t.kind == HomeTileKind.deviceCard,
+    );
 
     Widget cell(int i) => _EditorCell(
-          index: i,
-          tile: tiles[i],
-          preview: _previewFor(tiles[i], live: i == firstDeviceCard),
-          canDelete: canDelete,
-          onDelete: () => _remove(i),
-          onToggleSpan: () => _toggleSpan(i),
-          onEditStyle: () => _showStyleSheet(context, i,
-              _previewFor(tiles[i], live: i == firstDeviceCard)),
-          onDropOnTile: _onDropOnTile,
-          onDragMoved: _onDragMoved,
-          onDragStopped: _stopAutoScroll,
-        );
+      index: i,
+      tile: tiles[i],
+      preview: _previewFor(tiles[i], live: i == firstDeviceCard),
+      canDelete: canDelete,
+      onDelete: () => _remove(i),
+      onToggleSpan: () => _toggleSpan(i),
+      onEditStyle: () => _showStyleSheet(
+        context,
+        i,
+        _previewFor(tiles[i], live: i == firstDeviceCard),
+      ),
+      onDropOnTile: _onDropOnTile,
+      onDragMoved: _onDragMoved,
+      onDragStopped: _stopAutoScroll,
+    );
 
     return ListView(
       key: _gridKey,
@@ -486,7 +500,10 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                   ].indexed)
                     Expanded(
                       child: Padding(
-                        padding: EdgeInsets.only(left: c == 0 ? 0 : 6),
+                        padding: EdgeInsets.only(
+                          left: c == 0 ? 0 : kHomeColumnGap / 2,
+                          right: c == 0 ? kHomeColumnGap / 2 : 0,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           mainAxisSize: MainAxisSize.min,
@@ -605,13 +622,15 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           // has already written, so this is the same single source of truth the
           // grid draws from.
           final current = _tiles![index];
-          final selectedView = current.view ?? (views.isEmpty ? null : views.first);
+          final selectedView =
+              current.view ?? (views.isEmpty ? null : views.first);
           return SafeArea(
             child: Material(
               color: sheetContext.colors.panel,
               clipBehavior: Clip.antiAlias,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
               child: ListView(
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(15, 14, 15, 20),
@@ -637,11 +656,16 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                               label: cardShellLabel(l10n, s),
                               selected: current.shell == s,
                               tile: current.withStyle(
-                                  shell: s, view: current.view),
+                                shell: s,
+                                view: current.view,
+                              ),
                               preview: preview,
                               onTap: () {
-                                _setTileStyle(index,
-                                    shell: s, view: current.view);
+                                _setTileStyle(
+                                  index,
+                                  shell: s,
+                                  view: current.view,
+                                );
                                 setSheetState(() {});
                               },
                             ),
@@ -663,11 +687,16 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
                                 label: cardViewLabel(l10n, module!, v),
                                 selected: selectedView == v,
                                 tile: current.withStyle(
-                                    shell: current.shell, view: v),
+                                  shell: current.shell,
+                                  view: v,
+                                ),
                                 preview: preview,
                                 onTap: () {
-                                  _setTileStyle(index,
-                                      shell: current.shell, view: v);
+                                  _setTileStyle(
+                                    index,
+                                    shell: current.shell,
+                                    view: v,
+                                  );
                                   setSheetState(() {});
                                 },
                               ),
@@ -743,8 +772,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
       // rather than the day somebody remembers this list.
       for (final m in DisplayModule.values)
         if (m.isPhoneModule &&
-            phoneModuleAvailable(m, settings,
-                gForceAvailable: gForceAvailable) &&
+            phoneModuleAvailable(
+              m,
+              settings,
+              gForceAvailable: gForceAvailable,
+            ) &&
             !_tiles!.any((t) => t.module == m))
           (homeModuleLabel(l10n, m), HomeTile.module(m)),
     ];
@@ -902,92 +934,99 @@ class _EditorCellState extends State<_EditorCell> {
         widget.onDropOnTile(d.data, widget.index);
       },
       builder: (context, _, _) => DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(
-                  color: _over ? context.accent.accent : Colors.transparent,
-                  width: 2,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(
+            color: _over ? context.accent.accent : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  // 🔴 The handle is the ONLY drag source. Making the
+                  // whole cell draggable would fight the ListView for
+                  // every vertical swipe, and design 0049 Q4 ruled out
+                  // the other way round it (a long-press edit mode).
+                  Draggable<int>(
+                    data: widget.index,
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    onDragUpdate: (d) => widget.onDragMoved(d.globalPosition),
+                    // Both, because they are different endings: one is a
+                    // drop on a target, the other a release over nothing.
+                    // Missing either leaves the list scrolling by itself.
+                    onDragEnd: (_) => widget.onDragStopped(),
+                    onDraggableCanceled: (_, _) => widget.onDragStopped(),
+                    feedback: _DragGhost(tile: widget.tile),
+                    childWhenDragging: Opacity(
+                      opacity: 0.3,
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 18,
+                        color: colors.muted,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 18,
+                        color: colors.muted,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: widget.onToggleSpan,
+                    iconSize: 16,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      widget.tile.span == HomeSpan.full
+                          ? Icons.crop_16_9
+                          : Icons.crop_square,
+                      color: colors.muted,
+                    ),
+                  ),
+                  IconButton(
+                    // 🔴 The floor (§4.9). Inert, not "tap and be told".
+                    onPressed: widget.canDelete ? widget.onDelete : null,
+                    iconSize: 16,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close),
+                    color: AppSemantics.danger,
+                    disabledColor: colors.muted.withValues(alpha: 0.35),
+                  ),
+                ],
+              ),
+              // The real tile, so what is being arranged is what will be
+              // seen — at the width it will be seen at, which the grid
+              // now provides.
+              //
+              // 🔴 The [AbsorbPointer] stays exactly as it was: the card's
+              // OWN controls must remain inert here. It absorbs by
+              // claiming the hit itself, so this [GestureDetector] — its
+              // ancestor — still receives the tap, and design 0054 spends
+              // that previously-idle gesture on the appearance sheet.
+              // Dragging is unaffected: the drag source is the handle
+              // alone, and a tap cannot start one.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onEditStyle,
+                child: AbsorbPointer(
+                  child: HomeTileView(
+                    tile: widget.tile,
+                    preview: widget.preview,
+                  ),
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        // 🔴 The handle is the ONLY drag source. Making the
-                        // whole cell draggable would fight the ListView for
-                        // every vertical swipe, and design 0049 Q4 ruled out
-                        // the other way round it (a long-press edit mode).
-                        Draggable<int>(
-                          data: widget.index,
-                          dragAnchorStrategy: pointerDragAnchorStrategy,
-                          onDragUpdate: (d) =>
-                              widget.onDragMoved(d.globalPosition),
-                          // Both, because they are different endings: one is a
-                          // drop on a target, the other a release over nothing.
-                          // Missing either leaves the list scrolling by itself.
-                          onDragEnd: (_) => widget.onDragStopped(),
-                          onDraggableCanceled: (_, _) =>
-                              widget.onDragStopped(),
-                          feedback: _DragGhost(tile: widget.tile),
-                          childWhenDragging: Opacity(
-                            opacity: 0.3,
-                            child: Icon(Icons.drag_indicator,
-                                size: 18, color: colors.muted),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(Icons.drag_indicator,
-                                size: 18, color: colors.muted),
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: widget.onToggleSpan,
-                          iconSize: 16,
-                          visualDensity: VisualDensity.compact,
-                          icon: Icon(
-                            widget.tile.span == HomeSpan.full
-                                ? Icons.crop_16_9
-                                : Icons.crop_square,
-                            color: colors.muted,
-                          ),
-                        ),
-                        IconButton(
-                          // 🔴 The floor (§4.9). Inert, not "tap and be told".
-                          onPressed: widget.canDelete ? widget.onDelete : null,
-                          iconSize: 16,
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.close),
-                          color: AppSemantics.danger,
-                          disabledColor: colors.muted.withValues(alpha: 0.35),
-                        ),
-                      ],
-                    ),
-                    // The real tile, so what is being arranged is what will be
-                    // seen — at the width it will be seen at, which the grid
-                    // now provides.
-                    //
-                    // 🔴 The [AbsorbPointer] stays exactly as it was: the card's
-                    // OWN controls must remain inert here. It absorbs by
-                    // claiming the hit itself, so this [GestureDetector] — its
-                    // ancestor — still receives the tap, and design 0054 spends
-                    // that previously-idle gesture on the appearance sheet.
-                    // Dragging is unaffected: the drag source is the handle
-                    // alone, and a tap cannot start one.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: widget.onEditStyle,
-                      child: AbsorbPointer(
-                          child: HomeTileView(
-                              tile: widget.tile, preview: widget.preview)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1027,17 +1066,17 @@ class _ColumnTailState extends State<_ColumnTail> {
 
   @override
   Widget build(BuildContext context) => DragTarget<int>(
-        onWillAcceptWithDetails: (_) {
-          setState(() => _over = true);
-          return true;
-        },
-        onLeave: (_) => setState(() => _over = false),
-        onAcceptWithDetails: (d) {
-          setState(() => _over = false);
-          widget.onDrop(d.data, widget.at, widget.column);
-        },
-        builder: (context, _, _) => _EmptySlot(highlighted: _over),
-      );
+    onWillAcceptWithDetails: (_) {
+      setState(() => _over = true);
+      return true;
+    },
+    onLeave: (_) => setState(() => _over = false),
+    onAcceptWithDetails: (d) {
+      setState(() => _over = false);
+      widget.onDrop(d.data, widget.at, widget.column);
+    },
+    builder: (context, _, _) => _EmptySlot(highlighted: _over),
+  );
 }
 
 /// The dotted shape a [_ColumnTail] draws. Quiet enough not to read as a broken
@@ -1093,8 +1132,8 @@ class _DragGhost extends StatelessWidget {
     final label = m != null
         ? homeModuleLabel(l10n, m)
         : (tile.kind == HomeTileKind.addDevice
-            ? l10n.homeAddFirstDevice
-            : l10n.devicesUnnamed);
+              ? l10n.homeAddFirstDevice
+              : l10n.devicesUnnamed);
     return Opacity(
       opacity: 0.9,
       child: Material(
@@ -1109,8 +1148,11 @@ class _DragGhost extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(m == null ? Icons.battery_full : homeModuleIcon(m),
-                  size: 15, color: context.accent.accent),
+              Icon(
+                m == null ? Icons.battery_full : homeModuleIcon(m),
+                size: 15,
+                color: context.accent.accent,
+              ),
               const SizedBox(width: 7),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 150),
@@ -1141,12 +1183,9 @@ class _SheetSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          text.toUpperCase(),
-          style: AppTextStyles.cardHeading(context),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(text.toUpperCase(), style: AppTextStyles.cardHeading(context)),
+  );
 }
 
 /// One choice in the appearance sheet: THE CARD ITSELF, shrunk.

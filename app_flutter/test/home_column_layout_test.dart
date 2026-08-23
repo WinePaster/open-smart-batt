@@ -178,6 +178,17 @@ void main() {
     expect(device.left, greaterThan(chart.left));
     expect(chart.width, closeTo(device.width, 0.01),
         reason: 'the two columns split the page evenly');
+    // 🔵 2026-08-24. Reported as「左右卡片是黏在一起的」— `Expanded` alone puts
+    // the two cards edge to edge, so their 1 px borders meet and read as one
+    // line. `kHomeColumnGap` separates them, half taken from each column's
+    // inner edge (`home_page.dart`).
+    //
+    // ⚠️ Asserted as a GAP, not as a width, because the failure this catches is
+    // the asymmetric one: all the padding on a single column keeps a gap of
+    // exactly this size while making that column narrower than its partner.
+    // The width equality above and this together pin both halves.
+    expect(device.left - chart.right, closeTo(kHomeColumnGap, 0.01),
+        reason: 'the two halves must not touch');
     await teardown(tester, s);
   });
 
@@ -241,7 +252,8 @@ void main() {
 
     final full = tester.getSize(_deviceTile()).width;
     final half = tester.getSize(_tile(DisplayModule.chart)).width;
-    expect(half, closeTo(full / 2, 0.6),
+    // Half of the row, less this column's share of `kHomeColumnGap` (3 px).
+    expect(half, closeTo((full - kHomeColumnGap) / 2, 0.6),
         reason: 'a full tile spans both columns — it ENDS a block');
     await teardown(tester, s);
   });
@@ -259,7 +271,7 @@ void main() {
 
     final full = tester.getSize(_deviceTile()).width;
     final lone = tester.getRect(_tile(DisplayModule.chart));
-    expect(lone.width, closeTo(full / 2, 0.6),
+    expect(lone.width, closeTo((full - kHomeColumnGap) / 2, 0.6),
         reason: 'an orphan the USER made is drawn as asked, not promoted');
     expect(lone.left, closeTo(tester.getRect(_deviceTile()).left, 0.01),
         reason: 'and it stays in the left column');

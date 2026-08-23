@@ -30,8 +30,12 @@ import 'home_tiles.dart';
 
 /// The home tab's body (sits inside the app shell's [Scaffold]).
 class HomePage extends StatelessWidget {
-  const HomePage(
-      {super.key, this.onOpenDevices, this.onOpenDetail, this.onEdit});
+  const HomePage({
+    super.key,
+    this.onOpenDevices,
+    this.onOpenDetail,
+    this.onEdit,
+  });
 
   /// Switch to the devices tab. Routed through the shell rather than pushed
   /// here: the shell owns tab state through a single entry point (`main.dart`'s
@@ -62,13 +66,14 @@ class HomePage extends StatelessWidget {
     // `renderedModules`, not a user of it (ruled 2026-08-07: the two surfaces
     // stay separate). It drops ghosts and phone modules whose switch is off,
     // and it does both WITHOUT rewriting storage. See its doc.
-    final layout = (HomeLayout.decode(settings.homeLayout) ??
-            HomeLayout.defaultFor(devices.devices))
-        .renderedFor(
-      devices.devices,
-      settings.settings,
-      gForceAvailable: context.watch<GForceController>().available,
-    );
+    final layout =
+        (HomeLayout.decode(settings.homeLayout) ??
+                HomeLayout.defaultFor(devices.devices))
+            .renderedFor(
+              devices.devices,
+              settings.settings,
+              gForceAvailable: context.watch<GForceController>().available,
+            );
 
     return Center(
       child: ConstrainedBox(
@@ -117,19 +122,42 @@ class HomePage extends StatelessWidget {
                         // stretch here would quietly re-impose the row.
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final column in [block.left, block.right])
+                          for (final (c, column) in [
+                            block.left,
+                            block.right,
+                          ].indexed)
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (final i in column)
-                                    HomeTileView(
-                                      tile: layout.tiles[i],
-                                      onOpenDevices: onOpenDevices,
-                                      onOpenDetail: onOpenDetail,
-                                    ),
-                                ],
+                              // 🔑 HALF the gap on each column's INNER edge,
+                              // never the whole gap on one of them. `Expanded`
+                              // splits the row evenly and padding comes out of
+                              // the child, so all 6 px on the right column
+                              // would leave it 6 px NARROWER than the left —
+                              // two "equal" halves that are not (caught by
+                              // `home_column_layout_test.dart` T-0084-1b).
+                              //
+                              // The outer edges stay unpadded, so the block
+                              // still starts and ends flush with the
+                              // full-width cards above and below it. See
+                              // [kHomeColumnGap] for why the editor and this
+                              // page share the value.
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                  left: c == 0 ? 0 : kHomeColumnGap / 2,
+                                  right: c == 0 ? kHomeColumnGap / 2 : 0,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (final i in column)
+                                      HomeTileView(
+                                        tile: layout.tiles[i],
+                                        onOpenDevices: onOpenDevices,
+                                        onOpenDetail: onOpenDetail,
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                         ],
@@ -173,9 +201,10 @@ class _EditLayoutRow extends StatelessWidget {
                 Text(
                   AppLocalizations.of(context).homeEditLayout,
                   style: TextStyle(
-                      fontSize: 12.5,
-                      letterSpacing: 0.4,
-                      color: colors.muted),
+                    fontSize: 12.5,
+                    letterSpacing: 0.4,
+                    color: colors.muted,
+                  ),
                 ),
               ],
             ),

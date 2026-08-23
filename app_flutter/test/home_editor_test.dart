@@ -493,7 +493,10 @@ void main() {
       await tester.pump();
 
       final after = tester.getSize(find.byType(HomeTileView).first).width;
-      expect(after, closeTo(before / 2, 1.0),
+      // Half MINUS half the inter-column gap (`kHomeColumnGap`, 2026-08-24):
+      // each column gives up 3 px on its inner edge so the two cards do not
+      // touch. `before / 2` exactly would mean the gap is not being drawn.
+      expect(after, closeTo((before - kHomeColumnGap) / 2, 1.0),
           reason: 'the preview is the only feedback this control has; if it '
               'does not move, the control does not work as far as anyone can '
               'tell');

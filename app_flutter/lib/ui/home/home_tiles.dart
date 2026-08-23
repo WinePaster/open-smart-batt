@@ -55,16 +55,16 @@ import 'home_preview.dart';
 /// home editor does not offer it, so this entry is only reachable if a future
 /// change starts offering it.
 String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
-      DisplayModule.gaugeVoltage => l10n.gaugePvltLabel,
-      DisplayModule.gaugeSoc => l10n.powerBankSocReadoutLabel,
-      DisplayModule.readouts => l10n.dashboardReadoutsHeading,
-      DisplayModule.chart => l10n.dashboardChartHeading,
-      DisplayModule.cells => l10n.dashboardDvolHeading,
-      DisplayModule.energyPath => l10n.powerPathHeading,
-      DisplayModule.speed => l10n.homeModuleSpeed,
-      DisplayModule.gForce => l10n.gForceCardHeading,
-      DisplayModule.clock => l10n.homeModuleClock,
-    };
+  DisplayModule.gaugeVoltage => l10n.gaugePvltLabel,
+  DisplayModule.gaugeSoc => l10n.powerBankSocReadoutLabel,
+  DisplayModule.readouts => l10n.dashboardReadoutsHeading,
+  DisplayModule.chart => l10n.dashboardChartHeading,
+  DisplayModule.cells => l10n.dashboardDvolHeading,
+  DisplayModule.energyPath => l10n.powerPathHeading,
+  DisplayModule.speed => l10n.homeModuleSpeed,
+  DisplayModule.gForce => l10n.gForceCardHeading,
+  DisplayModule.clock => l10n.homeModuleClock,
+};
 
 /// The name of a [CardShell] in the editor's appearance sheet (design 0054).
 ///
@@ -72,10 +72,10 @@ String homeModuleLabel(AppLocalizations l10n, DisplayModule m) => switch (m) {
 /// (`card_shell.dart`) and is not localized — same rule as [DisplayModule].
 /// Exhaustive, so a new shell is a compile error here rather than a blank chip.
 String cardShellLabel(AppLocalizations l10n, CardShell s) => switch (s) {
-      CardShell.standard => l10n.cardShellStandard,
-      CardShell.minimal => l10n.cardShellMinimal,
-      CardShell.dense => l10n.cardShellDense,
-    };
+  CardShell.standard => l10n.cardShellStandard,
+  CardShell.minimal => l10n.cardShellMinimal,
+  CardShell.dense => l10n.cardShellDense,
+};
 
 /// The name of one of [m]'s own view slugs.
 ///
@@ -115,16 +115,35 @@ String cardViewLabel(AppLocalizations l10n, DisplayModule m, String slug) {
 
 /// The glyph a module is drawn with, matching its own card's heading icon.
 IconData homeModuleIcon(DisplayModule m) => switch (m) {
-      DisplayModule.gaugeVoltage => Icons.bolt,
-      DisplayModule.gaugeSoc => Icons.battery_std,
-      DisplayModule.readouts => Icons.speed,
-      DisplayModule.chart => Icons.show_chart,
-      DisplayModule.cells => Icons.battery_std,
-      DisplayModule.energyPath => Icons.bolt,
-      DisplayModule.speed => Icons.navigation_outlined,
-      DisplayModule.gForce => Icons.adjust,
-      DisplayModule.clock => Icons.schedule,
-    };
+  DisplayModule.gaugeVoltage => Icons.bolt,
+  DisplayModule.gaugeSoc => Icons.battery_std,
+  DisplayModule.readouts => Icons.speed,
+  DisplayModule.chart => Icons.show_chart,
+  DisplayModule.cells => Icons.battery_std,
+  DisplayModule.energyPath => Icons.bolt,
+  DisplayModule.speed => Icons.navigation_outlined,
+  DisplayModule.gForce => Icons.adjust,
+  DisplayModule.clock => Icons.schedule,
+};
+
+/// The horizontal gap between the two columns of a half-width block.
+///
+/// 🔴 The home page used to have NO gap while the layout editor had this one
+/// (`home_editor_page.dart`, added with design 0084 S4) — so the editor showed
+/// two separated cards and the page they described drew them touching, their
+/// 1 px borders meeting as a single line. Reported 2026-08-24 as「左右卡片是黏
+/// 在一起的」.
+///
+/// 🔑 One constant, read by both surfaces, because that divergence is the whole
+/// defect: an editor that does not draw what the page draws is worse than
+/// either value.
+///
+/// The vertical rhythm between stacked cards is [CardShell.gapBelow] (9-14 px)
+/// and this is deliberately SMALLER: the columns are two halves of one block,
+/// not two blocks, and matching the vertical gap would cost each column 7 px of
+/// the 265 px a half tile gets (`narrow_tile_layout_test.dart` derives that
+/// number) — width that the G meter and speed cards measurably need.
+const double kHomeColumnGap = 6;
 
 /// One tile of the home grid.
 class HomeTileView extends StatelessWidget {
@@ -163,18 +182,22 @@ class HomeTileView extends StatelessWidget {
       case HomeTileKind.addDevice:
         return _shell(_AddDeviceTile(onTap: onOpenDevices));
       case HomeTileKind.deviceCard:
-        return _shell(_DeviceTile(
-          deviceId: tile.deviceId!,
-          onTap: onOpenDetail,
-          preview: preview,
-        ));
+        return _shell(
+          _DeviceTile(
+            deviceId: tile.deviceId!,
+            onTap: onOpenDetail,
+            preview: preview,
+          ),
+        );
       case HomeTileKind.module:
-        return _shell(_ModuleTile(
-          module: tile.module!,
-          deviceId: tile.deviceId,
-          view: tile.view,
-          preview: preview,
-        ));
+        return _shell(
+          _ModuleTile(
+            module: tile.module!,
+            deviceId: tile.deviceId,
+            view: tile.view,
+            preview: preview,
+          ),
+        );
     }
   }
 
@@ -212,8 +235,11 @@ class _AddDeviceTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 26),
           child: Column(
             children: [
-              Icon(Icons.add_circle_outline,
-                  size: 36, color: context.accent.accent),
+              Icon(
+                Icons.add_circle_outline,
+                size: 36,
+                color: context.accent.accent,
+              ),
               const SizedBox(height: 12),
               Text(
                 l10n.homeAddFirstDevice,
@@ -285,9 +311,11 @@ class _DeviceTile extends StatelessWidget {
                     border: Border.all(color: context.colors.line),
                     borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   ),
-                  child: Icon(Icons.battery_full,
-                      size: 17,
-                      color: live ? context.accent.accent : context.colors.muted),
+                  child: Icon(
+                    Icons.battery_full,
+                    size: 17,
+                    color: live ? context.accent.accent : context.colors.muted,
+                  ),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
@@ -325,26 +353,28 @@ class _LiveDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-              color: AppSemantics.good,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          const Text('LIVE',
-              style: TextStyle(
-                fontSize: 9,
-                letterSpacing: 1,
-                fontWeight: FontWeight.w700,
-                color: AppSemantics.good,
-              )),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 5,
+        height: 5,
+        decoration: const BoxDecoration(
+          color: AppSemantics.good,
+          shape: BoxShape.circle,
+        ),
+      ),
+      const SizedBox(width: 4),
+      const Text(
+        'LIVE',
+        style: TextStyle(
+          fontSize: 9,
+          letterSpacing: 1,
+          fontWeight: FontWeight.w700,
+          color: AppSemantics.good,
+        ),
+      ),
+    ],
+  );
 }
 
 /// The connected unit's reading. Its instrument follows the class, the same way
@@ -366,7 +396,8 @@ class _LiveReading extends StatelessWidget {
       isBank = p.shellClass == ProductClass.powerBank;
     } else {
       tele = context.watch<TelemetryController>();
-      isBank = context.watch<ConnectionController>().displayClass ==
+      isBank =
+          context.watch<ConnectionController>().displayClass ==
           ProductClass.powerBank;
     }
     final value = isBank
@@ -402,10 +433,9 @@ class _CachedReading extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           relativeTime(l10n, d?.lastSeen),
-          style: AppTextStyles.mono(context).copyWith(
-            fontSize: 11,
-            color: context.colors.muted,
-          ),
+          style: AppTextStyles.mono(
+            context,
+          ).copyWith(fontSize: 11, color: context.colors.muted),
         ),
       ],
     );
@@ -438,48 +468,47 @@ class _BigValue extends StatelessWidget {
   /// the same field-report lineage as `_GReadout` and `SpeedCard._Reading`.
   @override
   Widget build(BuildContext context) => Row(
-        children: [
-          Expanded(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    value,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: AppTextStyles.mono(context).copyWith(
-                      // Shell-scaled (design 0054): `mono` carries no size, so
-                      // this reading asks for the multiplier explicitly.
-                      fontSize: context.cardValueSize(32),
-                      fontWeight: FontWeight.w700,
-                      height: 1,
-                      color:
-                          muted ? context.colors.muted : context.colors.text,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    unit,
-                    maxLines: 1,
-                    softWrap: false,
-                    // The unit marker `clock_card.dart:244` points at by name.
-                    // Fixed, not the accent — design 0064 Q2; same reasoning
-                    // as the gauge's own unit in `pvlt_gauge.dart`.
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: muted ? context.colors.muted : AppSemantics.warn,
-                    ),
-                  ),
-                ],
+    children: [
+      Expanded(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                maxLines: 1,
+                softWrap: false,
+                style: AppTextStyles.mono(context).copyWith(
+                  // Shell-scaled (design 0054): `mono` carries no size, so
+                  // this reading asks for the multiplier explicitly.
+                  fontSize: context.cardValueSize(32),
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  color: muted ? context.colors.muted : context.colors.text,
+                ),
               ),
-            ),
+              const SizedBox(width: 4),
+              Text(
+                unit,
+                maxLines: 1,
+                softWrap: false,
+                // The unit marker `clock_card.dart:244` points at by name.
+                // Fixed, not the accent — design 0064 Q2; same reasoning
+                // as the gauge's own unit in `pvlt_gauge.dart`.
+                style: TextStyle(
+                  fontSize: 13,
+                  color: muted ? context.colors.muted : AppSemantics.warn,
+                ),
+              ),
+            ],
           ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 }
 
 /// A [DisplayModule] on the home grid.
@@ -489,8 +518,12 @@ class _BigValue extends StatelessWidget {
 /// module two ways. Otherwise it is the waiting state, and that is a hard rule
 /// rather than a fallback: see the library comment.
 class _ModuleTile extends StatelessWidget {
-  const _ModuleTile(
-      {required this.module, this.deviceId, this.view, this.preview});
+  const _ModuleTile({
+    required this.module,
+    this.deviceId,
+    this.view,
+    this.preview,
+  });
 
   final DisplayModule module;
 
@@ -526,11 +559,14 @@ class _ModuleTile extends StatelessWidget {
       // `home`, not a third state: the editor exists to show what the home
       // grid will look like, so a preview that rendered a different card would
       // be lying about the thing it previews (`card_surface.dart`).
-      return dashboardCardFor(context, module,
-              shellClass: p.shellClass,
-              surface: CardSurface.home,
-              tele: p.tele,
-              view: view) ??
+      return dashboardCardFor(
+            context,
+            module,
+            shellClass: p.shellClass,
+            surface: CardSurface.home,
+            tele: p.tele,
+            view: view,
+          ) ??
           HomeWaitingTile(module: module);
     }
     final conn = context.watch<ConnectionController>();
@@ -539,18 +575,21 @@ class _ModuleTile extends StatelessWidget {
     // home surface's single resolver — has already dropped any module whose
     // switch is off. A second check would be the duplicate decision point
     // design 0042 W4 removed, just on a different surface.
-    final live =
-        id == null || (conn.isOnline && conn.connectedDeviceId == id);
+    final live = id == null || (conn.isOnline && conn.connectedDeviceId == id);
     final Widget card;
     if (!live) {
       card = HomeWaitingTile(module: module);
     } else {
       final shellClass = homeTileShellClass(id, conn);
-      card = dashboardCardFor(context, module,
-              shellClass: shellClass,
-              surface: CardSurface.home,
-              tele: context.watch<TelemetryController>(),
-              view: view) ??
+      card =
+          dashboardCardFor(
+            context,
+            module,
+            shellClass: shellClass,
+            surface: CardSurface.home,
+            tele: context.watch<TelemetryController>(),
+            view: view,
+          ) ??
           HomeWaitingTile(module: module);
     }
 
@@ -579,9 +618,10 @@ class _ModuleTile extends StatelessWidget {
     return CardDeviceScope(
       // Empty aliases are a supported value (FB-61), so the fallback is the
       // same string the device list shows rather than a blank line.
-      deviceLabel: context
-          .watch<DeviceController>()
-          .aliasFor(id, fallback: l10n.devicesUnnamed),
+      deviceLabel: context.watch<DeviceController>().aliasFor(
+        id,
+        fallback: l10n.devicesUnnamed,
+      ),
       child: card,
     );
   }
