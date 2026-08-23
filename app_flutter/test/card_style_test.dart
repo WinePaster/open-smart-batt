@@ -335,11 +335,15 @@ void main() {
           '"shell":"chrome","view":"hologram"},'
           '{"kind":"deviceCard","device":"AA:BB","span":"half",'
           '"shell":"nope"},'
+          // 🔵 design 0084 S4: the third entry is a PRE-S4 placeholder, not a
+          // card. It is read (it decides which side the half before it is on)
+          // and then dropped, so the count below is 2 — see
+          // `home_column_migration_test.dart` for the migration in full.
           '{"kind":"empty","span":"half"}'
           ']}';
       final back = HomeLayout.decode(stored);
       expect(back, isNotNull);
-      expect(back!.tiles, hasLength(3),
+      expect(back!.tiles, hasLength(2),
           reason: '🔴 the opposite of the unknown-MODULE rule. A module is '
               'content; a shell and a view are only presentation, so losing '
               'one must never cost the card.');
@@ -369,7 +373,7 @@ void main() {
       // 🔵 design 0084 S1 seats every `half` in a column on the way back in, so
       // the expectation is the seated list. `==` still covers shell, view AND
       // column, so this is still not just a shape comparison.
-      expect(back!.tiles, equals(HomeLayout.withDerivedColumns(tiles)),
+      expect(back!.tiles, equals(HomeLayout.seated(tiles)),
           reason: 'the `==` covers shell and view, so this is not just a '
               'shape comparison');
     });

@@ -244,14 +244,26 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   void _onDropOnTile(int from, int to) =>
       _apply(HomeGridOps.swap(_tiles!, from, to));
 
-  /// A tile was dropped on the line between rows: it becomes a row of its own.
-  void _onDropOnLine(int from, int rowIndex) =>
-      _apply(HomeGridOps.moveToOwnRow(_tiles!, from, rowIndex));
+  /// A tile was dropped on a full-width line between blocks: it starts a band
+  /// of its own there.
+  ///
+  /// 🔑 It KEEPS its own span (design 0049's promise), so a half dropped here
+  /// begins a new two-column band on the LEFT rather than being widened. The
+  /// shape button is the width control; a drop is a placement.
+  void _onDropOnLine(int from, int at) => _apply(HomeGridOps.moveTo(
+        _tiles!,
+        from,
+        at,
+        column: _tiles![from].span == HomeSpan.half ? HomeColumn.left : null,
+      ));
 
-  /// A tile was dropped in an empty half-slot: it pairs with that slot's
-  /// partner and becomes a half.
-  void _onDropInSlot(int from, int slot) =>
-      _apply(HomeGridOps.moveIntoSlot(_tiles!, from, slot));
+  /// A tile was dropped on the tail of a column: it joins that column at the
+  /// bottom and becomes a `half`.
+  ///
+  /// Dropping into a half-width position is an unambiguous statement of what
+  /// width the card should be, so it is not asked for twice (design 0049 §3.3).
+  void _onDropInColumn(int from, int at, HomeColumn column) =>
+      _apply(HomeGridOps.moveTo(_tiles!, from, at, column: column));
 
   // ---------------------------------------------------------------------------
   // Appearance (design 0054)
@@ -276,8 +288,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// against the per-card value, and a second source of truth for what a card
   /// looks like is how design 0041 happened.
   void _applyShellToAll(CardShell shell) => _apply([
-        for (final t in _tiles!)
-          if (t.isEmpty) t else t.withStyle(shell: shell, view: t.view),
+        for (final t in _tiles!) t.withStyle(shell: shell, view: t.view),
       ]);
 
   // ---------------------------------------------------------------------------
@@ -336,10 +347,11 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tiles = _tiles!;
-    // The floor. One REAL tile left ⇒ nothing may remove it. Empty slots do
-    // not count: they are structure, not content, and a grid holding one card
-    // plus its gap is still a grid with one card.
-    final canDelete = tiles.where((t) => !t.isEmpty).length > 1;
+    // The floor. One tile left ⇒ nothing may remove it.
+    // 🔵 design 0084 S4: every element of this list is now a real card, so the
+    // count is just the length. It used to have to exclude the stored gaps —
+    // "structure, not content" — and that distinction is gone with them.
+    final canDelete = tiles.length > 1;
 
     return Scaffold(
       appBar: AppBar(
@@ -416,61 +428,84 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     );
   }
 
-  /// The grid: rows of one full tile or two half slots, with a drop line
-  /// between every pair of rows (design 0049 §3.2).
+  /// The grid: full-width bands and two-column bands, with a drop line between
+  /// every pair of them and a tail slot at the foot of every column
+  /// (design 0049 §3.2, rewritten for design 0084 S4).
+  ///
+  /// 🔴 The tail slot is the old `_EmptySlot`, and it keeps its job.
+  /// Design 0049 Q2 made the unoccupied half of a row ALWAYS visible because it
+  /// is the only thing on this page that says "something can go here", and §3.7
+  /// forbids saying it in words. What changed is what it is: it used to be a
+  /// stored tile, and it is now the foot of a column — which is also what makes
+  /// Q2's「可以不等長」 reachable, since dropping into the tail of the shorter
+  /// column is how a user makes it the longer one.
   Widget _grid(List<HomeTile> tiles, {required bool canDelete}) {
-    final rows = HomeLayout.rowsOf(tiles);
-    // Flat index of each row's first tile, computed once — every drop callback
-    // needs it, and recomputing it per widget is how the two drift.
-    final starts = <int>[];
-    var flat = 0;
-    for (final r in rows) {
-      starts.add(flat);
-      flat += r.length;
-    }
+    final blocks = HomeLayout.blocksOf(tiles);
     // Which device tile gets the LIVE shape: the first one, because at most one
-    // link is up at a time. Computed over the flat list rather than per row, so
-    // it does not move when a card is dragged into a different row.
+    // link is up at a time. Computed over the flat list rather than per band,
+    // so it does not move when a card is dragged into a different column.
     final firstDeviceCard =
         tiles.indexWhere((t) => t.kind == HomeTileKind.deviceCard);
+
+    Widget cell(int i) => _EditorCell(
+          index: i,
+          tile: tiles[i],
+          preview: _previewFor(tiles[i], live: i == firstDeviceCard),
+          canDelete: canDelete,
+          onDelete: () => _remove(i),
+          onToggleSpan: () => _toggleSpan(i),
+          onEditStyle: () => _showStyleSheet(context, i,
+              _previewFor(tiles[i], live: i == firstDeviceCard)),
+          onDropOnTile: _onDropOnTile,
+          onDragMoved: _onDragMoved,
+          onDragStopped: _stopAutoScroll,
+        );
 
     return ListView(
       key: _gridKey,
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(15, 4, 15, 10),
       children: [
-        for (var r = 0; r <= rows.length; r++) ...[
-          _DropLine(rowIndex: r, onDrop: _onDropOnLine),
-          if (r < rows.length)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var c = 0; c < rows[r].length; c++)
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(left: c == 0 ? 0 : 6),
-                      child: _EditorCell(
-                        index: starts[r] + c,
-                        tile: rows[r][c],
-                        preview: _previewFor(rows[r][c],
-                            live: starts[r] + c == firstDeviceCard),
-                        canDelete: canDelete,
-                        onDelete: () => _remove(starts[r] + c),
-                        onToggleSpan: () => _toggleSpan(starts[r] + c),
-                        onEditStyle: () => _showStyleSheet(
-                            context,
-                            starts[r] + c,
-                            _previewFor(rows[r][c],
-                                live: starts[r] + c == firstDeviceCard)),
-                        onDropOnTile: _onDropOnTile,
-                        onDropInSlot: _onDropInSlot,
-                        onDragMoved: _onDragMoved,
-                        onDragStopped: _stopAutoScroll,
+        for (var b = 0; b <= blocks.length; b++) ...[
+          // The line BEFORE band `b`; the last one is "past the end", which is
+          // how a drop below everything is expressed.
+          _DropLine(
+            at: b < blocks.length ? blocks[b].start : tiles.length,
+            onDrop: _onDropOnLine,
+          ),
+          if (b < blocks.length)
+            if (blocks[b].full case final int i)
+              cell(i)
+            else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (c, (side, members)) in [
+                    (HomeColumn.left, blocks[b].left),
+                    (HomeColumn.right, blocks[b].right),
+                  ].indexed)
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(left: c == 0 ? 0 : 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final i in members) cell(i),
+                            _ColumnTail(
+                              // One PAST this band's last tile, so the card
+                              // lands inside this band rather than after the
+                              // full-width tile that ends it.
+                              at: blocks[b].end,
+                              column: side,
+                              onDrop: _onDropInColumn,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
         ],
       ],
     );
@@ -556,7 +591,6 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   void _showStyleSheet(BuildContext context, int index, HomePreview preview) {
     final l10n = AppLocalizations.of(context);
     final tile = _tiles![index];
-    if (tile.isEmpty) return;
     final module = tile.module;
     final views = module == null ? const <String>[] : cardViewSlugs(module);
 
@@ -761,10 +795,12 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
 /// The visual is a hairline; the HIT AREA is 44 pt (design 0049 R3, Apple HIG).
 /// A target you can see but cannot reliably hit is worse than no target.
 class _DropLine extends StatefulWidget {
-  const _DropLine({required this.rowIndex, required this.onDrop});
+  const _DropLine({required this.at, required this.onDrop});
 
-  final int rowIndex;
-  final void Function(int from, int rowIndex) onDrop;
+  /// Flat index this line inserts BEFORE, in the list as it is now.
+  final int at;
+
+  final void Function(int from, int at) onDrop;
 
   @override
   State<_DropLine> createState() => _DropLineState();
@@ -783,7 +819,7 @@ class _DropLineState extends State<_DropLine> {
       onLeave: (_) => setState(() => _over = false),
       onAcceptWithDetails: (d) {
         setState(() => _over = false);
-        widget.onDrop(d.data, widget.rowIndex);
+        widget.onDrop(d.data, widget.at);
       },
       builder: (context, candidate, _) => SizedBox(
         height: candidate.isEmpty ? 6 : 44,
@@ -817,7 +853,6 @@ class _EditorCell extends StatefulWidget {
     required this.onToggleSpan,
     required this.onEditStyle,
     required this.onDropOnTile,
-    required this.onDropInSlot,
     required this.onDragMoved,
     required this.onDragStopped,
   });
@@ -839,7 +874,6 @@ class _EditorCell extends StatefulWidget {
   final VoidCallback onEditStyle;
 
   final void Function(int from, int to) onDropOnTile;
-  final void Function(int from, int slot) onDropInSlot;
 
   /// Pointer moved during a drag, in global coordinates — drives the page's
   /// auto-scroll. See `_HomeEditorPageState._onDragMoved`.
@@ -865,15 +899,9 @@ class _EditorCellState extends State<_EditorCell> {
       onLeave: (_) => setState(() => _over = false),
       onAcceptWithDetails: (d) {
         setState(() => _over = false);
-        if (widget.tile.isEmpty) {
-          widget.onDropInSlot(d.data, widget.index);
-        } else {
-          widget.onDropOnTile(d.data, widget.index);
-        }
+        widget.onDropOnTile(d.data, widget.index);
       },
-      builder: (context, _, _) => widget.tile.isEmpty
-          ? _EmptySlot(highlighted: _over)
-          : DecoratedBox(
+      builder: (context, _, _) => DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 border: Border.all(
@@ -964,11 +992,56 @@ class _EditorCellState extends State<_EditorCell> {
   }
 }
 
-/// The unoccupied half of a row. Always visible (design 0049 Q2).
+/// The foot of one column: drop here to join that column (design 0084 S4).
 ///
-/// It is the only thing on this page that says "something can go here", and
-/// §3.7 forbids saying it in words — so it has to be legible as a shape. Quiet
-/// enough not to read as a broken card: a dotted hairline, no fill, no label.
+/// 🔴 This is design 0049 Q2's slot, doing the same job in the new model. It is
+/// the only thing on this page that says "something can go here", §3.7 forbids
+/// saying it in words, and so it has to be legible as a shape — which is why it
+/// is ALWAYS visible rather than appearing during a drag.
+///
+/// 🔑 It is also what makes 「可以不等長」 reachable: dropping into the tail of
+/// the shorter column is how a user gives one column three cards and the other
+/// one. In the old model there was exactly one slot per row and it could only
+/// ever hold a pair.
+class _ColumnTail extends StatefulWidget {
+  const _ColumnTail({
+    required this.at,
+    required this.column,
+    required this.onDrop,
+  });
+
+  /// Flat index to insert at — one past this band's last tile, so the card
+  /// lands inside the band.
+  final int at;
+
+  final HomeColumn column;
+
+  final void Function(int from, int at, HomeColumn column) onDrop;
+
+  @override
+  State<_ColumnTail> createState() => _ColumnTailState();
+}
+
+class _ColumnTailState extends State<_ColumnTail> {
+  bool _over = false;
+
+  @override
+  Widget build(BuildContext context) => DragTarget<int>(
+        onWillAcceptWithDetails: (_) {
+          setState(() => _over = true);
+          return true;
+        },
+        onLeave: (_) => setState(() => _over = false),
+        onAcceptWithDetails: (d) {
+          setState(() => _over = false);
+          widget.onDrop(d.data, widget.at, widget.column);
+        },
+        builder: (context, _, _) => _EmptySlot(highlighted: _over),
+      );
+}
+
+/// The dotted shape a [_ColumnTail] draws. Quiet enough not to read as a broken
+/// card: a dotted hairline, no fill, no label.
 class _EmptySlot extends StatelessWidget {
   const _EmptySlot({required this.highlighted});
 

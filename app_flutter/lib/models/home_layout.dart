@@ -89,12 +89,11 @@ enum HomeSpan {
 /// data by owner's ruling (design 0051 §5), cannot show where a card will
 /// actually land. A stored side has neither problem.
 ///
-/// ⚠️ **Not authoritative yet.** In S1 this field is DERIVED from the tile's
-/// position and written alongside it (expand/migrate/contract): position still
-/// decides what is drawn, and `home_layout_test.dart` asserts the two always
-/// agree. S2 flips the authority to this field; S4 removes
-/// [HomeTileKind.empty], which is the other half of the old representation.
-/// Until then the redundancy is deliberate and checked, not a second opinion.
+/// 🔵 **Authoritative since design 0084 S2/S4.** It began (S1) as a copy of the
+/// tile's position, written alongside it so the field could land before
+/// anything read it; S2 made the home page read it; S4 removed the stored
+/// placeholder that was the other half of the old representation. A stored
+/// column is now honoured and never recomputed — see [HomeLayout.seated].
 enum HomeColumn {
   left,
   right;
@@ -120,26 +119,18 @@ enum HomeTileKind {
   deviceCard,
 
   /// One [DisplayModule], optionally bound to a device.
-  module,
-
-  /// 🔴 The other half of a row that holds a single 1x1 — and it is STORED,
-  /// not drawn (design 0049 §3.8).
   ///
-  /// Pairing used to be derived: `rows` took two adjacent halves and put them
-  /// side by side. That reads well until something moves. Dragging one member
-  /// of a pair away orphans the other, and the greedy rule then had it reach
-  /// FORWARD and swallow the next half — so the tile being dragged landed
-  /// somewhere the gesture had not asked for. There is no local fix, because
-  /// the defect is that a derived model cannot express "the row ends here".
+  /// ⚠️ There used to be a fourth member, `empty` — a STORED placeholder for
+  /// the unoccupied half of a row (design 0049 §3.8). Design 0084 S4 removed
+  /// it: once a half carries its own [HomeColumn], "this column ends here"
+  /// needs nothing to say it, and a second way to express one fact is the
+  /// hazard this project keeps a discipline file about.
   ///
-  /// An empty slot expresses it. A half is now always in a two-column row whose
-  /// other column is either another tile or one of these, and the invariant
-  /// `halves + empties per row == 2` makes the grouping exact rather than
-  /// greedy.
-  ///
-  /// ⚠️ Always [HomeSpan.half] — a full-width empty is a blank row, which is
-  /// not a layout anyone asked for. [HomeGridOps.normalise] enforces it.
-  empty;
+  /// 🔴 [HomeLayout.decode] still READS the old slug, because a layout stored
+  /// before S4 uses the placeholder's POSITION to say which side its neighbour
+  /// was on. Dropping it before seating the columns would repack the halves and
+  /// silently rearrange somebody's page.
+  module;
 
   String get slug => name;
 
@@ -194,17 +185,6 @@ class HomeTile {
   /// The zero-device empty state.
   const HomeTile.addDevice() : this(kind: HomeTileKind.addDevice);
 
-  /// The unoccupied half of a row — see [HomeTileKind.empty].
-  const HomeTile.empty({HomeColumn? column})
-      : this(
-            kind: HomeTileKind.empty,
-            span: HomeSpan.half,
-            column: column);
-
-  /// True for the stored placeholder, which draws a dotted outline and holds a
-  /// place rather than showing anything.
-  bool get isEmpty => kind == HomeTileKind.empty;
-
   final HomeTileKind kind;
 
   /// Required when [kind] is [HomeTileKind.module], null otherwise.
@@ -238,11 +218,15 @@ class HomeTile {
   /// Which column this tile sits in, or null for a `full` tile (which owns the
   /// whole width and has no side to be on).
   ///
-  /// 🔴 Non-null for EVERY `half` after [HomeLayout.withDerivedColumns] has run,
-  /// which both [HomeLayout.decode] and `HomeGridOps.normalise` do — so no
-  /// stored layout and no edited layout can leave one unset. A `half` with a
-  /// null column reaching a renderer means one of those two paths was bypassed,
-  /// not that "no side" is a value.
+  /// 🔴 Non-null for EVERY `half` after [HomeLayout.seated] has run, which both
+  /// [HomeLayout.decode] and `HomeGridOps.normalise` do — so no stored layout
+  /// and no edited layout can leave one unset. A `half` with a null column
+  /// reaching a renderer means one of those two paths was bypassed, not that
+  /// "no side" is a value.
+  ///
+  /// 🔑 Since design 0084 S4 this is the AUTHORITY, not a copy of the position:
+  /// three cards in the left column and one in the right is a layout no
+  /// ordering could express, and it is the arrangement Q2 exists to allow.
   final HomeColumn? column;
 
   /// [view] resolved against [module] — null for "this card's default".
@@ -270,9 +254,22 @@ class HomeTile {
         view: view,
         // ⚠️ Carried through like shell and view, and for the same reason: a
         // span toggle or a move must not silently reseat a card in the other
-        // column. `withDerivedColumns` re-decides it afterwards anyway, so this
-        // is what keeps the value stable in between rather than briefly null.
+        // column. Since S4 nothing re-derives it afterwards, so carrying it is
+        // the difference between keeping the user's arrangement and losing it.
         column: column ?? this.column,
+      );
+
+  /// This tile, seated in [column] — and `null` IS a value here (a full tile
+  /// has no side), which is why this is not an optional parameter on
+  /// [copyWith]. Same reasoning as [withStyle] one method down.
+  HomeTile withColumn(HomeColumn? column) => HomeTile(
+        kind: kind,
+        module: module,
+        deviceId: deviceId,
+        span: span,
+        shell: shell,
+        view: view,
+        column: column,
       );
 
   /// Both style axes at once — the editor's style sheet writes them together.
@@ -305,8 +302,8 @@ class HomeTile {
         if (storedView != null) 'view': storedView,
         // Written for `half` only. A `full` has no side, and an absent key is
         // how "this build had not heard of columns yet" reads on the way back
-        // in — `withDerivedColumns` fills it, so absence is a migration, not a
-        // loss (design 0084 §4.2).
+        // in — [HomeLayout.seated] fills it from the position, so absence is a
+        // migration, not a loss (design 0084 §4.2).
         if (column != null) 'column': column!.slug,
       };
 
@@ -326,17 +323,13 @@ class HomeTile {
     final shell = CardShell.fromSlug(raw['shell'] as String?) ??
         CardShell.standard;
     final storedView = raw['view'] is String ? raw['view'] as String : null;
-    // 🔴 Unknown / missing / garbage ⇒ null, and `withDerivedColumns` decides.
+    // 🔴 Unknown / missing / garbage ⇒ null, and [HomeLayout.seated] decides.
     // Same rule as shell and view one line up: a value this build cannot read
     // must not cost the user a card.
     final column = HomeColumn.fromSlug(raw['column'] as String?);
     switch (kind) {
       case HomeTileKind.addDevice:
         return const HomeTile.addDevice();
-      // Always half, whatever the stored span says: a full-width empty is a
-      // blank row. See [HomeTileKind.empty].
-      case HomeTileKind.empty:
-        return HomeTile.empty(column: column);
       case HomeTileKind.deviceCard:
         // A device card with no device is not a tile, it is a corrupt row.
         if (device == null) return null;
@@ -397,18 +390,36 @@ class HomeTile {
 /// shorter card. Columns advance independently, and their bottoms are allowed
 /// to disagree — owner ruled 2026-08-23「可以不等長」.
 class HomeBlock {
-  const HomeBlock.full(HomeTile tile)
-      : full = tile,
+  const HomeBlock.full(int index)
+      : full = index,
         left = const [],
         right = const [];
 
   const HomeBlock.columns(this.left, this.right) : full = null;
 
-  /// Non-null for a full-width band; null for a two-column one.
-  final HomeTile? full;
+  /// FLAT INDEX of the full-width tile, or null for a two-column band.
+  ///
+  /// 🔑 Indices rather than tiles, because the editor needs to say "this one"
+  /// back to [HomeGridOps] and a tile is not an identity — two units can hold
+  /// the same module with the same style, and `==` cannot tell them apart. The
+  /// home page simply looks each one up. One segmentation rule, two callers;
+  /// the alternative is two implementations of it, which is the shape of defect
+  /// this file's history is made of.
+  final int? full;
 
-  final List<HomeTile> left;
-  final List<HomeTile> right;
+  /// Flat indices, in the order they stack.
+  final List<int> left;
+  final List<int> right;
+
+  /// This band's first flat index — where a drop line ABOVE it inserts.
+  int get start =>
+      full ?? [...left, ...right].reduce((a, b) => a < b ? a : b);
+
+  /// One past this band's last flat index — where the foot of one of its
+  /// columns inserts, so the card lands inside the band rather than after
+  /// whatever ends it.
+  int get end =>
+      full != null ? full! + 1 : [...left, ...right].reduce((a, b) => a > b ? a : b) + 1;
 }
 
 /// The home page's grid.
@@ -604,16 +615,15 @@ class HomeLayout {
             !m.isPhoneModule ||
             phoneModuleAvailable(m, settings, gForceAvailable: gForceAvailable);
       }).toList(growable: false);
-      return HomeLayout(withDerivedColumns(
-          fallback.isEmpty ? const [HomeTile.addDevice()] : fallback));
+      return HomeLayout(
+          fallback.isEmpty ? const [HomeTile.addDevice()] : fallback);
     }
-    // 🔴 Re-derived, because FILTERING repairs nothing and repositions
-    // everything: drop one half and the tile after it changes which side of its
-    // row it is on, so a column carried over from storage would describe the
-    // layout the user stored rather than the one being drawn (design 0084 S1).
-    // Storage is untouched — this is the rendered copy, same as every other
-    // thing this method decides.
-    return HomeLayout(withDerivedColumns(kept));
+    // 🔵 design 0084 S4: NOT re-seated. In S1 filtering had to re-derive,
+    // because the column was a copy of the position and filtering moves
+    // positions. Now the column is the user's own answer, and a filtered card
+    // must not drag its neighbour to the other side of the page — the tiles
+    // that survive keep the side they were given.
+    return HomeLayout(kept);
   }
 
   String encode() => jsonEncode(toJson());
@@ -635,9 +645,24 @@ class HomeLayout {
     if (parsed is! Map) return null;
     final raw = parsed[tilesKey];
     if (raw is! List) return null;
-    final tiles = <HomeTile>[
-      for (final t in raw) ?HomeTile.fromJson(t),
+    // 🔴 The pre-S4 placeholder is READ, then dropped — and the order matters.
+    //
+    // A layout written before design 0084 S4 stores a tile whose kind is
+    // `empty` for the unoccupied half of a row (design 0049 §3.8). It is not a
+    // tile any more, but its POSITION is the only record of which side its
+    // neighbour was on. Dropping it first and seating afterwards would repack
+    // the halves — `[A, gap, B, C]` would come back as `A|B` then `C` instead
+    // of `A` then `B|C` — which is somebody's home page rearranging itself on
+    // an update. So a gap is carried through the walk as a null and removed
+    // after the seating.
+    final walked = <HomeTile?>[
+      for (final t in raw)
+        if (t is Map && t['kind'] == legacyGapSlug)
+          null
+        else
+          ?HomeTile.fromJson(t),
     ];
+    final tiles = seated(walked);
     if (tiles.isEmpty) return null;
     // 🔴 THE MIGRATION (design 0084 §4.2 / Q3, ruled "無損轉換").
     //
@@ -652,30 +677,50 @@ class HomeLayout {
     // ⚠️ Read-only. This does NOT write back to `settings.home_layout` — a
     // migration that rewrote storage on first read would spend the user's only
     // copy of the old value before anything had been shown to them.
-    return HomeLayout(withDerivedColumns(tiles));
+    return HomeLayout(tiles);
   }
 
-  /// Every `half` given the column its POSITION already puts it in; every
-  /// `full` given none.
+  /// The stored slug of the pre-S4 placeholder (design 0049 §3.8), kept so
+  /// [decode] can still read a layout written before design 0084 S4.
   ///
-  /// 🔑 In S1 this is the whole relationship between the two representations:
-  /// position decides, [HomeTile.column] records. That is what makes the new
-  /// field safe to introduce before anything reads it — there is no state it
-  /// can hold that the old model could not, so no stored layout can mean
-  /// something new by accident. S2 reverses the arrow (column decides, and
-  /// `rowsOf` reads it); S4 deletes [HomeTileKind.empty] once the editor no
-  /// longer needs a stored slot to drop onto.
+  /// ⚠️ READ-only. Nothing writes it any more, and `exportHomeValue` no longer
+  /// emits it — a capture from an older build may still contain it, which is
+  /// correct: it describes what that build drew.
+  static const String legacyGapSlug = 'empty';
+
+  /// Give every `half` a column and every `full` none.
   ///
-  /// ⚠️ Rebuilds tiles that are already correct too. Cheap (a home layout is a
-  /// handful of tiles) and it removes the question "was this list derived
-  /// before or after that edit" from every caller.
-  static List<HomeTile> withDerivedColumns(List<HomeTile> tiles) => [
-        for (final row in rowsOf(tiles))
-          for (final (i, t) in row.indexed)
-            t.span == HomeSpan.half
-                ? t.copyWith(column: i == 0 ? HomeColumn.left : HomeColumn.right)
-                : t,
-      ];
+  /// 🔴 A STORED column is honoured, never recomputed — that is the whole of
+  /// design 0084 Q1. Only a half that has none gets one derived from its
+  /// position, which is exactly the pre-S4 case: alternate sides within a run
+  /// of halves, and a `full` ends the run because it owns the whole width.
+  ///
+  /// A null element is a pre-S4 gap: it takes a side (so the tile after it
+  /// lands where that build drew it) and is then dropped.
+  ///
+  /// ⚠️ The derivation is the MIGRATION, not the model. After S4 a layout can
+  /// hold three cards in the left column and one in the right, which no
+  /// position could have expressed — so re-deriving a seated layout would
+  /// flatten exactly the arrangement the user was given the ability to make.
+  static List<HomeTile> seated(List<HomeTile?> tiles) {
+    final out = <HomeTile>[];
+    var slot = 0;
+    for (final t in tiles) {
+      if (t == null) {
+        slot += 1; // a gap holds a side without being a card
+        continue;
+      }
+      if (t.span == HomeSpan.full) {
+        slot = 0;
+        out.add(t.column == null ? t : t.withColumn(null));
+        continue;
+      }
+      final side = t.column ?? (slot.isEven ? HomeColumn.left : HomeColumn.right);
+      slot += 1;
+      out.add(t.column == side ? t : t.withColumn(side));
+    }
+    return out;
+  }
 
   /// The grid as the home page draws it since design 0084 S2: a run of
   /// full-width tiles and two-column blocks, in order.
@@ -699,66 +744,38 @@ class HomeLayout {
   /// is full, cost nothing here.
   static List<HomeBlock> blocksOf(List<HomeTile> tiles) {
     final out = <HomeBlock>[];
-    var left = <HomeTile>[];
-    var right = <HomeTile>[];
+    var left = <int>[];
+    var right = <int>[];
     void flush() {
       if (left.isEmpty && right.isEmpty) return;
       out.add(HomeBlock.columns(left, right));
-      left = <HomeTile>[];
-      right = <HomeTile>[];
+      left = <int>[];
+      right = <int>[];
     }
 
-    for (final t in tiles) {
+    for (var i = 0; i < tiles.length; i++) {
+      final t = tiles[i];
       if (t.span == HomeSpan.full) {
         flush();
-        out.add(HomeBlock.full(t));
+        out.add(HomeBlock.full(i));
         continue;
       }
       // ⚠️ A half with no column can only reach here if something bypassed
-      // `withDerivedColumns` (decode, normalise and renderedFor all run it).
-      // Treating it as LEFT keeps the card on screen rather than dropping it —
-      // the same choice `fromJson` makes for an unreadable shell.
-      (t.column == HomeColumn.right ? right : left).add(t);
+      // [seated] (decode and `HomeGridOps.normalise` both run it). Treating it
+      // as LEFT keeps the card on screen rather than dropping it — the same
+      // choice `fromJson` makes for an unreadable shell.
+      (t.column == HomeColumn.right ? right : left).add(i);
     }
     flush();
     return out;
   }
 
-  /// Row packing. A `full` owns a row; a `half` takes the next element with it.
+  /// ⚠️ `rows` / `rowsOf` were removed by design 0084 S4.
   ///
-  /// 🔴 EXACT, not greedy, since design 0049 §3.8 made the empty slot a stored
-  /// tile. The invariant `HomeGridOps.normalise` maintains — every `half` is
-  /// followed by another `half` or by an [HomeTileKind.empty] — is what lets
-  /// this simply take pairs instead of reaching forward for a partner.
-  ///
-  /// The old greedy form is why a drag could land somewhere the gesture had not
-  /// asked for: removing one member of a pair orphaned the other, which then
-  /// swallowed the next half. See [HomeTileKind.empty].
-  ///
-  /// ⚠️ Still tolerant of a stored layout written before empties existed: a
-  /// trailing lone `half` becomes a row of one, which is what those layouts
-  /// meant. `normalise` fixes it on the first edit.
-  List<List<HomeTile>> get rows => rowsOf(tiles);
-
-  /// [rows] for an arbitrary list — the editor groups tiles it has not stored
-  /// yet, and building a throwaway [HomeLayout] for that would be ceremony.
-  static List<List<HomeTile>> rowsOf(List<HomeTile> tiles) {
-    final out = <List<HomeTile>>[];
-    var i = 0;
-    while (i < tiles.length) {
-      final t = tiles[i];
-      if (t.span == HomeSpan.half &&
-          i + 1 < tiles.length &&
-          tiles[i + 1].span == HomeSpan.half) {
-        out.add([t, tiles[i + 1]]);
-        i += 2;
-      } else {
-        out.add([t]);
-        i += 1;
-      }
-    }
-    return out;
-  }
+  /// They packed by POSITION — pairs of adjacent halves — which is the model
+  /// the stored placeholder existed to hold together. [blocksOf] replaces both,
+  /// and the difference is not a refactor: a column can hold three cards while
+  /// the other holds one, and no ordering expresses that.
 
   @override
   bool operator ==(Object other) =>

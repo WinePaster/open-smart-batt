@@ -624,6 +624,24 @@ String exportHomeValue(HomeLayout? layout) {
   // Omitting the common case keeps the line short and keeps the grammar
   // additive: a reader that does not know `:half` still parses the module name.
   String span(HomeTile t) => t.span == HomeSpan.half ? ':half' : '';
+  // 🔵 design 0084 S4. Which COLUMN a half sits in, appended straight after
+  // `:half` and omitted for a full (which has no side).
+  //
+  // Without it two genuinely different pages produce the same line again — the
+  // same argument `:half` itself was added on. `clock:half:l, chart:half:l,
+  // speed:half:r` is one tall column beside one short one; move `chart` to the
+  // right and the page is a different shape while every module and every span
+  // is identical.
+  //
+  // ⚠️ Single letters, and NOT `:left`. The value is pinned to
+  // `^tiles=[A-Za-z0-9@,:]+$` by `export_layout_header_test.dart` and
+  // `card_style_test.dart`; letters are inside that alphabet, and design 0054
+  // Q3 is explicit that the guard does not get widened for a nicer syntax.
+  String col(HomeTile t) => switch (t.column) {
+        HomeColumn.left => ':l',
+        HomeColumn.right => ':r',
+        null => '',
+      };
   // design 0054's two style axes, as TAGGED suffixes: `:v<view>` then
   // `:s<shell>`, appended after `:half` and omitted when they hold their
   // defaults.
@@ -648,19 +666,19 @@ String exportHomeValue(HomeLayout? layout) {
   final parts = <String>[
     for (final t in layout.tiles)
       switch (t.kind) {
-        HomeTileKind.addDevice => 'addDevice${span(t)}${style(t)}',
-        // 🔴 In the export line, because a capture must describe the layout the
-        // user was actually looking at — and a row of one card plus a gap is a
-        // different arrangement from a row of one full-width card. Added with
-        // the stored empty slot (design 0049 §3.8); captures from before it
-        // have no `empty` entries, which reads correctly as the old derived
-        // pairing.
-        HomeTileKind.empty => 'empty',
+        HomeTileKind.addDevice => 'addDevice${span(t)}${col(t)}${style(t)}',
+        // ⚠️ There used to be an `empty` entry here — the stored placeholder
+        // for the unoccupied half of a row (design 0049 §3.8), emitted so a
+        // capture could tell "one card plus a gap" from "one full-width card".
+        // Design 0084 S4 removed the placeholder, and `:l` / `:r` say the same
+        // thing better. Older captures still contain `empty`, correctly: they
+        // describe what that build drew.
         HomeTileKind.deviceCard =>
-          'deviceCard@${token(t.deviceId!)}${span(t)}${style(t)}',
+          'deviceCard@${token(t.deviceId!)}${span(t)}${col(t)}${style(t)}',
         HomeTileKind.module => t.deviceId == null
-            ? '${t.module!.name}${span(t)}${style(t)}'
-            : '${t.module!.name}@${token(t.deviceId!)}${span(t)}${style(t)}',
+            ? '${t.module!.name}${span(t)}${col(t)}${style(t)}'
+            : '${t.module!.name}@${token(t.deviceId!)}${span(t)}${col(t)}'
+                '${style(t)}',
       },
   ];
   return 'tiles=${parts.join(',')}';

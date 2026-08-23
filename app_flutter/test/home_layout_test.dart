@@ -208,7 +208,7 @@ void main() {
       // comparison is against the SEATED list. Not a weakening — `==` still
       // covers `column`, and T-0084-2 is what proves the seating is the one the
       // positions already implied.
-      expect(back, HomeLayout(HomeLayout.withDerivedColumns(l.tiles)));
+      expect(back, HomeLayout(HomeLayout.seated(l.tiles)));
     });
 
     test('a partly-unreadable layout keeps the tiles it can read', () {
@@ -222,22 +222,29 @@ void main() {
     });
   });
 
-  group('rows: the flat list packs the way design 0046 §3.3 describes',
-      () {
-    test('two consecutive halves share a row, a full owns one', () {
-      final l = HomeLayout(const [
+  group('blocks: the flat list bands the way design 0084 §4.1 describes', () {
+    // 🔵 Was `rows`, removed by design 0084 S4. Rows packed by POSITION — pairs
+    // of adjacent halves — which is the model the stored placeholder existed to
+    // hold together. Bands pack by COLUMN, and the difference is not a
+    // refactor: a column can hold three cards while the other holds one, and no
+    // ordering expresses that.
+    test('halves band by column, a full owns its own band', () {
+      final tiles = HomeGridOps.normalise(const [
         HomeTile.module(DisplayModule.speed, span: HomeSpan.half),
         HomeTile.module(DisplayModule.readouts, span: HomeSpan.half),
         HomeTile.device('A'),
         HomeTile.module(DisplayModule.chart, span: HomeSpan.half),
       ]);
-      final rows = l.rows;
-      expect(rows, hasLength(3));
-      expect(rows[0], hasLength(2));
-      expect(rows[1], hasLength(1));
-      // An orphan half keeps the left of its own row.
-      expect(rows[2], hasLength(1));
-      expect(rows[2].single.span, HomeSpan.half);
+      final blocks = HomeLayout.blocksOf(tiles);
+      expect(blocks, hasLength(3));
+      expect(blocks[0].left, hasLength(1));
+      expect(blocks[0].right, hasLength(1));
+      expect(blocks[1].full, isNotNull, reason: 'the device card owns a band');
+      // An orphan half keeps the LEFT column of its own band — the ruling that
+      // survived design 0084 unchanged (`home_page.dart` header).
+      expect(blocks[2].left, hasLength(1));
+      expect(blocks[2].right, isEmpty);
+      expect(tiles[blocks[2].left.single].span, HomeSpan.half);
     });
   });
 
