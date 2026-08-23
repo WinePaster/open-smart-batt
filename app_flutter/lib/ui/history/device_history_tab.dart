@@ -375,6 +375,9 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     final data = await loadHistorySlice(
       tele,
       since: historySinceFor(range),
+      // 🔵 See the History tab's twin: `null` because every preset runs to now
+      // (design 0083 S1).
+      until: null,
       deviceId: deviceId,
     );
     _QueryCache.put(key, data);

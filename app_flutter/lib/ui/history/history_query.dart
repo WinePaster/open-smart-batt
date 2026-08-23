@@ -261,12 +261,27 @@ class HistorySlice {
 /// as a user-selectable option because the three product classes do not share a
 /// voltage range and an unscoped chart averages them into a line matching no
 /// physical unit.
+/// 🔵 **[until] added by design 0083 S1, and it goes to ALL THREE.** The three
+/// existing presets are all "from some moment until now", so this whole path
+/// only ever needed a lower bound; a custom range has a far end. Passing it to
+/// two of the three would produce a chart, a stats strip and a list that cover
+/// different spans of one unit — design 0065 §6 R5 in its purest form, and
+/// invisible: every number would look plausible.
+///
+/// 🔴 **Half-open** (`timestamp < until`, design 0074 T1). The caller converts
+/// "up to and including the 15th" into midnight on the 16th, never
+/// `23:59:59` — see `historyBoundsFor` when S2 lands.
+///
+/// ⛔ **The three presets pass `until: null` and are bit-for-bit unchanged.**
+/// S1 adds no behaviour; it only gives S2 somewhere to attach.
 Future<HistorySlice> loadHistorySlice(
   TelemetryController tele, {
   required DateTime? since,
+  required DateTime? until,
   required String? deviceId,
 }) async {
-  final stats = await tele.historyStats(since: since, deviceId: deviceId);
+  final stats =
+      await tele.historyStats(since: since, until: until, deviceId: deviceId);
   // 🔴 `historyChartBucketMs`, never an inline "about the same" calculation.
   // The width decides how much each plotted point averages; two surfaces
   // computing it separately is how one unit ends up with two charts.
@@ -276,14 +291,21 @@ Future<HistorySlice> loadHistorySlice(
   // cut-off — no `max()` is needed here, and adding one would imply a case the
   // query makes impossible. Empty range ⇒ both null ⇒ the minute floor, which
   // is exactly what `since ?? firstAt` produced before for an empty "all".
+  //
+  // 🔵 **design 0083 S1 makes the same argument hold at the OTHER end**: with
+  // `until` in the aggregate, `lastAt` cannot be later than the cut-off either,
+  // so this line needs no `min()` for the same reason it needs no `max()`. That
+  // is the whole point of bounding the aggregate rather than clamping here —
+  // a clamp would be a second place where the span is decided.
   final bucketMs = historyChartBucketMs(stats.firstAt, stats.lastAt);
   final buckets = await tele.historyBuckets(
-      since: since, bucketMs: bucketMs, deviceId: deviceId);
+      since: since, until: until, bucketMs: bucketMs, deviceId: deviceId);
   // One entry per MINUTE, not one per stored row (design 0061 T3a). See
   // [kHistoryRowCap] for what the cap counts, and [HistoryListRow] for why the
   // window carries its own min/max.
   final rows = await tele.historyListBuckets(
       since: since,
+      until: until,
       bucketMs: kHistoryListBucketMs,
       limit: kHistoryRowCap,
       deviceId: deviceId);

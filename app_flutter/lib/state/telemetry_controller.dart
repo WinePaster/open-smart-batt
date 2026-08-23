@@ -399,14 +399,22 @@ class TelemetryController extends ChangeNotifier
   /// (design 0061 T3a). [limit] caps WINDOWS, not stored rows.
   ///
   /// Attributed rows only, for [historyStats]' reason.
+  ///
+  /// 🔵 [until] passed through by design 0083 S1. [HistoryRepo.queryListBuckets]
+  /// has taken one since design 0074 — this layer simply never offered it, so
+  /// the list was the one surface that COULD have been bounded and was not.
+  /// ⚠️ It composes with [limit], which keeps the NEWEST windows: bounded
+  /// above, "newest" means newest inside the range, not newest in the table.
   Future<List<HistoryListRow>> historyListBuckets({
     DateTime? since,
+    DateTime? until,
     required int bucketMs,
     int? limit,
     String? deviceId,
   }) =>
       _history.queryListBuckets(
           since: since,
+          until: until,
           bucketMs: bucketMs,
           limit: limit,
           deviceId: deviceId,
@@ -498,9 +506,17 @@ class TelemetryController extends ChangeNotifier
   /// device outside that view. Fixing it here rather than passing a flag down
   /// from the screen keeps the rule in one place and keeps it away from
   /// [exportHistoryCsv], which must go on including those rows.
-  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) =>
+  ///
+  /// 🔵 [until] passed through by design 0083 S1 — see [HistoryRepo.aggregate]
+  /// for why this one matters more than it looks: the chart's bucket width is
+  /// derived from the stats' own extremes.
+  Future<HistoryStats> historyStats(
+          {DateTime? since, DateTime? until, String? deviceId}) =>
       _history.aggregate(
-          since: since, deviceId: deviceId, attributedOnly: true);
+          since: since,
+          until: until,
+          deviceId: deviceId,
+          attributedOnly: true);
 
   /// Rows in range that were recorded before the unit was identified.
   ///
