@@ -203,12 +203,25 @@ class HistoryStats {
     this.maxTemp,
     this.avgTemp,
     this.firstAt,
+    this.lastAt,
     required this.count,
   });
 
   final double? minPvlt, maxPvlt, avgPvlt;
   final double? minTemp, maxTemp, avgTemp;
   final DateTime? firstAt; // earliest row timestamp in range
+
+  /// Newest row timestamp in range — 🔵 **design 0081 S1**.
+  ///
+  /// 🔑 It exists so the chart's bucket width can follow **the data's own
+  /// span** instead of the range's. `firstAt` alone could not: the width was
+  /// `(range cut-off → now)`, which for "today" grows all day whether or not
+  /// anything was recorded. A unit that rode for 30 minutes at 15:00 had its
+  /// 1,800 stored seconds drawn at a 5-minute bucket, because the divisor was
+  /// the 15 hours since local midnight (design 0081 §1.1).
+  ///
+  /// Null exactly when [firstAt] is — i.e. when the range holds no rows.
+  final DateTime? lastAt;
   final int count;
 
   static const empty = HistoryStats(count: 0);
@@ -969,12 +982,16 @@ class HistoryRepo {
     final r = await _db.rawQuery(
       'SELECT MIN(pvlt) AS minP, MAX(pvlt) AS maxP, AVG(pvlt) AS avgP, '
       'MIN(temperature) AS minT, MAX(temperature) AS maxT, AVG(temperature) AS avgT, '
-      'MIN(timestamp) AS firstTs, COUNT(*) AS n FROM ${Db.tableHistory} $where',
+      // 🔵 `MAX(timestamp)` added by design 0081 S1 — see [HistoryStats.lastAt]
+      // for why the chart cannot derive its bucket width without it.
+      'MIN(timestamp) AS firstTs, MAX(timestamp) AS lastTs, '
+      'COUNT(*) AS n FROM ${Db.tableHistory} $where',
       args,
     );
     final row = r.first;
     double? d(Object? v) => (v as num?)?.toDouble();
     final firstTs = (row['firstTs'] as num?)?.toInt();
+    final lastTs = (row['lastTs'] as num?)?.toInt();
     return HistoryStats(
       minPvlt: d(row['minP']),
       maxPvlt: d(row['maxP']),
@@ -984,6 +1001,8 @@ class HistoryRepo {
       avgTemp: d(row['avgT']),
       firstAt:
           firstTs == null ? null : DateTime.fromMillisecondsSinceEpoch(firstTs),
+      lastAt:
+          lastTs == null ? null : DateTime.fromMillisecondsSinceEpoch(lastTs),
       count: (row['n'] as num?)?.toInt() ?? 0,
     );
   }
