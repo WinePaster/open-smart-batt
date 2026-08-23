@@ -117,7 +117,8 @@ class _NeverStatsTelemetry extends TelemetryController {
       {required super.settings, required super.history, required super.logs});
 
   @override
-  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) =>
+  Future<HistoryStats> historyStats(
+          {DateTime? since, DateTime? until, String? deviceId}) =>
       Completer<HistoryStats>().future;
 }
 
@@ -130,9 +131,10 @@ class _CountingTelemetry extends TelemetryController {
   int listBuckets = 0;
 
   @override
-  Future<HistoryStats> historyStats({DateTime? since, String? deviceId}) {
+  Future<HistoryStats> historyStats(
+      {DateTime? since, DateTime? until, String? deviceId}) {
     stats++;
-    return super.historyStats(since: since, deviceId: deviceId);
+    return super.historyStats(since: since, until: until, deviceId: deviceId);
   }
 
   @override
@@ -149,13 +151,18 @@ class _CountingTelemetry extends TelemetryController {
   @override
   Future<List<HistoryListRow>> historyListBuckets({
     DateTime? since,
+    DateTime? until,
     required int bucketMs,
     int? limit,
     String? deviceId,
   }) {
     listBuckets++;
     return super.historyListBuckets(
-        since: since, bucketMs: bucketMs, limit: limit, deviceId: deviceId);
+        since: since,
+        until: until,
+        bucketMs: bucketMs,
+        limit: limit,
+        deviceId: deviceId);
   }
 }
 
@@ -689,7 +696,8 @@ void main() {
       });
 
       final slice = await tester.runAsync(() =>
-          loadHistorySlice(services.telemetry, since: null, deviceId: unitA));
+          loadHistorySlice(services.telemetry,
+              since: null, until: null, deviceId: unitA));
       expect(slice!.stats.count, 30);
       // Thirty minutes of rows ⇒ thirty one-minute points, although the ride
       // ended ten days ago. Measuring to `DateTime.now()` would make it ~80

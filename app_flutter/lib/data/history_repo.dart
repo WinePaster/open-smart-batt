@@ -978,13 +978,28 @@ class HistoryRepo {
 
   /// Range-wide min/max/avg over raw rows (accurate stats, not bucket-averaged).
   /// FB-38: see [queryBuckets] — same gap, same fix.
+  ///
+  /// 🔵 **[until] added by design 0083 S1** — the last of the four read paths
+  /// to get an upper bound, and the one where its absence was hardest to see.
+  /// Since design 0081 S1 the chart derives its BUCKET WIDTH from
+  /// [HistoryStats.firstAt] / [lastAt] (`historyChartBucketMs`), so a `lastAt`
+  /// reaching past the selected range would divide the span by a number that
+  /// covers rows the chart is not drawing: every plotted point would average
+  /// MORE time than it should. Nothing throws and no row is wrong — the chart
+  /// simply comes out coarser, which reads as a rendering choice rather than a
+  /// missing WHERE clause. Half-open, like every other range here; see
+  /// [_scope].
   Future<HistoryStats> aggregate({
     DateTime? since,
+    DateTime? until,
     String? deviceId,
     bool attributedOnly = false,
   }) async {
-    final (clause, scopeArgs) =
-        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
+    final (clause, scopeArgs) = _scope(
+        since: since,
+        until: until,
+        deviceId: deviceId,
+        attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final r = await _db.rawQuery(

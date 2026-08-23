@@ -155,7 +155,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // Same three, same order, same arguments as before — the change is that
     // the detail page's tab can no longer drift from them, which is what
     // design 0065 §6 R5 had only a comment to enforce.
-    final slice = await loadHistorySlice(tele, since: since, deviceId: scoped);
+    // 🔵 `until: null` — the three presets all run to now (design 0083 S1).
+    // Explicit rather than defaulted, so S2's custom range cannot land here by
+    // forgetting an argument.
+    final slice = await loadHistorySlice(tele,
+        since: since, until: null, deviceId: scoped);
     return _HistoryData(
         rows: slice.rows,
         buckets: slice.buckets,
