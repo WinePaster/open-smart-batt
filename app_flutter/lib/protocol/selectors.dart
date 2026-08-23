@@ -82,6 +82,31 @@ class Selectors {
   /// written to the diagnostic log.
   static const int bleAddress = 0x38;
 
+  /// Firmware version: a **byte pair** `[major, minor]`, NOT a u16 — `0x0106` is
+  /// firmware 1.06, not 262 (protocol/identity-and-rtc.md §8.2.3).
+  /// Declassified 2026-07-30
+  /// together with [bleAddress] and [rtc]: its semantics are documented openly
+  /// in PROTOCOL.md §8.2.3, so keeping the constant out of this file only ever
+  /// produced the worst combination — hidden in code, published in the docs.
+  static const int firmwareVersion = 0x29;
+
+  /// System counters. Two lengths, and the length identifies the class:
+  /// LEN 11 `[u24 standby min][u24 connected min][u16 sleeps][u16 power-ons][u8 cut-offs]`,
+  /// LEN 10 drops the trailing cut-off count. Decoded openly in
+  /// protocol/telemetry-decoding.md §8.4; declassified 2026-08-09 on the same
+  /// grounds as [bleAddress] — the semantics were already public while this
+  /// constant was not.
+  ///
+  /// The two minute fields are since-wake, not lifetime (corrected 2026-08-07).
+  static const int systemCounters = 0x34;
+
+  /// Device RTC, 7 bytes: `[u16 year BE][MM][DD][hh][mm][ss]`.
+  ///
+  /// **`MM` and `DD` are 0-based** (verified 2026-08-01): `MM = 0x07` is August,
+  /// `DD = 0x00` is the 1st. Decoding them as 1-based yields month 0 / day 0 on
+  /// thousands of frames. See protocol/identity-and-rtc.md.
+  static const int rtc = 0x3B;
+
   /// Charge info (v1 / v2).
   static const int charge = 0x41;
 
