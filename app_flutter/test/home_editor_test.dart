@@ -629,7 +629,7 @@ void main() {
       await tester.tap(find.text('Add card'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      for (final label in ['Per-Cell Voltage', 'PVLT', 'Live Readings']) {
+      for (final label in ['Per-Cell Voltage', 'Primary Voltage', 'Live Readings']) {
         expect(find.textContaining('$label · unknown unit'), findsNothing,
             reason: 'no class means no class-specific cards');
       }

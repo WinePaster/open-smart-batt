@@ -568,7 +568,7 @@ void main() {
           reason: 'a gauge card has no heading in EITHER view');
       expect(find.byType(PvltNumeric), findsOneWidget);
       // The caption and the SOH sub-line both survive the loss of the dial.
-      expect(find.textContaining('PVLT'), findsOneWidget);
+      expect(find.textContaining('Primary Voltage'), findsOneWidget);
     });
 
     testWidgets('the power bank keeps its direction sub-line', (tester) async {

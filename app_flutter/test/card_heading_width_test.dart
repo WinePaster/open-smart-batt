@@ -38,8 +38,13 @@ import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 
 void main() {
-  // The longest heading the app ships (`app_en.arb:133`).
-  const enHeading = 'Per-Cell Voltage DVOL';
+  // The longest heading the HOME GRID can render (`app_en.arb:133`) — the
+  // widest of the nine `homeModuleLabel` strings. 🔵 FB-99 dropped the trailing
+  // 「 DVOL」 from it; it is still the longest of that set, just 16 characters
+  // instead of 21. (It was never the longest string in the app outright —
+  // `dashboardProtectionHeading` is longer — but that one is not a module
+  // heading and never lands on a 1x1 tile, which is what this file measures.)
+  const enHeading = 'Per-Cell Voltage';
 
   // `home_page.dart:77` pads the list by 15 either side of a 320 dp phone, and
   // a half tile is one of two `Expanded` children of the row, with no gap.

@@ -688,7 +688,7 @@ void main() {
       await pumpHome(tester, s);
 
       final unit = find.text('Cap #1');
-      final module = find.text('PER-CELL VOLTAGE DVOL');
+      final module = find.text('PER-CELL VOLTAGE');
       expect(unit, findsOneWidget);
       expect(module, findsOneWidget,
           reason: 'two lines, not one string — a concatenated heading would '
@@ -718,7 +718,7 @@ void main() {
       expect(find.text('MY CAR BATTERY'), findsNothing);
       // …while the module label still is upper-cased, so this is a deliberate
       // difference rather than the transform having been dropped.
-      expect(find.text('PER-CELL VOLTAGE DVOL'), findsOneWidget);
+      expect(find.text('PER-CELL VOLTAGE'), findsOneWidget);
     });
 
     testWidgets('G3: an empty alias falls back instead of drawing a blank line',
@@ -806,7 +806,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('PER-CELL VOLTAGE DVOL'), findsOneWidget,
+      expect(find.text('PER-CELL VOLTAGE'), findsOneWidget,
           reason: 'sanity: the card itself did render');
       expect(find.text(kPreviewAlias), findsNothing,
           reason: 'the editor draws the card, not the unit it would be bound '

@@ -125,12 +125,12 @@
     }
   },
   "dashboardReadoutsHeading": "Live Readings",
-  "dashboardReadoutTemperatureLabel": "Temperature TEMP",
-  "dashboardReadoutSvltLabel": "Secondary Voltage SVLT",
+  "dashboardReadoutTemperatureLabel": "Temperature",
+  "dashboardReadoutSvltLabel": "Secondary Voltage",
   "dashboardReadoutCurrentLabel": "Main Current",
   "dashboardReadoutSohLabel": "Health SOH",
   "dashboardSerialLabel": "Serial No.",
-  "dashboardDvolHeading": "Per-Cell Voltage DVOL",
+  "dashboardDvolHeading": "Per-Cell Voltage",
   "dashboardDvolPendingNote": "Per-cell voltages are streaming, but the voltage-scaling factor (VADJ) has not been received yet, so the calibrated values will appear once it arrives.",
   "dashboardTelemetryStale": "Readings paused · last update {age}",
   "@dashboardTelemetryStale": {
@@ -187,7 +187,7 @@
   "captureWizardAbort": "Stop",
   "captureWizardFinished": "Capture finished. Export the diagnostic log and send it to us.",
   "dashboardProtectionHeading": "Protection Status / Mode",
-  "gaugePvltLabel": "PVLT · Primary Voltage",
+  "gaugePvltLabel": "Primary Voltage",
   "gaugeSohUnknown": "SOH --",
   "gaugeSohValue": "SOH {soh}% · Health {label}",
   "@gaugeSohValue": {
@@ -1299,13 +1299,13 @@
   "@dashboardTrackCurrentDirectionKey": {
     "description": "Direction key under the pack current track. The track itself stays SIGNED and zero-crossing (2026-08-03 ruling); this line is what tells the reader which half of the axis is which, now that 0x2E's direction is established (design 0056)."
   },
-  "dashboardTrackPvlt": "PVLT · main voltage",
+  "dashboardTrackPvlt": "Primary voltage",
   "dashboardTrackTemperature": "Temperature",
   "powerBankTrackCurrent": "Current",
   "powerBankTrackOutput": "Output voltage",
   "powerBankTrackInput": "Input voltage",
   "powerBankTrackSoc": "Charge level SOC",
-  "capacitorTrackSvlt": "Secondary voltage SVLT",
+  "capacitorTrackSvlt": "Secondary voltage",
   "capacitorChartNoCurrentNote": "No current track: this unit reports a constant 0 A, which is not a measurement.",
   "explainerSpeedTitle": "How speed is measured",
   "explainerGForceTitle": "How G is measured",

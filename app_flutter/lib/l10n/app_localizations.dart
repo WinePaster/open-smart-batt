@@ -353,13 +353,13 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardReadoutTemperatureLabel.
   ///
   /// In en, this message translates to:
-  /// **'Temperature TEMP'**
+  /// **'Temperature'**
   String get dashboardReadoutTemperatureLabel;
 
   /// No description provided for @dashboardReadoutSvltLabel.
   ///
   /// In en, this message translates to:
-  /// **'Secondary Voltage SVLT'**
+  /// **'Secondary Voltage'**
   String get dashboardReadoutSvltLabel;
 
   /// No description provided for @dashboardReadoutCurrentLabel.
@@ -383,7 +383,7 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardDvolHeading.
   ///
   /// In en, this message translates to:
-  /// **'Per-Cell Voltage DVOL'**
+  /// **'Per-Cell Voltage'**
   String get dashboardDvolHeading;
 
   /// No description provided for @dashboardDvolPendingNote.
@@ -539,7 +539,7 @@ abstract class AppLocalizations {
   /// No description provided for @gaugePvltLabel.
   ///
   /// In en, this message translates to:
-  /// **'PVLT · Primary Voltage'**
+  /// **'Primary Voltage'**
   String get gaugePvltLabel;
 
   /// No description provided for @gaugeSohUnknown.
@@ -3011,7 +3011,7 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardTrackPvlt.
   ///
   /// In en, this message translates to:
-  /// **'PVLT · main voltage'**
+  /// **'Primary voltage'**
   String get dashboardTrackPvlt;
 
   /// No description provided for @dashboardTrackTemperature.
@@ -3047,7 +3047,7 @@ abstract class AppLocalizations {
   /// No description provided for @capacitorTrackSvlt.
   ///
   /// In en, this message translates to:
-  /// **'Secondary voltage SVLT'**
+  /// **'Secondary voltage'**
   String get capacitorTrackSvlt;
 
   /// No description provided for @capacitorChartNoCurrentNote.

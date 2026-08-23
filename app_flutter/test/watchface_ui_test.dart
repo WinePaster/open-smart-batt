@@ -480,7 +480,7 @@ void main() {
       // decision point and the two can disagree.
       expect(find.byType(PvltGauge), findsNothing);
       // 🔑 …but PVLT itself is still here, in the readouts grid.
-      expect(find.textContaining('PVLT'), findsWidgets);
+      expect(find.textContaining('PRIMARY VOLTAGE'), findsWidgets);
       expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       expect(dy(tester, find.byType(ReadoutsCard)),
@@ -509,7 +509,7 @@ void main() {
       // 🔑 …and PVLT is still ON the page, in the readouts grid. Without this
       // the assertion above would be satisfied by having deleted the number.
       // Locale is `en` in this harness (see `pumpUnder`).
-      expect(find.textContaining('PVLT'), findsWidgets);
+      expect(find.textContaining('PRIMARY VOLTAGE'), findsWidgets);
       expect(dy(tester, find.byType(TrendChartCard)),
           lessThan(dy(tester, find.byType(ReadoutsCard))));
       // 🔴 No DVOL bars on a capacitor since design 0050 D5. `feedDvol` above
@@ -657,7 +657,7 @@ void main() {
             reason: 'the PVLT dial is gone from every pack class');
         // 🔑 …and PVLT is still on the page, in the readouts grid. Without this
         // the assertion above would be satisfied by having deleted the number.
-        expect(find.textContaining('PVLT'), findsWidgets);
+        expect(find.textContaining('PRIMARY VOLTAGE'), findsWidgets);
         expect(dy(tester, find.byType(TrendChartCard)),
             lessThan(dy(tester, find.byType(ReadoutsCard))));
         expect(find.byType(DvolBars), findsOneWidget);
