@@ -34,12 +34,123 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../data/history_repo.dart';
 import '../../models/models.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
+
 import '../../theme/accent_theme.dart';
+import 'history_query.dart';
 
 double historyDisplayTemp(double c, TempUnit u) =>
     u == TempUnit.fahrenheit ? c * 9 / 5 + 32 : c;
 
 String historyTempUnitLabel(TempUnit u) => u == TempUnit.fahrenheit ? '°F' : '°C';
+
+/// "Each point on the chart averages N minutes / hours" — design 0061 T10.
+///
+/// 🔵 In the core since design 0081 S3: the landscape page states the same
+/// sentence in its top bar, and two spellings of "how much time is one point"
+/// is precisely the drift design 0065 §6 R5 is about.
+///
+/// Hours once the width reaches one, because "each point averages 1440 minutes"
+/// is a number nobody converts. Rounded to whole units: the width is derived
+/// from a span divided by a target point count, so it lands on values like
+/// 3.7 minutes, and a note reading "3.7 minutes" would be answering a precision
+/// question nobody asked.
+String historyBucketWidthNote(AppLocalizations l10n, int bucketMs) {
+  final minutes = (bucketMs / 60000).round().clamp(1, 1 << 30);
+  if (minutes < 60) return l10n.historyChartBucketMinutes(minutes);
+  return l10n.historyChartBucketHours((minutes / 60).round().clamp(1, 1 << 30));
+}
+
+/// The landscape chart's visible window, and the arithmetic that moves it —
+/// design 0081 S3.
+///
+/// 🔑 **A plain value with a pure transform, deliberately.** Pan and zoom are
+/// the two things on that page a user can get wrong in a way that is hard to
+/// describe ("it jumped", "it will not go back"), and a widget test that has to
+/// synthesise pointer events to reach the arithmetic tests the gesture
+/// recogniser as much as the maths. Everything below is reachable from a plain
+/// `test()`.
+@immutable
+class HistoryChartWindow {
+  const HistoryChartWindow(this.from, this.to);
+
+  final DateTime from;
+  final DateTime to;
+
+  int get spanMs => to.millisecondsSinceEpoch - from.millisecondsSinceEpoch;
+
+  /// The window after a scale gesture that started at [start].
+  ///
+  /// [scale] is the pinch factor (1.0 while merely panning), [startFocalFrac]
+  /// where the gesture began across the plot (0…1) and [focalFrac] where the
+  /// fingers are now. Holding the instant under the finger still is what makes
+  /// a pinch feel anchored rather than centred.
+  ///
+  /// 🔴 Two clamps, and they are not interchangeable:
+  ///
+  ///  * **[kHistoryMinVisibleSpanMs]** (Q5a) stops the zoom where extra depth
+  ///    stops buying detail — the bucket floor is a minute, so a narrower
+  ///    window is the same points further apart;
+  ///  * **the data's own range** stops the pan, so the chart cannot be dragged
+  ///    into an empty century. A window WIDER than the data is allowed and
+  ///    simply shows all of it — refusing that would make "zoom back out" fail
+  ///    at the last step.
+  static HistoryChartWindow apply({
+    required HistoryChartWindow start,
+    required double scale,
+    required double startFocalFrac,
+    required double focalFrac,
+    required DateTime dataFrom,
+    required DateTime dataTo,
+  }) {
+    final fullMs = dataTo.millisecondsSinceEpoch - dataFrom.millisecondsSinceEpoch;
+    final maxSpan = fullMs <= 0 ? kHistoryMinVisibleSpanMs : fullMs;
+    final s = scale <= 0 ? 1.0 : scale;
+    final span = (start.spanMs / s)
+        .round()
+        .clamp(kHistoryMinVisibleSpanMs, maxSpan.clamp(kHistoryMinVisibleSpanMs, 1 << 62));
+
+    final anchorMs = start.from.millisecondsSinceEpoch +
+        (start.spanMs * startFocalFrac).round();
+    var fromMs = anchorMs - (span * focalFrac).round();
+
+    // Pan bounds. When the window is as wide as the data there is exactly one
+    // legal position, and this arithmetic lands on it rather than fighting.
+    final lo = dataFrom.millisecondsSinceEpoch;
+    final hi = dataTo.millisecondsSinceEpoch - span;
+    fromMs = hi <= lo ? lo : fromMs.clamp(lo, hi);
+
+    return HistoryChartWindow(
+      DateTime.fromMillisecondsSinceEpoch(fromMs),
+      DateTime.fromMillisecondsSinceEpoch(fromMs + span),
+    );
+  }
+
+  /// The window centred on [t], keeping its width — what dragging the overview
+  /// strip does.
+  HistoryChartWindow centredOn(DateTime t,
+      {required DateTime dataFrom, required DateTime dataTo}) {
+    final span = spanMs;
+    final lo = dataFrom.millisecondsSinceEpoch;
+    final hi = dataTo.millisecondsSinceEpoch - span;
+    var fromMs = t.millisecondsSinceEpoch - span ~/ 2;
+    fromMs = hi <= lo ? lo : fromMs.clamp(lo, hi);
+    return HistoryChartWindow(
+      DateTime.fromMillisecondsSinceEpoch(fromMs),
+      DateTime.fromMillisecondsSinceEpoch(fromMs + span),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is HistoryChartWindow && other.from == from && other.to == to;
+
+  @override
+  int get hashCode => Object.hash(from, to);
+
+  @override
+  String toString() => 'HistoryChartWindow($from … $to)';
+}
 
 /// Plot geometry for the trend chart — the ONE place the paddings live, and
 /// (since design 0081 S2) the ONE place time becomes an x coordinate.
@@ -254,6 +365,9 @@ CustomPainter historyTrendPainterForTest({
 class HistoryTrendPainter extends CustomPainter {
   HistoryTrendPainter({
     required this.buckets,
+    this.from,
+    this.to,
+    this.gapLabel,
     required this.tempUnit,
     required this.hasTemp,
     required this.multiDay,
@@ -266,6 +380,22 @@ class HistoryTrendPainter extends CustomPainter {
   });
 
   final List<HistoryBucket> buckets;
+
+  /// 🔵 The plotted WINDOW (design 0081 S3). Null ⇒ first/last bucket, which is
+  /// what the embedded card wants; the landscape page passes what the user has
+  /// panned to, so points can sit off both edges.
+  final DateTime? from;
+  final DateTime? to;
+
+  /// 🔵 How to word a hole in the recording — design 0081 Q6 = C, landscape
+  /// only. Null ⇒ hatch with no text (Q6 = B, the embedded card: 244 px of
+  /// plot cannot hold the sentence).
+  ///
+  /// A callback rather than an [AppLocalizations]: this file draws, it does not
+  /// know about locales, and keeping it that way is what lets the painter be
+  /// tested without pumping anything.
+  final String Function(Duration)? gapLabel;
+
   final TempUnit tempUnit;
   final bool hasTemp;
   final bool multiDay;
@@ -280,7 +410,9 @@ class HistoryTrendPainter extends CustomPainter {
         width: size.width,
         hasTemp: hasTemp,
         buckets: buckets,
-        bucketMs: bucketMs);
+        bucketMs: bucketMs,
+        from: from,
+        to: to);
     const left = HistoryChartGeometry.left,
         top = HistoryChartGeometry.top,
         bottom = HistoryChartGeometry.bottom;
@@ -334,9 +466,27 @@ class HistoryTrendPainter extends CustomPainter {
     }
 
     for (var i = 0; i < n - 1; i++) {
-      if (g.gapAfter(i)) {
-        hatch(Rect.fromLTRB(xAt(i), top, xAt(i + 1), top + plotH));
-      }
+      if (!g.gapAfter(i)) continue;
+      final r = Rect.fromLTRB(xAt(i), top, xAt(i + 1), top + plotH);
+      hatch(r);
+      final label = gapLabel;
+      if (label == null) continue;
+      final tpx = TextPainter(
+        text: TextSpan(
+            text: label(Duration(
+                milliseconds: buckets[i + 1].at.millisecondsSinceEpoch -
+                    buckets[i].at.millisecondsSinceEpoch)),
+            style: TextStyle(color: text, fontSize: 9.5)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      // 🔴 **Auto-retreat, and it is not decoration** (design 0081 §3.2.3): a
+      // label wider than its gap either overflows into the data on both sides
+      // or gets clipped mid-word. Below the threshold the hatch alone says the
+      // same thing, less precisely — which is the right trade when there is no
+      // room to say it properly.
+      if (tpx.width + 16 > r.width) continue;
+      tpx.paint(canvas,
+          Offset(r.center.dx - tpx.width / 2, top + plotH / 2 - 6));
     }
 
     final gridPaint = Paint()
@@ -534,5 +684,7 @@ class HistoryTrendPainter extends CustomPainter {
       old.tempUnit != tempUnit ||
       (buckets.isNotEmpty &&
           old.buckets.isNotEmpty &&
-          old.buckets.last.at != buckets.last.at);
+          old.buckets.last.at != buckets.last.at ||
+      old.from != from ||
+      old.to != to);
 }

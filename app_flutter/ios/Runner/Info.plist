@@ -114,7 +114,16 @@
 	<string>Main</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
+		<!-- Portrait first, and the app still LOCKS portrait at runtime in
+		     main.dart. The two landscape entries exist only so design 0081 S3's
+		     full-screen trend chart can ask for landscape while it is on screen:
+		     SystemChrome.setPreferredOrientations cannot go outside the set
+		     declared here (which is why design 0062 §4.3 declined landscape).
+		     ⚠️ Every other screen now stays portrait because of that runtime
+		     lock alone — see HistoryChartPage.dispose for the restore. -->
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>

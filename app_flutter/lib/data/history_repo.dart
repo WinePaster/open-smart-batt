@@ -923,6 +923,7 @@ class HistoryRepo {
   /// `history_chart_aggregation_test.dart` pins it.
   Future<List<HistoryBucket>> queryBuckets({
     DateTime? since,
+    DateTime? until,
     required int bucketMs,
     String? deviceId,
     bool attributedOnly = false,
@@ -931,8 +932,15 @@ class HistoryRepo {
     final b = bucketMs < 60000 ? 60000 : bucketMs;
     final off = tzOffsetMs ?? currentTzOffsetMs();
     final bucket = bucketExpr(b, off);
-    final (clause, scopeArgs) =
-        _scope(since: since, deviceId: deviceId, attributedOnly: attributedOnly);
+    // 🔵 **`until` added by design 0081 S3** — the landscape chart plots a
+    // WINDOW the user has panned to, so it needs an upper bound. `_scope` has
+    // supported one since design 0074 (`queryListBuckets` passes it); this
+    // query simply never asked. Half-open, like every other range here.
+    final (clause, scopeArgs) = _scope(
+        since: since,
+        until: until,
+        deviceId: deviceId,
+        attributedOnly: attributedOnly);
     final where = clause == null ? '' : 'WHERE $clause';
     final args = <Object?>[...?scopeArgs];
     final rows = await _db.rawQuery(
