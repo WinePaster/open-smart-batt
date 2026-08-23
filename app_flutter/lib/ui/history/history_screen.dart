@@ -28,11 +28,13 @@ import '../util/alert_thresholds_lookup.dart';
 import '../util/export_scope.dart';
 import '../util/history_csv_export.dart';
 import '../widgets/industrial.dart';
+import 'history_chart_core.dart';
 import 'history_query.dart';
 import 'minute_seconds_sheet.dart';
 
 // ⚠️ `export` alone does not put those names in THIS library's scope — the
 // import above is what lets this file go on using them unchanged.
+export 'history_chart_core.dart';
 export 'history_query.dart';
 
 // ---------------------------------------------------------------------------
@@ -919,53 +921,6 @@ class _HistoryData {
 
 // ====================== trend chart + stats =============================
 
-double _toDisplayTemp(double c, TempUnit u) =>
-    u == TempUnit.fahrenheit ? c * 9 / 5 + 32 : c;
-
-String _tempUnitLabel(TempUnit u) => u == TempUnit.fahrenheit ? '°F' : '°C';
-
-/// Plot geometry for the trend chart — the ONE place the paddings live.
-///
-/// 🔴 They used to be written twice: once in [_TrendPainter.paint] and once in
-/// the tap handler that has to invert `xAt` to turn a touch into a bucket
-/// index. The two agreed only because somebody kept them agreeing, and design
-/// 0076 §1.3 was about to add a THIRD copy (the scrub handler). A padding that
-/// drifts here does not crash — it silently selects the wrong bucket, which is
-/// the failure mode this file can least afford (FB-74 was about the chart and
-/// the list disagreeing over the same minute).
-class _TrendGeometry {
-  const _TrendGeometry({
-    required this.width,
-    required this.hasTemp,
-    required this.n,
-  });
-
-  /// Right padding is wider when a temperature axis has to be labelled there.
-  static const double left = 40, top = 8, bottom = 18;
-
-  final double width;
-  final bool hasTemp;
-  final int n;
-
-  double get right => hasTemp ? 40 : 8;
-  double get plotW => width - left - right;
-
-  double xAt(int i) => left + (n == 1 ? plotW / 2 : plotW * (i / (n - 1)));
-
-  /// Inverse of [xAt]: which bucket a touch at [dx] lands on, clamped to the
-  /// ends so a finger dragged past either edge holds the first/last point
-  /// rather than dropping the selection.
-  ///
-  /// Null when there is nothing to hit — fewer than two buckets (the chart is
-  /// not drawn at all, see [HistoryTrendCard.build]) or a plot too narrow to
-  /// divide.
-  int? indexAt(double dx) {
-    if (n < 2 || plotW <= 0) return null;
-    final frac = ((dx - left) / plotW).clamp(0.0, 1.0);
-    return (frac * (n - 1)).round().clamp(0, n - 1);
-  }
-}
-
 /// Legend + dual-axis chart (tap or scrub for a bucket's detail) + stats.
 ///
 /// PUBLIC since design 0065 §3.2.1 ③ — the detail page's embedded section shows
@@ -1017,10 +972,14 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     }
   }
 
-  _TrendGeometry _geometry(double width) => _TrendGeometry(
+  /// 🔵 design 0081 S2: the geometry needs the BUCKETS now, not just how many
+  /// of them there are — the x axis is time, so where a point lands depends on
+  /// when it was recorded.
+  HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
         width: width,
         hasTemp: _hasTemp,
-        n: widget.buckets.length,
+        buckets: widget.buckets,
+        bucketMs: widget.bucketMs,
       );
 
   /// The bucket the pointer went down on, and whether it was ALREADY the
@@ -1178,7 +1137,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                 height: _chartH,
                 child: CustomPaint(
                   size: Size(w, _chartH),
-                  painter: _TrendPainter(
+                  painter: HistoryTrendPainter(
                     buckets: buckets,
                     tempUnit: widget.tempUnit,
                     hasTemp: hasTemp,
@@ -1221,8 +1180,8 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     // the voltage half already carried its (min–max). A bucket whose hottest
     // second is the reason the user tapped it would answer with an average.
     String t(double c) =>
-        _toDisplayTemp(c, widget.tempUnit).toStringAsFixed(0);
-    final u = _tempUnitLabel(widget.tempUnit);
+        historyDisplayTemp(c, widget.tempUnit).toStringAsFixed(0);
+    final u = historyTempUnitLabel(widget.tempUnit);
     final tLo = b.minTemp, tHi = b.maxTemp;
     final tempStr = b.avgTemp == null
         ? null
@@ -1347,7 +1306,7 @@ class _StatsStrip extends StatelessWidget {
     String v(double? x) => x == null ? '--' : '${x.toStringAsFixed(2)}V';
     String t(double? x) => x == null
         ? '--'
-        : '${_toDisplayTemp(x, tempUnit).toStringAsFixed(0)}${_tempUnitLabel(tempUnit)}';
+        : '${historyDisplayTemp(x, tempUnit).toStringAsFixed(0)}${historyTempUnitLabel(tempUnit)}';
     return Column(
       children: [
         _statRow(context, context.accent.accent, l10n.historyLegendVoltage,
@@ -1404,345 +1363,6 @@ class _StatsStrip extends StatelessWidget {
       ],
     );
   }
-}
-
-/// The chart's left-axis window, in volts — FB-74.
-///
-/// 🔴 **Computed over the buckets' EXTREMES, never over their means alone.**
-/// This is the chart-side half of the defect design 0061 §6.0 pinned for the
-/// list: one second at 15.5 V inside a one-hour bucket moves `avgPvlt` by about
-/// four millivolts, so an axis scaled from the means tops out just above the
-/// ordinary running voltage — and the min–max band drawn below would then be
-/// clipped off the top of the plot, silently. The stats strip immediately under
-/// the chart reports the range-wide `MAX` from raw rows, so an averaged axis
-/// also puts a number on screen (15.5 V) that the picture above it flatly
-/// contradicts and gives the reader no way to locate in time.
-///
-/// PUBLIC-ish (used by `history_chart_aggregation_test.dart`) for the same
-/// reason [historyWindowIsFlagged] is: the rule is worth pinning without
-/// pumping a screen.
-({double lo, double hi}) historyChartVoltageRange(List<HistoryBucket> buckets) {
-  double? lo, hi;
-  void see(double? v) {
-    if (v == null) return;
-    if (lo == null || v < lo!) lo = v;
-    if (hi == null || v > hi!) hi = v;
-  }
-
-  for (final b in buckets) {
-    see(b.avgPvlt);
-    see(b.minPvlt);
-    see(b.maxPvlt);
-  }
-  var vlo = (lo ?? 0) - 0.2, vhi = (hi ?? 1) + 0.2;
-  if (vhi - vlo < 0.5) {
-    final m = (vlo + vhi) / 2;
-    vlo = m - 0.25;
-    vhi = m + 0.25;
-  }
-  return (lo: vlo, hi: vhi);
-}
-
-/// The chart's right-axis window, in DISPLAY temperature units — FB-74.
-///
-/// Same rule and same reason as [historyChartVoltageRange]: a bucket's hottest
-/// second is the one worth seeing, and it is not in the mean.
-({double lo, double hi}) historyChartTempRange(
-    List<HistoryBucket> buckets, TempUnit unit) {
-  double? lo, hi;
-  void see(double? c) {
-    if (c == null) return;
-    final d = _toDisplayTemp(c, unit);
-    if (lo == null || d < lo!) lo = d;
-    if (hi == null || d > hi!) hi = d;
-  }
-
-  for (final b in buckets) {
-    see(b.avgTemp);
-    see(b.minTemp);
-    see(b.maxTemp);
-  }
-  // No temperature anywhere in range: the same placeholder window the axis has
-  // always fallen back to, kept identical so a chart with no temperature draws
-  // exactly as it did before.
-  var tlo = (lo ?? 0) - 1, thi = (hi ?? 1) + 1;
-  if (thi - tlo < 2) {
-    final m = (tlo + thi) / 2;
-    tlo = m - 1;
-    thi = m + 1;
-  }
-  return (lo: tlo, hi: thi);
-}
-
-/// Build the chart's painter outside the screen, for `history_chart_aggregation_test.dart`.
-///
-/// The test drives [CustomPainter.paint] against a recording canvas and asserts
-/// that the min–max band is actually on the canvas and actually reaches above
-/// the mean line. Reaching that through a pumped History screen would mean
-/// standing up a controller, a database and a device picker to assert one thing
-/// about one `drawPath`.
-CustomPainter historyTrendPainterForTest({
-  required List<HistoryBucket> buckets,
-  TempUnit tempUnit = TempUnit.celsius,
-  bool hasTemp = false,
-  bool multiDay = false,
-  int bucketMs = 60000,
-  int? selected,
-  // The test asserts geometry, not hue, so the DEFAULT set is the honest
-  // stand-in — but it is a parameter rather than a literal so a colour test
-  // can drive the painter with a non-amber set, which is the only way the
-  // "voltage series still follows the theme" regression is visible at all
-  // (in amber, every one of these colours is what it always was).
-  AccentTheme accent = AccentTheme.amber,
-}) =>
-    _TrendPainter(
-      buckets: buckets,
-      tempUnit: tempUnit,
-      hasTemp: hasTemp,
-      multiDay: multiDay,
-      bucketMs: bucketMs,
-      selected: selected,
-      vColor: accent.accent,
-      tColor: accent.accentSecondary,
-      grid: const Color(0xFF333333),
-      text: const Color(0xFF888888),
-    );
-
-class _TrendPainter extends CustomPainter {
-  _TrendPainter({
-    required this.buckets,
-    required this.tempUnit,
-    required this.hasTemp,
-    required this.multiDay,
-    required this.bucketMs,
-    required this.selected,
-    required this.vColor,
-    required this.tColor,
-    required this.grid,
-    required this.text,
-  });
-
-  final List<HistoryBucket> buckets;
-  final TempUnit tempUnit;
-  final bool hasTemp;
-  final bool multiDay;
-  final int bucketMs;
-  final int? selected;
-  final Color vColor, tColor, grid, text;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final n = buckets.length;
-    final g = _TrendGeometry(width: size.width, hasTemp: hasTemp, n: n);
-    const left = _TrendGeometry.left,
-        top = _TrendGeometry.top,
-        bottom = _TrendGeometry.bottom;
-    final right = g.right;
-    final plotH = size.height - top - bottom;
-
-    // Axis windows. FB-74: both are scaled to include the buckets' MIN/MAX, not
-    // just their means — see [historyChartVoltageRange] for why an averaged
-    // axis would clip the very thing the band below exists to show.
-    final vr = historyChartVoltageRange(buckets);
-    final vlo = vr.lo, vhi = vr.hi;
-    final tr = historyChartTempRange(hasTemp ? buckets : const [], tempUnit);
-    final tlo = tr.lo, thi = tr.hi;
-
-    double xAt(int i) => g.xAt(i);
-    double yV(double v) => top + plotH * (1 - (v - vlo) / (vhi - vlo));
-    double yT(double v) => top + plotH * (1 - (v - tlo) / (thi - tlo));
-
-    void tp(String s, double x, double y,
-        {bool rightAlign = false, Color? c}) {
-      final p = TextPainter(
-        text: TextSpan(
-            text: s, style: TextStyle(color: c ?? text, fontSize: 9)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      p.paint(canvas, Offset(rightAlign ? x - p.width : x, y));
-    }
-
-    final gridPaint = Paint()
-      ..color = grid.withValues(alpha: 0.5)
-      ..strokeWidth = 1;
-
-    // Horizontal grid + left (V) / right (T) axis labels at lo/mid/hi.
-    for (final f in [0.0, 0.5, 1.0]) {
-      final y = top + plotH * (1 - f);
-      canvas.drawLine(Offset(left, y), Offset(size.width - right, y), gridPaint);
-      tp((vlo + (vhi - vlo) * f).toStringAsFixed(1), left - 4, y - 6,
-          rightAlign: true, c: vColor);
-      if (hasTemp) {
-        tp((tlo + (thi - tlo) * f).toStringAsFixed(0), size.width - right + 4,
-            y - 6, c: tColor);
-      }
-    }
-
-    // X time labels (start / end).
-    //
-    // 🔴 The format follows the BUCKET WIDTH, not just `multiDay` (design 0061
-    // T13b). A bare `MM/dd` only tells the truth when a point IS a day: "last
-    // 7 days" buckets at ~56 minutes, so two adjacent points would carry the
-    // identical date and the axis would claim a resolution it does not have.
-    // Since T13 the day boundary is the viewer's local midnight, so `MM/dd` is
-    // finally correct in the one case it applies to.
-    final fmt = DateFormat(
-        multiDay ? (bucketMs >= 24 * 3600000 ? 'MM/dd' : 'MM/dd HH:mm') : 'HH:mm');
-    tp(fmt.format(buckets.first.at), left, size.height - 12);
-    tp(fmt.format(buckets.last.at), size.width - right, size.height - 12,
-        rightAlign: true);
-
-    // Selection crosshair (vertical guide), drawn under the series.
-    final sel = selected;
-    if (sel != null && sel >= 0 && sel < n) {
-      final sx = xAt(sel);
-      canvas.drawLine(
-          Offset(sx, top),
-          Offset(sx, top + plotH),
-          Paint()
-            ..color = text.withValues(alpha: 0.55)
-            ..strokeWidth = 1);
-    }
-
-    // Polyline helper that breaks across nulls.
-    void drawLine(double? Function(HistoryBucket) sel, double Function(double) y,
-        Color color) {
-      final paint = Paint()
-        ..color = color
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round;
-      Path? path;
-      for (var i = 0; i < n; i++) {
-        final raw = sel(buckets[i]);
-        if (raw == null) {
-          if (path != null) {
-            canvas.drawPath(path, paint);
-            path = null;
-          }
-          continue;
-        }
-        final pt = Offset(xAt(i), y(raw));
-        if (path == null) {
-          path = Path()..moveTo(pt.dx, pt.dy);
-        } else {
-          path.lineTo(pt.dx, pt.dy);
-        }
-      }
-      if (path != null) canvas.drawPath(path, paint);
-    }
-
-    /// The MIN–MAX band for one series, filled under its mean line — FB-74.
-    ///
-    /// 🔴 This is the only thing on the chart that can show an INSTANT. The
-    /// line is the bucket's mean, and a bucket is 1 minute to 24 hours wide: a
-    /// single second at 15.5 V inside an hour moves the mean by about four
-    /// millivolts and is, on the line alone, indistinguishable from nothing
-    /// having happened. The user paid 60× the storage for that second (design
-    /// 0061); averaging it back out at read time is the same defect §6.0
-    /// pinned for the list, wearing different clothes.
-    ///
-    /// Bands break across nulls exactly where the line does, so a gap in the
-    /// data cannot be filled in by a shape that spans it. A run of ONE bucket
-    /// has no width, so it is stroked as a vertical whisker instead of filled —
-    /// otherwise an isolated bucket (a single minute after a long gap) would
-    /// produce a degenerate zero-area path and its spike would be the one thing
-    /// on the chart nobody could see.
-    void drawBand(double? Function(HistoryBucket) loSel,
-        double? Function(HistoryBucket) hiSel, double Function(double) y,
-        Color color) {
-      final fill = Paint()
-        ..color = color.withValues(alpha: 0.22)
-        ..style = PaintingStyle.fill;
-      final whisker = Paint()
-        ..color = color.withValues(alpha: 0.45)
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke;
-      bool has(int i) => loSel(buckets[i]) != null && hiSel(buckets[i]) != null;
-      var i = 0;
-      while (i < n) {
-        if (!has(i)) {
-          i++;
-          continue;
-        }
-        var j = i;
-        while (j + 1 < n && has(j + 1)) {
-          j++;
-        }
-        if (i == j) {
-          canvas.drawLine(Offset(xAt(i), y(hiSel(buckets[i])!)),
-              Offset(xAt(i), y(loSel(buckets[i])!)), whisker);
-        } else {
-          final path = Path()..moveTo(xAt(i), y(hiSel(buckets[i])!));
-          for (var k = i + 1; k <= j; k++) {
-            path.lineTo(xAt(k), y(hiSel(buckets[k])!));
-          }
-          for (var k = j; k >= i; k--) {
-            path.lineTo(xAt(k), y(loSel(buckets[k])!));
-          }
-          canvas.drawPath(path..close(), fill);
-        }
-        i = j + 1;
-      }
-    }
-
-    if (hasTemp) {
-      double? t(double? c) => c == null ? null : _toDisplayTemp(c, tempUnit);
-      drawBand((b) => t(b.minTemp), (b) => t(b.maxTemp), yT, tColor);
-    }
-    drawBand((b) => b.minPvlt, (b) => b.maxPvlt, yV, vColor);
-
-    if (hasTemp) {
-      drawLine((b) => b.avgTemp == null
-          ? null
-          : _toDisplayTemp(b.avgTemp!, tempUnit), yT, tColor);
-    }
-    drawLine((b) => b.avgPvlt, yV, vColor);
-
-    // Emphasized markers at the selected bucket (over the series).
-    if (sel != null && sel >= 0 && sel < n) {
-      final b = buckets[sel];
-      final sx = xAt(sel);
-      if (b.avgPvlt != null) {
-        final c = Offset(sx, yV(b.avgPvlt!));
-        canvas.drawCircle(c, 4.5, Paint()..color = vColor);
-        canvas.drawCircle(
-            c,
-            4.5,
-            Paint()
-              ..color = grid
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5);
-      }
-      if (hasTemp && b.avgTemp != null) {
-        canvas.drawCircle(
-            Offset(sx, yT(_toDisplayTemp(b.avgTemp!, tempUnit))),
-            4.5,
-            Paint()..color = tColor);
-      }
-    }
-
-    // Latest voltage marker + value.
-    for (var i = n - 1; i >= 0; i--) {
-      final a = buckets[i].avgPvlt;
-      if (a == null) continue;
-      final lx = xAt(i), ly = yV(a);
-      canvas.drawCircle(Offset(lx, ly), 3, Paint()..color = vColor);
-      tp('${a.toStringAsFixed(2)}V', lx - 2, ly - 16,
-          rightAlign: true, c: vColor);
-      break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _TrendPainter old) =>
-      old.selected != selected ||
-      old.buckets.length != buckets.length ||
-      old.hasTemp != hasTemp ||
-      old.tempUnit != tempUnit ||
-      (buckets.isNotEmpty &&
-          old.buckets.isNotEmpty &&
-          old.buckets.last.at != buckets.last.at);
 }
 
 // ====================== list row + status tag ===========================
@@ -1968,9 +1588,9 @@ class HistoryRow extends StatelessWidget {
     parts.add(v == null ? '—' : '${v.toStringAsFixed(2)} V');
     final t = sample.temperatureC;
     if (t != null) {
-      final unit = _tempUnitLabel(tempUnit);
+      final unit = historyTempUnitLabel(tempUnit);
       final str = tempUnit == TempUnit.fahrenheit
-          ? _toDisplayTemp(t.toDouble(), tempUnit).toStringAsFixed(0)
+          ? historyDisplayTemp(t.toDouble(), tempUnit).toStringAsFixed(0)
           : t.toString();
       parts.add('$str$unit');
     }
