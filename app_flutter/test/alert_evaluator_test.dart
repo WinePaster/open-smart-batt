@@ -624,12 +624,17 @@ void main() {
     test('a partially known unit evaluates only the fields it knows', () {
       fakeAsync((async) {
         final e = AlertEvaluator();
-        // Only a UV, from the user; nothing else from any layer. The wire class
-        // is required since §7.5.6 C-2 — an unidentified unit gets no alarms at
-        // all, user value included, so without it there would be no UV here to
-        // be partial about.
+        // Only a UV; nothing else from any layer. The wire class is required
+        // since §7.5.6 C-2 — an unidentified unit gets no alarms at all, so
+        // without it there would be no UV here to be partial about.
+        // 🔵 2026-08-25 (FB-100) — ~~userUv: 12.0~~ came from the user before
+        // the thresholds went read-only. A partial `0x2B` produces the same
+        // shape and is a state the wire can actually be in.
         final partial = resolveThresholds(
-          userUv: 12.0,
+          reported: _sample().copyWith(
+            warnUv: 12.0,
+            deviceType: kSmartBatteryDeviceType,
+          ),
           wireClass: ProductClass.smartBattery,
         );
 
@@ -801,28 +806,30 @@ void main() {
       });
     });
 
-    test('a user-set threshold is reported as the user\'s', () {
+    // 🔵 **2026-08-25 (FB-100) — ~~'a user-set threshold is reported as the
+    // user\'s'~~ deleted with the layer it tested.** Worth keeping its point on
+    // the record, because it is what the ruling gave up: the deleted case fed
+    // 12.2 V against a user's 12.4 and asserted the event carried the user's
+    // number, on the grounds that the device's own 12.0 「would say nothing at
+    // all without the override — which is exactly the want §1.2 G1 describes:
+    // knowing sooner」. Read-only thresholds mean an owner can no longer buy
+    // that head start; the emission now always carries the factory point. The
+    // replacement asserts the table's number survives the trip instead, so the
+    // 'source travels with the event' contract keeps a test.
+    test('an app-default threshold is reported as the app\'s', () {
       fakeAsync((async) {
         final e = AlertEvaluator();
-        final mine = resolveThresholds(
-          userUv: 12.4,
-          reported: _sample().copyWith(
-            warnOv: 15.0,
-            warnUv: 12.0,
-            warnOt: 80,
-            deviceType: kSmartBatteryDeviceType,
-          ),
+        final table = resolveThresholds(
+          reported: _sample().copyWith(deviceType: kSmartBatteryDeviceType),
+          category: DeclaredCategory.carBattery,
         );
 
-        _feed(e, pvlt: 12.2, thresholds: mine);
+        _feed(e, pvlt: 11.8, thresholds: table);
         async.elapse(const Duration(seconds: 5));
-        final x = _feed(e, pvlt: 12.2, thresholds: mine).single;
+        final x = _feed(e, pvlt: 11.8, thresholds: table).single;
 
-        expect(x.threshold, 12.4,
-            reason: '12.2 V is above the device\'s own 12.0 and would say '
-                'nothing at all without the override — which is exactly the '
-                'want §1.2 G1 describes: knowing sooner');
-        expect(x.source, ThresholdSource.user);
+        expect(x.threshold, 12.0, reason: 'the car-battery row, no 0x2B');
+        expect(x.source, ThresholdSource.appDefault);
       });
     });
 

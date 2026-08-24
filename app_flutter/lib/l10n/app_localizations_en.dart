@@ -2187,9 +2187,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsSourceDevice => 'Device';
 
   @override
-  String get alertsSourceUser => 'Custom';
-
-  @override
   String get alertsSourceApp => 'App default';
 
   @override
@@ -2212,26 +2209,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String alertsNearReadingVolts(String label, String delta) {
-    return 'The $label limit is only $delta V from the current reading.';
-  }
-
-  @override
-  String alertsNearReadingCelsius(String label, String delta) {
-    return 'The $label limit is only $delta °C from the current reading.';
-  }
-
-  @override
-  String alertsFactoryValue(String v) {
-    return 'Device value $v';
-  }
-
-  @override
-  String get alertsRestore => 'Restore';
-
-  @override
   String get alertsOfflineNote =>
       'Not connected — this device\'s own factory limits are only readable while connected.';
+
+  @override
+  String get alertsReadOnlyNote =>
+      'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.';
 
   @override
   String get alertsPendingTitle => 'Still identifying this device';
@@ -2249,7 +2232,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsPowerBankOtNote =>
-      'This device reports no warning limits. 50 °C is the app\'s own default, and you can change it.';
+      'This device reports no warning limits, so 50 °C is the app’s own default.';
 
   @override
   String get alertsPowerBankOtEvidence =>
@@ -2303,20 +2286,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsSessionMuteSub => 'Ends when the link drops';
-
-  @override
-  String alertsEditDialogTitle(String label) {
-    return '$label limit';
-  }
-
-  @override
-  String get alertsEditHintVolts => 'Volts, e.g. 12.40';
-
-  @override
-  String get alertsEditHintCelsius => 'Degrees Celsius, e.g. 80';
-
-  @override
-  String get alertsEditInvalid => 'Enter a number';
 
   @override
   String get alertsUnsavedTitle => 'This device is not saved';

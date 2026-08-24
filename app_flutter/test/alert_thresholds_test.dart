@@ -49,12 +49,15 @@ TelemetrySample _reported({
     );
 
 void main() {
-  group('§3.1 — the four layers, in order', () {
-    test('① a user value outranks both the device and the table', () {
+  group('§3.1 — the ~~four~~ three layers, in order', () {
+    // 🔵 **2026-08-25 (FB-100): layer ① is gone and so is the test that
+    // asserted it won.** ~~test('① a user value outranks both the device and
+    // the table')~~ — `resolveThresholds` no longer has a parameter it could
+    // be written against. What replaces it is the opposite assertion: the
+    // device's own `0x2B` is now the TOP layer, and the numbers below are the
+    // same ones the deleted test used as the value a user overrode.
+    test('① (removed) — the device\'s own 0x2B is now the top layer', () {
       final r = resolveThresholds(
-        userOv: 14.2,
-        userUv: 12.4,
-        userOt: 60,
         reported: _reported(
           ov: 15.0,
           uv: 12.0,
@@ -64,9 +67,9 @@ void main() {
         category: DeclaredCategory.carBattery,
       );
 
-      expect(r.ov, const ResolvedThreshold(14.2, ThresholdSource.user));
-      expect(r.uv, const ResolvedThreshold(12.4, ThresholdSource.user));
-      expect(r.ot, const ResolvedThreshold(60, ThresholdSource.user));
+      expect(r.ov, const ResolvedThreshold(15.0, ThresholdSource.device));
+      expect(r.uv, const ResolvedThreshold(12.0, ThresholdSource.device));
+      expect(r.ot, const ResolvedThreshold(80, ThresholdSource.device));
     });
 
     test('② the unit\'s own 0x2B outranks the category table', () {
@@ -134,39 +137,22 @@ void main() {
   });
 
   group('§3.1 — resolution is PER FIELD, not per unit', () {
-    test('a user-set UV leaves OV and OT on the device\'s own values', () {
+    // 🔵 2026-08-25 (FB-100) — ~~'a user-set UV leaves OV and OT on the
+    // device's own values'~~. Per-field resolution outlived the layer that
+    // motivated it: the two remaining layers still answer field by field, which
+    // is what the replacement below asserts.
+    test('a partial 0x2B leaves the missing fields to the table', () {
+      // A per-field resolver must not assume the triple arrives whole. The unit
+      // reported an OV only; UV and OT fall through to the car-battery row.
       final r = resolveThresholds(
-        userUv: 12.4,
-        reported: _reported(
-          ov: 15.0,
-          uv: 12.0,
-          ot: 80,
-          deviceType: kSmartBatteryDeviceType,
-        ),
-        category: DeclaredCategory.carBattery,
-      );
-
-      expect(r.uv, const ResolvedThreshold(12.4, ThresholdSource.user),
-          reason: 'the one field they answered');
-      expect(r.ov, const ResolvedThreshold(15.0, ThresholdSource.device),
-          reason: 'editing UV must not silently drop the device OV — the same '
-              'rule setThresholds follows for the UT byte');
-      expect(r.ot, const ResolvedThreshold(80, ThresholdSource.device));
-    });
-
-    test('three layers can supply three different fields of one unit', () {
-      // A real enough shape: the user cares about under-voltage, the unit only
-      // reported an OV (a partial 0x2B is not something we have seen, but a
-      // per-field resolver must not assume the triple arrives whole), and the
-      // temperature falls through to the table.
-      final r = resolveThresholds(
-        userUv: 12.6,
         reported: _reported(ov: 15.0, deviceType: kSmartBatteryDeviceType),
         category: DeclaredCategory.carBattery,
       );
 
-      expect(r.uv.source, ThresholdSource.user);
-      expect(r.ov.source, ThresholdSource.device);
+      expect(r.ov, const ResolvedThreshold(15.0, ThresholdSource.device),
+          reason: 'the one field the unit answered');
+      expect(r.uv.source, ThresholdSource.appDefault);
+      expect(r.uv.value, 12.0);
       expect(r.ot.source, ThresholdSource.appDefault);
       expect(r.ot.value, 80);
     });
@@ -289,24 +275,21 @@ void main() {
               'reported value still outranks our 50');
     });
 
-    test('a user-typed voltage could not turn them on either', () {
-      // The UI will not offer the rows at all (§3.2.2 — "不是顯示成灰色停用"),
-      // so this should be unreachable through the app. It is asserted anyway
-      // because the columns exist in v22 and an import, a migration or a
-      // category changed AFTER the fact could each put a number there.
+    // 🔵 2026-08-25 (FB-100) — ~~'a user-typed voltage could not turn them on
+    // either'~~. There is no user value left to try the door with, and the
+    // suppression it was guarding is asserted by the test above it.
+    test('the 50 °C is ours, and it is the only row this class gets', () {
       final r = resolveThresholds(
-        userOv: 4.3,
-        userUv: 3.0,
-        userOt: 45,
         category: DeclaredCategory.powerBank,
         wireClass: ProductClass.powerBank,
       );
 
       expect(r.ov, ResolvedThreshold.unavailable);
       expect(r.uv, ResolvedThreshold.unavailable);
-      expect(r.ot, const ResolvedThreshold(45, ThresholdSource.user),
-          reason: 'the ruling is about voltage; the user still owns the '
-              'temperature limit');
+      expect(r.ot,
+          const ResolvedThreshold(kPowerBankOtDefaultC, ThresholdSource.appDefault),
+          reason: 'no 0x2B anywhere in this class, so the table is the only '
+              'thing that can answer — and the badge has to say so');
     });
 
     test('an undeclared, unclassified unit is simply unknown', () {
@@ -521,12 +504,22 @@ void main() {
       expect(bike, resolveThresholds(wireClass: ProductClass.supercapacitor));
     });
 
-    test('a battery with NO declaration gets no layer ③ — but keeps ① and ②',
+    test('a battery with NO declaration gets no layer ③ — but keeps ~~① and~~ ②',
         () {
       // The one gap the ruling knowingly leaves open, and the test is in two
       // halves so that "the battery is silent" cannot be mistaken for "the
       // battery is broken". `0x02` cannot say bike-or-car and the two rows
       // differ by a whole volt of UV, so there is no row to take.
+      //
+      // 🔵 **2026-08-25 (FB-100) — the gap got wider and was ruled acceptable
+      // anyway (Q1 = "leave it").** With layer ① gone, the first half below is
+      // a unit with NOTHING to fall back on until its `0x2B` arrives, and the
+      // owner may no longer close it by typing a number. Evidence for the
+      // ruling: `tools/fb.py` finds no inline-verified non-power-bank device
+      // in the whole corpus that fails to report `0x2B`, so this state is the
+      // first frames of a link or no link at all — neither is a moment when
+      // anything is evaluated. Guessing a row instead was refused for the usual
+      // reason: car UV 12.0 on a bike battery is a permanent false alarm.
       final noDeclaration =
           resolveThresholds(wireClass: ProductClass.smartBattery);
 
@@ -621,29 +614,12 @@ void main() {
       expect(r.hasAny, isFalse);
     });
 
-    test('no exceptions: a user-typed threshold does not buy its way in either',
-        () {
-      // 🔴 The second back door, and the uncomfortable one, because layer ①
-      // outranks everything else in the entire design. It loses here anyway: a
-      // user typing 12.0 into a unit neither of us has identified is making the
-      // same guess we just declined to make, and we would be the ones ringing
-      // the bell for it.
+    // 🔵 2026-08-25 (FB-100) — ~~'no exceptions: a user-typed threshold does
+    // not buy its way in either'~~, the second of §7.5.6 C-2's two back doors.
+    // It closed by disappearing: there is no user layer to refuse. The gate
+    // itself did not move, and the remaining door is asserted above.
+    test('a declaration does not buy its way in either', () {
       final r = resolveThresholds(
-        userOv: 15.0,
-        userUv: 12.0,
-        userOt: 60,
-        reported: _reported(deviceType: 0x33),
-      );
-
-      for (final k in AlertKind.values) {
-        expect(r[k].source, ThresholdSource.none, reason: k.name);
-      }
-      expect(r.hasAny, isFalse);
-    });
-
-    test('both back doors at once, and the persisted class is unknown too', () {
-      final r = resolveThresholds(
-        userUv: 12.0,
         reported: _reported(ov: 15.0, uv: 12.0, ot: 80, deviceType: 0x33),
         category: DeclaredCategory.carBattery,
         wireClass: ProductClass.unknown,
@@ -757,12 +733,12 @@ void main() {
       expect(r.hasAny, isFalse);
     });
 
-    test('row 2 beats layer ① too — a user threshold does not rescue it '
-        'either', () {
-      // The C-2 back doors do not reopen just because a persisted class exists:
-      // the gate still returns before layer ① is read.
+    test('row 2 beats a good persisted class — nothing rescues it', () {
+      // 🔵 2026-08-25 (FB-100) — ~~'row 2 beats layer ① too — a user threshold
+      // does not rescue it either'~~. Same assertion, one fewer way in: the
+      // gate returns before ANY layer is read, and a perfectly good persisted
+      // class does not reopen it.
       final r = resolveThresholds(
-        userUv: 12.0,
         wireClass: ProductClass.supercapacitor,
         reported: _reported(deviceType: 0x31),
       );
@@ -781,9 +757,10 @@ void main() {
       expect(const ResolvedThreshold(15.0, ThresholdSource.device),
           const ResolvedThreshold(15.0, ThresholdSource.device));
       expect(const ResolvedThreshold(15.0, ThresholdSource.device),
-          isNot(const ResolvedThreshold(15.0, ThresholdSource.user)),
+          isNot(const ResolvedThreshold(15.0, ThresholdSource.appDefault)),
           reason: 'same number, different provenance — a DIFFERENT badge, so '
-              'not the same value');
+              'not the same value. 🔵 2026-08-25: this used to compare against '
+              'ThresholdSource.user, which no longer exists (FB-100)');
       AlertThresholds resolved() => resolveThresholds(
             reported: _reported(
               ov: 15.0,

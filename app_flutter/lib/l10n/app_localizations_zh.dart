@@ -2060,9 +2060,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alertsSourceDevice => '裝置回報';
 
   @override
-  String get alertsSourceUser => '自訂';
-
-  @override
   String get alertsSourceApp => 'App 預設';
 
   @override
@@ -2085,25 +2082,10 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String alertsNearReadingVolts(String label, String delta) {
-    return '$label門檻距離目前讀數只有 $delta V。';
-  }
-
-  @override
-  String alertsNearReadingCelsius(String label, String delta) {
-    return '$label門檻距離目前讀數只有 $delta °C。';
-  }
-
-  @override
-  String alertsFactoryValue(String v) {
-    return '出廠值 $v';
-  }
-
-  @override
-  String get alertsRestore => '還原';
-
-  @override
   String get alertsOfflineNote => '目前未連線，這台裝置自己回報的出廠門檻要連線後才讀得到。';
+
+  @override
+  String get alertsReadOnlyNote => '這些門檻是裝置出廠設定的，App 只負責讀出來提醒你，不會修改裝置。';
 
   @override
   String get alertsPendingTitle => '正在辨識這台裝置';
@@ -2120,7 +2102,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事，而且它不回報出廠警戒門檻 —— 我們沒有依據可以判斷多少算異常。';
 
   @override
-  String get alertsPowerBankOtNote => '這台裝置沒有回報警戒門檻，50 °C 是 App 的預設值，你可以改。';
+  String get alertsPowerBankOtNote => '這台裝置沒有回報警戒門檻，50 °C 是 App 的預設值。';
 
   @override
   String get alertsPowerBankOtEvidence => '全庫 49 批實測上限 40 °C';
@@ -2171,20 +2153,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alertsSessionMuteSub => '斷線就失效';
-
-  @override
-  String alertsEditDialogTitle(String label) {
-    return '$label門檻';
-  }
-
-  @override
-  String get alertsEditHintVolts => '伏特，例如 12.40';
-
-  @override
-  String get alertsEditHintCelsius => '攝氏度，例如 80';
-
-  @override
-  String get alertsEditInvalid => '請輸入數字';
 
   @override
   String get alertsUnsavedTitle => '這台裝置尚未儲存';

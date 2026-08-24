@@ -13,15 +13,35 @@
 /// has up to four different answers depending on who is asked, and the ranking
 /// of those four answerers is the entire design:
 ///
-///   ① what the USER set for THIS unit          (most specific, always wins)
+///   ~~① what the USER set for THIS unit          (most specific, always wins)~~
 ///   ② what THIS unit reported in its `0x2B`    (per-unit factory setting)
 ///   ③ our default table, keyed on the WIRE's class  (§3.2.1, a fallback)
 ///        — the declaration only breaks the bike-vs-car tie (§7.5.6 C-1)
 ///   ④ nobody knows                             ⇒ do not evaluate, do not guess
 ///
-/// …and sitting above all four, a DEVICE-level gate: a unit whose class we do
-/// not recognise is not watched at all, whatever any layer could offer
-/// (§7.5.6 C-2). See [AlertsDisabledReason].
+/// 🔵 **2026-08-25 ruling (FB-100, design 0080 §0.3): the thresholds are
+/// READ-ONLY and layer ① is gone.** The dealer read the editable rows as the
+/// app CHANGING the hardware's protection points, and the owner ruled the way
+/// out is to stop offering the edit at all: read `0x2B`, fall back to our
+/// table, and never take a number from the user. Two defects went with it —
+/// the input dialog had no bounds of any kind (an under-voltage of 5.0 V
+/// silenced the alarm with nothing on screen saying so), and nowhere did the
+/// screen state that editing never reached the device. What the user keeps is
+/// the per-unit switch and the two mutes; what they lose is asking to be warned
+/// EARLIER than the factory point, which design 0080 §4.1 had counted as the
+/// reason not to write `0x2B` back. That trade is the ruling.
+///
+/// 🔑 **The ①–④ numbering below is kept exactly as design 0080 §3.1 wrote it,
+/// with ① struck out rather than closed up.** Renumbering the survivors to
+/// ①②③ would have been tidier here and wrong everywhere else: the same four
+/// numbers name the same four things in the design doc, in
+/// `alert_thresholds_lookup.dart` and in the tests, and a file that quietly
+/// renumbers them is the "one fact, two versions" failure this repo keeps
+/// logging. There is no layer ①; the other three keep their names.
+///
+/// …and sitting above ~~all four~~ the three that are left, a DEVICE-level
+/// gate: a unit whose class we do not recognise is not watched at all, whatever
+/// any layer could offer (§7.5.6 C-2). See [AlertsDisabledReason].
 ///
 /// 🔵 **What the DECLARATION may and may not do (design 0080 §7.5.1 and
 /// §7.5.6, two rulings on 2026-08-22).** ~~Layer ③ is keyed on
@@ -50,11 +70,14 @@
 ///
 /// ## Per FIELD, not per unit (§3.1)
 ///
-/// A user who typed a UV must keep the device's OV and OT. This is the same
-/// rule `BleService.setThresholds` already follows on the write path when it
-/// preserves the UT byte, and for the same reason: **editing one field must not
-/// silently erase the three next to it.** Hence [ResolvedThreshold] carries its
-/// own [ThresholdSource] — one badge per row on screen, not one per unit.
+/// ~~A user who typed a UV must keep the device's OV and OT.~~ 🔵 The original
+/// reason for per-field resolution left with layer ① (2026-08-25), but the rule
+/// itself stays, because the two surviving layers still disagree field by
+/// field: a power bank reports no `0x2B` at all and takes its OT from the table
+/// while having no OV/UV to take, and a unit whose `0x2B` has not yet arrived
+/// resolves nothing while the table can still answer. Hence [ResolvedThreshold]
+/// carries its own [ThresholdSource] — one badge per row on screen, not one per
+/// unit.
 library;
 
 import 'declared_device_model.dart';
@@ -139,8 +162,10 @@ int alertNotificationId(String deviceId, AlertKind kind) {
 /// case that forced it — it is the one number in the whole table that nobody
 /// measured, and the UI is required to say so.
 enum ThresholdSource {
-  /// Layer ① — the user set this for this unit.
-  user,
+  // 🔵 **`user` removed 2026-08-25 (FB-100).** ~~Layer ① — the user set this
+  // for this unit.~~ The thresholds are read-only now, so there is no source
+  // that could produce it; the `saved_devices.alert_ov/uv/ot` columns survive
+  // the removal DORMANT (see [SavedDevice.alertOv]) and nothing reads them.
 
   /// Layer ② — the unit itself reported it in `0x2B`.
   device,
@@ -162,10 +187,12 @@ enum ThresholdSource {
 /// Why the WHOLE unit is unwatched — design 0080 §7.5.6 C-2.
 ///
 /// 🔴 **[ProductClass.unknown] ⇒ no warnings at all, no exceptions.** The
-/// resolution stops before layer ① is consulted, so all three fields come back
+/// resolution ~~stops before layer ① is consulted~~ stops before any layer is
+/// consulted (2026-08-25: there is no layer ① left to stop before — the gate
+/// itself is unchanged), so all three fields come back
 /// [ThresholdSource.none] even when there is something to say. The owner ruled
-/// out both of the back doors that suggest themselves, and they are named here
-/// because each one WILL look like an obvious improvement to somebody later:
+/// out the back door that suggests itself, and it is named here because it WILL
+/// look like an obvious improvement to somebody later:
 ///
 ///   * the unit **did report a `0x2B`** — the normal look of new hardware, and
 ///     tempting because layer ② is per-unit evidence that needs no table. Still
@@ -174,11 +201,11 @@ enum ThresholdSource {
 ///     "voltage" is not one quantity across classes — PVLT there is a ~3.7 V
 ///     cell — so an unrecognised class makes 12.0 V neither a limit nor an
 ///     error, just an uninterpretable pair of digits;
-///   * the **user typed a threshold themselves**. Same answer, and it is the
-///     harder one to accept, because layer ① normally wins everything. But a
-///     user typing "12.0" into a unit neither of us has identified is making
-///     the same guess we just refused to make, and we would be the ones
-///     ringing the alarm.
+///   * ~~the **user typed a threshold themselves**. Same answer, and it is the
+///     harder one to accept, because layer ① normally wins everything.~~ 🔵
+///     Moot since 2026-08-25 — there is no user layer to let through. The
+///     ruling that removed it did not weaken this gate; it removed the only
+///     back door that was ever hard to refuse.
 ///
 /// This is layer ④'s 不猜勝於猜錯 raised from the field to the device. Its price
 /// is stated and accepted: a new hardware generation gets no warnings until
@@ -516,8 +543,19 @@ const bool kPowerBankWatchesTemperatureOnly = true;
 ///   * [ProductClass.smartBattery] — the wire is **not enough**. Bike UV 11.0
 ///     against car UV 12.0 is a real 1 V difference, so an absent declaration
 ///     (or one naming a non-battery, which is the same thing as contradicting
-///     `0x02`) leaves layer ③ silent. Layers ① and ② are untouched by this —
-///     the unit's own `0x2B` and the user's own number still answer.
+///     `0x02`) leaves layer ③ silent. ~~Layers ① and ② are untouched by this —
+///     the unit's own `0x2B` and the user's own number still answer.~~
+///     🔵 **2026-08-25 (FB-100, ruling Q1 = "leave it"): only layer ② is left
+///     to answer, and when it has not answered yet, nothing does.** The gap is
+///     real and was ruled acceptable on evidence rather than waved through:
+///     `tools/fb.py` over the whole corpus finds NO inline-verified
+///     non-power-bank device that fails to report `0x2B` — the ones with none
+///     are power banks (which never had voltage rows) and header-attributed
+///     noise. So this branch is reachable only in the first frames of a link or
+///     with no link at all, and neither is a moment anything is evaluated in.
+///     Filling it with a guessed row was refused for the usual reason: car UV
+///     12.0 on a bike battery is a permanent false alarm, bike UV 11.0 on a car
+///     is a real one arriving late.
 ///   * [ProductClass.unknown] — unreachable from [resolveThresholds], which
 ///     returns at the device-level gate first (§7.5.6 C-2). Handled anyway so
 ///     the switch is exhaustive and so a direct caller gets the safe answer.
@@ -554,11 +592,11 @@ CategoryAlertDefaults? categoryDefaultsFor({
 
 /// Resolve all three thresholds for ONE unit, per field, per design 0080 §3.1.
 ///
-/// [userOv] / [userUv] / [userOt] are layer ①: what the owner typed for this
-/// unit (`saved_devices.alert_ov/uv/ot`, P2). Null means "not answered" and
-/// never "zero" — the same NULL-vs-sentinel rule the `declared_*` columns
-/// already follow (§3.6.1), because a sentinel makes "who has not answered"
-/// uncountable.
+/// 🔵 **2026-08-25 (FB-100): the three `userOv`/`userUv`/`userOt` parameters are
+/// gone.** ~~[userOv] / [userUv] / [userOt] are layer ①: what the owner typed
+/// for this unit (`saved_devices.alert_ov/uv/ot`, P2).~~ The thresholds are
+/// read-only; the columns are still in schema v22 and are simply never read
+/// (see [SavedDevice.alertOv] for why they were left rather than dropped).
 ///
 /// [reported] is layer ②: the unit's own `0x2B`, carried on the live sample.
 /// Passed as a whole [TelemetrySample] rather than as three loose doubles
@@ -591,7 +629,7 @@ CategoryAlertDefaults? categoryDefaultsFor({
 /// It decides three things, and none of them is a number:
 ///
 ///   1. **whether the unit is watched at all** — [ProductClass.unknown] returns
-///      [AlertThresholds.unwatched] before layer ① is even looked at
+///      [AlertThresholds.unwatched] before any layer is even looked at
 ///      (§7.5.6 C-2, no exceptions — see [AlertsDisabledReason]);
 ///   2. **whether voltage is watched** — see
 ///      [kPowerBankWatchesTemperatureOnly] (§7.5.1.1 A);
@@ -606,9 +644,6 @@ CategoryAlertDefaults? categoryDefaultsFor({
 /// Returns [ThresholdSource.none] with a null value for any field none of the
 /// layers could answer. That field is then not evaluated at all (layer ④).
 AlertThresholds resolveThresholds({
-  double? userOv,
-  double? userUv,
-  double? userOt,
   TelemetrySample? reported,
   DeclaredCategory? category,
   ProductClass wireClass = ProductClass.unknown,
@@ -672,8 +707,7 @@ AlertThresholds resolveThresholds({
   // the declaration no longer selects rows.
   final defaults = categoryDefaultsFor(wireClass: wire, category: category);
 
-  ResolvedThreshold pick(double? user, double? device, double? fallback) {
-    if (user != null) return ResolvedThreshold(user, ThresholdSource.user);
+  ResolvedThreshold pick(double? device, double? fallback) {
     if (device != null) return ResolvedThreshold(device, ThresholdSource.device);
     if (fallback != null) {
       return ResolvedThreshold(fallback, ThresholdSource.appDefault);
@@ -684,11 +718,11 @@ AlertThresholds resolveThresholds({
   return AlertThresholds(
     ov: voltageMuted
         ? ResolvedThreshold.unavailable
-        : pick(userOv, reported?.warnOv, defaults?.ov),
+        : pick(reported?.warnOv, defaults?.ov),
     uv: voltageMuted
         ? ResolvedThreshold.unavailable
-        : pick(userUv, reported?.warnUv, defaults?.uv),
-    ot: pick(userOt, reported?.warnOt, defaults?.ot),
+        : pick(reported?.warnUv, defaults?.uv),
+    ot: pick(reported?.warnOt, defaults?.ot),
   );
 }
 

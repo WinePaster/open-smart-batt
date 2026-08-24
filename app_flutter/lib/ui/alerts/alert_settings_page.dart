@@ -10,19 +10,26 @@
 /// GLOBAL parameters (how long, how often, how many) stay in Settings and
 /// everything that is about ONE battery lives here.
 ///
-/// ## The four states this screen has to draw, and why they are four
+/// ## The ~~four~~ three states this screen has to draw, and why they are three
 ///
 /// They come straight from the mockup and from §7.5.6 C-3, and the thing worth
 /// keeping straight is that TWO of them look like "no warnings" and mean
 /// entirely different things:
 ///
 ///   * **A — every row from the device.** The ordinary case: the unit reported
-///     `0x2B`, three 「裝置回報」 badges, the user has to do nothing.
-///   * **B — the user changed one field.** That row alone becomes 「自訂」 and
-///     accented, with the device's own value still shown beside a 「還原」. The
-///     other two rows do not move: §3.1 resolves PER FIELD, for the same reason
-///     `BleService.setThresholds` preserves the UT byte — editing one field must
-///     not silently erase the ones next to it.
+///     `0x2B`, three 「裝置回報」 badges, the user has to do nothing. 🔵 Since
+///     2026-08-25 this is also the ONLY thing a user can do about a threshold:
+///     read it.
+///   * ~~**B — the user changed one field.** That row alone becomes 「自訂」 and
+///     accented, with the device's own value still shown beside a 「還原」.~~
+///     🔵 **Gone 2026-08-25 (FB-100, design 0080 §0.3): the thresholds are
+///     READ-ONLY.** The dealer read the editable rows as the app changing the
+///     hardware's protection points, and the owner ruled the fix is to stop
+///     offering the edit — read `0x2B`, fall back to the table, take nothing
+///     from the user. Two defects left with it: the dialog had no bounds at all
+///     (an under-voltage of 5.0 V silenced the alarm with nothing on screen
+///     saying so), and 「出廠值 X」 was never actually wired up, so an edited row
+///     hid the very number it had replaced. Three states remain: A, C and D.
 ///   * **C — the device type is not recognised.** The whole page is disabled
 ///     (§7.5.6 C-2, "no exceptions": not even a reported `0x2B`, not even a
 ///     value the user typed). 🔴 **Only [AlertsDisabledReason.deviceTypeUnrecognised]
@@ -48,7 +55,6 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -65,21 +71,16 @@ import '../widgets/industrial.dart';
 export 'package:open_smart_batt/models/alert_thresholds.dart'
     show formatVolts, formatCelsius;
 
-/// How close a threshold may sit to the current reading before the screen says
-/// so (design 0080 §6.2, "設定值離目前讀數過近時就地提示").
-///
-/// 🔑 **Twice the hysteresis band, and that is where the number comes from.**
-/// §3.3 fixes the release band at 0.3 V / 3 °C, so a limit set within one band
-/// of the present reading describes an alarm that, once raised, cannot clear
-/// until the reading moves further than the debounce was ever meant to absorb.
-/// One band is therefore "already broken"; two is "you are about to be". The
-/// design gave no figure, so this is derived from the one figure it did give
-/// rather than chosen — a bare 0.5 would have to be defended on its own and
-/// could not be.
-const double kAlertNearVolts = 0.6;
-
-/// See [kAlertNearVolts] — 2 × the 3 °C band.
-const double kAlertNearCelsius = 6;
+// 🔵 **`kAlertNearVolts` / `kAlertNearCelsius` removed 2026-08-25 (FB-100).**
+// They existed for §6.2's 「設定值離目前讀數過近時就地提示」, which only ever
+// fired on a value the USER had typed — a threshold the DEVICE reports sitting
+// near today's reading is information about the hardware, not a mistake anyone
+// just made. With no user values there is nothing left for the notice to warn
+// about, so both the notice and its two constants go rather than linger as a
+// rule with no input. The derivation is worth keeping on the record in case a
+// later ruling brings editing back: each was 2 × §3.3's release band
+// (0.3 V / 3 °C), on the reasoning that one band inside the reading is an alarm
+// that can never clear and two is one you are about to build.
 
 /// The mute window offered by 「靜音 1 小時」 (§3.4 gate ②).
 const Duration kAlertMuteWindow = Duration(hours: 1);
@@ -404,16 +405,14 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
                   reading: _readingFor(kinds[i], tele),
                   live: live,
                   last: i == kinds.length - 1,
-                  onEdit: () => unawaited(_edit(saved, kinds[i], thresholds)),
-                  onRestore: () => unawaited(_restore(saved, kinds[i])),
                 ),
             ],
           ),
         ),
-        // §6.2 — a limit sitting on top of the present reading is a bombardment
-        // the user is about to build for themselves; say so beside it.
-        for (final k in kinds)
-          ?_nearNotice(l10n, k, thresholds[k], _readingFor(k, tele)),
+        // 🔵 2026-08-25 (FB-100) — the §6.2 「離目前讀數過近」 notices went with
+        // the values that could be too near. See the note where their two
+        // constants used to be.
+        _Note(text: l10n.alertsReadOnlyNote),
         if (!live) _Note(text: l10n.alertsOfflineNote),
         if (!voltage) ...[
           _Note(
@@ -466,61 +465,13 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
   double? _readingFor(AlertKind kind, TelemetryController tele) =>
       kind.isVoltage ? tele.pvlt : tele.temperatureC?.toDouble();
 
-  Widget? _nearNotice(
-    AppLocalizations l10n,
-    AlertKind kind,
-    ResolvedThreshold resolved,
-    double? reading,
-  ) {
-    // Only for a value the USER set. A device-reported or app-default limit
-    // sitting near today's reading is information about the hardware, not a
-    // mistake anyone just made, and warning about it on every screen open would
-    // be noise the reader cannot act on.
-    if (resolved.source != ThresholdSource.user || !resolved.isSet) return null;
-    if (reading == null) return null;
-    final delta = (resolved.value! - reading).abs();
-    final limit = kind.isVoltage ? kAlertNearVolts : kAlertNearCelsius;
-    if (delta >= limit) return null;
-    final label = kindLabel(l10n, kind);
-    return _Note(
-      warn: true,
-      text: kind.isVoltage
-          ? l10n.alertsNearReadingVolts(label, delta.toStringAsFixed(2))
-          : l10n.alertsNearReadingCelsius(label, delta.toStringAsFixed(0)),
-    );
-  }
-
+  // 🔵 **`_nearNotice`, `_edit` and `_restore` removed 2026-08-25 (FB-100).**
+  // All three existed only to serve layer ①. `_write` stays: the switch and the
+  // two mutes are still settings, and they are still per unit — what the ruling
+  // took away is the ability to type a NUMBER, not the ability to say "warn me
+  // about this one" or "not for the next hour".
   Future<void> _write(SavedDevice next) =>
       context.read<DeviceController>().setAlertSettings(next);
-
-  /// 🔴 Clearing one field, never three. See [SavedDevice.copyWith] — the
-  /// `clearX` flags exist precisely so 「還原」 can put ONE column back to NULL
-  /// while the other two keep whatever the owner typed (§3.1, per field).
-  Future<void> _restore(SavedDevice saved, AlertKind kind) => _write(switch (kind) {
-        AlertKind.overVoltage => saved.copyWith(clearAlertOv: true),
-        AlertKind.underVoltage => saved.copyWith(clearAlertUv: true),
-        AlertKind.overTemperature => saved.copyWith(clearAlertOt: true),
-      });
-
-  Future<void> _edit(
-    SavedDevice saved,
-    AlertKind kind,
-    AlertThresholds thresholds,
-  ) async {
-    final value = await showDialog<double>(
-      context: context,
-      builder: (_) => _ThresholdDialog(
-        kind: kind,
-        initial: thresholds[kind].value,
-      ),
-    );
-    if (value == null || !mounted) return;
-    await _write(switch (kind) {
-      AlertKind.overVoltage => saved.copyWith(alertOv: value),
-      AlertKind.underVoltage => saved.copyWith(alertUv: value),
-      AlertKind.overTemperature => saved.copyWith(alertOt: value),
-    });
-  }
 }
 
 /// One 「過壓 / 欠壓 / 過溫」 row: name, live reading, source badge, value.
@@ -536,8 +487,6 @@ class _ThresholdRow extends StatelessWidget {
     required this.reading,
     required this.live,
     required this.last,
-    required this.onEdit,
-    required this.onRestore,
   });
 
   final AlertKind kind;
@@ -549,17 +498,16 @@ class _ThresholdRow extends StatelessWidget {
   /// with nothing to show, "no basis" is.
   final bool live;
   final bool last;
-  final VoidCallback onEdit;
-  final VoidCallback onRestore;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final custom = resolved.source == ThresholdSource.user;
-    final accent = context.accent.accent;
-    return InkWell(
-      onTap: onEdit,
-      child: Container(
+    // 🔵 2026-08-25 (FB-100) — was an `InkWell(onTap: onEdit)`. A plain
+    // `Container` rather than a disabled `InkWell`: a row that ripples and then
+    // does nothing reads as a bug, and design 0080 §3.2.2 already took this
+    // position once for the power bank's absent voltage rows ("不是顯示成灰色
+    // 停用 —— 那會讓使用者以為是自己少設了什麼").
+    return Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
         decoration: BoxDecoration(
           border: last
@@ -610,30 +558,16 @@ class _ThresholdRow extends StatelessWidget {
               style: AppTextStyles.mono(context).copyWith(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: custom ? accent : context.colors.text,
+                color: context.colors.text,
               ),
             ),
-            if (custom) ...[
-              const SizedBox(width: 2),
-              // 40 dp floor, named rather than inherited — FB-70 is what a
-              // control nobody can hit costs.
-              IconButton(
-                onPressed: onRestore,
-                icon: const Icon(Icons.undo, size: 16),
-                tooltip: l10n.alertsRestore,
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                padding: EdgeInsets.zero,
-                color: accent,
-              ),
-            ],
           ],
         ),
-      ),
     );
   }
 }
 
-/// Layer ①/②/③/④, as one word.
+/// Layer ②/③/④, as one word (there is no layer ① since FB-100).
 class _SourceBadge extends StatelessWidget {
   const _SourceBadge({required this.source, required this.live});
 
@@ -644,7 +578,8 @@ class _SourceBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final (label, color) = switch (source) {
-      ThresholdSource.user => (l10n.alertsSourceUser, context.accent.accent),
+      // 🔵 ~~ThresholdSource.user => (l10n.alertsSourceUser, ...)~~ — removed
+      // 2026-08-25 (FB-100) along with the enum value it matched.
       ThresholdSource.device => (
           l10n.alertsSourceDevice,
           context.accent.accentSecondary
@@ -852,18 +787,21 @@ class _UnsavedBody extends StatelessWidget {
   }
 }
 
-/// A muted (or amber) explanatory block under a card.
+/// A muted explanatory block under a card.
+///
+/// 🔵 2026-08-25 (FB-100) — ~~`warn`~~, which painted the block amber, went with
+/// the §6.2 near-reading notice, its only caller. Every note this screen still
+/// draws is an explanation rather than a caution.
 class _Note extends StatelessWidget {
-  const _Note({required this.text, this.title, this.mono, this.warn = false});
+  const _Note({required this.text, this.title, this.mono});
 
   final String text;
   final String? title;
   final String? mono;
-  final bool warn;
 
   @override
   Widget build(BuildContext context) {
-    final color = warn ? AppSemantics.warn : context.colors.muted;
+    final color = context.colors.muted;
     return IndustrialCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -890,84 +828,14 @@ class _Note extends StatelessWidget {
   }
 }
 
-/// Type a threshold, or cancel.
-///
-/// A dialog rather than an inline text field, unlike the mockup's `.inp` box:
-/// an always-live field on this screen would have to decide when a half-typed
-/// "1" becomes a threshold, and the answer to that on a screen that RAISES
-/// ALARMS should not be "as you type".
-class _ThresholdDialog extends StatefulWidget {
-  const _ThresholdDialog({required this.kind, this.initial});
+// 🔵 **`_ThresholdDialog` removed 2026-08-25 (FB-100).** It was the only way a
+// number ever entered layer ①, and it is worth recording what it did NOT do:
+// `_submit()` parsed the text and accepted anything that parsed. No range, no
+// direction, no sanity check against the device's own `0x2B` — so 「欠壓 5.0」
+// was a valid entry that silently guaranteed the alarm could never fire, and
+// nothing on the screen said so. That defect is what made the dealer's
+// read-only request the cheap answer rather than a loss.
 
-  final AlertKind kind;
-  final double? initial;
-
-  @override
-  State<_ThresholdDialog> createState() => _ThresholdDialogState();
-}
-
-class _ThresholdDialogState extends State<_ThresholdDialog> {
-  late final TextEditingController _c = TextEditingController(
-    text: widget.initial == null
-        ? ''
-        : (widget.kind.isVoltage
-            ? formatVolts(widget.initial!)
-            : formatCelsius(widget.initial!)),
-  );
-  String? _error;
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final v = double.tryParse(_c.text.trim());
-    if (v == null) {
-      setState(() => _error = AppLocalizations.of(context).alertsEditInvalid);
-      return;
-    }
-    Navigator.of(context).pop(v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      backgroundColor: context.colors.panel,
-      title: Text(l10n.alertsEditDialogTitle(kindLabel(l10n, widget.kind)),
-          style: const TextStyle(fontSize: 17)),
-      content: TextField(
-        controller: _c,
-        autofocus: true,
-        // `signed: false` — a negative over-voltage limit is not a value anyone
-        // means, and the decoder's own arithmetic cannot produce one.
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-        onSubmitted: (_) => _submit(),
-        decoration: InputDecoration(
-          hintText: widget.kind.isVoltage
-              ? l10n.alertsEditHintVolts
-              : l10n.alertsEditHintCelsius,
-          errorText: _error,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.commonCancel,
-              style: TextStyle(color: context.colors.muted)),
-        ),
-        TextButton(
-          onPressed: _submit,
-          child: Text(l10n.commonConfirm,
-              style: TextStyle(color: context.accent.accent)),
-        ),
-      ],
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Formatting
