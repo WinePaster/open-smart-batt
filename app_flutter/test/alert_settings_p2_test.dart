@@ -88,6 +88,12 @@ void main() {
   // =========================================================================
   // Model round trips
   // =========================================================================
+  // 🔵 **2026-08-25 (FB-100): `alert_ov/uv/ot` are DORMANT, not dropped.** The
+  // ruling made the thresholds read-only, so nothing writes or reads these
+  // three any more — but ruling Q2 was "直接更新成讀取值", i.e. change what the
+  // screen resolves, not what schema v22 holds. The columns therefore stay, and
+  // so do the round-trip tests below: a column nothing reads is still a column
+  // a later migration can corrupt, and re-proving `null != 0` costs nothing.
   group('SavedDevice: the alert columns survive a round trip', () {
     test('🔴 null stays null — it is never a 0 on the way through', () {
       const d = SavedDevice(id: _unitA, alias: 'a');
@@ -250,8 +256,14 @@ void main() {
       expect(t.ov.source, ThresholdSource.device);
     });
 
-    testWidgets('🔴 the user\'s value outranks the wire, per FIELD',
+    testWidgets('🔴 a stored alert_uv is IGNORED — the wire wins (FB-100)',
         (tester) async {
+      // 🔵 **2026-08-25 — this test was inverted, not deleted.** ~~'the user\'s
+      // value outranks the wire, per FIELD'~~ asserted `t.uv.value == 12.4`.
+      // The same fixture now has to prove the opposite, because that is exactly
+      // what ruling Q2 promises the field: a phone that already has a custom
+      // number in v22 shows the DEVICE's on the next launch, with no migration
+      // and no prompt.
       await boot(tester, const [
         SavedDevice(
           id: _unitB,
@@ -266,19 +278,20 @@ void main() {
         liveSample: _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 11.0, warnOt: 80),
         liveDeviceId: _unitB,
       );
-      expect(t.uv.value, 12.4);
-      expect(t.uv.source, ThresholdSource.user);
-      // The two the user did not touch are untouched — the same rule
-      // `setThresholds` follows on the write path with the UT byte.
+      expect(t.uv.value, 11.0, reason: 'the unit\'s own 0x2B, not the 12.4');
+      expect(t.uv.source, ThresholdSource.device);
       expect(t.ov.source, ThresholdSource.device);
       expect(t.ot.source, ThresholdSource.device);
     });
 
-    testWidgets('an OFFLINE saved unit still resolves from ① and ③',
+    testWidgets('an OFFLINE saved unit still resolves from ~~① and~~ ③',
         (tester) async {
       // The case the old `live` gate could only answer with silence. Nothing
-      // here needs a radio: the owner's own number and the class table are both
-      // on disk, and that is the situation a dealer sets limits in.
+      // here needs a radio: the class table is on disk.
+      // 🔵 2026-08-25 (FB-100) — the stored 11.8 below is deliberately left in
+      // the fixture and deliberately not expected: offline is precisely where a
+      // dormant column would be most tempting to fall back on, and the point is
+      // that it is not consulted even there.
       await boot(tester, const [
         SavedDevice(
           id: _unitA,
@@ -288,8 +301,8 @@ void main() {
         ),
       ]);
       final t = alertThresholdsFor(devices, _unitA);
-      expect(t.uv.value, 11.8);
-      expect(t.uv.source, ThresholdSource.user);
+      expect(t.uv.value, 11.5, reason: 'the capacitor row, not the stored 11.8');
+      expect(t.uv.source, ThresholdSource.appDefault);
       expect(t.ov.value, 14.8);
       expect(t.ov.source, ThresholdSource.appDefault);
     });
@@ -427,15 +440,21 @@ void main() {
       expect(find.textContaining('Still identifying'), findsNothing);
     });
 
-    testWidgets('state B — one custom row, and ONLY one', (tester) async {
-      // §3.1 resolves per FIELD. The failure this pins is the tempting one:
-      // storing the three as a group, so that typing a UV silently freezes the
-      // OV and OT at whatever they happened to be.
+    // 🔵 **2026-08-25 (FB-100): state B is gone, and the two tests that drew it
+    // are replaced by one that proves it CANNOT be drawn.** ~~'state B — one
+    // custom row, and ONLY one'~~ and ~~'state B — 還原 puts ONE field back to
+    // "not answered"~~' both depended on a screen that offered an edit. The
+    // fixture below keeps the stored 12.4 that used to produce state B, which
+    // is the whole point: the row it once accented now shows the device's own
+    // 11.0, with no 「自訂」, no 「還原」 and nothing to tap.
+    testWidgets('🔴 a stored value draws NO custom row and offers no edit',
+        (tester) async {
       await boot(tester, const [
         SavedDevice(
           id: _unitA,
           alias: '阿福的機車',
           productClass: ProductClass.smartBattery,
+          alertOv: 15.5,
           alertUv: 12.4,
         ),
       ]);
@@ -450,48 +469,54 @@ void main() {
               warnUv: 11.0,
               warnOt: 80));
 
-      expect(find.text('Custom'), findsOneWidget);
-      expect(find.text('Device'), findsNWidgets(2));
-      expect(find.text('12.40 V'), findsOneWidget);
+      expect(find.text('Custom'), findsNothing);
+      expect(find.text('Device'), findsNWidgets(3),
+          reason: 'all three rows come from the wire now');
+      expect(find.text('12.40 V'), findsNothing, reason: 'the stored value');
+      expect(find.text('11.00 V'), findsOneWidget, reason: 'the device\'s own');
       expect(find.text('15.00 V'), findsOneWidget,
-          reason: 'the OV row did not move');
-      // §6.2 — 12.62 is 0.22 V from the limit the owner just typed.
-      expect(find.textContaining('only 0.22 V'), findsOneWidget);
-      // …and 「還原」 is offered for that row alone.
-      expect(find.byTooltip('Restore'), findsOneWidget);
+          reason: 'the OV row shows the wire\'s 15.0, not the stored 15.5');
+      expect(find.byTooltip('Restore'), findsNothing);
+      // §6.2's 「離目前讀數過近」 notice went with the values that could be too
+      // near — 12.62 against a device-reported 11.0 is hardware, not a mistake.
+      expect(find.textContaining('only 0.22 V'), findsNothing);
+
+      // …and the row is not a control: tapping where the edit used to be opens
+      // nothing. Asserted by tapping rather than by counting `InkWell`s, since
+      // the page has other legitimate ones (the switch rows) and a count would
+      // pass for the wrong reason the moment one of those moved.
+      await tester.tap(find.text('11.00 V'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('11.00 V'), findsOneWidget, reason: 'still on the page');
     });
 
-    testWidgets('state B — 還原 puts ONE field back to "not answered"',
+    testWidgets('the read-only note says the device is never changed',
         (tester) async {
+      // 🔑 The half of FB-100 that is not a deletion. The dealer read the
+      // editable rows as the app writing the hardware's protection points, and
+      // nothing on this screen had ever said otherwise — a full l10n sweep
+      // found zero strings on the subject.
       await boot(tester, const [
         SavedDevice(
           id: _unitA,
           alias: 'A',
           productClass: ProductClass.smartBattery,
-          alertOv: 15.5,
-          alertUv: 12.4,
         ),
       ]);
       await pump(tester, const AlertSettingsPage(deviceId: _unitA));
       await feed(tester,
           _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 11.0, warnOt: 80));
-      expect(find.text('Custom'), findsNWidgets(2));
 
-      await tester.tap(find.byTooltip('Restore').last);
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
-      await tester.pump();
-
-      final back = services.devices.deviceFor(_unitA)!;
-      expect(back.alertUv, isNull, reason: 'and NULL, never 0');
-      expect(back.alertOv, 15.5, reason: 'the other field is not collateral');
+      expect(find.textContaining('never changes the device'), findsOneWidget);
     });
 
     testWidgets('🔴 state C — an unrecognised device type disables the page',
         (tester) async {
       // §7.5.6 C-2, "no exceptions". Note the unit below DOES report a full
-      // 0x2B and the owner HAS typed a value: both of the back doors the ruling
-      // named, shut in one test.
+      // 0x2B: the back door the ruling named, shut. (🔵 It also carries a
+      // stored `alertUv`, which was the second back door until 2026-08-25 and
+      // is now simply unread — see FB-100.)
       await boot(tester, const [
         SavedDevice(
           id: _unitA,
@@ -745,13 +770,19 @@ void main() {
 
     tearDown(() async => services.dispose());
 
-    testWidgets(
-        '🔴 a user-set UV changes the advisory line — layer ② no longer decides',
+    // 🔵 **2026-08-25 (FB-100): both of this group's user-value tests are
+    // replaced.** ~~'a user-set UV changes the advisory line — layer ② no
+    // longer decides'~~ and ~~'…and restoring that field puts the line away
+    // again'~~ drove the advisory line from a stored `alert_uv`, which nothing
+    // reads any more. The property they were really protecting — the line and
+    // the alarm read ONE resolver, this repo's three-times-logged "one fact,
+    // two sources" failure aimed at an alarm — is kept below, driven from the
+    // table instead of from the owner.
+    testWidgets('🔴 a stored alert_uv no longer moves the advisory line',
         (tester) async {
-      // The "one fact, two sources" failure this repo has three logged incidents
-      // of, aimed at an alarm. 12.6 V is comfortably inside the device's own
-      // 11.0 V limit and comfortably below the owner's 12.8 V one, so the two
-      // sources give OPPOSITE answers and only one of them may reach the screen.
+      // Same fixture as the deleted test: 12.6 V sits inside the device's own
+      // 11.0 V limit and below the stored 12.8. Before FB-100 the stored value
+      // won and the line appeared; now the wire wins and it must not.
       await boot(tester, const [
         SavedDevice(
           id: _unitA,
@@ -770,39 +801,30 @@ void main() {
               warnOv: 15.0,
               warnUv: 11.0,
               warnOt: 80));
-
-      expect(find.textContaining('outside the warning range'), findsOneWidget,
-          reason: 'the owner asked to be told at 12.8 V');
-    });
-
-    testWidgets('…and restoring that field puts the line away again',
-        (tester) async {
-      await boot(tester, const [
-        SavedDevice(
-          id: _unitA,
-          alias: 'A',
-          productClass: ProductClass.smartBattery,
-          alertUv: 12.8,
-        ),
-      ]);
-      await pump(tester, const BatteryControls(deviceId: _unitA));
-      await feed(
-          tester,
-          _sample(
-              deviceType: 0x02,
-              pvlt: 12.6,
-              temperatureC: 30,
-              warnOv: 15.0,
-              warnUv: 11.0,
-              warnOt: 80));
-      expect(find.textContaining('outside the warning range'), findsOneWidget);
-
-      await tester.runAsync(() => services.devices.setAlertSettings(
-          services.devices.deviceFor(_unitA)!.copyWith(clearAlertUv: true)));
-      await tester.pump();
 
       expect(find.textContaining('outside the warning range'), findsNothing,
-          reason: 'back to the unit\'s own 11.0 V, which 12.6 does not breach');
+          reason: "the unit's own 11.0 V decides, and 12.6 does not breach it");
+    });
+
+    testWidgets('🔴 the line still follows the RESOLVER, not warnUv directly',
+        (tester) async {
+      // The property the two deleted tests existed for, restated with the
+      // layers that are left. A capacitor reporting NO 0x2B resolves UV 11.5
+      // off the table (§3.2.1), so 11.2 V is a breach — and a screen reading
+      // `TelemetrySample.warnUv` directly would find null and say nothing.
+      await boot(tester, const [
+        SavedDevice(
+          id: _unitA,
+          alias: 'A',
+          productClass: ProductClass.supercapacitor,
+        ),
+      ]);
+      await pump(tester, const BatteryControls(deviceId: _unitA));
+      await feed(tester,
+          _sample(deviceType: 0x17, pvlt: 11.2, temperatureC: 30));
+
+      expect(find.textContaining('outside the warning range'), findsOneWidget,
+          reason: 'layer ③ answered where layer ② could not');
     });
 
     testWidgets(

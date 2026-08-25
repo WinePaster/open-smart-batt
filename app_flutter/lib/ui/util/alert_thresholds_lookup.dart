@@ -16,10 +16,14 @@
 /// 🔴 **`resolveThresholds()` is the app's only threshold source (§3.8).** The
 /// advisory line, the history row colouring and (in P3) the evaluator all come
 /// through here. Nothing anywhere else may compare a reading against
-/// `TelemetrySample.warnOv` directly: that is layer ② alone, so a screen doing
-/// it would ignore the user's own value and tell them the reading is fine while
-/// the notification says it is not — this repo's logged "one fact, two sources"
-/// failure, applied to alarms.
+/// `TelemetrySample.warnOv` directly.
+/// 🔵 **2026-08-25 (FB-100): the reason changed, the rule did not.** ~~that is
+/// layer ② alone, so a screen doing it would ignore the user's own value~~ —
+/// there is no user value to ignore any more. What a direct read still skips is
+/// the power bank's voltage suppression, the unrecognised-class gate and the
+/// category fallback, any one of which is enough to make the screen and the
+/// notification disagree about the same unit. Same logged failure, fewer ways
+/// in.
 ///
 /// ## Why the `0x2B` is re-read every time and never cached
 ///
@@ -87,9 +91,9 @@ AlertThresholds alertThresholdsFor(
   final mine =
       deviceId == null || liveDeviceId == null || deviceId == liveDeviceId;
   return resolveThresholds(
-    userOv: saved?.alertOv,
-    userUv: saved?.alertUv,
-    userOt: saved?.alertOt,
+    // 🔵 2026-08-25 (FB-100) — ~~userOv: saved?.alertOv,~~ and its two
+    // neighbours went with layer ①. `saved` is still read below for the
+    // declaration, so the record is not suddenly unused here.
     reported: mine ? liveSample : null,
     // Tie-breaker only, and only for a `0x02` battery — see
     // `categoryDefaultsFor`. Reading it for anything else would put a

@@ -1521,17 +1521,22 @@ void main() {
       // and an offline unit's rows could never be coloured at all — which is
       // precisely the unit a dealer reads (design 0065 Q4).
       //
-      // The limit here comes from LAYER ① (`saved_devices.alert_uv`), which
-      // needs no link, and B is on the wire with limits that would classify
-      // these rows differently — so a regression to the ambient read shows up
-      // as the wrong colour rather than as no colour.
+      // ~~The limit here comes from LAYER ① (`saved_devices.alert_uv`), which
+      // needs no link~~ 🔵 **2026-08-25 (FB-100): layer ① is gone; the property
+      // survives on layer ③.** The persisted `product_class` plus the
+      // declaration select the car-battery row (OV 15.0) with no link open, so
+      // this still tests what it was written to test — an offline unit judged
+      // by ITS OWN limits — and it now tests the only offline path there is.
+      // B remains on the wire with limits that would classify these rows
+      // differently, so a regression to the ambient read shows up as the wrong
+      // colour rather than as no colour.
       await boot(tester);
-      await addRows(tester, unitA, vA, count: 3); // 12.34 V
+      await addRows(tester, unitA, 15.9, count: 3); // above the car OV 15.0
       await tester.runAsync(() => services.devices.save(const SavedDevice(
             id: unitA,
             alias: 'A',
             productClass: ProductClass.smartBattery,
-            alertUv: 12.8,
+            declared: DeclaredModel(category: DeclaredCategory.carBattery),
           )));
       await addRows(tester, unitB, vB);
       await connectTo(tester, unitB);
@@ -1540,8 +1545,8 @@ void main() {
       final rows = tester.widgetList<HistoryRow>(find.byType(HistoryRow));
       expect(rows, isNotEmpty);
       expect(rows.map((r) => r.status), contains(HistoryRowStatus.warning),
-          reason: 'the owner asked to be told below 12.8 V, and 12.34 is below '
-              'it — no link required to know that');
+          reason: '15.9 V is above the car-battery row\'s 15.0 — no link '
+              'required to know that');
     });
   });
 

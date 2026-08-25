@@ -3668,12 +3668,6 @@ abstract class AppLocalizations {
   /// **'Device'**
   String get alertsSourceDevice;
 
-  /// No description provided for @alertsSourceUser.
-  ///
-  /// In en, this message translates to:
-  /// **'Custom'**
-  String get alertsSourceUser;
-
   /// design 0080 §3.2.2 — the power bank's 50 °C is the one number nobody measured, and the screen is REQUIRED to say so.
   ///
   /// In en, this message translates to:
@@ -3710,35 +3704,17 @@ abstract class AppLocalizations {
   /// **'{v} °C'**
   String alertsCelsiusValue(String v);
 
-  /// No description provided for @alertsNearReadingVolts.
-  ///
-  /// In en, this message translates to:
-  /// **'The {label} limit is only {delta} V from the current reading.'**
-  String alertsNearReadingVolts(String label, String delta);
-
-  /// No description provided for @alertsNearReadingCelsius.
-  ///
-  /// In en, this message translates to:
-  /// **'The {label} limit is only {delta} °C from the current reading.'**
-  String alertsNearReadingCelsius(String label, String delta);
-
-  /// No description provided for @alertsFactoryValue.
-  ///
-  /// In en, this message translates to:
-  /// **'Device value {v}'**
-  String alertsFactoryValue(String v);
-
-  /// No description provided for @alertsRestore.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore'**
-  String get alertsRestore;
-
   /// No description provided for @alertsOfflineNote.
   ///
   /// In en, this message translates to:
   /// **'Not connected — this device\'s own factory limits are only readable while connected.'**
   String get alertsOfflineNote;
+
+  /// No description provided for @alertsReadOnlyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.'**
+  String get alertsReadOnlyNote;
 
   /// design 0080 §7.5.6 C-3 / §7.5.7 — the TRANSIENT state. It must never borrow the words of alertsUnrecognisedTitle: every connect passes through here.
   ///
@@ -3767,7 +3743,7 @@ abstract class AppLocalizations {
   /// No description provided for @alertsPowerBankOtNote.
   ///
   /// In en, this message translates to:
-  /// **'This device reports no warning limits. 50 °C is the app\'s own default, and you can change it.'**
+  /// **'This device reports no warning limits, so 50 °C is the app’s own default.'**
   String get alertsPowerBankOtNote;
 
   /// No description provided for @alertsPowerBankOtEvidence.
@@ -3859,30 +3835,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Ends when the link drops'**
   String get alertsSessionMuteSub;
-
-  /// No description provided for @alertsEditDialogTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'{label} limit'**
-  String alertsEditDialogTitle(String label);
-
-  /// No description provided for @alertsEditHintVolts.
-  ///
-  /// In en, this message translates to:
-  /// **'Volts, e.g. 12.40'**
-  String get alertsEditHintVolts;
-
-  /// No description provided for @alertsEditHintCelsius.
-  ///
-  /// In en, this message translates to:
-  /// **'Degrees Celsius, e.g. 80'**
-  String get alertsEditHintCelsius;
-
-  /// No description provided for @alertsEditInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter a number'**
-  String get alertsEditInvalid;
 
   /// No description provided for @alertsUnsavedTitle.
   ///

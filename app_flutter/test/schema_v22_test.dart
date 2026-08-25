@@ -318,10 +318,11 @@ void main() {
       // …and read back through the model, the resolution still reaches layer ②.
       final saved = (await DeviceRepo(db.db).getDevice(_batteryId))!;
       expect(saved.alertOv, isNull);
+      // 🔵 2026-08-25 (FB-100) — ~~userOv: saved.alertOv,~~ and its two
+      // neighbours. The COLUMNS still exist and this test still asserts they
+      // were not seeded; what changed is that nothing reads them any more, so
+      // the resolution below cannot be handed them.
       final t = resolveThresholds(
-        userOv: saved.alertOv,
-        userUv: saved.alertUv,
-        userOt: saved.alertOt,
         reported: TelemetrySample(
           timestamp: DateTime.utc(2026, 8, 22),
           deviceType: 0x02,
@@ -333,8 +334,10 @@ void main() {
         wireClass: saved.productClass,
       );
       expect(t.ov.source, ThresholdSource.device,
-          reason: 'a seeded default would have made this ThresholdSource.user, '
-              'permanently, on every phone in the field');
+          reason: 'a seeded default would have made this the app default, '
+              'permanently, on every phone in the field (🔵 before 2026-08-25 '
+              'it would have been ThresholdSource.user — same defect, one '
+              'layer up)');
       expect(t.ov.value, 15.0);
     });
 
