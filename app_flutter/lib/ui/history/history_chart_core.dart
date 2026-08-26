@@ -297,6 +297,92 @@ class HistoryChartGeometry {
   return (lo: vlo, hi: vhi);
 }
 
+/// Which quantity the LEFT axis is showing — design 0085 §3.1 案 B (FB-101).
+///
+/// 🔵 **A switch, not a third series.** Temperature keeps the right axis in
+/// both modes; current REPLACES voltage on the left and reuses its colour
+/// ([HistoryTrendPainter.vColor], the theme's `accent`). That is the whole
+/// point of the ruling: 案 A wanted a third trace, and a third trace needs a
+/// third line colour, which means re-running all seven checks in
+/// `accent_theme.dart:28-60` across six themes in two brightnesses, by hand,
+/// at line width. Swapping the left series costs nothing of the sort.
+///
+/// 🔴 The price, recorded rather than hidden (design 0085 §3.2): one series at
+/// a time means "what was the current doing while the voltage sagged" is NOT
+/// answerable from one picture. That was accepted knowingly; it is not a bug
+/// to be fixed by quietly drawing both.
+enum HistoryChartSeries { voltage, current }
+
+/// The chart's left-axis window, in amperes — design 0085 §3.1 案 B (FB-101).
+///
+/// Same rule as [historyChartVoltageRange] — scaled over the buckets' EXTREMES
+/// and not their means alone (FB-74) — plus one this axis alone has:
+///
+/// 🔴 **The window ALWAYS contains zero.** Current is the only plotted quantity
+/// whose sign carries meaning: `packFlowOf` reads negative as discharging and
+/// positive as charging (`power_flow.dart:159`), and the moment the sign FLIPS
+/// is the one thing a curve can say that a column of numbers cannot. An axis
+/// fitted to the data would push that crossing off the plot entirely on any run
+/// that stayed on one side — a unit charging at 8…10 A would be drawn on a
+/// window starting at 7.5 A, and the picture would be indistinguishable from
+/// the same unit discharging at 8…10 A.
+///
+/// ⛔ And it is why `abs()` is not an option here (design 0030 §3.2 Q5, ruled
+/// 2026-08-03): flattening the sign to dodge the crossing deletes exactly the
+/// event the series exists to show. Nothing in this file calls `abs()` on a
+/// current; keep it that way.
+///
+/// The 2 A floor is the wire quantum doubled — `0x2E` is 1 A per count
+/// (`telemetry_decoder.current`, no division), so a window narrower than two
+/// counts would magnify quantisation steps into apparent structure.
+({double lo, double hi}) historyChartCurrentRange(List<HistoryBucket> buckets) {
+  double? lo, hi;
+  void see(double? v) {
+    if (v == null) return;
+    if (lo == null || v < lo!) lo = v;
+    if (hi == null || v > hi!) hi = v;
+  }
+
+  for (final b in buckets) {
+    see(b.avgAmpere);
+    see(b.minAmpere);
+    see(b.maxAmpere);
+  }
+  var alo = (lo ?? 0) - 0.5, ahi = (hi ?? 0) + 0.5;
+  // 🔴 Straddle zero unconditionally — see the doc above. A run that never
+  // changed sign still has to be drawn against the line it never crossed.
+  if (alo > 0) alo = 0;
+  if (ahi < 0) ahi = 0;
+  if (ahi - alo < 2) {
+    // Symmetric expansion about the midpoint. Because the window already
+    // contains zero, widening it about its own centre can only widen it
+    // FURTHER past zero on both sides — the straddle survives this branch.
+    final m = (alo + ahi) / 2;
+    alo = m - 1;
+    ahi = m + 1;
+  }
+  return (lo: alo, hi: ahi);
+}
+
+/// How to word which half of the current axis is which — design 0056, and the
+/// 🔵 **S3 seam** for design 0085.
+///
+/// 🔴 **Direction is per FAMILY, and the two families are OPPOSITE.** Pack
+/// units (battery / capacitor) decode `512 - u16` on `0x2E`, where negative is
+/// discharging; power banks decode `0x4A − 0x49`, where POSITIVE is
+/// discharging (`power_flow.dart:146` — "THE SIGN IS THE OPPOSITE"). Passing a
+/// power bank the pack wording labels every charge as a discharge.
+///
+/// S2 ships the MECHANISM with the pack wording as the default, because the
+/// chart cannot see a [ProductClass] yet: `HistoryChartPage` takes a device id
+/// and nothing else, and the History screen's scope can be "all devices", where
+/// there is no single family to ask about. 🔵 **S3 threads the class through
+/// and picks per family here** — this function is the single place that has to
+/// change, and [HistoryTrendPainter.currentDirectionLabel] is the single place
+/// it is consumed.
+String historyChartCurrentDirectionLabel(AppLocalizations l10n) =>
+    l10n.dashboardTrackCurrentDirectionKey;
+
 /// The chart's right-axis window, in DISPLAY temperature units — FB-74.
 ///
 /// Same rule and same reason as [historyChartVoltageRange]: a bucket's hottest
@@ -342,6 +428,11 @@ CustomPainter historyTrendPainterForTest({
   bool multiDay = false,
   int bucketMs = 60000,
   int? selected,
+  // 🔵 design 0085 S2: which quantity the LEFT axis carries. Defaulted to
+  // voltage so every test written before FB-101 keeps driving exactly the
+  // painter it was written against.
+  HistoryChartSeries series = HistoryChartSeries.voltage,
+  String? currentDirectionLabel,
   // The test asserts geometry, not hue, so the DEFAULT set is the honest
   // stand-in — but it is a parameter rather than a literal so a colour test
   // can drive the painter with a non-amber set, which is the only way the
@@ -356,6 +447,8 @@ CustomPainter historyTrendPainterForTest({
       multiDay: multiDay,
       bucketMs: bucketMs,
       selected: selected,
+      series: series,
+      currentDirectionLabel: currentDirectionLabel,
       vColor: accent.accent,
       tColor: accent.accentSecondary,
       grid: const Color(0xFF333333),
@@ -373,6 +466,8 @@ class HistoryTrendPainter extends CustomPainter {
     required this.multiDay,
     required this.bucketMs,
     required this.selected,
+    this.series = HistoryChartSeries.voltage,
+    this.currentDirectionLabel,
     required this.vColor,
     required this.tColor,
     required this.grid,
@@ -401,6 +496,28 @@ class HistoryTrendPainter extends CustomPainter {
   final bool multiDay;
   final int bucketMs;
   final int? selected;
+
+  /// 🔵 Which quantity the LEFT axis draws — design 0085 §3.1 案 B (FB-101).
+  ///
+  /// Temperature is untouched by this in both directions: it keeps the right
+  /// axis, [hasTemp] still decides whether the right margin opens up, and its
+  /// band and line are drawn from the same selectors as before. Only the left
+  /// half switches, and it switches WHOLE — window, band, line, selected
+  /// marker and the trailing value read-out all follow this one field, so
+  /// there is no state in which the axis labels describe one quantity and the
+  /// line plots another.
+  final HistoryChartSeries series;
+
+  /// Which half of the current axis is charge and which is discharge — null ⇒
+  /// draw the zero line unlabelled.
+  ///
+  /// A plain string rather than an [AppLocalizations], for the same reason
+  /// [gapLabel] is a callback: this file draws, it does not know about locales,
+  /// and that is what keeps the painter testable without pumping a screen. The
+  /// wording comes from [historyChartCurrentDirectionLabel] — 🔵 see there for
+  /// why S3, not S2, is where it becomes per-family.
+  final String? currentDirectionLabel;
+
   final Color vColor, tColor, grid, text;
 
   @override
@@ -422,7 +539,13 @@ class HistoryTrendPainter extends CustomPainter {
     // Axis windows. FB-74: both are scaled to include the buckets' MIN/MAX, not
     // just their means — see [historyChartVoltageRange] for why an averaged
     // axis would clip the very thing the band below exists to show.
-    final vr = historyChartVoltageRange(buckets);
+    //
+    // 🔵 design 0085 S2: the LEFT window follows [series]; the right one does
+    // not move, in either mode.
+    final isCurrent = series == HistoryChartSeries.current;
+    final vr = isCurrent
+        ? historyChartCurrentRange(buckets)
+        : historyChartVoltageRange(buckets);
     final vlo = vr.lo, vhi = vr.hi;
     final tr = historyChartTempRange(hasTemp ? buckets : const [], tempUnit);
     final tlo = tr.lo, thi = tr.hi;
@@ -430,6 +553,14 @@ class HistoryTrendPainter extends CustomPainter {
     double xAt(int i) => g.xAt(i);
     double yV(double v) => top + plotH * (1 - (v - vlo) / (vhi - vlo));
     double yT(double v) => top + plotH * (1 - (v - tlo) / (thi - tlo));
+
+    // 🔵 The left series in one place — design 0085 §1.3: `drawLine`/`drawBand`
+    // were already generic over a selector, so switching quantity is a matter
+    // of handing them different ones. ⛔ No `abs()` on the current: the sign is
+    // the reading (design 0030 §3.2 Q5).
+    double? leftAvg(HistoryBucket b) => isCurrent ? b.avgAmpere : b.avgPvlt;
+    double? leftMin(HistoryBucket b) => isCurrent ? b.minAmpere : b.minPvlt;
+    double? leftMax(HistoryBucket b) => isCurrent ? b.maxAmpere : b.maxPvlt;
 
     void tp(String s, double x, double y,
         {bool rightAlign = false, Color? c}) {
@@ -502,6 +633,33 @@ class HistoryTrendPainter extends CustomPainter {
       if (hasTemp) {
         tp((tlo + (thi - tlo) * f).toStringAsFixed(0), size.width - right + 4,
             y - 6, c: tColor);
+      }
+    }
+
+    // 🔴 **The zero line, and only in current mode** — design 0085 §3.1 案 B.
+    //
+    // [historyChartCurrentRange] guarantees the window contains zero, so this
+    // line is always inside the plot. It is what turns a curve into a reading:
+    // without it, "the line went from up here to down there" says nothing about
+    // whether the unit started charging, and the axis numbers alone make the
+    // reader do the arithmetic. Drawn over the grid but under the series, in
+    // the series' own colour at half strength, so it belongs to the left axis
+    // rather than reading as a fourth trace (⛔ design 0085 §2: no new colours).
+    if (isCurrent) {
+      final zy = yV(0);
+      canvas.drawLine(
+          Offset(left, zy),
+          Offset(size.width - right, zy),
+          Paint()
+            ..color = vColor.withValues(alpha: 0.55)
+            ..strokeWidth = 1);
+      // The direction key sits immediately above the line it describes —
+      // design 0056 asked for "which half is which", and a legend parked in a
+      // corner answers a different question. Clamped into the plot for the
+      // case where zero lands against the top edge.
+      final dir = currentDirectionLabel;
+      if (dir != null) {
+        tp(dir, left + 3, (zy - 11).clamp(top, top + plotH - 11));
       }
     }
 
@@ -632,21 +790,29 @@ class HistoryTrendPainter extends CustomPainter {
       double? t(double? c) => c == null ? null : historyDisplayTemp(c, tempUnit);
       drawBand((b) => t(b.minTemp), (b) => t(b.maxTemp), yT, tColor);
     }
-    drawBand((b) => b.minPvlt, (b) => b.maxPvlt, yV, vColor);
+    // 🔴 **The band is not optional, and least of all here** — design 0085
+    // §3.3. Q2① / Q3 ruled out the "these are averages" sentence, so once the
+    // left axis is showing current the band is the ONLY thing on screen saying
+    // the line is a mean. On current it also carries a meaning voltage's band
+    // does not: the wire quantum is 1 A per count, so the band's width IS "how
+    // many integer counts this minute jumped between". ⛔ Do not make it a
+    // setting, and do not drop it to unclutter the card.
+    drawBand(leftMin, leftMax, yV, vColor);
 
     if (hasTemp) {
       drawLine((b) => b.avgTemp == null
           ? null
           : historyDisplayTemp(b.avgTemp!, tempUnit), yT, tColor);
     }
-    drawLine((b) => b.avgPvlt, yV, vColor);
+    drawLine(leftAvg, yV, vColor);
 
     // Emphasized markers at the selected bucket (over the series).
     if (sel != null && sel >= 0 && sel < n) {
       final b = buckets[sel];
       final sx = xAt(sel);
-      if (b.avgPvlt != null) {
-        final c = Offset(sx, yV(b.avgPvlt!));
+      final selAvg = leftAvg(b);
+      if (selAvg != null) {
+        final c = Offset(sx, yV(selAvg));
         canvas.drawCircle(c, 4.5, Paint()..color = vColor);
         canvas.drawCircle(
             c,
@@ -664,13 +830,20 @@ class HistoryTrendPainter extends CustomPainter {
       }
     }
 
-    // Latest voltage marker + value.
+    // Latest left-series marker + value.
+    //
+    // 🔵 One decimal and an `A` in current mode — the same precision the list
+    // row prints (`historyCurrentBit`), because design 0065 §6 R5 is that two
+    // surfaces must not put different numbers on the same minute. ⛔ Not two
+    // decimals: `0x2E` has no division, so the digits past the first come from
+    // averaging, not from the instrument (design 0085 §1.8).
     for (var i = n - 1; i >= 0; i--) {
-      final a = buckets[i].avgPvlt;
+      final a = leftAvg(buckets[i]);
       if (a == null) continue;
       final lx = xAt(i), ly = yV(a);
       canvas.drawCircle(Offset(lx, ly), 3, Paint()..color = vColor);
-      tp('${a.toStringAsFixed(2)}V', lx - 2, ly - 16,
+      tp(isCurrent ? '${a.toStringAsFixed(1)}A' : '${a.toStringAsFixed(2)}V',
+          lx - 2, ly - 16,
           rightAlign: true, c: vColor);
       break;
     }
@@ -678,6 +851,8 @@ class HistoryTrendPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant HistoryTrendPainter old) =>
+      old.series != series ||
+      old.currentDirectionLabel != currentDirectionLabel ||
       old.selected != selected ||
       old.buckets.length != buckets.length ||
       old.hasTemp != hasTemp ||
