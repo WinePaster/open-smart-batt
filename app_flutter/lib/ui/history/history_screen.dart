@@ -218,6 +218,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return b.difference(a).inMilliseconds < kHistoryListBucketMs ? null : b;
   }
 
+  /// The family the CHART may assume, or null when the scope is 「全部裝置」 —
+  /// design 0085 S3 (FB-101).
+  ///
+  /// 🔴 **A wrapper exists because [deviceClassFor] answers the wrong thing for
+  /// a null id.** It returns [ProductClass.unknown], which downstream means
+  /// "one unit whose family nobody recorded" — a case where current IS plotted
+  /// (unsigned-labelled, exactly as the list row does it). The all-devices
+  /// scope is not that: `queryBuckets` groups by time and not by `device_id`,
+  /// so a single bucket can average a battery's −3 A discharge with a power
+  /// bank's +3 A discharge and produce 0 A. Passing `unknown` here would draw
+  /// that as a unit sitting at rest.
+  ///
+  /// ⛔ Do not "simplify" this into a direct [deviceClassFor] call.
+  ProductClass? _chartDeviceClass(
+    DeviceController devices, {
+    DeviceFactsController? facts,
+    String? liveDeviceId,
+    ProductClass liveClass = ProductClass.unknown,
+  }) {
+    final id = _deviceId;
+    if (id == null) return null;
+    return deviceClassFor(
+      devices,
+      id,
+      facts: facts,
+      liveDeviceId: liveDeviceId,
+      liveClass: liveClass,
+    );
+  }
+
   void _reload() => setState(() => _future = _load());
 
   /// 🔵 **[HistoryRange.custom] opens the picker instead of selecting.**
@@ -401,6 +431,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         tempUnit: tempUnit,
                         multiDay: framing.multiDay,
                         bucketMs: data.bucketMs,
+                        // 🔴 **null when the scope is 「全部裝置」** — design
+                        // 0085 Q4 ③. This screen is the one surface that can
+                        // be pointed at several units at once, and
+                        // `queryBuckets` groups by TIME, not by `device_id`:
+                        // one bucket may hold a battery and a power bank,
+                        // whose currents are signed the opposite way round
+                        // (`power_flow.dart`). Averaged together they cancel
+                        // to 0 A and would be drawn as "at rest".
+                        //
+                        // ⚠️ `deviceClassFor` cannot express this: it answers
+                        // `unknown` for a null id, and `unknown` means "one
+                        // unit, family unrecorded" — a case where current IS
+                        // drawn. Hence the explicit branch rather than passing
+                        // the call through.
+                        deviceClass: _chartDeviceClass(
+                          devices,
+                          facts: facts,
+                          liveDeviceId: tele.recordingDeviceId,
+                          liveClass: conn.resolvedClass,
+                        ),
                         // 🔵 design 0081 S3. The card owns the BUTTON; this
                         // owns the destination — including which unit and how
                         // far back it may pan, both of which this screen has
@@ -410,6 +460,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             : () => showHistoryChartPage(
                                 context,
                                 deviceId: _deviceId,
+                                // Same resolution as the card above — the two
+                                // shells share one painter, so they must not
+                                // disagree about whether current is offered.
+                                deviceClass: _chartDeviceClass(
+                                  devices,
+                                  facts: facts,
+                                  liveDeviceId: tele.recordingDeviceId,
+                                  liveClass: conn.resolvedClass,
+                                ),
                                 title: deviceLabelFor(
                                   devices,
                                   _deviceId,
@@ -1109,6 +1168,7 @@ class HistoryTrendCard extends StatefulWidget {
     required this.tempUnit,
     required this.multiDay,
     required this.bucketMs,
+    required this.deviceClass,
     this.sel,
     this.onExpand,
   });
@@ -1117,6 +1177,24 @@ class HistoryTrendCard extends StatefulWidget {
   final HistoryStats stats;
   final TempUnit tempUnit;
   final bool multiDay;
+
+  /// The family whose rows these buckets are, or **null for a scope holding
+  /// more than one unit** — design 0085 S3 (FB-101).
+  ///
+  /// 🔴 **Required, and required as a NULLABLE**, so that every caller has to
+  /// answer rather than inherit a default. The two answers behave in opposite
+  /// ways and only one of them is safe to guess wrong in the harmless
+  /// direction: a class makes the current series available and picks its
+  /// direction wording per family, while null disables it outright
+  /// ([historyChartCurrentGate]). A defaulted `unknown` would have silently
+  /// enabled current on the "all devices" scope, which is the one case the
+  /// ruling exists to prevent.
+  ///
+  /// ⚠️ [ProductClass.unknown] is NOT null's synonym here: it is one unit whose
+  /// family nobody has recorded, and its stored amperes are still one
+  /// convention. Current is drawn for it, with the zero line left unlabelled —
+  /// the same thing the list row does (`historyCurrentBit`).
+  final ProductClass? deviceClass;
 
   /// What the user selected, so the card can name a custom span
   /// (design 0083 §3.3.5).
@@ -1150,6 +1228,16 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   static const double _chartH = 160;
   int? _selected;
 
+  /// Which quantity the LEFT axis is drawing — design 0085 §3.1 案 B (FB-101).
+  ///
+  /// 🔑 **Per card instance, and deliberately not remembered anywhere else.**
+  /// The two landing sites are two different questions ("this unit" vs "the
+  /// scope I picked"), and a preference shared between them would be a state
+  /// with two owners — the shape the corpus files as 「狀態散到兩處」. Voltage is
+  /// the opening view because it is what every existing screenshot, every
+  /// support answer and the stats strip below all describe.
+  HistoryChartSeries _series = HistoryChartSeries.voltage;
+
   bool get _hasTemp =>
       widget.buckets.any((b) => b.avgTemp != null) ||
       widget.stats.avgTemp != null;
@@ -1157,6 +1245,18 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   @override
   void didUpdateWidget(HistoryTrendCard old) {
     super.didUpdateWidget(old);
+    // 🔴 A class arriving late must not leave the axis on a series it is no
+    // longer allowed to draw. `deviceClassFor` resolves through saved record →
+    // cached facts → live link, so a unit CAN go from `unknown` (current
+    // offered) to `supercapacitor` (current refused) while this card is on
+    // screen. `build` recomputes the effective series from the gate anyway, so
+    // the picture is never wrong for a frame — this line is about the state
+    // agreeing with the picture, so that a later re-classification does not
+    // silently pop current back on.
+    if (historyChartCurrentGate(widget.deviceClass) !=
+        HistoryChartCurrentGate.available) {
+      _series = HistoryChartSeries.voltage;
+    }
     // Data reloaded (range change / refresh): drop a now-invalid selection.
     if (_selected != null && _selected! >= widget.buckets.length) {
       _selected = null;
@@ -1240,6 +1340,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     final l10n = AppLocalizations.of(context);
     final buckets = widget.buckets;
     final hasTemp = _hasTemp;
+    // 🔵 design 0085 S3. The gate is resolved BEFORE the series, and the
+    // series is derived from both — never read straight out of `_series`. That
+    // ordering is what makes "the toggle is disabled" and "the axis is showing
+    // voltage" the same fact rather than two that have to be kept in step.
+    final gate = historyChartCurrentGate(widget.deviceClass);
+    final canSwitch = gate == HistoryChartCurrentGate.available;
+    final series = canSwitch ? _series : HistoryChartSeries.voltage;
+    final isCurrent = series == HistoryChartSeries.current;
+    final gateNote = historyChartCurrentGateNote(l10n, gate);
     if (buckets.length < 2) {
       // 🔴 FB-85. The strip used to be skipped with the chart, and the two are
       // not the same question: a chart point is [historyChartBucketMs] wide,
@@ -1292,7 +1401,14 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           children: [
             _LegendDot(
               color: context.accent.accent,
-              label: l10n.historyLegendVoltage,
+              // 🔴 The legend is where the switch becomes visible. Current
+              // REPLACES voltage on the left axis and reuses its colour
+              // (design 0085 案 B), so without this word the same amber line
+              // would mean two different quantities with nothing on screen
+              // saying which.
+              label: isCurrent
+                  ? l10n.historyLegendCurrent
+                  : l10n.historyLegendVoltage,
             ),
             if (hasTemp) ...[
               const SizedBox(width: 16),
@@ -1349,6 +1465,16 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                     multiDay: widget.multiDay,
                     bucketMs: widget.bucketMs,
                     selected: _selected,
+                    series: series,
+                    // Per family, and null for a unit with no family — see
+                    // [historyChartCurrentDirectionLabel] for why the pack
+                    // wording is not a fallback.
+                    currentDirectionLabel: isCurrent
+                        ? historyChartCurrentDirectionLabel(
+                            l10n,
+                            widget.deviceClass,
+                          )
+                        : null,
                     vColor: context.accent.accent,
                     tColor: context.accent.accentSecondary,
                     grid: context.colors.line,
@@ -1360,7 +1486,8 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           },
         ),
         if (_selected != null && _selected! < buckets.length)
-          _detail(context, l10n, buckets[_selected!], hasTemp),
+          _detail(context, l10n, buckets[_selected!], hasTemp,
+              isCurrent: isCurrent),
         // design 0061 T10. `historyDetailSamples` says how MANY readings a
         // point folded; nothing said how much TIME it covered, and the width
         // moves between 1 minute and 24 hours with the range. At second
@@ -1390,7 +1517,34 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             // and overflowed by 20 px the moment the English string ("Each
             // point on the chart averages 1 minute") could not wrap — a Row
             // does not give a `Text` the width to break in.
-            const SizedBox(width: 40),
+            //
+            // 🔵 design 0085 S3 puts the voltage/current toggle INTO that
+            // reserved box rather than adding a row for it. The card is 160 px
+            // of chart inside a scroll view and the brief was explicitly "the
+            // existing toolbar, no new chrome"; the box was already there,
+            // already 40x40 (FB-70's floor), and already mirrored by the
+            // expand button on the right, so the note stays centred either way.
+            SizedBox(
+              width: 40,
+              child: IconButton(
+                // ⛔ Disabled, NOT hidden — design 0085 §3.4. A control that
+                // vanishes takes its explanation with it, and the ruling is
+                // that the reason has to be on screen (the line below).
+                onPressed: canSwitch
+                    ? () => setState(() => _series = isCurrent
+                        ? HistoryChartSeries.voltage
+                        : HistoryChartSeries.current)
+                    : null,
+                icon: const Icon(Icons.swap_vert, size: 16),
+                tooltip: l10n.historyChartSeriesToggle,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+                padding: EdgeInsets.zero,
+                color: context.colors.muted,
+              ),
+            ),
             Expanded(
               child: Text(
                 historyBucketWidthNote(l10n, widget.bucketMs),
@@ -1418,6 +1572,27 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             ),
           ],
         ),
+        // 🔴 **Q4 ③ / §1.5 — the refusal says WHY, in words, always visible.**
+        //
+        // ⛔ Not a snackbar on tap and not a tooltip: a disabled button that
+        // explains itself only when poked reads as broken, which is the failure
+        // design 0074 Q3 already recorded once. It sits under the toggle it
+        // belongs to.
+        //
+        // 🔑 Two different sentences, and the difference matters: the
+        // capacitor's says the DEVICE reports a placeholder zero, the "all
+        // devices" one says the SCOPE mixes two opposite sign conventions.
+        // Neither may be softened into "no current data", which would claim
+        // nothing was recorded. See [historyChartCurrentGateNote].
+        if (gateNote != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              gateNote,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: context.colors.muted),
+            ),
+          ),
         const SizedBox(height: 10),
         _StatsStrip(
           stats: widget.stats,
@@ -1432,10 +1607,17 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     BuildContext context,
     AppLocalizations l10n,
     HistoryBucket b,
-    bool hasTemp,
-  ) {
+    bool hasTemp, {
+    required bool isCurrent,
+  }) {
     final fmt = DateFormat(widget.multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
+    // 🔵 One decimal and an `A`, the same precision `historyCurrentBit` prints
+    // in the list — design 0065 §6 R5 is that two surfaces must not put
+    // different numbers on the same minute. ⛔ And the SIGN is kept: `0x2E` is
+    // signed and the sign is the direction (design 0030 §3.2 Q5 rejected
+    // `abs()`); the axis's direction key says which half is which.
+    String a(double? x) => x == null ? '--' : x.toStringAsFixed(1);
     // FB-74: the temperature half of this line used to be the mean alone, while
     // the voltage half already carried its (min–max). A bucket whose hottest
     // second is the reason the user tapped it would answer with an average.
@@ -1472,9 +1654,13 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${l10n.historyLegendVoltage} ${v(b.avgPvlt)}V '
-                  '(${v(b.minPvlt)}–${v(b.maxPvlt)})'
-                  '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}',
+                  isCurrent
+                      ? '${l10n.historyLegendCurrent} ${a(b.avgAmpere)}A '
+                            '(${a(b.minAmpere)}–${a(b.maxAmpere)})'
+                            '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}'
+                      : '${l10n.historyLegendVoltage} ${v(b.avgPvlt)}V '
+                            '(${v(b.minPvlt)}–${v(b.maxPvlt)})'
+                            '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}',
                   style: TextStyle(fontSize: 11, color: context.colors.muted),
                 ),
               ],

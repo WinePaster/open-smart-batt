@@ -894,6 +894,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyLegendVoltage => 'Voltage';
 
   @override
+  String get historyLegendCurrent => 'Current';
+
+  @override
+  String get historyChartSeriesToggle => 'Switch between voltage and current';
+
+  @override
+  String get historyChartAllDevicesNoCurrentNote =>
+      'Current is not shown for “All devices”: battery and power-bank units sign current the opposite way round, so averaging them together would cancel the direction out. Pick one device to see its current.';
+
+  @override
   String get historyLegendTemperature => 'Temperature';
 
   @override
@@ -1830,6 +1840,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get powerBankTrackCurrent => 'Current';
+
+  @override
+  String get powerBankTrackCurrentDirectionKey => '+ discharge · − charge';
 
   @override
   String get powerBankTrackOutput => 'Output voltage';

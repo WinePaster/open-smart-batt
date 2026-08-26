@@ -51,6 +51,7 @@ import 'history_query.dart';
 Future<void> showHistoryChartPage(
   BuildContext context, {
   required String? deviceId,
+  required ProductClass? deviceClass,
   required String title,
   required TempUnit tempUnit,
   required DateTime dataFrom,
@@ -59,6 +60,7 @@ Future<void> showHistoryChartPage(
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => HistoryChartPage(
         deviceId: deviceId,
+        deviceClass: deviceClass,
         title: title,
         tempUnit: tempUnit,
         dataFrom: dataFrom,
@@ -70,6 +72,7 @@ class HistoryChartPage extends StatefulWidget {
   const HistoryChartPage({
     super.key,
     required this.deviceId,
+    required this.deviceClass,
     required this.title,
     required this.tempUnit,
     required this.dataFrom,
@@ -77,6 +80,21 @@ class HistoryChartPage extends StatefulWidget {
   });
 
   final String? deviceId;
+
+  /// The family whose rows are plotted, or **null when [deviceId] is null and
+  /// the scope is therefore several units at once** — design 0085 S3 (FB-101).
+  ///
+  /// 🔴 The class could not be re-derived here even if this page wanted to: it
+  /// takes plain values and reads no device provider, and design 0056 §4's rule
+  /// is one resolution per screen anyway. The caller has already resolved it
+  /// for the list and the export beside it.
+  ///
+  /// 🔑 It travels with [deviceId] and must keep travelling with it — the two
+  /// nulls mean the same thing, and a page holding a class for a scope it is
+  /// not actually filtered to would draw the mixed-family average the ruling
+  /// exists to prevent.
+  final ProductClass? deviceClass;
+
   final String title;
   final TempUnit tempUnit;
 
@@ -118,6 +136,23 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   double _startFocalFrac = 0.5;
 
   int? _selected;
+
+  /// Which quantity the LEFT axis draws — design 0085 §3.1 案 B (FB-101).
+  ///
+  /// Per page, like the embedded card's own copy and for the same reason: the
+  /// two shells share a PAINTER, not a preference. Opening on voltage also
+  /// keeps this page's first frame identical to the card the user expanded
+  /// from, which is the whole promise of the expand button.
+  HistoryChartSeries _series = HistoryChartSeries.voltage;
+
+  /// 🔵 Resolved from the class, never read straight out of [_series] — see the
+  /// embedded card for why the gate and the drawn series are one fact.
+  HistoryChartCurrentGate get _gate =>
+      historyChartCurrentGate(widget.deviceClass);
+
+  bool get _isCurrent =>
+      _gate == HistoryChartCurrentGate.available &&
+      _series == HistoryChartSeries.current;
 
   @override
   void initState() {
@@ -277,6 +312,40 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                   .copyWith(fontSize: 11, color: context.colors.muted),
             ),
           ),
+          // 🔴 The landscape shell has no legend row, so without this the
+          // switch would be invisible: current REPLACES voltage on the left
+          // axis and reuses its colour (案 B), and the axis numbers alone do
+          // not say which quantity they count. Width-capped and ellipsised —
+          // the bar is a fixed 44 px with four other things in it.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 72),
+            child: Text(
+              _isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 11, color: context.colors.muted),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // 🔵 design 0085 S3 — in the bar that is already there, beside the
+          // controls that are already there. ⛔ Disabled rather than hidden for
+          // a capacitor or the all-devices scope, with the reason drawn over
+          // the plot below (§3.4): a control that quietly disappears explains
+          // nothing, and one that silently does nothing reads as broken.
+          IconButton(
+            onPressed: _gate == HistoryChartCurrentGate.available
+                ? () => setState(() => _series = _isCurrent
+                    ? HistoryChartSeries.voltage
+                    : HistoryChartSeries.current)
+                : null,
+            icon: const Icon(Icons.swap_vert, size: 18),
+            tooltip: l10n.historyChartSeriesToggle,
+            // FB-70's 40x40 floor, in landscape too.
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            padding: EdgeInsets.zero,
+            color: context.colors.muted,
+          ),
           SizedBox(
             width: 66,
             child: _busy
@@ -330,6 +399,15 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                               multiDay: _win.spanMs > 24 * 3600000,
                               bucketMs: _bucketMs,
                               selected: _selected,
+                              series: _isCurrent
+                                  ? HistoryChartSeries.current
+                                  : HistoryChartSeries.voltage,
+                              currentDirectionLabel: _isCurrent
+                                  ? historyChartCurrentDirectionLabel(
+                                      l10n,
+                                      widget.deviceClass,
+                                    )
+                                  : null,
                               vColor: context.accent.accent,
                               tColor: context.accent.accentSecondary,
                               grid: context.colors.line,
@@ -344,6 +422,27 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                     child: Text(l10n.historyChartInsufficientData,
                         style: TextStyle(
                             fontSize: 12, color: context.colors.muted)),
+                  ),
+                // 🔴 Q4 ③ / §1.5 — the disabled toggle's reason, on screen.
+                //
+                // Pinned to the BOTTOM of the plot rather than the top: the
+                // trailing value marker and the temperature axis both live in
+                // the upper right, and the x labels this would sit beside are
+                // the one part of the chart it cannot obscure a reading of.
+                // ⛔ Not a tap-to-reveal — see the embedded card.
+                if (historyChartCurrentGateNote(l10n, _gate) case final note?)
+                  Positioned(
+                    left: HistoryChartGeometry.left,
+                    right: 8,
+                    bottom: 2,
+                    child: Text(
+                      note,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style:
+                          TextStyle(fontSize: 10, color: context.colors.muted),
+                    ),
                   ),
                 if (_selected != null && _selected! < _buckets.length)
                   _readout(l10n, g, c.maxHeight),
@@ -371,6 +470,9 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
     final stamp =
         DateFormat(multiDay ? 'MM/dd HH:mm' : 'HH:mm').format(b.at);
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
+    // One decimal and a sign, matching the list row and the embedded card —
+    // design 0065 §6 R5. ⛔ No `abs()`: the sign is the direction.
+    String a(double? x) => x == null ? '--' : x.toStringAsFixed(1);
     final t = b.avgTemp == null
         ? ''
         : '  ·  ${historyDisplayTemp(b.avgTemp!, widget.tempUnit).toStringAsFixed(0)}'
@@ -394,7 +496,10 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                 style: AppTextStyles.mono(context).copyWith(
                     fontSize: 12, fontWeight: FontWeight.w700)),
             Text(
-              '${v(b.avgPvlt)} V (${v(b.minPvlt)}–${v(b.maxPvlt)})$t',
+              _isCurrent
+                  ? '${a(b.avgAmpere)} A '
+                      '(${a(b.minAmpere)}–${a(b.maxAmpere)})$t'
+                  : '${v(b.avgPvlt)} V (${v(b.minPvlt)}–${v(b.maxPvlt)})$t',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono(context)
