@@ -1171,6 +1171,7 @@ void main() {
             tempUnit: TempUnit.celsius,
             multiDay: false,
             bucketMs: 60000,
+            deviceClass: ProductClass.smartBattery,
           ),
         ),
       ));
@@ -1199,6 +1200,7 @@ void main() {
             tempUnit: TempUnit.celsius,
             multiDay: false,
             bucketMs: 60000,
+            deviceClass: ProductClass.smartBattery,
           ),
         ),
       ));

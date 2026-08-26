@@ -644,6 +644,18 @@
     "description": "The overflow menu holding Refresh and Export on the device detail history row (design 0083 case C). The two buttons collapsed into it to free the width for the calendar button, keeping the row at ONE row (design 0065 R-refresh)."
   },
   "historyLegendVoltage": "Voltage",
+  "historyLegendCurrent": "Current",
+  "@historyLegendCurrent": {
+    "description": "Legend entry for the left-axis trace when the history chart is switched to current (design 0085 \u6848 B, FB-101). It REPLACES the voltage entry rather than joining it: the two share one axis and one colour, and only one is drawn at a time."
+  },
+  "historyChartSeriesToggle": "Switch between voltage and current",
+  "@historyChartSeriesToggle": {
+    "description": "Tooltip on the button that swaps the history chart's LEFT axis between voltage and current. Temperature keeps the right axis in both modes. Disabled, with a reason stated beside it, for a super-capacitor (constant 0 A) and for the All devices scope (families sign current the opposite way round)."
+  },
+  "historyChartAllDevicesNoCurrentNote": "Current is not shown for \u201cAll devices\u201d: battery and power-bank units sign current the opposite way round, so averaging them together would cancel the direction out. Pick one device to see its current.",
+  "@historyChartAllDevicesNoCurrentNote": {
+    "description": "Design 0085 Q4 \u2462 \u2014 the ONE sentence this design adds. Shown beside the disabled voltage/current toggle when the history scope is All devices. \ud83d\udd34 It must attribute the absence to the SCOPE: the chart's buckets are grouped by time and not by device_id, so a battery discharging at \u22123 A and a power bank discharging at +3 A would be averaged to 0 A and drawn as at rest. Wording it as plain \u201cno current data\u201d would state a second falsehood \u2014 that nothing was measured."
+  },
   "historyLegendTemperature": "Temperature",
   "historyLegendRange": "Range (min–max)",
   "@historyLegendRange": {
@@ -1302,6 +1314,10 @@
   "dashboardTrackPvlt": "Primary voltage",
   "dashboardTrackTemperature": "Temperature",
   "powerBankTrackCurrent": "Current",
+  "powerBankTrackCurrentDirectionKey": "+ discharge \u00b7 \u2212 charge",
+  "@powerBankTrackCurrentDirectionKey": {
+    "description": "Direction key for a POWER BANK's current axis \u2014 \ud83d\udd34 deliberately the MIRROR of dashboardTrackCurrentDirectionKey, not a copy of it. A power bank derives current from 0x4A \u2212 0x49, where POSITIVE is discharging; a pack derives it from 0x2E = 512 \u2212 u16, where negative is discharging (power_flow.dart: \u201cTHE SIGN IS THE OPPOSITE\u201d). Two keys rather than one reworded at the call site, for the same reason packDirection*/powerBankDirection* are two sets: a wording change made for a car battery must not silently reach a power bank."
+  },
   "powerBankTrackOutput": "Output voltage",
   "powerBankTrackInput": "Input voltage",
   "powerBankTrackSoc": "Charge level SOC",

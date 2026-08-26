@@ -1538,6 +1538,24 @@ abstract class AppLocalizations {
   /// **'Voltage'**
   String get historyLegendVoltage;
 
+  /// Legend entry for the left-axis trace when the history chart is switched to current (design 0085 案 B, FB-101). It REPLACES the voltage entry rather than joining it: the two share one axis and one colour, and only one is drawn at a time.
+  ///
+  /// In en, this message translates to:
+  /// **'Current'**
+  String get historyLegendCurrent;
+
+  /// Tooltip on the button that swaps the history chart's LEFT axis between voltage and current. Temperature keeps the right axis in both modes. Disabled, with a reason stated beside it, for a super-capacitor (constant 0 A) and for the All devices scope (families sign current the opposite way round).
+  ///
+  /// In en, this message translates to:
+  /// **'Switch between voltage and current'**
+  String get historyChartSeriesToggle;
+
+  /// Design 0085 Q4 ③ — the ONE sentence this design adds. Shown beside the disabled voltage/current toggle when the history scope is All devices. 🔴 It must attribute the absence to the SCOPE: the chart's buckets are grouped by time and not by device_id, so a battery discharging at −3 A and a power bank discharging at +3 A would be averaged to 0 A and drawn as at rest. Wording it as plain “no current data” would state a second falsehood — that nothing was measured.
+  ///
+  /// In en, this message translates to:
+  /// **'Current is not shown for “All devices”: battery and power-bank units sign current the opposite way round, so averaging them together would cancel the direction out. Pick one device to see its current.'**
+  String get historyChartAllDevicesNoCurrentNote;
+
   /// No description provided for @historyLegendTemperature.
   ///
   /// In en, this message translates to:
@@ -3025,6 +3043,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Current'**
   String get powerBankTrackCurrent;
+
+  /// Direction key for a POWER BANK's current axis — 🔴 deliberately the MIRROR of dashboardTrackCurrentDirectionKey, not a copy of it. A power bank derives current from 0x4A − 0x49, where POSITIVE is discharging; a pack derives it from 0x2E = 512 − u16, where negative is discharging (power_flow.dart: “THE SIGN IS THE OPPOSITE”). Two keys rather than one reworded at the call site, for the same reason packDirection*/powerBankDirection* are two sets: a wording change made for a car battery must not silently reach a power bank.
+  ///
+  /// In en, this message translates to:
+  /// **'+ discharge · − charge'**
+  String get powerBankTrackCurrentDirectionKey;
 
   /// No description provided for @powerBankTrackOutput.
   ///

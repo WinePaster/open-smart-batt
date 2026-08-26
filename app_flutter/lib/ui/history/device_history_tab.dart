@@ -842,6 +842,13 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
               tempUnit: tempUnit,
               multiDay: framing.multiDay,
               bucketMs: data.bucketMs,
+              // 🔵 design 0085 S3 (FB-101). Never null on this surface: the
+              // page is pinned to ONE unit, so the current series is offered
+              // (or refused, for a capacitor) and its direction key worded per
+              // family. Reuses the same `deviceClass` the rows and the export
+              // already use — the class must not be resolved twice on one
+              // screen (design 0056 §4).
+              deviceClass: deviceClass,
               // 🔵 design 0081 S3 — the same button, the same page, from the
               // one widget. This surface is already pinned to a unit, so there
               // is no scope to resolve; only the title differs from the
@@ -851,6 +858,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                   : () => showHistoryChartPage(
                       context,
                       deviceId: widget.deviceId,
+                      deviceClass: deviceClass,
                       title: deviceLabelFor(
                         context.read<DeviceController>(),
                         widget.deviceId,

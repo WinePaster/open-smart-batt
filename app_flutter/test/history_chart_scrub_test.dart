@@ -62,6 +62,7 @@ Widget _host({ScrollController? controller}) => MaterialApp(
                 tempUnit: TempUnit.celsius,
                 multiDay: false,
                 bucketMs: 60000,
+                deviceClass: ProductClass.smartBattery,
               ),
               const SizedBox(height: 1200),
             ],

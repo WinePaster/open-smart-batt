@@ -364,24 +364,115 @@ enum HistoryChartSeries { voltage, current }
   return (lo: alo, hi: ahi);
 }
 
+/// Whether the left axis MAY carry current at all, and if not, why not —
+/// design 0085 §3.4 / §1.5 (FB-101, S3).
+///
+/// 🔴 **Two different refusals, and they must not be collapsed into one
+/// "no current" branch.** The ruling (Q4 ③) is that the toggle is disabled AND
+/// the reason is stated, and the two reasons say opposite things about the
+/// data:
+///
+///  * [capacitor] — the unit reports a constant `0.0 A` on `0x2E` that it
+///    cannot actually measure. Already refused in three other places (the list
+///    row via `historyCurrentBit`, the CSV column via `history_repo`, the live
+///    track via `dashboard_cards`); this is the fourth, worded from the SAME
+///    string so the four cannot drift.
+///  * [mixedScope] — the scope is "all devices", so there is no single family
+///    to ask. `queryBuckets` groups by TIME and not by `device_id`, and the two
+///    families sign current the opposite way round (§1.6): a battery
+///    discharging at −3 A and a power bank discharging at +3 A average to 0 A,
+///    which would be drawn as "at rest". That is not an error bar — it is two
+///    contradictory conventions added together.
+///
+/// ⛔ Neither may be drawn as a flat line at zero, and neither may be silent:
+/// a toggle that does nothing reads as broken (design 0074 Q3's shape).
+enum HistoryChartCurrentGate {
+  /// Current may be plotted, and its direction wording comes from
+  /// [historyChartCurrentDirectionLabel].
+  available,
+
+  /// A super-capacitor: `0x2E` is a placeholder, not a measurement.
+  capacitor,
+
+  /// "All devices": no single family, and the families disagree about sign.
+  mixedScope,
+}
+
+/// May this chart show current, for a scope whose class is [cls]?
+///
+/// 🔑 **`null` is the "all devices" scope, and it is NOT the same as
+/// [ProductClass.unknown].** `deviceClassFor` answers `unknown` for a single
+/// saved unit nobody has classified yet — one family, merely unnamed, whose
+/// stored amperes are still one convention and are still worth plotting (the
+/// list row does exactly this: `historyCurrentBit` prints the signed number
+/// with no direction word). A null class is the structurally different case:
+/// several units at once, and no answer that could be true for all of them.
+HistoryChartCurrentGate historyChartCurrentGate(ProductClass? cls) =>
+    switch (cls) {
+      null => HistoryChartCurrentGate.mixedScope,
+      ProductClass.supercapacitor => HistoryChartCurrentGate.capacitor,
+      _ => HistoryChartCurrentGate.available,
+    };
+
+/// The sentence shown beside a disabled toggle, or null when there is nothing
+/// to explain — design 0085 §0.3.
+///
+/// 🔴 **§0.3 is a three-way split that is very easy to get wrong**, so it is
+/// resolved once, here:
+///
+///  * "the history page shows averages" — ⛔ **NOT SHOWN**. Q2 ① / Q3 ruled it
+///    out of this case entirely; the min–max band is what carries it now. Do
+///    not add it back here because it "would fit".
+///  * "all devices, so no current" — ✅ shown, and it is the ONLY string this
+///    design adds. It has to say the SCOPE caused it: a reader told merely
+///    "no current" concludes the app failed to record any, which is a second
+///    falsehood on top of the one being avoided.
+///  * "this class reports a constant 0 A" — ✅ shown, from the EXISTING
+///    `capacitorChartNoCurrentNote`. Nothing new is coined for it.
+String? historyChartCurrentGateNote(
+  AppLocalizations l10n,
+  HistoryChartCurrentGate gate,
+) =>
+    switch (gate) {
+      HistoryChartCurrentGate.available => null,
+      HistoryChartCurrentGate.capacitor => l10n.capacitorChartNoCurrentNote,
+      HistoryChartCurrentGate.mixedScope =>
+        l10n.historyChartAllDevicesNoCurrentNote,
+    };
+
 /// How to word which half of the current axis is which — design 0056, and the
-/// 🔵 **S3 seam** for design 0085.
+/// 🔵 **S3 seam** for design 0085, now threaded.
 ///
 /// 🔴 **Direction is per FAMILY, and the two families are OPPOSITE.** Pack
 /// units (battery / capacitor) decode `512 - u16` on `0x2E`, where negative is
 /// discharging; power banks decode `0x4A − 0x49`, where POSITIVE is
 /// discharging (`power_flow.dart:146` — "THE SIGN IS THE OPPOSITE"). Passing a
-/// power bank the pack wording labels every charge as a discharge.
+/// power bank the pack wording labels every charge as a discharge — silently,
+/// on a picture that otherwise looks perfectly normal.
 ///
-/// S2 ships the MECHANISM with the pack wording as the default, because the
-/// chart cannot see a [ProductClass] yet: `HistoryChartPage` takes a device id
-/// and nothing else, and the History screen's scope can be "all devices", where
-/// there is no single family to ask about. 🔵 **S3 threads the class through
-/// and picks per family here** — this function is the single place that has to
-/// change, and [HistoryTrendPainter.currentDirectionLabel] is the single place
-/// it is consumed.
-String historyChartCurrentDirectionLabel(AppLocalizations l10n) =>
-    l10n.dashboardTrackCurrentDirectionKey;
+/// ⛔ **Two keys, not one with the words swapped at the call site**, for the
+/// reason `power_flow.dart` gives for having two functions instead of one with
+/// an `if (isPack)`: a wording change made for a car battery must not reach a
+/// power bank. `historyCurrentBit` already keeps `packDirection*` and
+/// `powerBankDirection*` apart for the same reason; this is the axis-key pair
+/// beside them.
+///
+/// Null for [ProductClass.unknown] — the zero line is then drawn UNLABELLED.
+/// A unit with no family has no convention to name, and naming one anyway is
+/// FB-43's shape; it is also exactly what the list row does with an unknown
+/// class (a signed number, no direction word). ⛔ Null is not "pick the pack
+/// wording as a default": on a misfiled power bank that default is backwards.
+String? historyChartCurrentDirectionLabel(
+  AppLocalizations l10n,
+  ProductClass? cls,
+) =>
+    switch (cls) {
+      ProductClass.powerBank => l10n.powerBankTrackCurrentDirectionKey,
+      ProductClass.smartBattery ||
+      ProductClass.supercapacitor =>
+        l10n.dashboardTrackCurrentDirectionKey,
+      ProductClass.unknown || null => null,
+    };
 
 /// The chart's right-axis window, in DISPLAY temperature units — FB-74.
 ///

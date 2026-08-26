@@ -851,6 +851,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyLegendVoltage => '電壓';
 
   @override
+  String get historyLegendCurrent => '電流';
+
+  @override
+  String get historyChartSeriesToggle => '切換電壓／電流';
+
+  @override
+  String get historyChartAllDevicesNoCurrentNote =>
+      '選「全部裝置」時不顯示電流：電池與行動電源的電流正負號相反，混在一起平均會把方向抵消掉。改選單一裝置就看得到。';
+
+  @override
   String get historyLegendTemperature => '溫度';
 
   @override
@@ -1721,6 +1731,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get powerBankTrackCurrent => '電流';
+
+  @override
+  String get powerBankTrackCurrentDirectionKey => '＋放電 · −充電';
 
   @override
   String get powerBankTrackOutput => '輸出電壓';
