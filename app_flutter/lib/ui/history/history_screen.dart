@@ -1387,6 +1387,11 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
               stats: widget.stats,
               tempUnit: widget.tempUnit,
               hasTemp: hasTemp,
+              // The gate-resolved series, same as the full branch below. The
+              // toggle is not built here (there is no chart to switch), but
+              // `_series` survives the data shrinking under it, so the strip
+              // must not be left describing the other axis.
+              series: series,
             ),
           ],
         ],
@@ -1598,6 +1603,11 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           stats: widget.stats,
           tempUnit: widget.tempUnit,
           hasTemp: hasTemp,
+          // 🔵 design 0085 S4. `series`, NOT `_series` — it is the
+          // gate-resolved value computed at the top of `build`, so the strip,
+          // the legend, the painter and the detail line are all reading one
+          // fact.
+          series: series,
         ),
       ],
     );
@@ -1736,20 +1746,54 @@ class _LegendBand extends StatelessWidget {
   }
 }
 
+/// The min / avg / max numbers under the chart.
+///
+/// 🔵 **design 0085 S4 — the first row FOLLOWS [series].** S3 shipped the
+/// left axis switchable and left this strip pinned to voltage, so a reader who
+/// switched to current got an amber current curve with `13.20V / 12.98V /
+/// 13.31V` printed underneath it — three numbers about a quantity that was no
+/// longer on the chart, under a label that still said Voltage. The temperature
+/// row never moves: it is the RIGHT axis and the switch does not touch it
+/// (design 0085 §3.1 案 B).
 class _StatsStrip extends StatelessWidget {
   const _StatsStrip({
     required this.stats,
     required this.tempUnit,
     required this.hasTemp,
+    required this.series,
   });
   final HistoryStats stats;
   final TempUnit tempUnit;
   final bool hasTemp;
 
+  /// Which quantity the chart's left axis is drawing.
+  ///
+  /// 🔴 **The caller has ALREADY resolved this through
+  /// [historyChartCurrentGate]** — see `HistoryTrendCard.build`, where the gate
+  /// is applied before the series is derived. ⛔ Do not re-gate in here: a
+  /// super-capacitor or the 「全部裝置」 scope can then be refused by one of the
+  /// two checks and allowed by the other, which is precisely the "same fact
+  /// kept in two places" the S3 ordering exists to prevent. Passing `current`
+  /// for a unit that must not show current is a CALLER bug, and pinning it
+  /// here would hide it.
+  final HistoryChartSeries series;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final isCurrent = series == HistoryChartSeries.current;
     String v(double? x) => x == null ? '--' : '${x.toStringAsFixed(2)}V';
+    // 🔵 One decimal, and THE SIGN KEPT.
+    //
+    //  * One decimal because `historyCurrentBit` prints the list rows with one
+    //    (design 0065 §6 R5: two surfaces must not put different numbers on the
+    //    same reading), and because `0x2E` is 1 A per count anyway — a second
+    //    decimal would be inventing precision the wire never had (§1.8).
+    //  * ⛔ NO `abs()`. design 0030 §3.2 Q5 ruled the sign IS the direction, so
+    //    a MIN of −4.0 A prints `-4.0A`. The list row spends a whole word
+    //    (放電中) saying that; here the minus sign is all there is, and the
+    //    axis's direction key above says which half is which.
+    String a(double? x) => x == null ? '--' : '${x.toStringAsFixed(1)}A';
     String t(double? x) => x == null
         ? '--'
         : '${historyDisplayTemp(x, tempUnit).toStringAsFixed(0)}${historyTempUnitLabel(tempUnit)}';
@@ -1757,11 +1801,14 @@ class _StatsStrip extends StatelessWidget {
       children: [
         _statRow(
           context,
+          // Unchanged: current REPLACES voltage on the left axis and inherits
+          // its colour (案 B), so the dot is the same amber either way — the
+          // label is what tells them apart, here exactly as in the legend.
           context.accent.accent,
-          l10n.historyLegendVoltage,
-          min: v(stats.minPvlt),
-          avg: v(stats.avgPvlt),
-          max: v(stats.maxPvlt),
+          isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
+          min: isCurrent ? a(stats.minAmpere) : v(stats.minPvlt),
+          avg: isCurrent ? a(stats.avgAmpere) : v(stats.avgPvlt),
+          max: isCurrent ? a(stats.maxAmpere) : v(stats.maxPvlt),
           l10n: l10n,
         ),
         if (hasTemp) ...[
