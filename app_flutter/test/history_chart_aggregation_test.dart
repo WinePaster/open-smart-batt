@@ -56,6 +56,7 @@ void main() {
     required int bucketS,
     double? pvlt,
     int? temperature,
+    double? ampere,
     int samples = 5,
     String deviceId = 'AA',
   }) async {
@@ -63,6 +64,7 @@ void main() {
       'timestamp': at.millisecondsSinceEpoch,
       'pvlt': pvlt,
       'temperature': temperature,
+      'ampere': ampere,
       'device_id': deviceId,
       'samples': samples,
       'bucket_s': bucketS,
@@ -140,6 +142,195 @@ void main() {
               bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
           .single;
       expect(chart.avgPvlt, closeTo(list.sample.pvlt!, 1e-9));
+    });
+  });
+
+  // ---- current (design 0085 S1, FB-101) --------------------------------
+  //
+  // 🔴 Why current gets its own group when pvlt and temperature share one: it
+  // is the only quantity in the corpus whose SIGN flips between the weighted
+  // and the unweighted mean, and the sign is the whole reading — it is the
+  // difference between "this battery is charging" and "this battery is
+  // draining". A bare `AVG(ampere)` throws nothing, blanks nothing and draws a
+  // perfectly smooth line pointing the wrong way.
+  group('queryBuckets — the current series', () {
+    test('the ampere mean is `samples`-weighted, sign and all', () async {
+      // 🔴 THE reason design 0085 S1 exists. This is the real `19:26:00` minute
+      // from `feedback_log/2026.08.07/007`, transcribed from
+      // `docs/feedback-analysis/2026.08.07-007.md` §N5 — a single battery, one
+      // minute, stored as FOUR rows because a disconnect + reconnect
+      // (session 56→57→58) flushed the bucket three extra times. The sample
+      // counts are 405 / 69 / 3 / 56, so the four rows are nothing like four
+      // equal observations:
+      //
+      //   weighted   (405·−1.699 + 69·2.839 + 3·4.000 + 56·2.071) / 533
+      //              = −0.68 A  ⇒ DISCHARGING   ← the truth
+      //   unweighted (−1.699 + 2.839 + 4.000 + 2.071) / 4
+      //              = +1.80 A  ⇒ CHARGING      ← what a bare AVG() answers
+      //
+      // Four separate log batches have each re-discovered this independently
+      // (08.01/017, 08.04/004, 08.08/001, 08.07/007), which is why
+      // `HistoryRepo._wavg` exists and why it is not optional here.
+      //
+      // ⚠️ design 0085 §1.7 prints these two columns THE OTHER WAY ROUND
+      // (weighted +1.80, unweighted −0.68). The doc's own source —
+      // `docs/feedback-index/conventions/stats-and-evt.md:63`, the analysis it
+      // cites, and the `_wavg` doc comment ("the unweighted mean ... comes out
+      // with THE WRONG SIGN") — all agree with the arithmetic above. This test
+      // pins the arithmetic.
+      const amps = <double>[-1.699, 2.839, 4.000, 2.071];
+      const counts = <int>[405, 69, 3, 56];
+      for (var i = 0; i < amps.length; i++) {
+        await put(
+          at: minute.add(Duration(seconds: i * 15)),
+          bucketS: 60,
+          pvlt: 13.2,
+          ampere: amps[i],
+          samples: counts[i],
+        );
+      }
+
+      final b = (await history.queryBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+
+      expect(b.avgAmpere, isNotNull);
+      expect(b.avgAmpere, closeTo(-0.6834, 1e-3),
+          reason: 'the `samples`-weighted mean of the real 19:26 minute');
+      expect(b.avgAmpere, lessThan(0),
+          reason: 'the sign IS the reading — this minute was discharging, and '
+              'a chart drawn from the unweighted mean would show it charging');
+      expect(b.avgAmpere, isNot(closeTo(1.8028, 1e-2)),
+          reason: 'a bare AVG(ampere) would land here, on the wrong side of 0');
+    });
+
+    test('the ampere extremes are the raw readings, never weighted', () async {
+      // Same construction as the mean test, but the interesting rows are the
+      // ones with almost no weight: a 1-sample row at +9.0 A is a reading that
+      // HAPPENED, and MIN/MAX must report it at full height even though it
+      // contributes ~0.2 % of the mean. Weighting an extreme by how many
+      // snapshots the row folded would be meaningless — the same rule pvlt and
+      // temperature already follow.
+      await put(
+          at: minute, bucketS: 60, pvlt: 13.2, ampere: -0.5, samples: 500);
+      await put(
+          at: minute.add(const Duration(seconds: 20)),
+          bucketS: 60,
+          pvlt: 13.2,
+          ampere: 9.0,
+          samples: 1);
+      await put(
+          at: minute.add(const Duration(seconds: 40)),
+          bucketS: 60,
+          pvlt: 13.2,
+          ampere: -7.0,
+          samples: 1);
+
+      final b = (await history.queryBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+
+      expect(b.maxAmpere, 9.0);
+      expect(b.minAmpere, -7.0);
+      // The mean sits nowhere near either extreme — that gap is exactly what
+      // the min–max band is for (design 0085 §3.3).
+      expect(b.avgAmpere, closeTo((-0.5 * 500 + 9.0 - 7.0) / 502, 1e-9));
+      expect(b.avgAmpere!, greaterThan(b.minAmpere!));
+      expect(b.avgAmpere!, lessThan(b.maxAmpere!));
+    });
+
+    test('a bucket whose rows never read the current reports null, not 0.0',
+        () async {
+      // Rows written before the register was read — or a class that does not
+      // report it — must arrive as ABSENT, so the chart breaks the line. 0.0 A
+      // is a legitimate reading ("idle"), so collapsing null into it would
+      // invent a flat run at exactly the value a user reads as "nothing is
+      // happening". Matches `_wavg`: a NULL contributes no weight, and a bucket
+      // with no weight at all divides by NULLIF(0) → NULL.
+      await put(at: minute, bucketS: 60, pvlt: 13.2, temperature: 28);
+      await put(
+          at: minute.add(const Duration(seconds: 30)),
+          bucketS: 60,
+          pvlt: 13.4,
+          temperature: 29);
+
+      final b = (await history.queryBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+
+      expect(b.avgAmpere, isNull);
+      expect(b.minAmpere, isNull);
+      expect(b.maxAmpere, isNull);
+      // ...and the rest of the bucket is untouched by the absence.
+      expect(b.avgPvlt, closeTo(13.3, 1e-9));
+      expect(b.count, 2);
+    });
+
+    test('a NULL ampere row does not dilute the rows that did read it',
+        () async {
+      // The half-covered bucket: one row read the register, one did not. The
+      // mean must be the reading, not the reading halved.
+      await put(
+          at: minute, bucketS: 60, pvlt: 13.2, ampere: -4.0, samples: 100);
+      await put(
+          at: minute.add(const Duration(seconds: 30)),
+          bucketS: 60,
+          pvlt: 13.2,
+          samples: 100);
+
+      final b = (await history.queryBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+
+      expect(b.avgAmpere, closeTo(-4.0, 1e-9),
+          reason: 'the NULL row carries no weight — halving this to -2.0 A '
+              'would be an invented reading');
+      expect(b.minAmpere, -4.0);
+      expect(b.maxAmpere, -4.0);
+    });
+
+    test('adding the current series leaves pvlt and temperature exactly as '
+        'they were', () async {
+      // Regression for the SELECT edit itself. Same two-segment minute as the
+      // weighting test above, now with current alongside: the voltage and
+      // temperature answers must be bit-for-bit the ones FB-74 pinned, and the
+      // chart must still agree with the list for the same minute
+      // (design 0065 §6 R5).
+      await put(
+          at: minute,
+          bucketS: 60,
+          pvlt: 12.5,
+          temperature: 20,
+          ampere: -3.0,
+          samples: 400);
+      await put(
+          at: minute.add(const Duration(seconds: 30)),
+          bucketS: 60,
+          pvlt: 14.5,
+          temperature: 40,
+          ampere: 5.0,
+          samples: 100);
+
+      final b = (await history.queryBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+
+      expect(b.avgPvlt, closeTo(12.9, 1e-9));
+      expect(b.minPvlt, 12.5);
+      expect(b.maxPvlt, 14.5);
+      expect(b.avgTemp, closeTo(24.0, 1e-9));
+      expect(b.minTemp, 20);
+      expect(b.maxTemp, 40);
+      expect(b.count, 2);
+
+      // And the new column agrees with the list's, which has had a weighted
+      // `avgAmpere` since design 0061 T3a — two read paths, one minute, one
+      // number.
+      final list = (await history.queryListBuckets(
+              bucketMs: 60000, deviceId: 'AA', tzOffsetMs: 0))
+          .single;
+      expect(b.avgAmpere, closeTo(-1.4, 1e-9));
+      expect(b.avgAmpere, closeTo(list.sample.current!, 1e-9));
     });
   });
 

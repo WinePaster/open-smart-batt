@@ -31,12 +31,32 @@ class HistoryBucket {
     this.avgTemp,
     this.minTemp,
     this.maxTemp,
+    this.avgAmpere,
+    this.minAmpere,
+    this.maxAmpere,
     required this.count,
   });
 
   final DateTime at; // bucket start
   final double? avgPvlt, minPvlt, maxPvlt;
   final double? avgTemp, minTemp, maxTemp; // temperature averaged across bucket
+
+  /// Pack current across the bucket — design 0085 S1 (FB-101).
+  ///
+  /// 🔴 [avgAmpere] is `samples`-WEIGHTED like its two twins, and current is the
+  /// one quantity in the corpus where that is not a matter of a few percent:
+  /// the measured `19:26` minute (405 / 69 / 3 / 56 samples) comes out at
+  /// −0.68 A weighted and +1.80 A unweighted — DISCHARGING against CHARGING.
+  /// See [HistoryRepo._wavg]; a bare `AVG(ampere)` here draws a line that is
+  /// smooth, plausible and the wrong way round.
+  ///
+  /// [minAmpere]/[maxAmpere] stay unweighted for the same reason the pvlt and
+  /// temperature extremes do: an extreme is a reading that HAPPENED. On current
+  /// they carry a second meaning the other two do not have — the wire quantum
+  /// is 1 A per count (`telemetry_decoder.current`, no division), so the SPREAD
+  /// between them is literally "how many integer counts this minute jumped
+  /// between", which is what the min–max band exists to show (design 0085 §3.3).
+  final double? avgAmpere, minAmpere, maxAmpere;
   final int count;
 }
 
@@ -892,7 +912,8 @@ class HistoryRepo {
       );
 
   /// Bucketed trend for the chart: groups rows into [bucketMs]-wide buckets and
-  /// returns avg/min/max of pvlt + temperature per bucket (ascending by time).
+  /// returns avg/min/max of pvlt + temperature + ampere per bucket (ascending
+  /// by time). Current joined the other two in design 0085 S1 (FB-101).
   /// [bucketMs] >= 60000 (one minute, the storage granularity).
   /// FB-38: [deviceId] scopes the chart the same way it scopes the list. These
   /// two used to build their own `WHERE` instead of going through [_scope],
@@ -956,7 +977,16 @@ class HistoryRepo {
       'SELECT $bucket AS bucket, '
       '${_wavg('pvlt')} AS avgPvlt, MIN(pvlt) AS minPvlt, MAX(pvlt) AS maxPvlt, '
       '${_wavg('temperature')} AS avgTemp, MIN(temperature) AS minTemp, '
-      'MAX(temperature) AS maxTemp, COUNT(*) AS n '
+      'MAX(temperature) AS maxTemp, '
+      // 🔵 design 0085 S1 (FB-101). Current was already stored, already on the
+      // list row, already in the seconds drill-down and already column 4 of the
+      // CSV — the chart was the one outlet that could not see it.
+      // 🔴 `${_wavg('ampere')}`, never `AVG(ampere)`: of the three quantities
+      // aggregated here, current is the only one the corpus has measured
+      // changing SIGN under an unweighted mean (see [HistoryBucket.avgAmpere]).
+      // MIN/MAX unweighted, exactly as above.
+      '${_wavg('ampere')} AS avgAmpere, MIN(ampere) AS minAmpere, '
+      'MAX(ampere) AS maxAmpere, COUNT(*) AS n '
       'FROM ${Db.tableHistory} $where '
       'GROUP BY $bucket ORDER BY bucket ASC',
       args,
@@ -971,6 +1001,9 @@ class HistoryRepo {
               avgTemp: d(r['avgTemp']),
               minTemp: d(r['minTemp']),
               maxTemp: d(r['maxTemp']),
+              avgAmpere: d(r['avgAmpere']),
+              minAmpere: d(r['minAmpere']),
+              maxAmpere: d(r['maxAmpere']),
               count: (r['n'] as num?)?.toInt() ?? 0,
             ))
         .toList(growable: false);
