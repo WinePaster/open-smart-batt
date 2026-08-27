@@ -4233,6 +4233,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Warnings'**
   String get alertsBannerOpen;
+
+  /// design 0086 S3 — used INSTEAD of alertsBannerUnsavedNote when the unsaved card is already on screen right below, so the banner does not repeat 'this device is not saved'. It keeps only the part that card does not say: notifications are silent.
+  ///
+  /// In en, this message translates to:
+  /// **'Your phone will not ring for this one. The warning itself is still tracked.'**
+  String get alertsBannerUnsavedNoteBrief;
+
+  /// design 0086 — the X on the expanded detail-page warning banner. Collapses it to a single line; it is never a dismiss, the line stays on screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse'**
+  String get alertsBannerCollapse;
+
+  /// design 0086 — accessibility label for the collapsed one-line banner, which is tappable.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the warning in full'**
+  String get alertsBannerExpand;
+
+  /// design 0086 — appended to the collapsed banner when more than one warning is raised; count is the number NOT shown on the line.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count}'**
+  String alertsBannerMore(String count);
 }
 
 class _AppLocalizationsDelegate

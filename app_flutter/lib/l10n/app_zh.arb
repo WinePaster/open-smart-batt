@@ -692,5 +692,9 @@
   "alertsBannerUnsavedNote": "這台裝置尚未儲存，所以只會顯示在畫面上，手機不會響。",
   "alertsBannerSilencedNote": "這台的通知目前暫停中。警告本身仍在追蹤。",
   "alertsBannerGloballyOffNote": "警告通知在「設定」裡是關閉的。警告本身仍在追蹤。",
-  "alertsBannerOpen": "警告設定"
+  "alertsBannerOpen": "警告設定",
+  "alertsBannerUnsavedNoteBrief": "手機不會響。警告本身仍在追蹤。",
+  "alertsBannerCollapse": "收合",
+  "alertsBannerExpand": "展開完整警告",
+  "alertsBannerMore": "＋{count}"
 }
