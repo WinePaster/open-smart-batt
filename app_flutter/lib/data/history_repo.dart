@@ -222,6 +222,9 @@ class HistoryStats {
     this.minTemp,
     this.maxTemp,
     this.avgTemp,
+    this.minAmpere,
+    this.maxAmpere,
+    this.avgAmpere,
     this.firstAt,
     this.lastAt,
     required this.count,
@@ -229,6 +232,30 @@ class HistoryStats {
 
   final double? minPvlt, maxPvlt, avgPvlt;
   final double? minTemp, maxTemp, avgTemp;
+
+  /// Range-wide current — 🔵 **design 0085 S4**, so the stats strip can follow
+  /// the chart's left axis when it switches from voltage to current.
+  ///
+  /// 🔴 **[avgAmpere] is `samples`-WEIGHTED and the two means above it are
+  /// NOT.** The inconsistency is deliberate, and it is written down here
+  /// because nothing else on the read path would reveal it:
+  ///
+  ///  * Current is the ONE quantity the corpus has measured whose SIGN flips
+  ///    between the weighted and the unweighted mean. The real 19:26 minute
+  ///    (four rows, `samples` 405 / 69 / 3 / 56, amps −1.699 / +2.839 / +4.000
+  ///    / +2.071) is **−0.68 A weighted — discharging** and **+1.80 A
+  ///    unweighted — charging**. With a bare `AVG(ampere)` the strip would
+  ///    print `+1.8A` directly underneath a chart line that [queryBuckets]
+  ///    (which already uses [_wavg]) had drawn below zero. Two numbers, one
+  ///    screen, opposite answers — design 0065 §6 R5's exact shape.
+  ///  * `avgPvlt` / `avgTemp` stay on the bare `AVG` they have always used.
+  ///    They are wrong in the same WAY — a segmented minute weighs its 3-sample
+  ///    fragment like its 405-sample one — but not in the same DEGREE: there is
+  ///    no sign to flip, and changing them would move numbers already on
+  ///    users' screens. ⚠️ That is a SEPARATE decision, it has not been taken,
+  ///    and design 0085 S4's scope is current only. Whoever takes it should
+  ///    change all three together rather than leave a fourth mixture behind.
+  final double? minAmpere, maxAmpere, avgAmpere;
   final DateTime? firstAt; // earliest row timestamp in range
 
   /// Newest row timestamp in range — 🔵 **design 0081 S1**.
@@ -1038,6 +1065,14 @@ class HistoryRepo {
     final r = await _db.rawQuery(
       'SELECT MIN(pvlt) AS minP, MAX(pvlt) AS maxP, AVG(pvlt) AS avgP, '
       'MIN(temperature) AS minT, MAX(temperature) AS maxT, AVG(temperature) AS avgT, '
+      // 🔴 design 0085 S4 — `${_wavg('ampere')}`, and a bare `AVG(ampere)`
+      // here is the one mistake in this query that changes an ANSWER rather
+      // than a digit: see [HistoryStats.minAmpere] for the measured minute
+      // where the two disagree about whether the battery was charging.
+      // MIN/MAX stay unweighted, the same rule pvlt and temperature follow —
+      // an extreme is a reading that happened, not an average of anything.
+      'MIN(ampere) AS minA, MAX(ampere) AS maxA, '
+      '${_wavg('ampere')} AS avgA, '
       // 🔵 `MAX(timestamp)` added by design 0081 S1 — see [HistoryStats.lastAt]
       // for why the chart cannot derive its bucket width without it.
       'MIN(timestamp) AS firstTs, MAX(timestamp) AS lastTs, '
@@ -1055,6 +1090,9 @@ class HistoryRepo {
       minTemp: d(row['minT']),
       maxTemp: d(row['maxT']),
       avgTemp: d(row['avgT']),
+      minAmpere: d(row['minA']),
+      maxAmpere: d(row['maxA']),
+      avgAmpere: d(row['avgA']),
       firstAt:
           firstTs == null ? null : DateTime.fromMillisecondsSinceEpoch(firstTs),
       lastAt:

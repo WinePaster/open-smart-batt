@@ -215,21 +215,33 @@ void main() {
       expect(painterOf(t).series, HistoryChartSeries.voltage);
       expect(find.text(en.historyLegendCurrent), findsNothing);
       // Two "Voltage"s to start with: the chart legend and the stats strip's
-      // own row. ⚠️ **The strip is deliberately NOT switched** — it is a
-      // range-wide aggregate of voltage and temperature that predates this
-      // design (design 0085 §5 lists the chart and nothing else), and it names
-      // its own quantity, so the two cannot be confused.
-      final strip = find.text(en.historyLegendVoltage).evaluate().length - 1;
+      // own row.
+      //
+      // ~~⚠️ **The strip is deliberately NOT switched** — it is a range-wide
+      // aggregate of voltage and temperature that predates this design (design
+      // 0085 §5 lists the chart and nothing else), and it names its own
+      // quantity, so the two cannot be confused.~~
+      //
+      // 🔴 **OVERRULED — design 0085 S4** (owner, 2026-08-27, verbatim
+      // 「應該要跟著切」). The sentence above was wrong about the consequence:
+      // the strip naming its own quantity did NOT stop the two being confused,
+      // it produced `Voltage 12.98 / 13.20 / 13.31` printed under a current
+      // curve, which reads as the chart's own numbers. Both now switch
+      // together, so this expectation is TIGHTENED rather than adjusted:
+      // afterwards the word Voltage must be gone from the card ENTIRELY, and
+      // Current must appear in both places.
+      expect(find.text(en.historyLegendVoltage), findsNWidgets(2));
 
       await t.tap(toggle);
       await t.pump();
 
       // 🔴 The legend is the only thing on screen saying which quantity the
       // amber line is — current REUSES voltage's colour (案 B).
-      expect(find.text(en.historyLegendCurrent), findsOneWidget);
-      expect(find.text(en.historyLegendVoltage).evaluate().length, strip,
-          reason: 'the chart legend must stop saying Voltage while the strip '
-              'goes on naming its own row');
+      expect(find.text(en.historyLegendCurrent), findsNWidgets(2),
+          reason: 'chart legend + stats strip row (S4)');
+      expect(find.text(en.historyLegendVoltage), findsNothing,
+          reason: 'nothing on the card may still say Voltage once the left '
+              'axis has left it');
       expect(painterOf(t).series, HistoryChartSeries.current);
       expect(painterOf(t).currentDirectionLabel,
           en.dashboardTrackCurrentDirectionKey);
