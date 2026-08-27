@@ -72,6 +72,10 @@ class DisconnectedState extends StatelessWidget {
       autoConnectArmed: conn.isAutoConnectArmed,
       setupStalled: conn.isSetupStalledUnattributed,
       setupFailures: conn.setupFailuresUnattributed,
+      // design 0087 — unattributed for this screen's own reason, the same
+      // one spelled out above: the dashboard empty state has no unit.
+      unreachableRun: conn.isUnreachableRunUnattributed,
+      reachFailures: conn.reachFailuresUnattributed,
       reconnectAttempts: conn.reconnectAttempts,
     );
 

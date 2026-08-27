@@ -2389,6 +2389,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alertsBannerOpen => '警告設定';
 
   @override
+  String get disconnectedUnreachableRunTitle => '找不到這台裝置';
+
+  @override
+  String disconnectedUnreachableRunBody(int count) {
+    return '已經連續 $count 次連不上。';
+  }
+
+  @override
+  String get disconnectedUnreachableRunHint =>
+      '請確認它在附近、而且還有電。如果剛剛移動過，走近一點再試一次。';
+
+  @override
   String get alertsBannerUnsavedNoteBrief => '手機不會響。警告本身仍在追蹤。';
 
   @override

@@ -127,6 +127,12 @@ ConnectionFailureCopy connectionFailureCopy({
   required bool setupStalled,
   required int setupFailures,
   required int reconnectAttempts,
+  // design 0087 / FB-58. Defaulted rather than required so the two call sites
+  // are the only places that have to know about it — and so that a third one
+  // added later fails safe (no card) instead of failing to compile into
+  // silence.
+  bool unreachableRun = false,
+  int reachFailures = 0,
 }) {
   // FB-52: the link has come up several times and never said anything. This
   // has to outrank the plain "not connected" copy — the user watched the
@@ -152,6 +158,23 @@ ConnectionFailureCopy connectionFailureCopy({
       title: l10n.disconnectedStalledTitle,
       body: l10n.disconnectedStalledBody(setupFailures),
       adviceHint: l10n.disconnectedStalledHint,
+    );
+  }
+  // design 0087 / FB-58: a run of attempts that never even reached the link.
+  //
+  // 🔴 AFTER `stalled` AND BEFORE `gaveUp`, and both halves of that are the
+  // semantics. After `stalled`, because the two remedies point OPPOSITE ways —
+  // "restart the app" (stalled, the only one with field evidence, ruled
+  // 2026-08-03) versus "walk closer" — and when both latches are set the one
+  // with evidence has to win. Before `gaveUp`, because `gaveUp` is a snapshot
+  // of the LAST attempt while this is a latch over a run: without it, every
+  // manual retry clears `lastError`, and the card the user was about to read
+  // disappears under their thumb.
+  if (!working && unreachableRun) {
+    return ConnectionFailureCopy(
+      title: l10n.disconnectedUnreachableRunTitle,
+      body: l10n.disconnectedUnreachableRunBody(reachFailures),
+      adviceHint: l10n.disconnectedUnreachableRunHint,
     );
   }
   if (gaveUp) {

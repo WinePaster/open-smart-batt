@@ -858,6 +858,25 @@ class ConnectionController extends ChangeNotifier {
   /// connect to the same unit.
   int _setupFailuresSinceReady = 0;
 
+  /// Consecutive attempts that never even reached `connected` — design 0087.
+  ///
+  /// 🔴 **The sibling of [_setupFailuresSinceReady], and it exists because that
+  /// one cannot see this failure at all.** That counter only moves for an
+  /// attempt that got to `connected` and then never said `ready`; a connect
+  /// that times out eight seconds in never gets that far, so a run of them
+  /// leaves it at zero and the FB-52 card never appears (FB-58).
+  ///
+  /// 🔑 **What was missing was a LATCH, not a string.** `device_unreachable`
+  /// already has copy, but the give-up card is gated on `!working`, and
+  /// [connect] both clears [_lastError] and sets `isBusy` — so every manual
+  /// retry wipes the card the user was about to read. Try, fail, try, fail: the
+  /// window it could be seen in barely exists. That is FB-52's own "endless
+  /// spinner", relocated to an earlier failure point.
+  ///
+  /// Cleared in exactly the three places [_setupFailuresSinceReady] is, and by
+  /// nothing else — `ready` and switching device, never a fresh attempt.
+  int _reachFailuresSinceReady = 0;
+
   /// Whose run [_setupFailuresSinceReady] is counting.
   ///
   /// The counter belongs to a UNIT, so the question "does a new connect reset
@@ -894,6 +913,28 @@ class ConnectionController extends ChangeNotifier {
   /// ⚠️ Calibrated on n=51 failures. If a capture ever shows a setup succeeding
   /// on the fourth consecutive try, this number is wrong and should move.
   static const int maxSetupFailures = 3;
+
+  /// How many unreachable attempts in a row before the card latches (0087 §3.2).
+  ///
+  /// ⚠️ **No data supports any particular number.** FB-58's capture was four
+  /// timeouts out of five attempts, so three sits inside it. Matching
+  /// [maxSetupFailures] is for explicability rather than evidence: a user
+  /// should not have to know which KIND of failure they hit, and both kinds
+  /// giving up at the third attempt is the only way that stays true. Changing
+  /// it is one constant.
+  static const int maxReachFailures = 3;
+
+  /// The failure codes that mean "we never reached the unit" (0087 §3.4).
+  ///
+  /// ⛔ Deliberately excludes the adapter refusals. Those are about the phone,
+  /// not the device, and the card this latch raises tells the user to check
+  /// distance and power — advice that is wrong, and unfollowable, when the
+  /// radio is the thing that is off.
+  static const Set<String> kReachFailureCodes = {
+    'device_unreachable',
+    'connect_failed',
+    'device_stale',
+  };
 
   /// Whether the run currently being counted has stalled, WHOEVER it belongs to.
   ///
@@ -946,6 +987,26 @@ class ConnectionController extends ChangeNotifier {
   /// number from another would print "3 attempts" under the wrong name.
   int setupFailuresFor(String? deviceId) =>
       _ownsStallRun(deviceId) ? _setupFailuresSinceReady : 0;
+
+  /// Has [deviceId] failed to be reached [maxReachFailures] times running?
+  ///
+  /// Shares [_ownsStallRun] with the setup latch on purpose (0087 §3.1): both
+  /// counters describe the same run of the same unit, and a second ownership
+  /// pair would be a second thing that can drift — which is the whole of what
+  /// FB-87 ① cost.
+  bool isUnreachableRunFor(String? deviceId) =>
+      _ownsStallRun(deviceId) && _reachFailuresSinceReady >= maxReachFailures;
+
+  /// The count behind [isUnreachableRunFor], zero for anyone else.
+  int reachFailuresFor(String? deviceId) =>
+      _ownsStallRun(deviceId) ? _reachFailuresSinceReady : 0;
+
+  /// design 0087 — the dashboard's own empty state has no unit to scope by.
+  /// Same exemption, same reason, as [setupFailuresUnattributed].
+  bool get isUnreachableRunUnattributed =>
+      _reachFailuresSinceReady >= maxReachFailures;
+
+  int get reachFailuresUnattributed => _reachFailuresSinceReady;
 
   /// The stall latch and its count, for a caller that is about NO unit.
   ///
@@ -1189,6 +1250,7 @@ class ConnectionController extends ChangeNotifier {
     }
     if (_ownsStallRun(deviceId)) {
       _setupFailuresSinceReady = 0;
+      _reachFailuresSinceReady = 0; // design 0087 — same run, same clearing point
       _setupFailuresDeviceId = null;
       _setupFailuresRequestedId = null;
       changed = true;
@@ -1667,6 +1729,7 @@ class ConnectionController extends ChangeNotifier {
     // said "different unit".
     if (_setupFailuresDeviceId != deviceId) {
       _setupFailuresSinceReady = 0;
+      _reachFailuresSinceReady = 0; // design 0087 — switching device clears both
       _setupFailuresDeviceId = deviceId;
     }
     // FB-87 ①: in the same breath, always — including when the id did not
@@ -1745,6 +1808,13 @@ class ConnectionController extends ChangeNotifier {
       // FB-87 ①: under BOTH names when a rebind gave the attempt two.
       if (reason != null) {
         _setError(reason, deviceId: deviceId, requestedId: _requestedDeviceId);
+        // design 0087 §3.4 — count it only when the reason is "we could not
+        // reach the unit". A radio that is off or a permission that was
+        // refused is NOT that, and letting either of them latch would put
+        // "check the unit is nearby and powered" on screen — three
+        // instructions that cannot work with the radio down. The give-up
+        // hints were split for the same reason (connection_failure.dart:71).
+        if (kReachFailureCodes.contains(reason)) _reachFailuresSinceReady++;
       }
       _event('connect error: $e', deviceId: deviceId);
       notifyListeners();
@@ -2203,6 +2273,9 @@ class ConnectionController extends ChangeNotifier {
       // connect, not a new attempt — coming up is the only evidence that the
       // run of failures has actually ended.
       _setupFailuresSinceReady = 0;
+      // design 0087: `ready` is the only evidence the run of unreachable
+      // attempts has actually ended, exactly as for the setup run above.
+      _reachFailuresSinceReady = 0;
       _packResolver.markConnected(DateTime.now());
       // `ready` is the zero point for the class-resolve measurement, because
       // it is the moment the placeholder can first be shown at all.

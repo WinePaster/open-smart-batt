@@ -4234,6 +4234,24 @@ abstract class AppLocalizations {
   /// **'Warnings'**
   String get alertsBannerOpen;
 
+  /// design 0087 / FB-58 — shown once several attempts in a row failed BEFORE the link came up. Distinct from the stalled card, whose remedy (restart the app) points the other way.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot find this unit'**
+  String get disconnectedUnreachableRunTitle;
+
+  /// No description provided for @disconnectedUnreachableRunBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} attempts in a row could not reach it.'**
+  String disconnectedUnreachableRunBody(int count);
+
+  /// design 0087 §3.3 — must NOT tell the user to restart the app. That is the stalled card's remedy and it points the opposite way; wrong advice is worse than none.
+  ///
+  /// In en, this message translates to:
+  /// **'Check that it is nearby and still powered. If it has been moved, walk closer and try again.'**
+  String get disconnectedUnreachableRunHint;
+
   /// design 0086 S3 — used INSTEAD of alertsBannerUnsavedNote when the unsaved card is already on screen right below, so the banner does not repeat 'this device is not saved'. It keeps only the part that card does not say: notifications are silent.
   ///
   /// In en, this message translates to:
