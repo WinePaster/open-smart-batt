@@ -231,6 +231,24 @@ Widget? dashboardCardFor(
                 color: context.accent.accentSecondary,
                 decimals: 2,
                 spanZero: true,
+                // 🔵 design 0056 §9 Q1 ① (ruled 2026-08-27). This track was
+                // the LAST signed current on screen with nothing saying which
+                // half is which — and unexplained signs on a power bank are
+                // literally what FB-47 was filed for.
+                //
+                // 🔴 Its OWN key, never `dashboardTrackCurrentDirectionKey`:
+                // a power bank derives current from `0x4A − 0x49` where
+                // POSITIVE is discharging, a pack from `0x2E` where negative
+                // is (`power_flow.dart`: "THE SIGN IS THE OPPOSITE"). The pack
+                // key here would be a precise, confident lie.
+                //
+                // ⚠️ design 0056 §5 ② scoped the axis key to the pack track —
+                // explicitly ("僅 pack 電流軌帶"), so this is not a forgotten
+                // case. What that section never recorded was WHY a power bank
+                // does not need one, and the reason it gave for the pack half
+                // (an unexplained sign reads as a fault) applies here word for
+                // word. §9 is that missing argument.
+                directionKey: l10n.powerBankTrackCurrentDirectionKey,
                 minSpan: 1,
                 height: 92,
               ),
