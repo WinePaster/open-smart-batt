@@ -1594,8 +1594,12 @@ class BleService {
   /// (selector 0x27) and [pwSum] the cut-off password char-code checksum — both
   /// per-device runtime inputs, never hardcoded.
   ///
-  /// SAFETY: the caller must gate which [mode] values are sent; only the
-  /// documented release (mode 0x06 + auth) is proven safe.
+  /// SAFETY: the caller must gate which [mode] values are sent, and the gate is
+  /// per CLASS, not per code — the code spaces do not overlap (see [ModeArg]).
+  /// ⚠️ This sentence used to read "only the documented release (mode 0x06 +
+  /// auth) is proven safe", which was wrong twice over: the release writes
+  /// `0x00`, and `0x06` is a super-capacitor's self-check. Corrected
+  /// 2026-08-28 with the rest of that misread (see [ModeArg.capacitorSelfCheck]).
   Future<void> switchMode(int mode,
       {required int cb, required int pwSum}) async {
     final creds = AuthCredentials(cb: cb, pwSum: pwSum);

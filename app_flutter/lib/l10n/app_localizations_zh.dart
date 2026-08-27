@@ -382,6 +382,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusBadgeCapacitorUnknown => '無法辨識';
 
   @override
+  String get statusBadgeCapacitorSelfCheck => '檢測中';
+
+  @override
   String get statusBadgeCutOffOn => '啟用';
 
   @override
@@ -399,16 +402,36 @@ class AppLocalizationsZh extends AppLocalizations {
       '目前讀數已超出裝置回報的警戒範圍（過壓／低壓／過溫）。此為 App 依裝置回報的門檻自行計算，並非裝置回報的故障。';
 
   @override
-  String get capacitorCheckNoData => '尚未取得電容讀數，請稍候即時資料更新。';
+  String get statusAdvisoryCapacitorSelfCheck =>
+      '正在進行電容自檢。檢測期間此機的電壓讀數會明顯下降，App 不會把它當成故障。請維持連線。';
 
   @override
-  String capacitorCheckReadout(String soh, String svlt, String pvlt) {
-    return 'SOH $soh% · 次電壓 $svlt V · 主電壓 $pvlt V';
-  }
+  String get capacitorSelfCheckDialogTitle => '開始電容自檢';
 
   @override
-  String capacitorCheckSnack(String msg) {
-    return '電容檢測：$msg';
+  String get capacitorSelfCheckDialogBody =>
+      '這會把電容切入自檢模式 —— 是真的向裝置送出指令，不是重新整理畫面。\n\n檢測期間電容電壓會明顯下降，而且 App 無法預先告訴你會持續多久 —— 實測既有幾秒就結束的，也有一直停在這個模式不回來的。\n\n請不要在車輛正需要靠這顆電容啟動時執行。';
+
+  @override
+  String get capacitorSelfCheckDialogConfirm => '我了解，開始檢測';
+
+  @override
+  String get capacitorSelfCheckNotReady => '尚未收到本機授權指令所需的資料，請稍候再試一次。';
+
+  @override
+  String get capacitorSelfCheckDoneSnack => '檢測結束 —— 裝置已回報正常。';
+
+  @override
+  String get capacitorSelfCheckStillRunningSnack =>
+      '裝置還沒有回報恢復正常，可能仍在檢測模式；App 沒有送出任何把它拉回正常模式的指令。請繼續看上方的狀態。';
+
+  @override
+  String get capacitorSelfCheckNoResponseSnack =>
+      '指令已送出，但裝置沒有回報進入檢測模式。就 App 看得到的部分，什麼都沒有改變。';
+
+  @override
+  String capacitorSelfCheckFailedSnack(String error) {
+    return '自檢指令送不出去：$error';
   }
 
   @override

@@ -173,11 +173,13 @@ void main() {
       expect(cap.hasCutOff, isFalse);
       expect(cap.hasAntiTheft, isFalse);
 
-      // An UNRECOGNISED byte still gets the bounded fallback: union EXCEPT
-      // anti-theft (檢測電容 + 解除斷電, no 防盜).
+      // An UNRECOGNISED byte still gets the bounded fallback, which since
+      // 2026-08-28 (design 0082 Q8) is 解除斷電 alone: 檢測電容 became a real
+      // `0x23` write and a write that changes device state may not be aimed at
+      // hardware we could not identify.
       final unknownPack = DeviceCapabilities.fromDeviceType(0x99);
       expect(unknownPack.isPowerBank, isFalse);
-      expect(unknownPack.isCapacitor, isTrue);
+      expect(unknownPack.isCapacitor, isFalse);
       expect(unknownPack.hasCutOff, isTrue);
       expect(unknownPack.hasAntiTheft, isFalse);
       // Anti-theft is NEVER exposed for the unknown fallback, even with an

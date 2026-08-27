@@ -710,6 +710,12 @@ abstract class AppLocalizations {
   /// **'Unrecognised'**
   String get statusBadgeCapacitorUnknown;
 
+  /// No description provided for @statusBadgeCapacitorSelfCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-check'**
+  String get statusBadgeCapacitorSelfCheck;
+
   /// No description provided for @statusBadgeCutOffOn.
   ///
   /// In en, this message translates to:
@@ -740,23 +746,59 @@ abstract class AppLocalizations {
   /// **'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.'**
   String get statusAdvisoryThresholdBreach;
 
-  /// No description provided for @capacitorCheckNoData.
+  /// No description provided for @statusAdvisoryCapacitorSelfCheck.
   ///
   /// In en, this message translates to:
-  /// **'No capacitor readings yet; please wait for live data to update.'**
-  String get capacitorCheckNoData;
+  /// **'A self-check is running. While it runs the unit\'s voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.'**
+  String get statusAdvisoryCapacitorSelfCheck;
 
-  /// No description provided for @capacitorCheckReadout.
+  /// No description provided for @capacitorSelfCheckDialogTitle.
   ///
   /// In en, this message translates to:
-  /// **'SOH {soh}% · Secondary Voltage {svlt} V · Primary Voltage {pvlt} V'**
-  String capacitorCheckReadout(String soh, String svlt, String pvlt);
+  /// **'Start capacitor self-check'**
+  String get capacitorSelfCheckDialogTitle;
 
-  /// No description provided for @capacitorCheckSnack.
+  /// No description provided for @capacitorSelfCheckDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Capacitor check: {msg}'**
-  String capacitorCheckSnack(String msg);
+  /// **'This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor\'s voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nDo not do this while the vehicle is depending on this unit to start.'**
+  String get capacitorSelfCheckDialogBody;
+
+  /// No description provided for @capacitorSelfCheckDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand — start it'**
+  String get capacitorSelfCheckDialogConfirm;
+
+  /// No description provided for @capacitorSelfCheckNotReady.
+  ///
+  /// In en, this message translates to:
+  /// **'This unit has not sent the details needed to authorise the command yet. Please wait a moment and try again.'**
+  String get capacitorSelfCheckNotReady;
+
+  /// No description provided for @capacitorSelfCheckDoneSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-check finished — the unit reports normal again.'**
+  String get capacitorSelfCheckDoneSnack;
+
+  /// No description provided for @capacitorSelfCheckStillRunningSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.'**
+  String get capacitorSelfCheckStillRunningSnack;
+
+  /// No description provided for @capacitorSelfCheckNoResponseSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.'**
+  String get capacitorSelfCheckNoResponseSnack;
+
+  /// No description provided for @capacitorSelfCheckFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not send the self-check command: {error}'**
+  String capacitorSelfCheckFailedSnack(String error);
 
   /// No description provided for @releaseSentNoAuthSnack.
   ///

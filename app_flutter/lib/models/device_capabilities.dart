@@ -11,16 +11,32 @@
 /// | [powerBank]      |   —    |   —    |     —      |
 /// | [supercapacitor] |   ✅   |   ❌   |     ❌     |
 /// | [smartBattery]   |   ❌   |   ✅   | model-gated |
-/// | [unknown]        | bounded fallback: union EXCEPT anti-theft             |
+/// | [unknown]        |   ❌   |   ✅   |     ❌     |
 ///
 /// The [unknown] row is a lenient-but-bounded fallback for a pack that has not
-/// been classified yet: it shows the UNION of pack controls except anti-theft,
-/// converging the moment a class resolves. Erring lenient is safe HERE and only
-/// here, because every control in that union is read-only or auth-gated
-/// (status_controls.dart) — the fallback cannot fire a destructive command. It
-/// is chosen over "hide everything until classified" so that a battery whose
-/// owner urgently needs 解除斷電 is not left with no button at all. Anti-theft
-/// is excluded because it is the one entry that can immobilise a vehicle.
+/// been classified yet: 解除斷電 only, converging the moment a class resolves.
+/// Erring lenient is safe HERE and only here, because every control in that
+/// fallback is read-only or auth-gated (status_controls.dart) — the fallback
+/// cannot fire a destructive command. It is chosen over "hide everything until
+/// classified" so that a battery whose owner urgently needs 解除斷電 is not
+/// left with no button at all. Anti-theft is excluded because it is the one
+/// entry that can immobilise a vehicle.
+///
+/// 🔵 **檢測電容 left that fallback on 2026-08-28, and the sentence above is
+/// the reason** (design 0082 Q8). It used to be in the union on the strength of
+/// "every control in the union is read-only" — which was true while the button
+/// sent nothing at all. Making it a real self-check made it a state-changing
+/// write, and the safety argument would have become false the same day. Note
+/// which way that was resolved: the control left the fallback so the argument
+/// stays TRUE, rather than the argument being softened so the control could
+/// stay.
+///
+/// ⚠️ Who actually lost a button: nobody who could use it. A unit whose
+/// device-type byte is unrecognised, and one whose byte has not arrived yet,
+/// are drawn by `UnidentifiedView` / `ClassPendingView` and get no controls at
+/// all. The route that reaches this fallback WITH controls is a pack shell
+/// whose cosmetic label is a power bank — the one class that has no capacitor
+/// to check.
 ///
 /// Note the asymmetry with LAYOUT: gating (soft — which buttons appear) may be
 /// lenient, but routing (hard — which layout is drawn) must not. See
@@ -51,10 +67,10 @@ class DeviceCapabilities {
     this.antiTheftOverride,
   });
 
-  /// Bounded fallback for an unidentified pack: the UNION of pack controls
-  /// EXCEPT anti-theft — i.e. both 檢測電容 ([isCapacitor]) and 解除斷電
-  /// ([hasCutOff]) are shown, but 防盜 ([hasAntiTheft]) is not. Not a power
-  /// bank. Converges to a single class as soon as the class resolves.
+  /// Bounded fallback for an unidentified pack: 解除斷電 ([hasCutOff]) only.
+  /// Neither 檢測電容 ([isCapacitor], since 2026-08-28 — see the library doc)
+  /// nor 防盜 ([hasAntiTheft]) is shown. Not a power bank. Converges to a
+  /// single class as soon as the class resolves.
   static const DeviceCapabilities unknown = DeviceCapabilities();
 
   /// Capabilities for an explicit [ProductClass].
@@ -68,12 +84,16 @@ class DeviceCapabilities {
   /// Device-type byte marks a power bank (0x22). Routes to the power-bank view.
   bool get isPowerBank => productClass.isPowerBank;
 
-  /// 檢測電容 (capacitor self-check) available — a [supercapacitor] only, PLUS
-  /// the bounded [unknown] fallback. A smart battery must NOT get this: it has
-  /// no capacitor to self-check.
-  bool get isCapacitor =>
-      productClass == ProductClass.supercapacitor ||
-      productClass == ProductClass.unknown;
+  /// 檢測電容 (capacitor self-check) available — a [supercapacitor] and NOTHING
+  /// else. A smart battery must not get this (no capacitor to self-check), and
+  /// as of 2026-08-28 neither does the [unknown] fallback: the control writes
+  /// `0x23` <- `0x06` now, and a write that changes device state has no place
+  /// being aimed at hardware we could not identify. See the library doc.
+  ///
+  /// ⚠️ The `hasCutOff` fallback below is NOT the same question and must not be
+  /// "tidied up" to match. Release sends `0x00` to a class that has the mode,
+  /// and it is the escape hatch this file's asymmetry exists to protect.
+  bool get isCapacitor => productClass == ProductClass.supercapacitor;
 
   /// 解除斷電 (cut-off release) available — a [smartBattery] only, PLUS the
   /// bounded [unknown] fallback. A super-capacitor must NOT get this: it has no

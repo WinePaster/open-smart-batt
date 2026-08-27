@@ -233,16 +233,32 @@ class ModeArg {
   /// Activate cut-off (斷電).
   static const int cutOff = 2;
 
-  /// Detect special: triggers a 10 s detect keep-alive poller after the write.
+  /// Start a super-capacitor's SELF-CHECK (檢測電容). Capacitor-only.
   ///
-  /// 🔴 **No longer used for release (2026-07-30).** The "live HCI
-  /// capture uses this as the cut-off release" note this constant used to carry
-  /// rested on one observation — of a **super-capacitor**, whose `0x23` reverted
-  /// to `0x05`, its own status space, and which has no cut-off feature at all.
-  /// Against two batteries genuinely in cut-off it did nothing across eight
-  /// writes. What 0x06 actually is remains unknown; the constant is kept because
-  /// the frame is documented, not because a use for it is established.
-  static const int release = 6;
+  /// 🔵 **Renamed from `release` on 2026-08-28, and it now has a caller.**
+  /// The old name was the fossil of a 2026-07-30 misread: one super-capacitor
+  /// was seen pulsing `0x23` to `0x06` and back to `0x05`, and that single
+  /// observation was written down as "the cut-off release opcode" — a BATTERY
+  /// feature. Against two batteries genuinely in cut-off it did nothing across
+  /// eight writes, which is what a value that is not in the battery code space
+  /// at all looks like. The old doc closed with "what 0x06 actually is remains
+  /// unknown"; that sentence is what this change retires.
+  ///
+  /// What it is: writing `0x06` puts a super-capacitor into its self-check
+  /// mode. The unit reads `0x06` back for a few seconds and then reports
+  /// [CapacitorStatus.selfCheckRunning] — see that class for the read side and
+  /// for what it does NOT promise about coming back on its own.
+  ///
+  /// 🔴 SAFETY, and it is not the same shape as the other three:
+  ///   * this WRITE CHANGES DEVICE STATE, and while the check runs the unit's
+  ///     own voltage readings fall well below their resting value. A caller
+  ///     must confirm with the user first — see `capacitorSelfCheck` in
+  ///     `ui/dashboard/status_controls_shared.dart`;
+  ///   * it must be gated on the super-capacitor class
+  ///     (`DeviceCapabilities.isCapacitor`). It is NOT in the unclassified
+  ///     fallback, deliberately: that fallback's whole safety argument is that
+  ///     nothing in it can change a device's state.
+  static const int capacitorSelfCheck = 6;
 }
 
 /// Reported mode/status code, stored device-side at offset 0x113 (PROTOCOL.md
@@ -304,9 +320,15 @@ class ReportedStatus {
 
 /// Super-capacitor status code space for selector `0x23`.
 ///
-/// A capacitor does NOT have a run mode — it has no cut-off and no anti-theft
-/// (it is a monitor-plus-self-check unit), so [ReportedStatus] does not apply to
-/// it at all. Its `0x23` byte lives in its own space.
+/// A capacitor has no cut-off and no anti-theft (it is a monitor-plus-
+/// self-check unit), so [ReportedStatus] does not apply to it at all. Its
+/// `0x23` byte lives in its own space.
+///
+/// ⚠️ **Narrowed 2026-08-28.** This paragraph used to open "a capacitor does
+/// NOT have a run mode", and that half is now falsified: a super-capacitor
+/// accepts `0x23` mode WRITES and answers them — see
+/// [ModeArg.capacitorSelfCheck]. What survives, and what the sentence was
+/// really carrying, is that the two code spaces do not overlap.
 ///
 /// **Wire evidence** (our own captures, 2026-07-29 analysis):
 /// * super-capacitor (device-type `0x17`): `0x23` = `0x05` on **1802 of 1802**
@@ -314,12 +336,50 @@ class ReportedStatus {
 /// * smart battery (device-type `0x02`): `0x23` = `0x00` on 531/531 and 112/112
 ///   frames across two different units.
 ///
-/// Only the healthy value is named. Any other byte is reported as UNKNOWN
-/// (raw byte surfaced for diagnosis) rather than guessed at — we have no
-/// captured fault sample to name a code from.
+/// 🔵 **Two more values named 2026-08-28 (FB-102).** `0x06` and `0x07` are the
+/// SELF-CHECK read-back, not fault codes: a unit that has been sent
+/// [ModeArg.capacitorSelfCheck] reads `0x06` back for a few seconds and then
+/// reports `0x07` while the check runs. Field capture 2026-08-27, one
+/// super-capacitor, `0x23` = `0x07` on 99 frames.
+///
+/// 🔴 **What this cost while they were unnamed** — and it is the whole reason
+/// they are named now: everything except `0x05` fell through to
+/// `CapacitorHealth.unknown`, so a unit that had merely been put into
+/// self-check was shown as 「無法辨識」 in an amber badge, with an advisory
+/// asking its owner to export a diagnostic log. A working capacitor, reported
+/// as a defect, on the strength of a byte that means "busy".
+///
+/// ⛔ **`0x07` does NOT promise to clear itself.** Two of the three observed
+/// checks stayed at `0x07` — one of them across three reconnections and 23
+/// minutes — while the third returned to [healthy] about six seconds in, with
+/// nothing written to it in between. Anything that waits for `0x05` must
+/// therefore have a way to stop waiting, and must not claim the check finished.
+///
+/// Beyond these three, any other byte is still reported as UNKNOWN (raw byte
+/// surfaced to the diagnostic log) rather than guessed at — we hold no captured
+/// fault sample to name a code from.
 class CapacitorStatus {
   CapacitorStatus._();
 
   /// The value a healthy super-capacitor reports (see class doc).
   static const int healthy = 5;
+
+  /// Self-check accepted — the read-back of a `0x23` ←
+  /// [ModeArg.capacitorSelfCheck] write, held for roughly four to five seconds
+  /// before the unit moves to [selfCheckRunning].
+  static const int selfCheckStarting = 6;
+
+  /// Self-check RUNNING. See the class doc: this state may persist
+  /// indefinitely.
+  static const int selfCheckRunning = 7;
+
+  /// True while the unit reports either self-check byte.
+  ///
+  /// 🔑 The single source of that two-value set. It is read by the badge, by
+  /// the button's own busy gate, and by the alert evaluator's under-voltage
+  /// suppression, and three private copies of `mode == 6 || mode == 7` is
+  /// exactly how the screen and the alarm end up disagreeing about whether a
+  /// unit is busy.
+  static bool isSelfCheck(int? mode) =>
+      mode == selfCheckStarting || mode == selfCheckRunning;
 }

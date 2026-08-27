@@ -20,6 +20,7 @@
 /// never offer the way out on a device we cannot read.
 library;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -108,6 +109,15 @@ enum CapacitorHealth {
   /// The byte matches the value healthy units report ([CapacitorStatus.healthy]).
   healthy,
 
+  /// A self-check is in progress ([CapacitorStatus.isSelfCheck]).
+  ///
+  /// 🔵 **FB-102.** This member is the fix: `0x06` / `0x07` used to fall into
+  /// [unknown], so a unit that had merely been put into self-check was badged
+  /// 「無法辨識」 in amber and its owner was told to export a diagnostic log.
+  /// It is NOT a health verdict — it says the unit is busy, and nothing about
+  /// whether it is well.
+  selfCheck,
+
   /// Some other byte. We have no captured fault sample to name a code from, so
   /// this is reported as unknown WITH the raw byte, never guessed at.
   unknown,
@@ -115,11 +125,13 @@ enum CapacitorHealth {
 
 /// Decode the `0x23` byte in the CAPACITOR status space.
 /// Null [mode] means nothing has arrived yet — callers render `--`.
-CapacitorHealth? capacitorHealthOf(int? mode) => mode == null
-    ? null
-    : mode == CapacitorStatus.healthy
-        ? CapacitorHealth.healthy
-        : CapacitorHealth.unknown;
+CapacitorHealth? capacitorHealthOf(int? mode) => switch (mode) {
+      null => null,
+      CapacitorStatus.healthy => CapacitorHealth.healthy,
+      _ => CapacitorStatus.isSelfCheck(mode)
+          ? CapacitorHealth.selfCheck
+          : CapacitorHealth.unknown,
+    };
 
 /// True when a live reading breaches one of this unit's RESOLVED thresholds
 /// (OV / UV / OT).
@@ -169,25 +181,184 @@ bool readingBreachesThreshold(
 // Actions (auth-gated exactly as before the split).
 // ---------------------------------------------------------------------------
 
-/// 檢測電容 — read-only: surface the current SOH / capacity reading. No command
-/// is sent (no capacitor self-check opcode is established by the protocol).
-void detectCapacitor(BuildContext context, TelemetryController tele) {
+/// How long the SELF-CHECK button stays locked waiting for the unit to report
+/// [CapacitorStatus.healthy] again.
+///
+/// 🔴 **Read what this is and what it is not.** It is a cap on how long THIS
+/// APP holds its own button, and nothing else. It is NOT a claim about how long
+/// a self-check takes, and it is deliberately not a countdown on screen: the
+/// one figure anybody ever wrote down for that ("about ten seconds") came from
+/// a single observation of a single unit and does not survive the wire —
+/// checks have been seen returning to normal in about six seconds and have been
+/// seen staying in self-check across three reconnections and 23 minutes. A
+/// hard-coded timer would be showing the user a number we know to be wrong,
+/// which is worse than showing none. Same reasoning as design 0081's "no live
+/// counter".
+const Duration _selfCheckWatchLimit = Duration(seconds: 30);
+
+/// How long we wait for the unit to acknowledge the write by moving `0x23` off
+/// [CapacitorStatus.healthy] at all. Short, because the read-back is the first
+/// thing that changes; the long wait is [_selfCheckWatchLimit], after it.
+const Duration _selfCheckAckWindow = Duration(seconds: 8);
+
+/// What one press of 檢測電容 ended in — the four outcomes, so the caller's copy
+/// and the tests name the same set.
+enum CapacitorSelfCheckOutcome {
+  /// The user backed out of the confirmation, or auth could not be derived.
+  notSent,
+
+  /// Sent, and `0x23` never moved. Nothing observable changed.
+  noResponse,
+
+  /// The unit entered self-check and then reported [CapacitorStatus.healthy]
+  /// again on its own.
+  finished,
+
+  /// The unit entered self-check and was still in it when we stopped watching.
+  ///
+  /// 🔴 NOT a failure and NOT a cancellation — see [capacitorSelfCheck].
+  stillRunning,
+}
+
+/// 檢測電容 — start a real self-check on a super-capacitor (design 0082 Q1).
+///
+/// 🔴 **This button used to send NOTHING.** It reprinted the SOH / voltage
+/// numbers already on the screen into a snackbar and called that a check, which
+/// is the reason design 0082 exists: a control named after an action that did
+/// not happen. Confirmed on the wire as late as 2026-08-27 — a whole session
+/// with the button pressed carried no outbound write except the routine polls.
+///
+/// What it does now: `0x23` <- [ModeArg.capacitorSelfCheck], bundled with the
+/// auth sub-frame in one 15-byte write, i.e. exactly the shape every other mode
+/// write in this app already had ([CommandBuilder.switchMode]). Auth is derived
+/// the same way the release derives it ([releaseAuthFromDealerCode]) — the
+/// owner types nothing.
+///
+/// ## The three rules this flow is built around
+///
+/// 1. **Confirm first, with the consequence, not with "are you sure".** The
+///    capacitor's voltage drops while the check runs, so the dialog says that.
+///    An `AlertDialog`, the same shape as the cut-off confirmation: two writes
+///    that both change how a device behaves must not be presented differently.
+/// 2. **Unlock on what the DEVICE says, never on a stopwatch.** We wait for
+///    `0x23` to come back to [CapacitorStatus.healthy]. [_selfCheckWatchLimit]
+///    exists so the button cannot be locked forever, and its expiry is a fact
+///    about this app, not about the device.
+/// 3. 🔴 **We never write the unit back out of self-check. Not on give-up, not
+///    on any path.** (Owner's ruling, 2026-08-28, over an explicitly considered
+///    alternative.) The known cost is accepted and is stated to the user rather
+///    than hidden: when the watch expires we say the unit may still be in
+///    self-check and that we have not taken it out. What we must not say is
+///    "finished" or "cancelled" — both would be claims about a device we have
+///    stopped being able to back up.
+///
+/// The ONE outbound write in this function is [ConnectionController
+/// .capacitorSelfCheck]. Anything that adds a second one is undoing rule 3.
+Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
+    BuildContext context, TelemetryController tele) async {
+  final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
-  final soh = tele.sohBucket;
-  final svlt = tele.svlt;
-  final msg = soh == null && svlt == null
-      ? l10n.capacitorCheckNoData
-      : l10n.capacitorCheckReadout(
-          soh?.toString() ?? '--',
-          svlt != null ? svlt.toStringAsFixed(2) : '--',
-          tele.pvlt != null ? tele.pvlt!.toStringAsFixed(2) : '--',
-        );
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      duration: const Duration(milliseconds: 1600),
-      content: Text(l10n.capacitorCheckSnack(msg)),
+  final messenger = ScaffoldMessenger.of(context);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l10n.capacitorSelfCheckDialogTitle),
+      content: SingleChildScrollView(
+        child: Text(
+          l10n.capacitorSelfCheckDialogBody,
+          style: TextStyle(color: ctx.colors.muted, height: 1.5),
+        ),
+      ),
+      actions: [
+        // Cancel first — the safe choice is the one a hurried tap lands on,
+        // same ordering as the cut-off dialog.
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(l10n.commonCancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(l10n.capacitorSelfCheckDialogConfirm),
+        ),
+      ],
     ),
   );
+  if (confirmed != true) return CapacitorSelfCheckOutcome.notSent;
+
+  // Auth rides along automatically, exactly as the release does. No manual
+  // dialog fallback here: that dialog is written for the cut-off flow, and
+  // borrowing it would put cut-off copy in front of a capacitor owner. The
+  // dealer code arrives within seconds of a link going ready, so "not yet" is
+  // a wait, not a dead end.
+  final creds = releaseAuthFromDealerCode(tele.dealerCode);
+  if (creds == null) {
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(l10n.capacitorSelfCheckNotReady),
+    ));
+    return CapacitorSelfCheckOutcome.notSent;
+  }
+
+  try {
+    await conn.capacitorSelfCheck(cb: creds.cb, pwSum: creds.pwSum);
+    // The same write ++ read-back pairing the release uses. A lone mode write
+    // was measured to be intermittent, and this is a read, so it cannot take
+    // the device anywhere.
+    await conn.pollMode();
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(l10n.capacitorSelfCheckFailedSnack('$e')),
+    ));
+    return CapacitorSelfCheckOutcome.notSent;
+  }
+
+  final entered = await _waitFor(
+      tele, (m) => CapacitorStatus.isSelfCheck(m), _selfCheckAckWindow);
+  if (!entered) {
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 4200),
+      content: Text(l10n.capacitorSelfCheckNoResponseSnack),
+    ));
+    return CapacitorSelfCheckOutcome.noResponse;
+  }
+
+  final returned = await _waitFor(
+      tele, (m) => m == CapacitorStatus.healthy, _selfCheckWatchLimit);
+  messenger.showSnackBar(SnackBar(
+    duration: const Duration(milliseconds: 4200),
+    content: Text(returned
+        ? l10n.capacitorSelfCheckDoneSnack
+        : l10n.capacitorSelfCheckStillRunningSnack),
+  ));
+  // 🔴 Nothing is written here on either branch. See rule 3 above.
+  return returned
+      ? CapacitorSelfCheckOutcome.finished
+      : CapacitorSelfCheckOutcome.stillRunning;
+}
+
+/// Poll `0x23` until [test] accepts it or [window] runs out.
+///
+/// The read-only sibling of [_modeChangedWithin]: that one asks "did it move
+/// off the value it had", which cannot express "did it come back to 0x05" —
+/// and the self-check needs the second question, because the value it started
+/// from is the value it has to return to.
+///
+/// 🔑 `clock.now()`, not `DateTime.now()`. The two agree in production (the
+/// default clock IS `DateTime.now`), and they differ in exactly one place that
+/// matters: a test can substitute the first, so "the app gave up and STILL
+/// wrote nothing" is checkable without spending the give-up window in real
+/// seconds. Same reason `AlertEvaluator` and `connection_controller`'s
+/// autoConnect deadline read it.
+Future<bool> _waitFor(
+    TelemetryController tele, bool Function(int?) test, Duration window) async {
+  const step = Duration(milliseconds: 500);
+  final deadline = clock.now().add(window);
+  while (clock.now().isBefore(deadline)) {
+    if (test(tele.mode)) return true;
+    await Future<void>.delayed(step);
+  }
+  return test(tele.mode);
 }
 
 /// Watch `0x23` after a mode write and report what actually happened.

@@ -5,12 +5,12 @@
 /// capacitor has no run mode, so cut-off and anti-theft do not exist for it,
 /// while a battery has no capacitor to self-check. The control set is therefore
 /// split per class — see [DeviceCapabilities] for the authoritative matrix:
-///   * [CapacitorControls] — capacitor-health badge + 檢測電容 (read-only).
+///   * [CapacitorControls] — capacitor-health badge + 檢測電容 (a real write
+///     since 2026-08-28; see `capacitorSelfCheck`).
 ///   * [BatteryControls]  — cut-off badge + 復電 (confirmed, no auth) + 防盜
 ///     (model-gated, warned + auth-gated).
 ///   * [PackControls]     — the bounded [DeviceCapabilities.unknown] fallback
-///     used while a pack is still being classified: the union of the two above
-///     EXCEPT anti-theft.
+///     used while a pack is still being classified: 復電 only.
 ///
 /// The bodies are driven by an EXPLICIT widget choice (which body the pack shell
 /// builds), not by reading `caps.*` booleans — except the two genuinely
@@ -33,7 +33,14 @@ import 'status_controls_shared.dart';
 // ---------------------------------------------------------------------------
 
 /// Protection card body for a super-capacitor.
-class CapacitorControls extends StatelessWidget {
+///
+/// Stateful for exactly one reason: 檢測電容 is an in-flight operation now
+/// (design 0082 Q5 — lock the controls while the check runs), and "is this
+/// unit's check ours and still running" is a property of this screen's press,
+/// not of the device. The device-side half of the same question — whether the
+/// unit is IN self-check — is read from `0x23` and not tracked here, so the
+/// badge stays right even for a check somebody else started.
+class CapacitorControls extends StatefulWidget {
   const CapacitorControls({super.key, this.deviceId});
 
   /// The unit whose page this body sits on, or null when the caller names none.
@@ -52,6 +59,25 @@ class CapacitorControls extends StatelessWidget {
   /// constructs.
   final String? deviceId;
 
+  @override
+  State<CapacitorControls> createState() => _CapacitorControlsState();
+}
+
+class _CapacitorControlsState extends State<CapacitorControls> {
+  /// True from the moment 檢測電容 is pressed until `capacitorSelfCheck`
+  /// returns — the design 0082 Q5 lock.
+  bool _selfCheckBusy = false;
+
+  Future<void> _runSelfCheck(TelemetryController tele) async {
+    setState(() => _selfCheckBusy = true);
+    try {
+      await capacitorSelfCheck(context, tele);
+    } finally {
+      // `finally`, so a throw on the way out cannot strand the card disabled
+      // with nothing to press. `mounted` because the wait outlives a page pop.
+      if (mounted) setState(() => _selfCheckBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,15 +85,24 @@ class CapacitorControls extends StatelessWidget {
     final tele = context.watch<TelemetryController>();
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
 
-    // A capacitor has NO run mode: no cut-off, no anti-theft (see the device
-    // capability matrix in [DeviceCapabilities]). The badge that used to sit
+    // A capacitor has no cut-off and no anti-theft (see the device capability
+    // matrix in [DeviceCapabilities]). The badge that used to sit
     // here read the 0x23 byte
     // through the pack code space and rendered a healthy unit's `5` as a red
     // "cut-off" — see [packRunModeOf]. Removed, not fixed in place: the control
     // was never applicable to this class.
     final health = capacitorHealthOf(tele.mode);
-    final thresholdBreach =
-        readingBreachesThreshold(tele, watchAlertThresholds(context, deviceId));
+    final selfChecking = health == CapacitorHealth.selfCheck;
+    // 🔵 FB-102 ②. The unit's voltage falls far below its resting value while a
+    // self-check runs, and every threshold this line compares against was
+    // written for a unit that is NOT being checked — so the advisory would fire
+    // on the check, name it 過壓/低壓/過溫, and be describing the measurement
+    // rather than the pack. The notification path suppresses the same phase for
+    // the same reason; see `AlertEvaluator.fold`. The two must agree, per the
+    // standing rule that this comparator and the alarm's never diverge.
+    final thresholdBreach = !selfChecking &&
+        readingBreachesThreshold(
+            tele, watchAlertThresholds(context, widget.deviceId));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,6 +112,9 @@ class CapacitorControls extends StatelessWidget {
           label: l10n.statusBadgeCapacitorLabel,
           value: switch (health) {
             CapacitorHealth.healthy => l10n.commonNormal,
+            // Busy, not broken. This member is the FB-102 fix: the byte used to
+            // land in `unknown` and badge a working unit as 「無法辨識」.
+            CapacitorHealth.selfCheck => l10n.statusBadgeCapacitorSelfCheck,
             // Plain language, never the raw byte: this app's readers are
             // vehicle owners. The byte still reaches us — ConnectionController
             // writes it to the diagnostic log via the always-on event path.
@@ -85,6 +123,10 @@ class CapacitorControls extends StatelessWidget {
           },
           tone: switch (health) {
             CapacitorHealth.healthy => ControlTone.good,
+            // Neutral, deliberately: amber here would put a working unit back
+            // in the warning colour FB-102 is about, and green would claim a
+            // verdict the byte does not carry.
+            CapacitorHealth.selfCheck => ControlTone.neutral,
             CapacitorHealth.unknown => ControlTone.warn,
             null => ControlTone.neutral,
           },
@@ -94,7 +136,12 @@ class CapacitorControls extends StatelessWidget {
           variant: ControlButtonVariant.ghost,
           icon: Icons.monitor_heart_outlined,
           label: l10n.controlDetectCapacitor,
-          onPressed: online ? () => detectCapacitor(context, tele) : null,
+          // Disabled while OUR check is in flight (Q5) and while the unit says
+          // it is already in one — a second `0x06` on top of a running check is
+          // a write we have no reason to believe is harmless.
+          onPressed: online && !_selfCheckBusy && !selfChecking
+              ? () => _runSelfCheck(tele)
+              : null,
         ),
         // The permanent "this unit is a super-capacitor…" note was removed on
         // 2026-08-04 (design 0034 §5.4): it fired on every render and told the
@@ -104,6 +151,8 @@ class CapacitorControls extends StatelessWidget {
         // if that turns into a question, the answer is an expandable ⓘ, not
         // the permanent paragraph coming back.
         ...advisoryNotes([
+          // What is happening and what to do about it, while the unit is busy.
+          if (selfChecking) l10n.statusAdvisoryCapacitorSelfCheck,
           // Tell the owner what to DO about an unrecognised status, instead of
           // showing them a hex byte they cannot act on.
           if (health == CapacitorHealth.unknown)
@@ -271,14 +320,20 @@ class BatteryControls extends StatelessWidget {
 // Fallback body: bounded union for an unclassified pack.
 // ---------------------------------------------------------------------------
 
-/// Protection card body for a pack that has not been classified yet: shows the
-/// UNION of pack controls EXCEPT anti-theft, gated by
-/// [DeviceCapabilities.unknown]. Lenient rather than empty, because every
-/// control in that union is read-only or auth-gated, so the worst case is an
-/// offered button that does nothing — whereas hiding everything would leave a
-/// battery that needs 復電 with no way to ask for it. Converges to
-/// [CapacitorControls] / [BatteryControls] the moment the cosmetic label
-/// resolves.
+/// Protection card body for a pack that has not been classified yet: 復電 only,
+/// gated by [DeviceCapabilities.unknown]. Lenient rather than empty, because
+/// that control is auth-gated, so the worst case is an offered button that does
+/// nothing — whereas hiding everything would leave a battery that needs 復電
+/// with no way to ask for it. Converges to [CapacitorControls] /
+/// [BatteryControls] the moment the cosmetic label resolves.
+///
+/// 🔵 **檢測電容 was removed from this body on 2026-08-28** (design 0082 Q8).
+/// It was here as the other half of the "bounded union", and that union's whole
+/// justification is the sentence above: nothing in it can change a device's
+/// state. Q1 turned 檢測電容 into a real `0x23` write, so keeping it here would
+/// have made that sentence false — and the class most likely to receive the
+/// write through this route is a power-bank-labelled shell, which has no
+/// capacitor at all.
 class PackControls extends StatelessWidget {
   const PackControls({super.key, this.deviceId});
 
@@ -304,8 +359,8 @@ class PackControls extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final tele = context.watch<TelemetryController>();
     final online = context.select<ConnectionController, bool>((c) => c.isOnline);
-    final caps = context
-        .select<ConnectionController, DeviceCapabilities>((c) => c.capabilities);
+    final hasCutOff = context
+        .select<ConnectionController, bool>((c) => c.capabilities.hasCutOff);
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
@@ -355,18 +410,7 @@ class PackControls extends StatelessWidget {
         const SizedBox(height: 13),
         Row(
           children: [
-            if (caps.isCapacitor) ...[
-              Expanded(
-                child: ControlButton(
-                  variant: ControlButtonVariant.ghost,
-                  icon: Icons.monitor_heart_outlined,
-                  label: l10n.controlDetectCapacitor,
-                  onPressed: online ? () => detectCapacitor(context, tele) : null,
-                ),
-              ),
-              if (caps.hasCutOff) const SizedBox(width: 9),
-            ],
-            if (caps.hasCutOff)
+            if (hasCutOff)
               Expanded(
                 child: ControlButton(
                   variant: ControlButtonVariant.warn,
@@ -385,7 +429,7 @@ class PackControls extends StatelessWidget {
         // label picker in the chip. The picker itself is unchanged and still
         // the only place a class can be chosen.
         ...advisoryNotes([
-          if (caps.hasCutOff && online && !canRelease) l10n.releaseDisabledNote,
+          if (hasCutOff && online && !canRelease) l10n.releaseDisabledNote,
           // Threshold breach is class-agnostic (it only needs 0x2B + a
           // reading), so it survives the badge removal above as an advisory
           // line.
