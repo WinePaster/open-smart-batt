@@ -261,10 +261,23 @@ void main() {
       expect(find.text('＋充電 · −放電'), findsOneWidget);
     });
 
-    testWidgets('a power bank chart does NOT get the pack key', (tester) async {
-      // Its current is signed the other way round, so this key would be a lie
-      // there. The power bank says its direction in words on the SOC dial and
-      // the energy-path row instead.
+    testWidgets('a power bank chart gets its OWN key, never the pack one',
+        (tester) async {
+      // Its current is signed the other way round, so the pack key would be a
+      // lie there.
+      //
+      // ~~The power bank says its direction in words on the SOC dial and the
+      // energy-path row instead.~~
+      //
+      // 🔵 **That second sentence was the unwritten justification for the
+      // track carrying no key at all, and it did not survive review** —
+      // design 0056 §9 Q1 ① (owner, 2026-08-27). The same argument was true
+      // of the PACK (design 0056 §5 ① gave it an identical readout badge on
+      // the same card) and the pack track got an axis key anyway; a rule that
+      // reaches one family and not the other was the one combination nobody
+      // could defend. So the assertion below is TIGHTENED, not relaxed: the
+      // pack key must still be absent, AND the power bank's own mirror key
+      // must now be present.
       await _pump(tester,
           module: DisplayModule.chart,
           cls: ProductClass.powerBank,
@@ -274,8 +287,42 @@ void main() {
                   deviceType: 0x18,
                   current: 2.72),
               trend: bufferWithSwing()));
-      expect(find.text('+ charge · − discharge'), findsNothing);
+      expect(find.text('+ charge · − discharge'), findsNothing,
+          reason: 'the pack key is signed the other way round — on a power '
+              'bank it would be a confident lie, not a missing label');
       expect(find.text('＋充電 · −放電'), findsNothing);
+      // 🔵 design 0056 §9 Q1 ① — and it is the MIRROR, not a copy.
+      expect(find.text('+ discharge · − charge'), findsOneWidget,
+          reason: 'a signed current with nothing saying which half is which '
+              'is exactly what FB-47 was filed for');
+    });
+
+    testWidgets('zh key, power bank', (tester) async {
+      await _pump(tester,
+          module: DisplayModule.chart,
+          cls: ProductClass.powerBank,
+          tele: _tele(
+              TelemetrySample(
+                  timestamp: DateTime(2026, 8, 11, 9, 30),
+                  deviceType: 0x18,
+                  current: 2.72),
+              trend: bufferWithSwing()),
+          locale: const Locale('zh'));
+      expect(find.text('＋放電 · −充電'), findsOneWidget);
+      expect(find.text('＋充電 · −放電'), findsNothing);
+    });
+
+    test('the two axis keys are mirrors, and separate strings', () async {
+      // 🔴 If these two ever became the same string, one family would be
+      // reading the other's convention with no error anywhere on screen.
+      for (final code in ['en', 'zh']) {
+        final l = await AppLocalizations.delegate.load(Locale(code));
+        expect(l.powerBankTrackCurrentDirectionKey, isNotEmpty);
+        expect(l.powerBankTrackCurrentDirectionKey,
+            isNot(l.dashboardTrackCurrentDirectionKey),
+            reason: '$code: the two families sign current oppositely, so the '
+                'two keys must never collapse into one');
+      }
     });
   });
 
