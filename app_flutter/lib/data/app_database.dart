@@ -395,9 +395,30 @@ class Db {
   /// first person who turns the feature on with nothing happening and no clue
   /// why.
   ///
-  /// CLAIMING A NUMBER (see the note under v8): 22 was taken after checking
-  /// every local and remote ref on 2026-08-22 — the highest anywhere was 21.
-  static const int schemaVersion = 22;
+  /// v23: `saved_devices` gained `former_ids TEXT` — the BLE ids this record
+  /// used to be keyed by, comma-separated, NULL until the record is first
+  /// rebound (design 0077 Q7, FB-93).
+  ///
+  /// 🔴 **This column is not a breadcrumb, it is load-bearing**, and the
+  /// difference is the whole of Q7. The original proposal wanted it as an audit
+  /// trail — "why can this record not find its history?" — but the owner took
+  /// path A for Q3/Q4 (do not move the rows, change the query), and under path
+  /// A `history` and `diag_log` are still keyed by the OLD id. The two `_scope`
+  /// helpers read this list to find them. Drop the column and a rebound unit's
+  /// history goes blank; there is no recovering it from anywhere else, because
+  /// a rebind overwrites the only other copy of the old id (`saved_devices.id`)
+  /// and is irreversible.
+  ///
+  /// TEXT rather than a child table: the list is short (one entry per iOS
+  /// reinstall), never queried on its own, and a BLE id contains no comma on
+  /// either platform (NSUUID / MAC). A table would buy referential integrity
+  /// for a value that has no referent — the old id is precisely an id nothing
+  /// points at any more.
+  ///
+  /// CLAIMING A NUMBER (see the note under v8): 23 was taken after checking
+  /// every local and remote ref on 2026-08-28 — the highest anywhere was 22
+  /// (29 refs at 22, 22 at 21).
+  static const int schemaVersion = 23;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -929,6 +950,15 @@ class AppDatabase {
         );
       }
     }
+    if (from < 23) {
+      // design 0077 Q7 / FB-93. NULL for every existing row, and no backfill is
+      // possible or wanted: a record that has never been rebound has no former
+      // id, and inventing one would make the `_scope` helpers widen a query for
+      // no reason. See [Db.schemaVersion] v23.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN former_ids TEXT',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -1042,7 +1072,10 @@ class AppDatabase {
       alert_ov REAL,
       alert_uv REAL,
       alert_ot REAL,
-      alert_muted_until INTEGER
+      alert_muted_until INTEGER,
+      -- design 0077 Q7 / FB-93. See [Db.schemaVersion] v23 for why this is
+      -- load-bearing rather than an audit trail.
+      former_ids TEXT
     )
     ''',
     '''

@@ -711,6 +711,11 @@ class ConnectionController extends ChangeNotifier {
   /// to be reported under — see [_verifyIdentity] and [ConnectionError].
   String? _requestedDeviceId;
 
+  /// design 0077 R6 — one rebind per connection, matching the one-shot shape
+  /// [_identity] already has. Reset wherever [_requestedDeviceId] is set, so a
+  /// second attempt on the same link cannot re-enter the transaction.
+  bool _rebindAttempted = false;
+
   /// What the identity check has been able to say about the link in hand.
   ///
   /// One identity REPORT per connection: the check runs on every telemetry
@@ -1744,6 +1749,7 @@ class ConnectionController extends ChangeNotifier {
     // `deviceId`, because on a rebind the record still lives under the old id —
     // the same reason `seedClass` exists two lines below.
     _requestedDeviceId = requestedId == deviceId ? null : requestedId;
+    _rebindAttempted = false; // design 0077 R6 — per connection
     _expectedMac = _devices?.deviceFor(requestedId ?? deviceId)?.mac;
     _identity = IdentityVerdict.unchecked;
     // design 0078 G1: a fresh target means the previous run of refused frames
@@ -3137,6 +3143,53 @@ class ConnectionController extends ChangeNotifier {
   /// the ladder and the iOS autoConnect hand-off do not immediately reconnect
   /// us to the very unit we just rejected. It leaves [_lastError] standing —
   /// which is the behaviour FB-87 ② deliberately keeps.
+  /// design 0077 §6.2 — the six preconditions, then re-key the saved record.
+  ///
+  /// Called only from the verified branch of [_verifyIdentity], which is
+  /// already R2 (a `0x38` arrived), R3 (it matched) and R4 (there was something
+  /// to match it against — a record with no stored MAC never reaches there).
+  /// What is left here is R1, R5 and R6.
+  ///
+  /// 🔴 **R4 is why a first-time device is never rebound, and that is a ruling,
+  /// not an oversight** (Q2). Those units keep the FB-93 symptom. The
+  /// alternative is re-keying on the strength of a name two units share — which
+  /// is FB-25, and it moved a unit's history onto another one.
+  ///
+  /// ⚠️ Fire-and-forget: this runs on the ~5 Hz telemetry path and must not
+  /// hold it. A failed transaction leaves the record on its old id, which is
+  /// today's behaviour — the symptom, not a new failure.
+  void _maybeRebindSavedRecord(String wireMac) {
+    if (_rebindAttempted) return; // R6
+    // R1 — only a rebind needs re-keying. `_requestedDeviceId` is non-null
+    // exactly when the id we dialled differs from the one the user's record is
+    // keyed by, which is the definition of the situation FB-93 describes.
+    final asked = _requestedDeviceId;
+    final dialled = _ble.connectedDeviceId ?? _desiredDeviceId;
+    if (asked == null || dialled == null || asked == dialled) return;
+    final devices = _devices;
+    if (devices == null) return;
+    _rebindAttempted = true;
+    // 0077 §6.4 — the audit line goes out BEFORE the write, because a field
+    // log is the only thing that can ever say whether a rebind was right, and
+    // there has been exactly one rebind in the whole corpus to learn from.
+    // Hashed, like every other id on this path (design 0027 §3.1).
+    _event(
+        'rebind: re-keying saved record ${shortDeviceHash(asked)} '
+        '-> ${shortDeviceHash(dialled)} (wire mac ${shortDeviceHash(wireMac)} '
+        'matched the stored one)',
+        deviceId: asked);
+    unawaited(devices.rebind(asked, dialled).then((ok) {
+      if (!ok) {
+        // R5 lost a race, or the record went away. Say so — a silent no-op
+        // here would leave the log claiming a rebind that never happened.
+        _event('rebind: not applied (target id already saved, or record gone)',
+            deviceId: asked);
+      }
+    }).catchError((Object e) {
+      _event('rebind failed: $e', deviceId: asked);
+    }));
+  }
+
   void _verifyIdentity(TelemetrySample s) {
     if (_identity == IdentityVerdict.mismatch) return;
     final expected = _expectedMac;
@@ -3158,6 +3211,13 @@ class ConnectionController extends ChangeNotifier {
       // consumer that wants this on screen is FB-93 (design 0077 Q1); it can
       // add the notification together with the surface that reads it.
       _identity = IdentityVerdict.verified;
+      // 🆕 design 0077 Q1 (FB-93) — the consumer design 0078 Q4 was written for.
+      // THIS INSTANT AND NO OTHER: not `connect()` returning, not `ready`, not
+      // "no mismatch so far". The first three all sit inside or before the race
+      // window §5 describes; this one is the only moment the app holds a
+      // hardware address off the wire and has compared it with the one it
+      // stored.
+      _maybeRebindSavedRecord(actual);
       return;
     }
     _identity = IdentityVerdict.mismatch;

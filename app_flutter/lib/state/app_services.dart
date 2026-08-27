@@ -153,6 +153,20 @@ class AppServices {
 
     final settings = SettingsController(settingsRepo, history: historyRepo);
     final devices = DeviceController(deviceRepo);
+    // design 0077 path A (FB-93) — the composition root is the only place that
+    // holds both halves: the repos know how to filter by `device_id`, the
+    // controller knows which ids one record has worn. Wiring them here keeps
+    // `HistoryRepo`/`LogRepo` free of any notion of a saved device (see
+    // `device_id_aliases.dart` for why that separation is worth a typedef).
+    //
+    // ⚠️ Reads `devices.deviceFor` — in-memory, already loaded — so the
+    // resolver stays synchronous as `_scope` requires. Before the first
+    // `load()` it answers "no aliases", which narrows a query to the current
+    // id: the same answer as an un-rebound unit, and the honest one, since at
+    // that point the app genuinely does not know of any former id.
+    List<String> aliasesOf(String id) => devices.deviceFor(id)?.formerIds ?? const <String>[];
+    historyRepo.idAliases = aliasesOf;
+    logRepo.idAliases = aliasesOf;
     final facts = DeviceFactsController(deviceFactsRepo);
     // ONE session context shared by both controllers, so the log events and the
     // packet/history rows are attributed to the same unit — attribution has to

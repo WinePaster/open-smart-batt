@@ -18,6 +18,7 @@ import '../models/models.dart';
 // is the exact failure the 0/2/4 → 0/1/2 correction was.
 import '../protocol/selectors.dart' show ReportedStatus;
 import 'app_database.dart';
+import 'device_id_aliases.dart';
 
 /// One time-bucket of averaged/min/max telemetry for the trend chart.
 /// Produced DB-side by [HistoryRepo.queryBuckets] so large ranges never load
@@ -279,6 +280,13 @@ class HistoryRepo {
   HistoryRepo(this._db);
 
   final Database _db;
+
+  /// design 0077 path A (FB-93) — see `device_id_aliases.dart`. Settable
+  /// rather than constructor-injected so the composition root can wire it
+  /// after the controller that answers it exists; null until then, and null
+  /// means "no unit has ever been rebound", which is true of every install
+  /// that has not.
+  DeviceIdAliases? idAliases;
 
   /// Ordered CSV/column header. Matches [TelemetrySample.toMap] keys, with
   /// `timestamp` rendered as ISO-8601 in CSV (epoch-ms in the DB).
@@ -712,8 +720,22 @@ class HistoryRepo {
       args.add(until.millisecondsSinceEpoch);
     }
     if (deviceId != null) {
-      clauses.add('device_id = ?');
-      args.add(deviceId);
+      // design 0077 path A (FB-93): a rebound record's older rows are still
+      // keyed by the id that was dialled when they were written, so scoping to
+      // the CURRENT id alone would empty the history page of a unit that
+      // changed NSUUID. Nothing was moved; the query widened instead.
+      //
+      // 🔑 One id stays `= ?`, not a one-element `IN`. Not for speed — SQLite
+      // plans them the same — but so that every existing test, log line and
+      // EXPLAIN of an un-rebound unit reads exactly as it did before. The new
+      // shape appears only where a rebind actually happened.
+      final ids = scopeIdsFor(deviceId, idAliases);
+      if (ids.length == 1) {
+        clauses.add('device_id = ?');
+      } else {
+        clauses.add('device_id IN (${List.filled(ids.length, '?').join(',')})');
+      }
+      args.addAll(ids);
     }
     if (clauses.isEmpty) return (null, null);
     return (clauses.join(' AND '), args);
