@@ -511,6 +511,19 @@ void main() {
       });
     }
 
+    /// Raise BOTH kinds — used to test that a NEW kind reopens a collapsed
+    /// banner (design 0086 Q3).
+    Future<void> raiseBoth(WidgetTester tester, String deviceId) async {
+      final s = _battery(pvlt: 10.82, temperatureC: 95);
+      withClock(Clock.fixed(_t0), () => services.alerts.onSample(deviceId, s));
+      withClock(Clock.fixed(_t0.add(const Duration(seconds: 5))),
+          () => services.alerts.onSample(deviceId, s));
+      await tester.runAsync(() async {
+        ble.emit(s);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+    }
+
     tearDown(() async => services.dispose());
 
     testWidgets('nothing raised ⇒ nothing drawn', (tester) async {
@@ -531,7 +544,14 @@ void main() {
       expect(find.textContaining('11.00'), findsOneWidget);
       // …and it says WHY the phone stayed quiet, rather than leaving the user
       // to notice an absence.
-      expect(find.textContaining('not saved'), findsOneWidget);
+      //
+      // 🔵 design 0086 S3 changed WHICH sentence does that. It used to read
+      // "This device is not saved, so …"; the unsaved card is drawn directly
+      // below the banner and already says that, and the screenshot that
+      // started 0086 had the line twice on one screen. The banner now keeps
+      // only the half that card does not carry — the phone staying silent.
+      expect(find.textContaining('will not ring'), findsOneWidget);
+      expect(find.textContaining('not saved'), findsNothing);
       expect(notifier.posted, isEmpty);
     });
 
@@ -545,6 +565,85 @@ void main() {
       expect(find.text('Warnings'), findsOneWidget);
       // Nothing suppressed it, so there is no explanation to give.
       expect(find.textContaining('not saved'), findsNothing);
+      expect(find.textContaining('will not ring'), findsNothing);
+    });
+
+    // ── design 0086：可收合，但不可關閉 ────────────────────────────────
+
+    testWidgets('0086 — ✕ 收合成一行，但警告沒有消失', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raise(tester, _unitA);
+      await pump(tester, const AlertEventBanner(deviceId: _unitA));
+      expect(find.text('Warning raised'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Collapse'));
+      await tester.pump();
+
+      // 標題與「已持續」不見了 —— 那是「縮小」。
+      expect(find.text('Warning raised'), findsNothing);
+      expect(find.textContaining('for '), findsNothing);
+      // 🔴 但 wire 讀數那一行還在：收合 ≠ 關閉。這條就是 design 0080 §5
+      // 「不用捲就看得到有事」在收合態仍然成立的證據。
+      expect(find.textContaining('10.82'), findsOneWidget);
+    });
+
+    testWidgets('0086 — 再點那一行就跳回來（擁有者原話）', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raise(tester, _unitA);
+      await pump(tester, const AlertEventBanner(deviceId: _unitA));
+      await tester.tap(find.byTooltip('Collapse'));
+      await tester.pump();
+      expect(find.text('Warning raised'), findsNothing);
+
+      // 「再點警告會跳出來」—— 目標是警告那一行本身，不是另一顆按鈕。
+      await tester.tap(find.textContaining('10.82'));
+      await tester.pump();
+      expect(find.text('Warning raised'), findsOneWidget);
+    });
+
+    testWidgets('0086 Q2 🔴 收合只活在這條連線裡 —— 斷線後回到展開', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raise(tester, _unitA);
+      await pump(tester, const AlertEventBanner(deviceId: _unitA));
+      await tester.tap(find.byTooltip('Collapse'));
+      await tester.pump();
+      expect(services.alerts.isBannerCollapsed(_unitA), isTrue);
+
+      // 擁有者逐字「只有這次連線有效」⇒ 與 _sessionSilenced 同一個清除點。
+      services.alerts.onLinkLost();
+      expect(services.alerts.isBannerCollapsed(_unitA), isFalse);
+    });
+
+    testWidgets('0086 Q3 — 收合中又升起新的一種，自動展開', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raise(tester, _unitA);                 // 只有欠壓
+      services.alerts.setBannerCollapsed(_unitA, true);
+      expect(services.alerts.isBannerCollapsed(_unitA), isTrue);
+
+      await raiseBoth(tester, _unitA);             // ＋過溫
+      // 收合表達的是「這一則我看過了」，不是靜音 ⇒ 新資訊要跳出來。
+      expect(services.alerts.isBannerCollapsed(_unitA), isFalse);
+    });
+
+    testWidgets('0086 Q3 — 少一種不算新資訊，維持收合', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raiseBoth(tester, _unitA);             // 兩種都在
+      services.alerts.setBannerCollapsed(_unitA, true);
+      expect(services.alerts.isBannerCollapsed(_unitA), isTrue);
+
+      await raise(tester, _unitA);                 // 過溫解除，只剩欠壓
+      // 警告解除不是新資訊 —— 不該把使用者收好的東西再彈開。
+      expect(services.alerts.isBannerCollapsed(_unitA), isTrue);
+    });
+
+    testWidgets('0086 — 多於一則時，收合列要說出還有幾則', (tester) async {
+      await boot(tester, const [SavedDevice(id: _unitA, alias: 'a')]);
+      await raiseBoth(tester, _unitA);
+      await pump(tester, const AlertEventBanner(deviceId: _unitA));
+      await tester.tap(find.byTooltip('Collapse'));
+      await tester.pump();
+      // 收合絕不隱藏「還有幾則」這個事實。
+      expect(find.text('+1'), findsOneWidget);
     });
 
     testWidgets(

@@ -2387,4 +2387,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alertsBannerOpen => '警告設定';
+
+  @override
+  String get alertsBannerUnsavedNoteBrief => '手機不會響。警告本身仍在追蹤。';
+
+  @override
+  String get alertsBannerCollapse => '收合';
+
+  @override
+  String get alertsBannerExpand => '展開完整警告';
+
+  @override
+  String alertsBannerMore(String count) {
+    return '＋$count';
+  }
 }

@@ -246,6 +246,25 @@ class AlertController extends ChangeNotifier implements TelemetryAlertSink {
   /// short-lived.
   final Set<String> _sessionSilenced = <String>{};
 
+  /// Which alert kinds were on screen when the user collapsed the detail-page
+  /// banner, per device — design 0086 Q2/Q3.
+  ///
+  /// 🔴 **Memory only, and cleared with the link, for the same reason as
+  /// [_sessionSilenced] above.** The owner's ruling was 「只有這次連線有效」;
+  /// writing this to the database is the single change that would make it
+  /// wrong, exactly as for the session silence.
+  ///
+  /// 🔑 **A set of kinds, not a bool, and that is the whole of Q3.** Collapsing
+  /// says "I have read THIS one" — it is not a mute. So the banner reopens the
+  /// moment a kind appears that was not in the set at collapse time, and does
+  /// NOT reopen when one merely clears (that is the warning going away, not new
+  /// information). [isBannerCollapsed] is where those two rules live.
+  ///
+  /// ⚠️ Not to be confused with [_sessionSilenced], which is the user asking
+  /// for no more *notifications*. This one is only about how much room the
+  /// banner takes on screen; the warning itself never stops being displayed.
+  final Map<String, Set<AlertKind>> _bannerCollapsed = <String, Set<AlertKind>>{};
+
   AlertNotificationStrings _strings = AlertNotificationStrings.placeholder;
 
   AlertPermission _permission = AlertPermission.unknown;
@@ -300,6 +319,34 @@ class AlertController extends ChangeNotifier implements TelemetryAlertSink {
     final changed =
         value ? _sessionSilenced.add(deviceId) : _sessionSilenced.remove(deviceId);
     if (changed) notifyListeners();
+  }
+
+  /// Whether the detail-page banner for [deviceId] is collapsed right now
+  /// (design 0086).
+  ///
+  /// False as soon as anything is raised that was not raised when the user
+  /// collapsed — see [_bannerCollapsed] for why that is the rule and not a
+  /// plain flag.
+  bool isBannerCollapsed(String deviceId) {
+    final at = _bannerCollapsed[deviceId];
+    if (at == null) return false;
+    // Superset check, deliberately one-directional: something NEW reopens the
+    // banner; something clearing does not.
+    return eventsFor(deviceId).every((e) => at.contains(e.kind));
+  }
+
+  /// Collapse or expand the detail-page banner for [deviceId] (design 0086).
+  ///
+  /// Collapsing snapshots what is raised at that moment, which is what makes
+  /// [isBannerCollapsed] able to tell "the same warning" from "a new one".
+  void setBannerCollapsed(String deviceId, bool value) {
+    if (value) {
+      _bannerCollapsed[deviceId] =
+          eventsFor(deviceId).map((e) => e.kind).toSet();
+    } else if (_bannerCollapsed.remove(deviceId) == null) {
+      return;
+    }
+    notifyListeners();
   }
 
   // ---- the telemetry path -------------------------------------------------
@@ -360,9 +407,14 @@ class AlertController extends ChangeNotifier implements TelemetryAlertSink {
     // The per-event budget goes with it: a unit that reconnects still breaching
     // opens a NEW event with its full three notifications, rather than being
     // silenced on the strength of ones sent about a different connection.
-    final had = _events.isNotEmpty || _sessionSilenced.isNotEmpty;
+    final had = _events.isNotEmpty ||
+        _sessionSilenced.isNotEmpty ||
+        _bannerCollapsed.isNotEmpty;
     _events.clear();
     _sessionSilenced.clear();
+    // design 0086 Q2: collapsing the banner is a promise about THIS link, so it
+    // ends where the link does — same contract, same clearing point.
+    _bannerCollapsed.clear();
     if (had) notifyListeners();
   }
 

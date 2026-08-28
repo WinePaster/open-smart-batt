@@ -1557,5 +1557,22 @@
   "@alertsBannerUnsavedNote": {"description": "design 0080 ruling Q3 / §0.2.1: an unsaved unit is evaluated and DRAWN; only the notification is withheld."},
   "alertsBannerSilencedNote": "Notifications for this device are paused. The warning itself is still being tracked.",
   "alertsBannerGloballyOffNote": "Warning notifications are off in Settings. The warning itself is still being tracked.",
-  "alertsBannerOpen": "Warnings"
+  "alertsBannerOpen": "Warnings",
+  "alertsBannerUnsavedNoteBrief": "Your phone will not ring for this one. The warning itself is still tracked.",
+  "@alertsBannerUnsavedNoteBrief": {
+    "description": "design 0086 S3 — used INSTEAD of alertsBannerUnsavedNote when the unsaved card is already on screen right below, so the banner does not repeat 'this device is not saved'. It keeps only the part that card does not say: notifications are silent."
+  },
+  "alertsBannerCollapse": "Collapse",
+  "@alertsBannerCollapse": {
+    "description": "design 0086 — the X on the expanded detail-page warning banner. Collapses it to a single line; it is never a dismiss, the line stays on screen."
+  },
+  "alertsBannerExpand": "Show the warning in full",
+  "@alertsBannerExpand": {
+    "description": "design 0086 — accessibility label for the collapsed one-line banner, which is tappable."
+  },
+  "alertsBannerMore": "+{count}",
+  "@alertsBannerMore": {
+    "description": "design 0086 — appended to the collapsed banner when more than one warning is raised; count is the number NOT shown on the line.",
+    "placeholders": {"count": {"type": "String"}}
+  }
 }

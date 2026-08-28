@@ -70,13 +70,31 @@ class AlertEventBanner extends StatelessWidget {
     if (!settings.settings.alertsEnabled) {
       quietNote = l10n.alertsBannerGloballyOffNote;
     } else if (saved == null) {
-      quietNote = l10n.alertsBannerUnsavedNote;
+      // 🔵 design 0086 S3 — the brief form, because `_UnsavedNotice` is drawn
+      // directly below this and already says "not saved". The screenshot that started
+      // 0086 had that sentence twice on one screen. What the card does NOT say
+      // is that the phone stays silent, so that half is kept.
+      quietNote = l10n.alertsBannerUnsavedNoteBrief;
     } else if (!saved.alertEnabled ||
         saved.isMutedAt(now) ||
         alerts.isSessionSilenced(deviceId)) {
       quietNote = l10n.alertsBannerSilencedNote;
     } else {
       quietNote = null;
+    }
+
+    // 🔵 design 0086 — collapsed to one line, on the owner's ruling
+    // 「警告的那個block可以打Ｘ縮小 然後再點警告會跳出來」.
+    //
+    // 🔴 Collapsed is NOT dismissed, and that distinction is what keeps this
+    // compatible with design 0080 §5. The line stays where the block was —
+    // above the dashboard, outside its ListView, still carrying the danger
+    // colour — so 0080's premise ("people are not looking at the screen; a
+    // raised warning must not be something you scroll to find") is untouched.
+    // A version of this that removed the row, or moved it behind a bell in the
+    // title bar, would need that ruling overturned first (mockup option C).
+    if (alerts.isBannerCollapsed(deviceId)) {
+      return _collapsed(context, l10n, tele, events, alerts);
     }
 
     return IndustrialCard(
@@ -118,6 +136,18 @@ class AlertEventBanner extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 11.5, color: context.accent.accent)),
                 ),
+              // design 0086. 40x40 because that is this codebase's floor for an
+              // icon target (FB-70 is the entry that cost a user over a 14x14
+              // control) — see `kDetailTabBarHeight` for the same reasoning.
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 16),
+                color: context.colors.muted,
+                tooltip: l10n.alertsBannerCollapse,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => alerts.setBannerCollapsed(deviceId, true),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -141,6 +171,74 @@ class AlertEventBanner extends StatelessWidget {
                   fontSize: 11, height: 1.55, color: context.colors.muted),
             ),
         ],
+      ),
+    );
+  }
+
+  /// The collapsed form: one tappable line that still shows severity.
+  ///
+  /// Carries three things and nothing else — the colour (so it reads without
+  /// being read), the worst row (so it says *what*), and a `+n` when more than
+  /// one is raised (so collapsing never hides a count). Tapping anywhere on it
+  /// expands; there is no separate control, because the owner's words were
+  /// 「再點警告會跳出來」 — the warning itself is the target.
+  Widget _collapsed(
+    BuildContext context,
+    AppLocalizations l10n,
+    TelemetryController tele,
+    List<AlertEvent> events,
+    AlertController alerts,
+  ) {
+    final rest = events.length - 1;
+    return Semantics(
+      button: true,
+      label: l10n.alertsBannerExpand,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => alerts.setBannerCollapsed(deviceId, false),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppSemantics.danger.withValues(alpha: 0.12),
+            border: Border.all(
+                color: AppSemantics.danger.withValues(alpha: 0.42)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                    color: AppSemantics.danger, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _row(l10n, events.first, tele),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.mono(context)
+                      .copyWith(fontSize: 11.5, color: context.colors.text),
+                ),
+              ),
+              if (rest > 0) ...[
+                const SizedBox(width: 6),
+                Text(
+                  l10n.alertsBannerMore('$rest'),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppSemantics.danger),
+                ),
+              ],
+              const SizedBox(width: 6),
+              Icon(Icons.expand_more_rounded,
+                  size: 16, color: context.colors.muted),
+            ],
+          ),
+        ),
       ),
     );
   }

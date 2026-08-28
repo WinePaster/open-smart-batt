@@ -2536,4 +2536,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsBannerOpen => 'Warnings';
+
+  @override
+  String get alertsBannerUnsavedNoteBrief =>
+      'Your phone will not ring for this one. The warning itself is still tracked.';
+
+  @override
+  String get alertsBannerCollapse => 'Collapse';
+
+  @override
+  String get alertsBannerExpand => 'Show the warning in full';
+
+  @override
+  String alertsBannerMore(String count) {
+    return '+$count';
+  }
 }
