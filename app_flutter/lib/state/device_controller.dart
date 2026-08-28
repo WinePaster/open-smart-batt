@@ -82,6 +82,26 @@ class DeviceController extends ChangeNotifier {
     await load();
   }
 
+  /// Re-key the saved record [oldId] to [newId] — design 0077, FB-93.
+  ///
+  /// 🔴 **The caller must have verified identity on the wire first** (0077
+  /// §6.2). This method carries no check of its own; `DeviceRepo.rebind` says
+  /// what that costs.
+  ///
+  /// ⚠️ **The reload is not housekeeping, it is half the feature.** The scope
+  /// resolver wired in `AppServices` reads `deviceFor(id)?.formerIds` out of
+  /// this controller's in-memory list, so until [load] has run again the app
+  /// still believes the unit has no former ids — and its history stays
+  /// invisible, which is precisely the symptom FB-93 is about.
+  ///
+  /// Returns whether anything was written; false means a precondition was
+  /// stale (see the repo).
+  Future<bool> rebind(String oldId, String newId) async {
+    final ok = await _repo.rebind(oldId, newId);
+    if (ok) await load();
+    return ok;
+  }
+
   /// Update last-seen / last-value meta for [id] (no-op if not saved).
   Future<void> touch(String id, {DateTime? lastSeen, double? lastValue}) async {
     if (!isSaved(id)) return;

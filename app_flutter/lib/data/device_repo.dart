@@ -181,4 +181,84 @@ class DeviceRepo {
 
   /// True if [id] is already saved.
   Future<bool> isSaved(String id) async => (await getDevice(id)) != null;
+
+  /// Re-key the saved record [oldId] to [newId] — design 0077, FB-93.
+  ///
+  /// 🔴 **Irreversible, and the caller owns the decision.** This method does no
+  /// identity checking whatsoever: the six preconditions (0077 §6.2) live in
+  /// `ConnectionController`, where the wire evidence is, and they include the
+  /// only one that matters — the unit reported a hardware address on the link
+  /// and it matched the one we had stored. Calling this without them is how
+  /// FB-25 happens: one unit's history, alias and home tiles moved onto
+  /// another, permanently.
+  ///
+  /// ## What moves, and why it is one transaction
+  ///
+  /// Three things carry the id, and a partial write leaves the app in a state
+  /// no code path expects (0077 §6.4):
+  ///
+  ///  * the record itself — the old id is appended to `former_ids`, which is
+  ///    what keeps its history reachable under path A (see
+  ///    `device_id_aliases.dart`);
+  ///  * every home tile pinned to it — miss these and the user's home page
+  ///    silently loses cards, or resets;
+  ///  * the pending auto-connect arm, if it happens to name this unit.
+  ///
+  /// `history` / `diag_log` / `device_facts` are deliberately NOT touched
+  /// (Q3/Q4/Q5). Path A reads them through the widened scope instead; moving
+  /// them would mean a write of every row a long-lived unit ever produced,
+  /// under a lock, for no visible gain.
+  ///
+  /// Returns false and writes nothing when [newId] already has a row (R5) or
+  /// [oldId] has none — both are "the caller's preconditions were stale", and
+  /// a throw would turn a race into a crash on a path that runs during a
+  /// connection.
+  Future<bool> rebind(String oldId, String newId) async {
+    if (oldId == newId) return false;
+    return _db.transaction<bool>((txn) async {
+      final rows = await txn.query(Db.tableSavedDevices,
+          where: 'id IN (?, ?)', whereArgs: [oldId, newId]);
+      final existing = {for (final r in rows) r['id'] as String: r};
+      if (!existing.containsKey(oldId) || existing.containsKey(newId)) {
+        return false;
+      }
+      final old = SavedDevice.fromMap(existing[oldId]!);
+
+      // The record. `former_ids` gains the id being retired, in order, so the
+      // scope helpers can find rows written under any of them.
+      await txn.update(
+        Db.tableSavedDevices,
+        {
+          'id': newId,
+          'former_ids': <String>[...old.formerIds, oldId].join(','),
+        },
+        where: 'id = ?',
+        whereArgs: [oldId],
+      );
+
+      // The home layout. Stored as one JSON blob on the settings row, so this
+      // is a read-modify-write — inside the same transaction precisely because
+      // it is.
+      final settingsRows = await txn.query(Db.tableSettings,
+          columns: ['home_layout'],
+          where: 'id = ?',
+          whereArgs: [Db.settingsRowId]);
+      if (settingsRows.isNotEmpty) {
+        final layout = HomeLayout.decode(settingsRows.first['home_layout']);
+        if (layout != null && layout.tiles.any((t) => t.deviceId == oldId)) {
+          final moved = HomeLayout([
+            for (final t in layout.tiles)
+              t.deviceId == oldId ? t.copyWith(deviceId: newId) : t,
+          ]);
+          await txn.update(Db.tableSettings, {'home_layout': moved.encode()},
+              where: 'id = ?', whereArgs: [Db.settingsRowId]);
+        }
+      }
+
+      // The pending arm, if it names this unit. 0 or 1 rows by construction.
+      await txn.update(Db.tableAutoConnectArm, {'device_id': newId},
+          where: 'device_id = ?', whereArgs: [oldId]);
+      return true;
+    });
+  }
 }

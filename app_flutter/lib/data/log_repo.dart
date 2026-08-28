@@ -15,12 +15,17 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
 import 'app_database.dart';
+import 'device_id_aliases.dart';
 
 /// Append-only-ish log with size-based rotation over the `diag_log` table.
 class LogRepo {
   LogRepo(this._db);
 
   final Database _db;
+
+  /// design 0077 path A (FB-93) — see `device_id_aliases.dart`. Wired by the
+  /// composition root, null until then.
+  DeviceIdAliases? idAliases;
 
   /// Fixed per-row overhead (bytes) approximating timestamp + direction +
   /// separators when rendered via [LogEntry.toLogLine], used for rotation math.
@@ -129,8 +134,17 @@ class LogRepo {
     final clauses = <String>[];
     final args = <Object?>[];
     if (deviceId != null) {
-      clauses.add('device_id = ?');
-      args.add(deviceId);
+      // design 0077 path A (FB-93) — the same widening as
+      // `history_repo._scope`, and it has to be the same or a rebound unit's
+      // diagnostic log and its history would disagree about which rows are
+      // hers. `scopeIdsFor` is shared for exactly that reason.
+      final ids = scopeIdsFor(deviceId, idAliases);
+      if (ids.length == 1) {
+        clauses.add('device_id = ?');
+      } else {
+        clauses.add('device_id IN (${List.filled(ids.length, '?').join(',')})');
+      }
+      args.addAll(ids);
     }
     if (sessionId != null) {
       clauses.add('session_id = ?');

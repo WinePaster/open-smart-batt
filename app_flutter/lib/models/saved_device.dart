@@ -80,6 +80,22 @@ class SavedDevice {
   /// fabricated), and for classes that carry none (power banks).
   final String? serial;
 
+  /// The BLE ids this record used to be keyed by, oldest first (design 0077 Q7,
+  /// FB-93). Empty for every record that has never been rebound, which is all
+  /// of them on Android — there an id IS the MAC and never changes.
+  ///
+  /// 🔴 **Read by the two `_scope` helpers, not just by a human.** Path A
+  /// (Q3/Q4) leaves `history` and `diag_log` keyed by whatever id was dialled
+  /// when the rows were written, so after a rebind the only way back to them is
+  /// this list. An empty list here is indistinguishable from "this unit has no
+  /// past", and after a rebind that would be a lie the app cannot detect.
+  ///
+  /// ⚠️ **Append-only, and never contains the current [id].** The rebind writes
+  /// the OLD id here in the same transaction that puts the new one in [id]; a
+  /// list that also held the current id would make every scope query name it
+  /// twice, which is harmless today and confusing the moment someone counts.
+  final List<String> formerIds;
+
   /// What the OWNER says this unit is (design 0066), in its own seven columns.
   ///
   /// 🔴 **This is not a second opinion about [productClass] and must never be
@@ -174,6 +190,7 @@ class SavedDevice {
     this.displayLayout = DisplayLayout.defaults,
     this.mac,
     this.serial,
+    this.formerIds = const <String>[],
     this.declared = DeclaredModel.none,
     this.alertEnabled = true,
     this.alertOv,
@@ -200,6 +217,7 @@ class SavedDevice {
     DisplayLayout? displayLayout,
     String? mac,
     String? serial,
+    List<String>? formerIds,
     DeclaredModel? declared,
     bool? alertEnabled,
     double? alertOv,
@@ -222,6 +240,7 @@ class SavedDevice {
         displayLayout: displayLayout ?? this.displayLayout,
         mac: mac ?? this.mac,
         serial: serial ?? this.serial,
+        formerIds: formerIds ?? this.formerIds,
         // Clearing works by passing [DeclaredModel.none], which is a real value
         // rather than null — so this one field needs none of the `clearX` flags
         // the settings model has to carry. See `declared_device_model.dart`.
@@ -259,6 +278,10 @@ class SavedDevice {
         // distinct from "known to be blank".
         'mac': mac,
         'serial': serial,
+        // design 0077 v23. Empty list stores as NULL, not '' — "never rebound"
+        // and "rebound to nothing" are not states that both exist, and NULL is
+        // what every pre-v23 row already reads back as.
+        'former_ids': formerIds.isEmpty ? null : formerIds.join(','),
         // design 0066 v20 — seven nullable columns, spread from one value
         // object. 🔴 They are written even when empty, and that is the point of
         // routing them through `toMap`: `upsertSavedDevice` is an INSERT OR
@@ -303,6 +326,15 @@ class SavedDevice {
         // Absent column (pre-v11) or NULL both read back as null — see toMap.
         mac: m['mac'] as String?,
         serial: m['serial'] as String?,
+        // Absent column (pre-v23), NULL and '' all read back as empty — the
+        // `where` drops the stray empty segment a trailing comma would leave,
+        // so a malformed value degrades to "fewer ids" rather than to a scope
+        // query with an empty string in its IN list (which would match the
+        // rows whose device_id was never set at all).
+        formerIds: ((m['former_ids'] as String?) ?? '')
+            .split(',')
+            .where((e) => e.isNotEmpty)
+            .toList(growable: false),
         // Absent columns (pre-v20) and NULLs both read back as
         // [DeclaredModel.none] — "the owner has not answered", which is the
         // truth about every row that existed before this shipped (M7).
