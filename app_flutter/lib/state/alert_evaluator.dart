@@ -65,7 +65,9 @@ library;
 import 'package:clock/clock.dart';
 
 import '../models/alert_thresholds.dart';
+import '../models/product_class.dart';
 import '../models/telemetry_sample.dart';
+import '../protocol/selectors.dart';
 
 export '../models/alert_thresholds.dart';
 
@@ -376,8 +378,33 @@ class AlertEvaluator {
     final now = clock.now();
     final suppression = gate.evaluate(now: now);
     final out = <AlertEmission>[];
+    final selfChecking = _inCapacitorSelfCheck(sample);
 
     for (final kind in AlertKind.values) {
+      // 🔵 **FB-102 (2), and it is a SUPPRESSION, so read why before widening
+      // it.** A super-capacitor running its self-check reports voltages far
+      // below its resting value — one field capture sat at 5.83 V on a unit
+      // whose under-voltage limit is 11.47 — and a user was duly notified
+      // 「欠壓・目前 5.73 V，門檻 11.47 V，已持續 3 分」 about a unit that was
+      // working. The reading is real; what is false is calling it a fault,
+      // because every threshold it is compared against was set for a unit that
+      // is not being checked.
+      //
+      // Scoped as narrowly as the defect: VOLTAGE only (temperature is not
+      // disturbed by the check, and an over-temperature during one is still an
+      // over-temperature), and only on a unit whose class we positively read as
+      // a super-capacitor. A unit we could not classify keeps its alerts —
+      // erring LOUD is the right direction for an alarm, and the byte pair this
+      // turns on is outside the pack code space anyway, so no battery can reach
+      // this branch.
+      //
+      // Reset rather than merely skip: an event already open when the check
+      // starts must close, or the banner would keep showing a warning that
+      // nothing is feeding any more.
+      if (selfChecking && kind.isVoltage) {
+        _states[deviceId]?[kind]?.reset();
+        continue;
+      }
       final threshold = thresholds[kind];
       // Layer ④, or a frame that says nothing about this quantity. Both leave
       // the machine exactly as it was — see the library comment.
@@ -420,6 +447,18 @@ class AlertEvaluator {
   /// Forget every unit. For a full teardown; same no-emission contract as
   /// [clearDevice].
   void clearAll() => _states.clear();
+
+  /// Is this frame from a super-capacitor that is in its self-check phase?
+  ///
+  /// Both halves are required. [CapacitorStatus.isSelfCheck] is the single
+  /// source of the byte pair — shared with the status badge and with the
+  /// button's own gate, so the screen and the alarm cannot drift apart about
+  /// whether a unit is busy — and the class check keeps the suppression away
+  /// from every unit whose device-type byte we have not positively read.
+  static bool _inCapacitorSelfCheck(TelemetrySample sample) =>
+      ProductClass.fromDeviceType(sample.deviceType) ==
+          ProductClass.supercapacitor &&
+      CapacitorStatus.isSelfCheck(sample.mode);
 
   /// Is [reading] past [limit] in the direction [kind] cares about?
   ///

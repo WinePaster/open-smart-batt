@@ -128,9 +128,43 @@ void main() {
           CapacitorHealth.healthy);
     });
 
+    // 🔵 FB-102 (1). `0x06` / `0x07` used to be in the list below, and that is
+    // exactly the defect: a unit sitting in its self-check was badged
+    // 「無法辨識」 in amber and its owner was told to export a diagnostic log
+    // about a unit that was working. They are a MODE, not a fault code.
+    test('the self-check bytes are named, not filed as unknown', () {
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckStarting),
+          CapacitorHealth.selfCheck);
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
+          CapacitorHealth.selfCheck);
+      // Not symbolic only: the two numbers ARE the fix, and a symbolic-only
+      // assertion would still pass if someone renumbered them.
+      expect(CapacitorStatus.selfCheckStarting, 0x06);
+      expect(CapacitorStatus.selfCheckRunning, 0x07);
+      expect(capacitorHealthOf(0x06), CapacitorHealth.selfCheck);
+      expect(capacitorHealthOf(0x07), CapacitorHealth.selfCheck);
+    });
+
+    test('isSelfCheck is the single source of that two-value set', () {
+      expect(CapacitorStatus.isSelfCheck(0x06), isTrue);
+      expect(CapacitorStatus.isSelfCheck(0x07), isTrue);
+      for (final b in [null, 0, 1, 2, 5, 8, 0x0A, 0xFF]) {
+        expect(CapacitorStatus.isSelfCheck(b), isFalse,
+            reason: 'byte $b is not a self-check byte');
+      }
+    });
+
+    test('self-check is NOT a health verdict', () {
+      // It says "busy", never "well" — the badge must not render it as good.
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
+          isNot(CapacitorHealth.healthy));
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
+          isNot(CapacitorHealth.unknown));
+    });
+
     test('any other byte is UNKNOWN, never guessed at', () {
       // We hold no captured fault sample, so nothing else may be named.
-      for (final b in [0, 2, 4, 6, 7, 10, 0xFF]) {
+      for (final b in [0, 2, 4, 8, 10, 0xFF]) {
         expect(capacitorHealthOf(b), CapacitorHealth.unknown,
             reason: 'byte $b must not be named');
       }
@@ -150,6 +184,13 @@ void main() {
       ReportedStatus.cutOffActive,
     };
     expect(packCodes.contains(CapacitorStatus.healthy), isFalse);
+    // The two named 2026-08-28 have to clear the same bar, and this is the
+    // reason the under-voltage suppression can key on the byte at all: no
+    // battery state can reach it.
+    expect(packCodes.contains(CapacitorStatus.selfCheckStarting), isFalse);
+    expect(packCodes.contains(CapacitorStatus.selfCheckRunning), isFalse);
+    expect(packRunModeOf(CapacitorStatus.selfCheckStarting), isNull);
+    expect(packRunModeOf(CapacitorStatus.selfCheckRunning), isNull);
   });
 
   // =========================================================================
@@ -236,7 +277,7 @@ void main() {
       expect(find.text('Normal'), findsOneWidget);
     });
 
-    testWidgets('an unrecognised byte says so in plain language, no hex',
+    testWidgets('FB-102: the self-check byte is NOT reported as unrecognised',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -245,7 +286,44 @@ void main() {
       });
 
       await pumpUnder(tester, s, const CapacitorControls());
-      await emitMode(tester, 7);
+      await emitMode(tester, CapacitorStatus.selfCheckRunning);
+
+      // The exact symptom in the field report: an amber 「無法辨識」 badge and
+      // an advisory asking the owner to export a log, on a working unit.
+      expect(find.text('Unrecognised'), findsNothing);
+      expect(find.textContaining('diagnostic log'), findsNothing);
+      expect(find.text('Self-check'), findsOneWidget);
+      // Still no raw byte on screen — the fix is a name, not a hex dump.
+      expect(find.textContaining('0x'), findsNothing);
+    });
+
+    testWidgets('FB-102: the read-back byte 0x06 reads the same way',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const CapacitorControls());
+      await emitMode(tester, CapacitorStatus.selfCheckStarting);
+
+      expect(find.text('Self-check'), findsOneWidget);
+      expect(find.text('Unrecognised'), findsNothing);
+    });
+
+    testWidgets('a genuinely unrecognised byte still says so, no hex',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpUnder(tester, s, const CapacitorControls());
+      // 0x0A: outside both code spaces and outside the self-check pair, so the
+      // honest answer is still "we do not know what this is".
+      await emitMode(tester, 0x0A);
 
       expect(find.text('Unrecognised'), findsOneWidget);
       // The readers of this screen are vehicle owners: no raw byte on screen.

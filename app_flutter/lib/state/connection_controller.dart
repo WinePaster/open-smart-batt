@@ -1982,6 +1982,25 @@ class ConnectionController extends ChangeNotifier {
           {required int cb, required int pwSum}) =>
       _ble.switchMode(mode, cb: cb, pwSum: pwSum);
 
+  /// Start a super-capacitor's self-check: `0x23` <- `0x06` bundled with auth,
+  /// in one 15-byte write (design 0082 Q1 / Q4).
+  ///
+  /// Named rather than left to [switchMode] for the same reason [releaseCutOff]
+  /// is: this is the app's second outbound command that changes device state,
+  /// and a named method is what a reviewer can grep for. The caller
+  /// (`capacitorSelfCheck` in `ui/dashboard/status_controls_shared.dart`) owns
+  /// the class gate and the user confirmation.
+  ///
+  /// 🔴 **There is deliberately NO counterpart that writes the unit back to
+  /// [CapacitorStatus.healthy]** (owner's ruling, 2026-08-28). The app does not
+  /// take a device out of self-check — not on a timer, not on give-up, not at
+  /// all. Whether writing `0x05` interrupts a check that is still running is
+  /// not something we know, and the conservative answer while it is unknown is
+  /// to leave the device alone. The accepted cost is stated where the caller
+  /// gives up: the unit may still be in self-check, and we say so.
+  Future<void> capacitorSelfCheck({required int cb, required int pwSum}) =>
+      _ble.switchMode(ModeArg.capacitorSelfCheck, cb: cb, pwSum: pwSum);
+
   /// EXPERIMENTAL — send ONLY the mode sub-frame, skipping the auth frame.
   /// Unproven: the device MAY ignore commands without auth. Provided as a
   /// car-side fallback to test whether auth is actually required.
@@ -3127,6 +3146,10 @@ class ConnectionController extends ChangeNotifier {
     if (_packLabel != ProductClass.supercapacitor) return;
     final mode = s.mode;
     if (mode == null || mode == CapacitorStatus.healthy) return;
+    // FB-102. The self-check bytes are NAMED now, so they are not leads and
+    // must not be filed as "not recognised" — that line in an exported log is
+    // what sent a working unit's owner looking for a fault.
+    if (CapacitorStatus.isSelfCheck(mode)) return;
     if (!_loggedUnknownStatus.add(mode)) return;
     _event('capacitor status byte not recognised: 0x'
         '${mode.toRadixString(16).toUpperCase().padLeft(2, '0')} '

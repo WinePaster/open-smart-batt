@@ -398,6 +398,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusBadgeCapacitorUnknown => 'Unrecognised';
 
   @override
+  String get statusBadgeCapacitorSelfCheck => 'Self-check';
+
+  @override
   String get statusBadgeCutOffOn => 'On';
 
   @override
@@ -415,17 +418,38 @@ class AppLocalizationsEn extends AppLocalizations {
       'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.';
 
   @override
-  String get capacitorCheckNoData =>
-      'No capacitor readings yet; please wait for live data to update.';
+  String get statusAdvisoryCapacitorSelfCheck =>
+      'A self-check is running. While it runs the unit\'s voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.';
 
   @override
-  String capacitorCheckReadout(String soh, String svlt, String pvlt) {
-    return 'SOH $soh% · Secondary Voltage $svlt V · Primary Voltage $pvlt V';
-  }
+  String get capacitorSelfCheckDialogTitle => 'Start capacitor self-check';
 
   @override
-  String capacitorCheckSnack(String msg) {
-    return 'Capacitor check: $msg';
+  String get capacitorSelfCheckDialogBody =>
+      'This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor\'s voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nDo not do this while the vehicle is depending on this unit to start.';
+
+  @override
+  String get capacitorSelfCheckDialogConfirm => 'I understand — start it';
+
+  @override
+  String get capacitorSelfCheckNotReady =>
+      'This unit has not sent the details needed to authorise the command yet. Please wait a moment and try again.';
+
+  @override
+  String get capacitorSelfCheckDoneSnack =>
+      'Self-check finished — the unit reports normal again.';
+
+  @override
+  String get capacitorSelfCheckStillRunningSnack =>
+      'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.';
+
+  @override
+  String get capacitorSelfCheckNoResponseSnack =>
+      'The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.';
+
+  @override
+  String capacitorSelfCheckFailedSnack(String error) {
+    return 'Could not send the self-check command: $error';
   }
 
   @override

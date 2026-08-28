@@ -266,30 +266,24 @@
   "statusBadgeRunModeLabel": "Run Mode",
   "statusBadgeCapacitorLabel": "Capacitor Status",
   "statusBadgeCapacitorUnknown": "Unrecognised",
+  "statusBadgeCapacitorSelfCheck": "Self-check",
   "statusBadgeCutOffOn": "On",
   "statusBadgeCutOffOff": "Off",
   "controlDetectCapacitor": "Check Capacitor",
   "statusAdvisoryCapacitorUnknown": "This unit is reporting a status this app does not recognise. It may be normal. Please export the diagnostic log (Settings) and send it to us — the log carries the detail we need.",
   "statusAdvisoryThresholdBreach": "A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.",
-  "capacitorCheckNoData": "No capacitor readings yet; please wait for live data to update.",
-  "capacitorCheckReadout": "SOH {soh}% · Secondary Voltage {svlt} V · Primary Voltage {pvlt} V",
-  "@capacitorCheckReadout": {
+  "statusAdvisoryCapacitorSelfCheck": "A self-check is running. While it runs the unit's voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.",
+  "capacitorSelfCheckDialogTitle": "Start capacitor self-check",
+  "capacitorSelfCheckDialogBody": "This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor's voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nDo not do this while the vehicle is depending on this unit to start.",
+  "capacitorSelfCheckDialogConfirm": "I understand — start it",
+  "capacitorSelfCheckNotReady": "This unit has not sent the details needed to authorise the command yet. Please wait a moment and try again.",
+  "capacitorSelfCheckDoneSnack": "Self-check finished — the unit reports normal again.",
+  "capacitorSelfCheckStillRunningSnack": "The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.",
+  "capacitorSelfCheckNoResponseSnack": "The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.",
+  "capacitorSelfCheckFailedSnack": "Could not send the self-check command: {error}",
+  "@capacitorSelfCheckFailedSnack": {
     "placeholders": {
-      "soh": {
-        "type": "String"
-      },
-      "svlt": {
-        "type": "String"
-      },
-      "pvlt": {
-        "type": "String"
-      }
-    }
-  },
-  "capacitorCheckSnack": "Capacitor check: {msg}",
-  "@capacitorCheckSnack": {
-    "placeholders": {
-      "msg": {
+      "error": {
         "type": "String"
       }
     }

@@ -1,14 +1,29 @@
 /// OpenSmartBatt — release cut-off auth dialog (mockup 解除斷電 flow).
 ///
-/// The documented-safe action is `switchMode(release=0x06)` paired with an auth
-/// frame built from per-device runtime inputs: a `cb` derived from the dealer
-/// code (selector 0x27) and a `pwSum` = 16-bit checksum of the cut-off password
-/// (PROTOCOL.md). Those values are redacted/unknown and must be entered by the
-/// user, so this dialog collects them and derives [AuthCredentials] locally.
+/// The release writes mode `0x00` (`ModeArg.unlock`) paired with an auth frame
+/// built from per-device runtime inputs: a `cb` derived from the dealer code
+/// (selector 0x27) and a `pwSum` = 16-bit checksum of the cut-off password
+/// (PROTOCOL.md). This dialog is the MANUAL fallback for both of those values —
+/// the normal path derives them without asking (`releaseAuthFromDealerCode`) —
+/// so it collects them and derives [AuthCredentials] locally.
 ///
-/// SAFETY: only release (mode 0x06) is sent by callers of this dialog; we never
-/// auto-send other mode codes. The copy reproduces the mockup's "do not re-lock"
-/// warning.
+/// 🔴 **Both sentences here were wrong until 2026-08-28, and specifically
+/// wrong.** They said "the documented-safe action is
+/// `switchMode(release=0x06)`" and "SAFETY: only release (mode 0x06) is sent by
+/// callers of this dialog". Neither held:
+///   * what is actually sent is `ModeArg.unlock` = **`0x00`**
+///     (`ConnectionController.releaseCutOff`);
+///   * `0x06` is not a battery code at all — it starts a SUPER-CAPACITOR's
+///     self-check ([ModeArg.capacitorSelfCheck]), and a capacitor is excluded
+///     from `hasCutOff`, so it can never reach this dialog.
+/// That is the 2026-07-30 misread leaving one last fossil in a file about
+/// safety. Corrected, not deleted, so the next reader can see which claim was
+/// retired.
+///
+/// SAFETY (as it actually stands): callers of this dialog send `0x00`
+/// (release), `0x02` (cut-off) or `0x01` (anti-theft) — never anything else,
+/// and each gates its own code before opening this. The copy reproduces the
+/// mockup's "do not re-lock" warning.
 library;
 
 import 'package:flutter/material.dart';

@@ -45,15 +45,32 @@ void main() {
       expect(c.copyWith(antiTheftOverride: false).hasAntiTheft, isFalse);
     });
 
-    test('unknown: bounded fallback = union EXCEPT anti-theft (§3.3)', () {
+    test('unknown: bounded fallback = 解除斷電 only (§3.3, design 0082 Q8)', () {
       final c = DeviceCapabilities.fromClass(ProductClass.unknown);
       expect(c, DeviceCapabilities.unknown);
       expect(c.isPowerBank, isFalse);
-      expect(c.isCapacitor, isTrue); // 檢測電容 shown
+      // 🔵 CHANGED 2026-08-28, and the change is the point of the test.
+      // 檢測電容 used to be in this fallback because it sent nothing at all;
+      // design 0082 Q1 made it a real `0x23` <- `0x06` write, and the whole
+      // justification for erring lenient here is that NOTHING in the fallback
+      // can change a device's state. So the control left the fallback rather
+      // than the argument being softened to keep it.
+      expect(c.isCapacitor, isFalse); // 檢測電容 NOT shown
       expect(c.hasCutOff, isTrue); //  解除斷電 shown
       expect(c.hasAntiTheft, isFalse); // 防盜 never in the fallback
       // The override cannot force anti-theft on an unclassified pack.
       expect(c.copyWith(antiTheftOverride: true).hasAntiTheft, isFalse);
+    });
+
+    test('no unclassified unit can be handed a state-changing write', () {
+      // The invariant behind the fallback, stated as an invariant rather than
+      // as three separate expectations that could each be relaxed alone:
+      // the only control the unknown class gets is the release, and the
+      // release is auth-gated and moves a pack TOWARD running.
+      final c = DeviceCapabilities.fromClass(ProductClass.unknown);
+      expect(c.isCapacitor, isFalse);
+      expect(c.hasAntiTheft, isFalse);
+      expect(c.copyWith(antiTheftOverride: true).isCapacitor, isFalse);
     });
   });
 

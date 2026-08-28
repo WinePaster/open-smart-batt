@@ -190,7 +190,7 @@ void main() {
       expect(find.text('Check Capacitor'), findsNothing);
     });
 
-    testWidgets('unclassified pack → bounded fallback (union minus anti-theft)',
+    testWidgets('unclassified pack → bounded fallback (release only)',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -203,8 +203,10 @@ void main() {
 
       expect(find.byType(CapacitorView), findsNothing);
       expect(find.byType(BatteryView), findsNothing);
-      // Union of pack controls EXCEPT anti-theft — the bounded fallback.
-      expect(find.text('Check Capacitor'), findsOneWidget);
+      // 🔵 The bounded fallback is 復電 alone since 2026-08-28 (design 0082
+      // Q8). 檢測電容 sends `0x23` <- `0x06` now, and the fallback's licence to
+      // err lenient is precisely that nothing in it changes device state.
+      expect(find.text('Check Capacitor'), findsNothing);
       expect(find.text('Restore Power'), findsOneWidget);
       expect(find.text('Anti-theft'), findsNothing);
     });
@@ -269,10 +271,9 @@ void main() {
 
       await pumpUnder(tester, s, const PackControls());
 
-      // This body legitimately OFFERS both classes' controls — that is what
-      // "bounded union" means — so the check here is narrower: it may hand you
-      // a capacitor button, but it may never assert which class the unit is.
-      expect(find.text('Check Capacitor'), findsOneWidget);
+      // This body offers the release — that is what is left of the "bounded
+      // union" after design 0082 Q8 — so the check here is narrower: it hands
+      // you an escape hatch, but it may never assert which class the unit is.
       expect(find.text('Restore Power'), findsOneWidget);
       expect(
           find.textContaining(
