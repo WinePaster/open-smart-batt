@@ -283,6 +283,99 @@ void main() {
     });
   });
 
+  group('E5 — design 0087: the unreachable run is a latch, not a last error', () {
+    late AppDatabase db;
+    late AppServices services;
+    late _StubBle ble;
+
+    setUp(() async {
+      db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      ble = _StubBle();
+      services = await AppServices.create(appDatabase: db, ble: ble);
+      ble.emitAdapter(BluetoothAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    });
+
+    tearDown(() async => services.dispose());
+
+    /// One attempt that never reaches the link. `StateError` classifies as
+    /// `connect_failed` off iOS — one of the three codes 0087 §3.4 counts.
+    Future<void> failToReach(ConnectionController conn, String id) async {
+      ble.failWith = StateError('GATT 133');
+      await expectLater(conn.connect(id), throwsA(isA<StateError>()));
+    }
+
+    test('🔴 the defect: repeated attempts used to accumulate into nothing',
+        () async {
+      final conn = services.connection;
+      await failToReach(conn, 'DEV-A');
+      await failToReach(conn, 'DEV-A');
+      expect(conn.isUnreachableRunFor('DEV-A'), isFalse,
+          reason: 'two is not a run');
+      expect(conn.reachFailuresFor('DEV-A'), 2);
+
+      await failToReach(conn, 'DEV-A');
+      expect(conn.isUnreachableRunFor('DEV-A'), isTrue,
+          reason: 'THE WHOLE OF FB-58 — before 0087 this stayed at zero '
+              'forever, because the setup counter only moves for an attempt '
+              'that got as far as `connected`');
+    });
+
+    test('🔑 retrying the SAME unit does not wipe the run', () async {
+      // This is what `lastError` alone could never do: `connect()` clears the
+      // error every time, so the give-up card vanished under the user's thumb.
+      final conn = services.connection;
+      for (var i = 0; i < ConnectionController.maxReachFailures; i++) {
+        await failToReach(conn, 'DEV-A');
+      }
+      expect(conn.isUnreachableRunFor('DEV-A'), isTrue);
+      await failToReach(conn, 'DEV-A'); // a fourth manual retry
+      expect(conn.isUnreachableRunFor('DEV-A'), isTrue,
+          reason: 'the latch survives the retry that cleared lastError');
+    });
+
+    test('switching unit clears it — the run belonged to that unit', () async {
+      final conn = services.connection;
+      for (var i = 0; i < ConnectionController.maxReachFailures; i++) {
+        await failToReach(conn, 'DEV-A');
+      }
+      expect(conn.isUnreachableRunFor('DEV-A'), isTrue);
+
+      ble.failWith = null;
+      await conn.connect('DEV-B');
+      expect(conn.isUnreachableRunFor('DEV-A'), isFalse);
+      expect(conn.isUnreachableRunFor('DEV-B'), isFalse);
+    });
+
+    test('⛔ a radio refusal never latches it (§3.4)', () async {
+      final conn = services.connection;
+      ble.emitAdapter(BluetoothAdapterState.off);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      for (var i = 0; i < ConnectionController.maxReachFailures + 2; i++) {
+        await conn.connect('DEV-A'); // refusals RETURN, they do not throw
+      }
+      expect(conn.isUnreachableRunFor('DEV-A'), isFalse,
+          reason: 'the card says "check it is nearby and powered" — three '
+              'things nobody can do with the radio off');
+      expect(conn.reachFailuresFor('DEV-A'), 0);
+    });
+
+    test('the run is one unit\'s, like every other failure fact (FB-86)',
+        () async {
+      final conn = services.connection;
+      for (var i = 0; i < ConnectionController.maxReachFailures; i++) {
+        await failToReach(conn, 'DEV-A');
+      }
+      expect(conn.isUnreachableRunFor('DEV-B'), isFalse);
+      expect(conn.reachFailuresFor('DEV-B'), 0);
+    });
+  });
+
+
   group('E4 — forgetting attribution cannot be cheap', () {
     /// Every per-unit fact the controller holds, and the bare read that used to
     /// be available for it.

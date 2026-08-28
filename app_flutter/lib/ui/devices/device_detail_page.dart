@@ -1148,6 +1148,9 @@ class _OfflineBody extends StatelessWidget {
       autoConnectArmed: mine && conn.isAutoConnectArmed,
       setupStalled: conn.isSetupStalledFor(deviceId),
       setupFailures: conn.setupFailuresFor(deviceId),
+      // design 0087 — scoped, like everything else on this page (FB-86).
+      unreachableRun: conn.isUnreachableRunFor(deviceId),
+      reachFailures: conn.reachFailuresFor(deviceId),
       reconnectAttempts: conn.reconnectAttempts,
     );
 

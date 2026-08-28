@@ -2538,6 +2538,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsBannerOpen => 'Warnings';
 
   @override
+  String get disconnectedUnreachableRunTitle => 'Cannot find this unit';
+
+  @override
+  String disconnectedUnreachableRunBody(int count) {
+    return '$count attempts in a row could not reach it.';
+  }
+
+  @override
+  String get disconnectedUnreachableRunHint =>
+      'Check that it is nearby and still powered. If it has been moved, walk closer and try again.';
+
+  @override
   String get alertsBannerUnsavedNoteBrief =>
       'Your phone will not ring for this one. The warning itself is still tracked.';
 
