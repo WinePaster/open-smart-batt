@@ -204,21 +204,50 @@ void main() {
       }
     });
 
-    test('clearing stays GLOBAL — a fresh connect elsewhere ends the old '
-        'failure', () async {
+    // 🔴 REWRITTEN 2026-08-28 (design 0088, FB-87 ④, owner ruled "b").
+    //
+    // THIS TEST USED TO ASSERT THE OPPOSITE, and the old reason is kept here
+    // because it was not wrong, it was half of a real tension:
+    //
+    //   "recording is per-unit, clearing is not: the user has moved on, and a
+    //    failure they can no longer act on must not be kept alive under
+    //    another unit's name"
+    //
+    // The other half was in `_clearError()`'s own comment: a narrower clear
+    // without multi-slot storage would strand errors nothing could reach. Both
+    // were true; what settled it is that "under another unit's name" stopped
+    // being possible when FB-86 moved attribution into the value (v0.7.24).
+    // A's failure now surfaces ONLY on A's screen — which is where it belongs,
+    // because it is still true — and it no longer blocks B's automatic connect.
+    test('🔑 FB-87 ④ — connecting to B no longer wipes A\'s failure', () async {
+      final conn = services.connection;
+      ble.failWith = StateError('GATT 133');
+      await expectLater(conn.connect('DEV-A'), throwsA(isA<StateError>()));
+      final aCode = conn.lastErrorFor('DEV-A');
+      expect(aCode, isNotNull);
+
+      ble.failWith = null;
+      await conn.connect('DEV-B');
+
+      expect(conn.lastErrorFor('DEV-A'), aCode,
+          reason: 'THE DEFECT, STATED — A really did fail, and nothing that '
+              'happened to B made that untrue');
+      expect(conn.lastErrorFor('DEV-B'), isNull,
+          reason: 'and B, which did not fail, still says nothing');
+    });
+
+    test('retrying the SAME unit does clear it — that is the event that counts',
+        () async {
       final conn = services.connection;
       ble.failWith = StateError('GATT 133');
       await expectLater(conn.connect('DEV-A'), throwsA(isA<StateError>()));
       expect(conn.lastErrorFor('DEV-A'), isNotNull);
 
       ble.failWith = null;
-      await conn.connect('DEV-B');
-
+      await conn.connect('DEV-A');
       expect(conn.lastErrorFor('DEV-A'), isNull,
-          reason: 'recording is per-unit, clearing is not: the user has moved '
-              'on, and a failure they can no longer act on must not be kept '
-              'alive under another unit\'s name');
-      expect(conn.lastErrorUnattributed, isNull);
+          reason: 'design 0088 §3 #3 — every stored failure has an event that '
+              'reaches it, which is what the old single slot could not offer');
     });
   });
 
@@ -282,6 +311,88 @@ void main() {
       }
     });
   });
+
+  group('E6 — design 0088: four clear points, four different events', () {
+    late AppDatabase db;
+    late AppServices services;
+    late _StubBle ble;
+
+    setUp(() async {
+      db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      ble = _StubBle();
+      services = await AppServices.create(appDatabase: db, ble: ble);
+      ble.emitAdapter(BluetoothAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    });
+
+    tearDown(() async => services.dispose());
+
+    Future<void> failOn(ConnectionController conn, String id) async {
+      ble.failWith = StateError('GATT 133');
+      await expectLater(conn.connect(id), throwsA(isA<StateError>()));
+      ble.failWith = null;
+    }
+
+    test('two units can be failed at once — the whole of the change', () async {
+      final conn = services.connection;
+      await failOn(conn, 'DEV-A');
+      await failOn(conn, 'DEV-B');
+      expect(conn.lastErrorFor('DEV-A'), isNotNull);
+      expect(conn.lastErrorFor('DEV-B'), isNotNull,
+          reason: 'one slot could hold one of these; the map holds both');
+    });
+
+    test('🔴 a successful scan clears the RADIO error and no unit\'s', () async {
+      final conn = services.connection;
+      await failOn(conn, 'DEV-A');
+
+      // A radio refusal, then a scan that works.
+      ble.emitAdapter(BluetoothAdapterState.off);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await conn.connect('DEV-B'); // refusals RETURN
+      expect(conn.lastErrorFor('DEV-B'), 'bluetooth_off');
+
+      ble.emitAdapter(BluetoothAdapterState.on);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await conn.startScan();
+
+      expect(conn.lastErrorUnattributed, isNot('bluetooth_off'),
+          reason: 'the adapter demonstrably works now');
+      expect(conn.lastErrorFor('DEV-A'), isNotNull,
+          reason: 'design 0088 §3 #2 — a scan says nothing about a unit, and '
+              'letting it clear device errors would wash away the FB-52 / '
+              'FB-58 latches on an unrelated scan');
+    });
+
+    test('deleting a record forgets only that unit', () async {
+      final conn = services.connection;
+      await failOn(conn, 'DEV-A');
+      await failOn(conn, 'DEV-B');
+
+      conn.forgetDevice('DEV-A');
+      expect(conn.lastErrorFor('DEV-A'), isNull);
+      expect(conn.lastErrorFor('DEV-B'), isNotNull);
+    });
+
+    test('lastErrorUnattributed is the NEWEST entry, not the first', () async {
+      final conn = services.connection;
+      await failOn(conn, 'DEV-A');
+      await failOn(conn, 'DEV-B');
+      // Both are `connect_failed` off iOS, so assert through the per-unit
+      // reader instead: the escape hatch must track the latest attempt.
+      expect(conn.lastErrorUnattributed, conn.lastErrorFor('DEV-B'));
+
+      // Re-failing A must move it to the front of the order, not leave it
+      // where it first landed — that is why `_setError` removes before it
+      // inserts.
+      await failOn(conn, 'DEV-A');
+      expect(conn.lastErrorUnattributed, conn.lastErrorFor('DEV-A'));
+    });
+  });
+
 
   group('E5 — design 0087: the unreachable run is a latch, not a last error', () {
     late AppDatabase db;

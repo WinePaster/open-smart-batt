@@ -693,7 +693,27 @@ class ConnectionController extends ChangeNotifier {
   /// made in ONE place there, so a new failure path cannot invent a third
   /// answer, and a code added to [radioLevelErrorCodes] reclassifies every site
   /// at once.
-  ConnectionError? _lastError;
+  /// Every live failure, newest last — design 0088 (FB-87 ④).
+  ///
+  /// 🔴 **One slot per unit, and the radio under the sentinel key `''`.** It was
+  /// a single `ConnectionError?` until 2026-08-28, and that is FB-87 ④: dialling
+  /// B wiped whatever A had failed with, so a user who tried two units in a row
+  /// lost the first one's failure card and its automatic-connect block — a
+  /// failure that was still perfectly true.
+  ///
+  /// 🔑 **The radio lives in the same map on purpose.** [ConnectionError.codeFor]
+  /// already knows that a null [ConnectionError.deviceId] answers for every
+  /// unit; giving the radio its own field would copy that rule into a second
+  /// place, and a rule kept in two places is exactly what produced FB-86. A BLE
+  /// id is never the empty string on either platform, so the sentinel cannot
+  /// collide with a real one.
+  ///
+  /// **Insertion order is recency**: [_setError] removes before it inserts, so
+  /// `values.last` is the newest entry and no timestamp is needed.
+  final Map<String, ConnectionError> _errors = <String, ConnectionError>{};
+
+  /// The key [_errors] files a radio-level error under. See that field.
+  static const String _radioSlot = '';
 
   /// The MAC the SAVED RECORD we were asked to dial says this unit has — the
   /// yardstick [_verifyIdentity] measures the wire's `0x38` against.
@@ -1172,7 +1192,16 @@ class ConnectionController extends ChangeNotifier {
   ///
   /// A radio-level code (`bluetooth_off` and friends — [radioLevelErrorCodes])
   /// comes back for ANY id, because it is true of any id. See [ConnectionError].
-  String? lastErrorFor(String? deviceId) => _lastError?.codeFor(deviceId);
+  String? lastErrorFor(String? deviceId) {
+    // Newest first, and that ordering is load-bearing: one unit can accumulate
+    // `device_unreachable` and then `connect_failed`, and the screen has to
+    // show what happened LAST, not what happened first.
+    for (final e in _errors.values.toList().reversed) {
+      final code = e.codeFor(deviceId);
+      if (code != null) return code;
+    }
+    return null;
+  }
 
   /// The last error whatever unit it belongs to.
   ///
@@ -1191,7 +1220,8 @@ class ConnectionController extends ChangeNotifier {
   /// Anything drawn PER UNIT must use [lastErrorFor]. `last_error_attribution
   /// _test.dart` pins the call sites of this getter to those two files and goes
   /// red on a third, which is the guard FB-86 did not have.
-  String? get lastErrorUnattributed => _lastError?.code;
+  String? get lastErrorUnattributed =>
+      _errors.isEmpty ? null : _errors.values.last.code;
 
   /// Record a failure against the unit it happened to — or against none, when
   /// the code says it is about the radio ([radioLevelErrorCodes]).
@@ -1203,7 +1233,7 @@ class ConnectionController extends ChangeNotifier {
   /// answered), so a site cannot know which kind it is producing.
   void _setError(String code, {String? deviceId, String? requestedId}) {
     final radio = radioLevelErrorCodes.contains(code);
-    _lastError = ConnectionError(
+    final err = ConnectionError(
       code,
       deviceId: radio ? null : deviceId,
       // FB-87 ①: only for a unit-level failure, and only when the two ids
@@ -1211,6 +1241,12 @@ class ConnectionController extends ChangeNotifier {
       // second id would be noise.
       requestedId: radio || requestedId == deviceId ? null : requestedId,
     );
+    // design 0088 — remove before insert so the map's order stays newest-last.
+    // A plain `[]=` on an existing key keeps the ORIGINAL position, which would
+    // make `lastErrorUnattributed` report a stale entry as the most recent.
+    final key = err.deviceId ?? _radioSlot;
+    _errors.remove(key);
+    _errors[key] = err;
   }
 
   /// Forget the failure entirely — for every unit.
@@ -1231,7 +1267,36 @@ class ConnectionController extends ChangeNotifier {
   /// from long-dead attempts alive in a single slot with no event able to reach
   /// them. Recorded here so the next reader does not re-derive the old
   /// justification and conclude there is nothing to fix.
-  void _clearError() => _lastError = null;
+  /// Forget [deviceId]'s failure — design 0088 §3, FB-87 ④.
+  ///
+  /// 🔴 **Only that unit's, and never the radio's.** The events that make a
+  /// unit-level failure stop being true (this unit is being retried, came up,
+  /// or was deleted) say nothing about the adapter, and clearing the radio
+  /// entry here would erase a `bluetooth_off` that is still the reason nothing
+  /// can connect.
+  ///
+  /// Matches through [ConnectionError.codeFor] rather than on the key, so an
+  /// error filed under a dialled id is still found by the saved id the user's
+  /// screen is keyed by (FB-87 ①).
+  bool _clearErrorFor(String? deviceId) {
+    if (deviceId == null) return false;
+    final gone = <String>[
+      for (final entry in _errors.entries)
+        if (entry.key != _radioSlot && entry.value.codeFor(deviceId) != null)
+          entry.key,
+    ];
+    for (final k in gone) {
+      _errors.remove(k);
+    }
+    return gone.isNotEmpty;
+  }
+
+  /// Forget the radio-level failure — design 0088 §3.
+  ///
+  /// ⚠️ **A successful scan is the ONLY thing that proves the adapter works,
+  /// and it proves nothing about any unit.** Using it to clear device errors is
+  /// how the FB-52 / FB-58 latches would get washed away by an unrelated scan.
+  bool _clearRadioError() => _errors.remove(_radioSlot) != null;
 
   /// Forget everything this controller remembers about [deviceId]'s failures.
   ///
@@ -1248,11 +1313,11 @@ class ConnectionController extends ChangeNotifier {
   /// not want to hear about it again.
   void forgetDevice(String deviceId) {
     var changed = false;
-    if (_lastError?.codeFor(deviceId) != null &&
-        _lastError?.deviceId != null) {
-      _clearError();
-      changed = true;
-    }
+    // design 0088: this unit's entries only. Before the map this had to test
+    // `_lastError` first because the clear it called was global — the test is
+    // now inside `_clearErrorFor`, and the radio entry is untouched by
+    // construction.
+    if (_clearErrorFor(deviceId)) changed = true;
     if (_ownsStallRun(deviceId)) {
       _setupFailuresSinceReady = 0;
       _reachFailuresSinceReady = 0; // design 0087 — same run, same clearing point
@@ -1547,7 +1612,10 @@ class ConnectionController extends ChangeNotifier {
     _event('scan start');
     try {
       await _ble.startScan(timeout: timeout);
-      _clearError();
+      // design 0088 §3 #2 — a successful scan proves the ADAPTER works and
+      // nothing else. Clearing a unit's connect failure here would wash away
+      // the FB-52 / FB-58 latches on an unrelated scan.
+      _clearRadioError();
     } on FlutterBluePlusException catch (e) {
       final code = _adapter == BluetoothAdapterState.unauthorized
           ? 'bluetooth_unauthorized'
@@ -1764,7 +1832,10 @@ class ConnectionController extends ChangeNotifier {
     _seedSource = seedClass != null
         ? 'explicit'
         : (looked != null && looked != ProductClass.unknown ? 'saved' : 'none');
-    _clearError();
+    // design 0088 §3 #3 — the user is retrying THIS unit, so THIS unit's
+    // failure stops being current. Another unit's does not: that is FB-87 ④,
+    // and before the map this line took it with it.
+    _clearErrorFor(deviceId);
     notifyListeners();
 
     // The id is hashed in the TEXT but kept raw in the `deviceId` column: the
@@ -2268,7 +2339,11 @@ class ConnectionController extends ChangeNotifier {
     }
 
     if (s == BleLinkState.ready) {
-      _clearError();
+      // design 0088 §3 #4 — the link came up, so this unit's failure is over
+      // AND the radio demonstrably works. The only clear point that legitimately
+      // touches both.
+      _clearErrorFor(_ble.connectedDeviceId ?? _desiredDeviceId);
+      _clearRadioError();
       _reconnectAttempts = 0; // healthy link clears the backoff counter
       // FB-53: the link came up, so whatever was waiting for it can stand down
       // — including an armed autoConnect's deadline, whose whole job was to
