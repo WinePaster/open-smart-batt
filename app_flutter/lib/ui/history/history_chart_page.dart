@@ -280,6 +280,70 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
     );
   }
 
+  /// The drawn series, named, with the switch attached to the name.
+  ///
+  /// 🔵 design 0089 S6 (FB-103). The card's ruling was 「標題就是切換器」; the
+  /// landscape bar has no heading, so its equivalent is this label. Pressing
+  /// either half does the same thing, and the tap target is the pair — an
+  /// 18 px icon on its own is what the owner could not find in `v0.7.35`.
+  ///
+  /// ⚠️ **Disabled, not hidden — deliberately unlike the card.** design 0085
+  /// §3.4 ruled 「停用不隱藏」, and the card overrode it because there the
+  /// affordance IS the heading and a greyed-out heading reads as broken
+  /// (FB-64). Here it is a control among controls in an explicit control bar,
+  /// which is the case §3.4 was written for. The refusal sentence is drawn over
+  /// the plot on both shells either way. See design 0089 §8.
+  Widget _seriesSwitch(AppLocalizations l10n) {
+    final on = _gate == HistoryChartCurrentGate.available;
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            _isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            // 🔵 Full foreground while it is pressable: `muted` is this app's
+            // colour for text that is only being reported, and this text is
+            // now a control.
+            style: TextStyle(
+                fontSize: 11, color: on ? context.colors.text : context.colors.muted),
+          ),
+        ),
+        const SizedBox(width: 2),
+        Icon(Icons.swap_vert, size: 18, color: context.colors.muted),
+      ],
+    );
+    return ConstrainedBox(
+      // The bar is a fixed 44 px with four other things in it; 96 = the old
+      // 72 label cap plus the icon that now sits inside the same box.
+      constraints: const BoxConstraints(maxWidth: 96),
+      child: Tooltip(
+        message: l10n.historyChartSeriesToggle,
+        child: Semantics(
+          button: true,
+          enabled: on,
+          label: l10n.historyChartSeriesToggle,
+          child: InkWell(
+            onTap: on
+                ? () => setState(() => _series = _isCurrent
+                    ? HistoryChartSeries.voltage
+                    : HistoryChartSeries.current)
+                : null,
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              // FB-70's 40x40 floor, in landscape too — the height comes from
+              // the bar, the width from the label plus this padding.
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+              child: row,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _topBar(AppLocalizations l10n) {
     final multiDay = _win.spanMs > 24 * 3600000;
     final fmt = DateFormat(multiDay ? 'MM/dd HH:mm' : 'HH:mm');
@@ -312,40 +376,16 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                   .copyWith(fontSize: 11, color: context.colors.muted),
             ),
           ),
-          // 🔴 The landscape shell has no legend row, so without this the
-          // switch would be invisible: current REPLACES voltage on the left
-          // axis and reuses its colour (案 B), and the axis numbers alone do
-          // not say which quantity they count. Width-capped and ellipsised —
-          // the bar is a fixed 44 px with four other things in it.
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 72),
-            child: Text(
-              _isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 11, color: context.colors.muted),
-            ),
-          ),
-          const SizedBox(width: 4),
-          // 🔵 design 0085 S3 — in the bar that is already there, beside the
-          // controls that are already there. ⛔ Disabled rather than hidden for
-          // a capacitor or the all-devices scope, with the reason drawn over
-          // the plot below (§3.4): a control that quietly disappears explains
-          // nothing, and one that silently does nothing reads as broken.
-          IconButton(
-            onPressed: _gate == HistoryChartCurrentGate.available
-                ? () => setState(() => _series = _isCurrent
-                    ? HistoryChartSeries.voltage
-                    : HistoryChartSeries.current)
-                : null,
-            icon: const Icon(Icons.swap_vert, size: 18),
-            tooltip: l10n.historyChartSeriesToggle,
-            // FB-70's 40x40 floor, in landscape too.
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-            padding: EdgeInsets.zero,
-            color: context.colors.muted,
-          ),
+          // 🔵 design 0089 S6 — the NAME of the drawn series and the control
+          // that changes it are one widget, as on the embedded card.
+          //
+          // 🔴 The landscape shell has no legend row, so the bar has to name
+          // the quantity: current REPLACES voltage on the left axis and reuses
+          // its colour (案 B), and the axis numbers alone do not say which one
+          // they count. That label was already here — what FB-103 changed is
+          // that it is now the thing you press. Two shells sharing a painter
+          // must not teach two different gestures for one action.
+          _seriesSwitch(l10n),
           SizedBox(
             width: 66,
             child: _busy

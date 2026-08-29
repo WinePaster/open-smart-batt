@@ -142,7 +142,19 @@ void main() {
     await settle(t);
   }
 
-  final toggle = find.widgetWithIcon(IconButton, Icons.swap_vert);
+  // 🔵 design 0089 S6 — the switch is the label AND the icon, one `InkWell`.
+  // Finding it by the icon and tapping THAT would still pass if the label were
+  // left outside the tap target, which is the whole defect FB-103 was about; so
+  // the finder is the enclosing widget and the tests below tap the LABEL.
+  final toggle = find.ancestor(
+      of: find.byIcon(Icons.swap_vert), matching: find.byType(InkWell));
+
+  /// Whether the pair is pressable — the successor to `IconButton.onPressed`.
+  bool canSwitch(WidgetTester t) => t.widget<InkWell>(toggle).onTap != null;
+
+  /// Tap the WORDS, not the icon.
+  Future<void> tapLabel(WidgetTester t, String label) =>
+      t.tap(find.text(label), warnIfMissed: false);
 
   HistoryTrendPainter painterOf(WidgetTester t) => t
       .widgetList<CustomPaint>(find.byType(CustomPaint))
@@ -155,17 +167,27 @@ void main() {
     await t.runAsync(seed);
     await open(t, ProductClass.smartBattery);
 
-    expect(t.widget<IconButton>(toggle).onPressed, isNotNull);
+    expect(canSwitch(t), isTrue);
+    // 🔴 The label is INSIDE the tap target. Without this, a refactor that put
+    // the words beside the button instead of within it would still pass every
+    // assertion below — and that arrangement is precisely FB-103.
+    expect(
+        find.descendant(of: toggle, matching: find.text(en.historyLegendVoltage)),
+        findsOneWidget);
     expect(painterOf(t).series, HistoryChartSeries.voltage);
     // 🔴 The shell has no legend row, so the bar has to name the quantity —
     // current reuses voltage's colour and the axis numbers do not say which.
     expect(find.text(en.historyLegendVoltage), findsOneWidget);
 
-    await t.tap(toggle);
+    // 🔴 The LABEL, not the icon. Before 0089 this tap did nothing.
+    await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
 
     expect(painterOf(t).series, HistoryChartSeries.current);
     expect(find.text(en.historyLegendCurrent), findsOneWidget);
+    // 🔑 …and the label that is now showing is itself pressable, so the way
+    // back is the same gesture as the way in.
+    expect(canSwitch(t), isTrue);
     expect(painterOf(t).currentDirectionLabel,
         en.dashboardTrackCurrentDirectionKey);
   });
@@ -173,7 +195,7 @@ void main() {
   testWidgets('a power bank is labelled with its own, opposite key', (t) async {
     await t.runAsync(seed);
     await open(t, ProductClass.powerBank);
-    await t.tap(toggle);
+    await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
 
     expect(painterOf(t).currentDirectionLabel,
@@ -187,9 +209,9 @@ void main() {
     await t.runAsync(seed);
     await open(t, ProductClass.supercapacitor);
 
-    expect(t.widget<IconButton>(toggle).onPressed, isNull);
+    expect(canSwitch(t), isFalse);
     expect(find.text(en.capacitorChartNoCurrentNote), findsOneWidget);
-    await t.tap(toggle, warnIfMissed: false);
+    await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
     expect(painterOf(t).series, HistoryChartSeries.voltage);
   });
@@ -201,10 +223,10 @@ void main() {
     await t.runAsync(seed);
     await open(t, null, deviceId: null);
 
-    expect(t.widget<IconButton>(toggle).onPressed, isNull);
+    expect(canSwitch(t), isFalse);
     expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsOneWidget);
     expect(find.text(en.capacitorChartNoCurrentNote), findsNothing);
-    await t.tap(toggle, warnIfMissed: false);
+    await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
     expect(painterOf(t).series, HistoryChartSeries.voltage);
   });
