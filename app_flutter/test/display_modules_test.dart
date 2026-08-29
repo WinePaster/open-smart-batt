@@ -37,6 +37,13 @@ void main() {
       expect(m.showsSohReadout, isTrue);
       // …as was the current readout.
       expect(m.showsCurrentReadout, isTrue);
+      // 🔴 FB-106 (2026-08-30): the ONE field where this entry stopped
+      // reproducing 2026-08-04. `0x37` is the sum of the DVOL card sitting
+      // right below it and matches PVLT to within 0.10 V on 98.1% of the
+      // corpus's battery minutes, so the tile printed a third copy of a number
+      // already on the page twice. Display only — the decode, the history row
+      // and the CSV column are untouched.
+      expect(m.showsSvltReadout, isFalse);
       // Tracks in the order the shell lists them: current, PVLT, temperature.
       expect(m.chartTracks, {
         TrendField.current,
@@ -53,6 +60,10 @@ void main() {
       expect(m.sohGaugeLine, isNull);
       expect(m.showsSohReadout, isFalse);
       expect(m.showsCurrentReadout, isFalse);
+      // 🔴 The mirror of FB-106's battery assertion, and the reason that
+      // change could not be applied class-wide: a capacitor has no per-cell
+      // voltages (design 0050 D5), so this is the only second voltage it owns.
+      expect(m.showsSvltReadout, isTrue);
       // The trap this test exists for: a capacitor has FEWER readouts but MORE
       // chart tracks than a battery. Dropping SVLT would draw a different
       // screen while every "capacitor shows less" assertion still passed.
@@ -79,6 +90,10 @@ void main() {
       expect(m.sohGaugeLine, isNull);
       expect(m.showsSohReadout, isFalse);
       expect(m.showsCurrentReadout, isTrue);
+      // Its grid never had an SVLT tile — the port rail is the energy-path
+      // row's (design 0037 Q5+Q12). The chart track below is a DIFFERENT
+      // surface and is deliberately unaffected.
+      expect(m.showsSvltReadout, isFalse);
       expect(m.chartTracks, {
         TrendField.current,
         TrendField.svlt,
@@ -96,6 +111,10 @@ void main() {
       expect(m.sohGaugeLine, isNotNull);
       expect(m.showsSohReadout, isTrue);
       expect(m.showsCurrentReadout, isTrue);
+      // 🔴 FB-106 scoped to the battery alone (owner: 「只動電池」), so this
+      // entry keeps the tile — which is the whole point of its existing
+      // separately. See the quirk test below, where the divergence is pinned.
+      expect(m.showsSvltReadout, isTrue);
       expect(m.chartTracks, {
         TrendField.current,
         TrendField.pvlt,
@@ -309,30 +328,50 @@ void main() {
   });
 
   group('quirks pinned as-is (design 0034 §12.3 #1)', () {
-    test('(a) packFallback == battery is a byproduct, not a decision', () {
+    test('(a) packFallback == battery WAS a byproduct — FB-106 split them', () {
       const u = DisplayModules.packFallback;
       const b = DisplayModules.battery;
 
-      // Today they agree on every gate, because all six gates in the pack
+      // ~~Today they agree on every gate, because all six gates in the pack
       // shell are written `!= supercapacitor` and an unclassified pack is on
-      // the same side of all of them.
+      // the same side of all of them.~~
+      //
+      // 🔴 2026-08-30: they no longer agree on every gate, and this test is
+      // where that was predicted — the paragraph below (written 2026-08-04)
+      // says the day a gate is decided per CLASS rather than per shell, "every
+      // expectation in this test starts failing, which is the point". FB-106 is
+      // that day: `showsSvltReadout` is decided for the battery specifically,
+      // and the owner scoped the change to the battery alone.
+      //
+      // Everything the shell still gates with `!= supercapacitor` continues to
+      // match, so those expectations are kept rather than deleted — they are
+      // the ones that would catch an unrelated drift.
       expect(u.modules, b.modules);
       expect(u.chartTracks, b.chartTracks);
       expect(u.showsCurrentReadout, b.showsCurrentReadout);
       expect(u.showsSohReadout, b.showsSohReadout);
       expect(u.chartFootnote, b.chartFootnote);
 
-      // ⚠️ Dart canonicalises two const objects with equal fields into ONE
-      // instance, so `identical(unclassified, battery)` is true today. That is
-      // a language fact about equal values — NOT evidence that the two
-      // declarations were merged. They are separate `static const` entries
-      // with separate rationale in display_modules.dart, and the meaning
-      // differs: `packFallback` is "a pack whose label we cannot use", never
-      // "assume a battery" — and since design 0050 D2 it is no longer what an
-      // UNIDENTIFIED device gets, which is the confusion the rename removed. The day one gate is written
+      // 🔴 The divergence itself, pinned. A future edit that "tidies" the two
+      // entries back together fails here, which is what stops a stray
+      // powerBank label from silently losing a tile it has always had.
+      expect(b.showsSvltReadout, isFalse);
+      expect(u.showsSvltReadout, isTrue);
+
+      // ~~⚠️ Dart canonicalises two const objects with equal fields into ONE
+      // instance, so `identical(unclassified, battery)` is true today.~~
+      // 🔴 Not any more, for the reason above: unequal fields, two instances.
+      // The note is kept because it explains why the assertion below FLIPPED
+      // rather than why it was written — it was a language fact about equal
+      // values, NOT evidence that the two declarations were merged. They are
+      // separate `static const` entries with separate rationale in
+      // display_modules.dart, and the meaning differs: `packFallback` is "a
+      // pack whose label we cannot use", never "assume a battery" — and since
+      // design 0050 D2 it is no longer what an UNIDENTIFIED device gets, which
+      // is the confusion the rename removed. The day one gate is written
       // `== smartBattery` instead, they stop being canonicalised together and
       // every expectation in this test starts failing — which is the point.
-      expect(identical(u, b), isTrue);
+      expect(identical(u, b), isFalse);
       // 🔴 And no class no longer maps here at all (design 0050 D3).
       expect(DisplayModules.forClass(ProductClass.unknown), isNull);
     });

@@ -359,16 +359,131 @@ void main() {
             matching: find.textContaining(s, findRichText: true),
           );
 
-      // `0x19` / `0x37` are `u16/100`, so both digits are measured.
+      // `0x19` is `u16/100`, so both digits are measured.
       expect(inGrid('13.28'), findsOneWidget);
-      expect(inGrid('13.11'), findsOneWidget);
       expect(inGrid('13.3'), findsNothing);
+
+      // 🔴 The `0x37` half of this assertion moved to the capacitor case below
+      // (FB-106, 2026-08-30): a battery no longer prints SVLT at all, so
+      // asserting its precision here would only be asserting that a tile is
+      // gone — which the FB-106 group does directly, and by NAME rather than by
+      // a value that could vanish for an unrelated reason.
+      expect(inGrid('13.11'), findsNothing);
 
       // `0x2E` is `512 - u16` — integer amps. The magnitude is shown (the sign
       // is spent on the direction badge, design 0056), and the lone decimal
       // stays as it was: widening it would invent a precision, and this test
       // exists to keep the FB-81 sweep from taking the current cell with it.
       expect(inGrid('35.0'), findsOneWidget);
+    });
+
+    testWidgets('SVLT keeps its two decimals on the class that still shows it',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      // The FB-81 guarantee is about the REGISTER (`u16/100`), not about the
+      // battery, so it has to keep being pinned somewhere after FB-106 took
+      // the tile off the battery. This is that somewhere.
+      s.connection.setPackLabelOverride(ProductClass.supercapacitor);
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
+      await tester.runAsync(() async {
+        fakeBle.emit(TelemetrySample(
+          timestamp: DateTime.now(),
+          pvlt: 13.28,
+          svlt: 13.11,
+        ));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+
+      Finder inGrid(String s) => find.descendant(
+            of: find.byType(ReadoutsCard),
+            matching: find.textContaining(s, findRichText: true),
+          );
+
+      expect(inGrid('13.11'), findsOneWidget);
+      expect(inGrid('13.1'), findsOneWidget);
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // FB-106 — 「電池類型不用顯示次電壓，就是主電壓跟分串電壓就好」
+  //
+  // Dealer suggestion relayed by the owner on 2026-08-30, whose stated reason
+  // is confusion rather than correctness: two near-identical voltages under two
+  // names on one screen is a question ("which one is my battery?"), and the
+  // corpus agrees it is not an informative question — `0x37` is the sum of the
+  // DVOL card below it (`knowledges/voltage-chains.md` §2) and matches PVLT to
+  // within 0.10 V on 98.1% of 526,887 battery minutes.
+  //
+  // 🔑 These tests assert a CLASS difference, which is the part that could
+  // regress silently: "the battery hides it" is only safe while "the capacitor
+  // keeps it" is also true, and a class-wide deletion would still pass any test
+  // that only looked at the battery.
+  // ---------------------------------------------------------------------
+  group('SVLT readout is class-gated (FB-106)', () {
+    Future<void> pumpWith(
+      WidgetTester tester,
+      AppServices s,
+      ProductClass cls,
+    ) async {
+      s.connection.setPackLabelOverride(cls);
+      await pumpUnder(tester, s, const PackView(deviceId: 'DEV-TEST'));
+      await tester.runAsync(() async {
+        // A REAL value, deliberately: the tile is not being hidden because the
+        // register is missing. It is being removed from a class that has the
+        // same number twice already, so the register arriving must not bring
+        // it back.
+        fakeBle.emit(TelemetrySample(
+          timestamp: DateTime.now(),
+          pvlt: 13.19,
+          svlt: 13.22,
+        ));
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump();
+    }
+
+    testWidgets('absent on a smart battery even with 0x37 streaming',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpWith(tester, s, ProductClass.smartBattery);
+
+      expect(find.byType(BatteryView), findsOneWidget);
+      expect(find.text('SECONDARY VOLTAGE'), findsNothing);
+      // What the suggestion asked to KEEP. Without this the test would also
+      // pass on a grid that had lost every voltage.
+      expect(find.text('PRIMARY VOLTAGE'), findsOneWidget);
+      // And the value itself is gone from the card, not merely the label.
+      expect(
+          find.descendant(
+            of: find.byType(ReadoutsCard),
+            matching: find.textContaining('13.22', findRichText: true),
+          ),
+          findsNothing);
+    });
+
+    testWidgets('still shown on a capacitor — it has no DVOL card',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      await pumpWith(tester, s, ProductClass.supercapacitor);
+
+      expect(find.byType(CapacitorView), findsOneWidget);
+      expect(find.text('SECONDARY VOLTAGE'), findsOneWidget);
     });
   });
 }

@@ -456,12 +456,25 @@ Widget? dashboardCardFor(
             value: _fmt2(tele.pvlt),
             unit: 'V',
           ),
-          Readout(
-            icon: Icons.bolt,
-            label: l10n.dashboardReadoutSvltLabel,
-            value: _fmt2(tele.svlt),
-            unit: 'V',
-          ),
+          // 🔴 CLASS-GATED since FB-106 (2026-08-30) — absent on a smart
+          // battery, present on a capacitor. The registry holds the argument
+          // (`display_modules.dart`, [DisplayModules.showsSvltReadout]); what
+          // belongs here is why there is no DATA gate beside it: this tile is
+          // not being hidden when the number is missing, it is being removed
+          // from a class that has the same number twice already. A capacitor
+          // keeps it because it has no DVOL card for it to duplicate.
+          //
+          // ⚠️ Ordering note above still holds for the classes that show it:
+          // PVLT → SVLT → temperature. On a battery the list simply closes up
+          // to PVLT → temperature, which is the chart's track order minus a
+          // series the battery's chart never plotted either.
+          if (modules.showsSvltReadout)
+            Readout(
+              icon: Icons.bolt,
+              label: l10n.dashboardReadoutSvltLabel,
+              value: _fmt2(tele.svlt),
+              unit: 'V',
+            ),
           Readout(
             icon: Icons.thermostat,
             label: l10n.dashboardReadoutTemperatureLabel,

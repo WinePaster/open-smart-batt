@@ -70,6 +70,7 @@ class DisplayModules {
     required this.dataGated,
     required this.chartTracks,
     required this.sohGaugeLine,
+    required this.showsSvltReadout,
     required this.showsCurrentReadout,
     required this.showsSohReadout,
     required this.chartFootnote,
@@ -113,6 +114,34 @@ class DisplayModules {
   /// Gauge sub-line, or `null` when the class has no SOH to report.
   final SohGaugeLine? sohGaugeLine;
 
+  /// Whether the readouts grid carries a secondary-voltage (`0x37`) cell.
+  ///
+  /// 🔴 FALSE on a smart battery since FB-106 (dealer suggestion via the owner,
+  /// 2026-08-30: 「電池類型不用顯示次電壓，就是主電壓跟分串電壓就好」). On that
+  /// class the cell was a third print of a number already on the page twice:
+  /// `0x37` is the SUM of the per-cell readings (`knowledges/voltage-chains.md`
+  /// §2 — one measurement chain, two presentations), so it sits beside the DVOL
+  /// card that adds up to it and beside a PVLT that it matches to within 0.10 V
+  /// in 98.1% of the corpus's 526,887 battery minutes. Two near-identical
+  /// voltages under two different names is a question, not a reading.
+  ///
+  /// 🔑 The knowledge base asked for this on 2026-08-01 and the screen did not
+  /// follow: voltage-chains §7 says 「SVLT 只在跟分串對照時才有用，不要單獨呈現
+  /// 給使用者 —— 它會在感測故障時說謊」. The lying is literal — on serial 1261 a
+  /// dead cell-2 sensor reads 5.04 V, and SVLT inherits the error (14.86 V)
+  /// while PVLT, on the other chain, stays at 9.81 V.
+  ///
+  /// ⚠️ DISPLAY ONLY (owner's ruling, verbatim 「只是錶盤上不顯示而已，但是資料照
+  /// 收」). `0x37` is still decoded, still aggregated, still written to the
+  /// history DB and still exported in the CSV's `svlt` column. Nothing below
+  /// the UI knows this flag exists.
+  ///
+  /// ⛔ TRUE on a capacitor and it must stay that way: that class has no
+  /// per-cell voltages at all (design 0050 D5), so `0x37` is the only second
+  /// voltage it owns — removing it there would delete information rather than
+  /// deduplicate it.
+  final bool showsSvltReadout;
+
   /// Whether the readouts grid carries a current cell. CLASS-gated, not
   /// data-driven: a capacitor DOES stream `0x2E`, pinned at a constant 0.0 A,
   /// and a permanent real-looking zero is worse than an absent row. The
@@ -143,6 +172,9 @@ class DisplayModules {
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
     sohGaugeLine: _sohGaugeLine,
+    // 🔴 The one field where this entry and [packFallback] now differ — see
+    // [showsSvltReadout] and the quirk test that predicted this day.
+    showsSvltReadout: false,
     showsCurrentReadout: true,
     showsSohReadout: true,
     chartFootnote: null,
@@ -180,6 +212,8 @@ class DisplayModules {
     // Never sends 0x96, so an SOH line could only ever read "SOH --", which a
     // user reads as "the app failed to fetch it".
     sohGaugeLine: null,
+    // The class's only second voltage — it has no DVOL card to duplicate.
+    showsSvltReadout: true,
     showsCurrentReadout: false,
     showsSohReadout: false,
     chartFootnote: _capacitorChartFootnote,
@@ -199,6 +233,10 @@ class DisplayModules {
     // The gauge sub-line here is the single-cell voltage, not SOH; it is not a
     // class variant of the pack shell's line, so it is not modelled as one.
     sohGaugeLine: null,
+    // Not a decision this class re-litigates: [PowerBankView]'s grid never had
+    // an SVLT tile. The port rail lives in the energy-path row, and design 0037
+    // Q5+Q12 removed the duplicate from the grid long before FB-106.
+    showsSvltReadout: false,
     showsCurrentReadout: true,
     showsSohReadout: false,
     chartFootnote: null,
@@ -219,10 +257,16 @@ class DisplayModules {
   /// by the device-type byte, the shell picks its body from the cosmetic
   /// label), and it has always drawn these readouts there. See [forPackShell].
   ///
-  /// ⚠️ Identical to [battery] field for field, and that is a BYPRODUCT, not a
-  /// decision. Every gate in the pack shell is written `!= supercapacitor`, so
-  /// a labelless pack falls on the same side of all six of them. It does NOT
-  /// mean "a labelless pack is a battery" — the day one gate is written
+  /// ~~⚠️ Identical to [battery] field for field, and that is a BYPRODUCT, not
+  /// a decision.~~ 🔴 **2026-08-30, FB-106: no longer identical — and the
+  /// sentence below called this day in advance.** Every OTHER gate in the pack
+  /// shell is still written `!= supercapacitor`, so a labelless pack still
+  /// falls on the same side of all of those; [showsSvltReadout] is the first
+  /// one decided per CLASS rather than per shell, and the owner scoped it to
+  /// the battery, so this entry keeps the tile the battery just lost.
+  ///
+  /// The original point stands, now with an instance behind it: being identical
+  /// never meant "a labelless pack is a battery" — the day one gate is written
   /// `== smartBattery` instead, this entry stops matching, which is exactly why
   /// it is declared separately rather than aliased to [battery].
   /// (design 0034 §12.3 #1, pinned in `display_modules_test.dart`.)
@@ -231,6 +275,10 @@ class DisplayModules {
     dataGated: {DisplayModule.cells},
     chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
     sohGaugeLine: _sohGaugeLine,
+    // 🔴 TRUE while [battery] is now false — the owner scoped FB-106 to the
+    // battery alone (「只動電池」), and this entry's whole job is to preserve
+    // the pre-existing screen verbatim for a label the shell cannot trust.
+    showsSvltReadout: true,
     showsCurrentReadout: true,
     showsSohReadout: true,
     chartFootnote: null,
