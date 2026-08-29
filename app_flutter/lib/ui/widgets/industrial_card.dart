@@ -17,6 +17,7 @@ class IndustrialCard extends StatelessWidget {
     this.heading,
     this.headingIcon,
     this.headingTrailing,
+    this.onHeadingTap,
     required this.child,
     this.padding = AppTheme.cardPadding,
   });
@@ -41,6 +42,20 @@ class IndustrialCard extends StatelessWidget {
   /// (fade rule, then the control) is the part that would be hard to
   /// reconstruct — not because a new one is expected.
   final Widget? headingTrailing;
+
+  /// Makes the whole heading row a button — design 0089 (FB-103).
+  ///
+  /// 🔑 **The heading, not an icon beside it.** FB-103 is what happens when a
+  /// chart that can draw two things is titled after one of them: the title
+  /// answers the reader's question before they ever look for a control. Making
+  /// the title itself the control means it can never name something the card is
+  /// not drawing, and it is the largest text on the card, so it cannot be the
+  /// thing nobody found (FB-70).
+  ///
+  /// Null ⇒ an ordinary, inert heading. ⛔ **Pass null rather than a no-op
+  /// callback** when the switch is unavailable: a control that is visibly a
+  /// control and does nothing is FB-64.
+  final VoidCallback? onHeadingTap;
 
   /// Card body.
   final Widget child;
@@ -91,6 +106,7 @@ class IndustrialCard extends StatelessWidget {
                     text: heading!,
                     icon: headingIcon,
                     trailing: headingTrailing,
+                    onTap: onHeadingTap,
                     rule: shell.headingRule,
                     device: device,
                   ),
@@ -115,10 +131,15 @@ class CardHeading extends StatelessWidget {
     this.trailing,
     this.rule = true,
     this.device,
+    this.onTap,
   });
 
   final String text;
   final IconData? icon;
+
+  /// design 0089 — see [IndustrialCard.onHeadingTap]. Null keeps the heading
+  /// inert, which is every surface but the history chart card.
+  final VoidCallback? onTap;
 
   /// The unit this card is about, drawn ABOVE [text] (owner ruling 2026-08-15).
   /// Null — every surface but the home grid — keeps the single-row heading.
@@ -179,7 +200,7 @@ class CardHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final row = _row(context);
+    final row = _tappable(context, _row(context));
     final d = device;
     if (d == null) return row;
     return Column(
@@ -200,6 +221,31 @@ class CardHeading extends StatelessWidget {
           style: AppTextStyles.cardHeading(context),
         ),
       ],
+    );
+  }
+
+  /// Wraps [child] in a button when [onTap] is set, and leaves it untouched
+  /// otherwise.
+  ///
+  /// ⚠️ The `InkWell` goes around the ROW, not around the text: the tap target
+  /// then covers the icon, the label, the fade rule and the trailing glyph —
+  /// the whole thing the user reads as one title. A target the size of the
+  /// text alone would re-create FB-70 at a different scale.
+  Widget _tappable(BuildContext context, Widget child) {
+    final t = onTap;
+    if (t == null) return child;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: t,
+        borderRadius: BorderRadius.circular(6),
+        // A little breathing room so the ripple does not clip against the
+        // card's own padding, and so the row clears the 40 px floor FB-70 set.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: child,
+        ),
+      ),
     );
   }
 

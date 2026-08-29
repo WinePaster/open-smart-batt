@@ -1164,8 +1164,12 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
-        home: const Scaffold(
+        // 🔵 design 0089 — no longer `const`: the controlled card takes an
+        // `onSeriesChanged` closure, which a const tree cannot hold.
+        home: Scaffold(
           body: HistoryTrendCard(
+              series: HistoryChartSeries.voltage,
+              onSeriesChanged: (_) {},
             buckets: [],
             stats: HistoryStats.empty,
             tempUnit: TempUnit.celsius,
@@ -1193,8 +1197,10 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
-        home: const Scaffold(
+        home: Scaffold(  // 0089: controlled card holds a closure
           body: HistoryTrendCard(
+              series: HistoryChartSeries.voltage,
+              onSeriesChanged: (_) {},
             buckets: [],
             stats: HistoryStats.empty,
             tempUnit: TempUnit.celsius,

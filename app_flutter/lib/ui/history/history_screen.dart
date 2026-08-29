@@ -77,6 +77,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// own.
   HistoryRangeSel _sel = HistoryRangeSel.initial;
 
+  /// design 0089 (FB-103) — lifted out of `HistoryTrendCard` so the heading,
+  /// which is now the switch, reads the same value the axis does.
+  HistoryChartSeries _series = HistoryChartSeries.voltage;
+
   /// The SCOPED unit's full span — the calendar's bounds and the button's
   /// enabled state (design 0083 §3.3.4). See the device page's twin; loaded
   /// once per unit, and the picker above this screen can change which unit
@@ -366,7 +370,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final ov = thresholds.ov.value,
         uv = thresholds.uv.value,
         ot = thresholds.ot.value;
-    final framing = historyChartFraming(l10n, _sel);
+    // 🔵 design 0089 — resolved ONCE, above both the heading and the card, and
+    // handed to both. `_chartDeviceClass` is the same call the card and the
+    // expand target already make; hoisting it is what lets the title know
+    // whether current is even on offer.
+    final chartClass = _chartDeviceClass(
+      devices,
+      facts: facts,
+      liveDeviceId: tele.recordingDeviceId,
+      liveClass: conn.resolvedClass,
+    );
+    final framing = historyChartFraming(l10n, _sel,
+        deviceClass: chartClass, series: _series);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -424,7 +439,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       // 🔵 One derivation for both surfaces (design 0079 S4).
                       heading: framing.heading,
                       headingIcon: Icons.show_chart,
+                      // 🔵 design 0089 (FB-103) — the heading IS the switch.
+                      // Null when the gate is closed: an inert-looking title
+                      // rather than a control that does nothing (FB-64).
+                      onHeadingTap: framing.canSwitch
+                          ? () => setState(() => _series =
+                              framing.series == HistoryChartSeries.current
+                                  ? HistoryChartSeries.voltage
+                                  : HistoryChartSeries.current)
+                          : null,
+                      headingTrailing: framing.canSwitch
+                          ? Icon(Icons.swap_vert,
+                              size: 14, color: context.colors.muted)
+                          : null,
                       child: HistoryTrendCard(
+                        series: framing.series,
+                        onSeriesChanged: (v) => setState(() => _series = v),
                         sel: _sel,
                         buckets: data.buckets,
                         stats: data.stats,
@@ -445,12 +475,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         // unit, family unrecorded" — a case where current IS
                         // drawn. Hence the explicit branch rather than passing
                         // the call through.
-                        deviceClass: _chartDeviceClass(
-                          devices,
-                          facts: facts,
-                          liveDeviceId: tele.recordingDeviceId,
-                          liveClass: conn.resolvedClass,
-                        ),
+                        deviceClass: chartClass,
                         // 🔵 design 0081 S3. The card owns the BUTTON; this
                         // owns the destination — including which unit and how
                         // far back it may pan, both of which this screen has
@@ -1169,6 +1194,12 @@ class HistoryTrendCard extends StatefulWidget {
     required this.multiDay,
     required this.bucketMs,
     required this.deviceClass,
+    // 🔵 design 0089 (FB-103) — CONTROLLED. The series used to be this card's
+    // private state, which meant the card knew what it was drawing and the
+    // heading above it did not. The heading is now the switch, so the state has
+    // to live where both can see it.
+    required this.series,
+    required this.onSeriesChanged,
     this.sel,
     this.onExpand,
   });
@@ -1202,6 +1233,18 @@ class HistoryTrendCard extends StatefulWidget {
   /// 🔑 In the CARD, like the expand button and for the same reason: both
   /// landing sites get it from one edit. Null (or a preset) draws nothing —
   /// the three existing ranges keep exactly the layout height they had.
+  /// Which series the axis is drawing — design 0089 (FB-103).
+  ///
+  /// 🔴 **Controlled, not internal.** It was `_series` in this State until
+  /// 2026-08-29. The heading above the card is the switch now, so the card and
+  /// the title have to read the same value; a private copy is exactly how the
+  /// axis and the title came to disagree in the first place.
+  final HistoryChartSeries series;
+
+  /// Called when the user switches. The owner is the surface that draws the
+  /// heading — see `historyChartFraming`.
+  final ValueChanged<HistoryChartSeries> onSeriesChanged;
+
   final HistoryRangeSel? sel;
 
   /// How wide one point is. Design 0061 T10: it ranges from 1 minute to 24
@@ -1236,7 +1279,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   /// with two owners — the shape the corpus files as 「狀態散到兩處」. Voltage is
   /// the opening view because it is what every existing screenshot, every
   /// support answer and the stats strip below all describe.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  // design 0089: `_series` is gone — see [HistoryTrendCard.series].
 
   bool get _hasTemp =>
       widget.buckets.any((b) => b.avgTemp != null) ||
@@ -1253,9 +1296,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     // the picture is never wrong for a frame — this line is about the state
     // agreeing with the picture, so that a later re-classification does not
     // silently pop current back on.
+    // design 0089: the reset now goes UP. `historyChartFraming` already forces
+    // the effective series back to voltage for a gate that closed, so the
+    // picture and the title are never wrong for a frame; this tells the owner
+    // of the state so a later re-classification cannot pop current back on.
     if (historyChartCurrentGate(widget.deviceClass) !=
-        HistoryChartCurrentGate.available) {
-      _series = HistoryChartSeries.voltage;
+            HistoryChartCurrentGate.available &&
+        widget.series != HistoryChartSeries.voltage) {
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => widget.onSeriesChanged(HistoryChartSeries.voltage));
     }
     // Data reloaded (range change / refresh): drop a now-invalid selection.
     if (_selected != null && _selected! >= widget.buckets.length) {
@@ -1346,7 +1395,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     // voltage" the same fact rather than two that have to be kept in step.
     final gate = historyChartCurrentGate(widget.deviceClass);
     final canSwitch = gate == HistoryChartCurrentGate.available;
-    final series = canSwitch ? _series : HistoryChartSeries.voltage;
+    final series = canSwitch ? widget.series : HistoryChartSeries.voltage;
     final isCurrent = series == HistoryChartSeries.current;
     final gateNote = historyChartCurrentGateNote(l10n, gate);
     if (buckets.length < 2) {
@@ -1529,27 +1578,13 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
             // existing toolbar, no new chrome"; the box was already there,
             // already 40x40 (FB-70's floor), and already mirrored by the
             // expand button on the right, so the note stays centred either way.
-            SizedBox(
-              width: 40,
-              child: IconButton(
-                // ⛔ Disabled, NOT hidden — design 0085 §3.4. A control that
-                // vanishes takes its explanation with it, and the ruling is
-                // that the reason has to be on screen (the line below).
-                onPressed: canSwitch
-                    ? () => setState(() => _series = isCurrent
-                        ? HistoryChartSeries.voltage
-                        : HistoryChartSeries.current)
-                    : null,
-                icon: const Icon(Icons.swap_vert, size: 16),
-                tooltip: l10n.historyChartSeriesToggle,
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
-                padding: EdgeInsets.zero,
-                color: context.colors.muted,
-              ),
-            ),
+            // 🔵 design 0089 Q3 (FB-103) — the 16 px `swap_vert` that used to
+            // live here is GONE. It was the only way to reach current, it
+            // carried no label, and its explanation was a tooltip nobody
+            // long-presses on a phone. The card's HEADING is the switch now.
+            // ⛔ Do not put a second one back: two controls doing one thing is
+            // how the next reader stops knowing which is authoritative.
+            const SizedBox(width: 40),
             Expanded(
               child: Text(
                 historyBucketWidthNote(l10n, widget.bucketMs),

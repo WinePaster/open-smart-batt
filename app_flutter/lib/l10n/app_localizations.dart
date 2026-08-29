@@ -1508,6 +1508,18 @@ abstract class AppLocalizations {
   /// **'Voltage Trend'**
   String get historyChartTitle;
 
+  /// design 0089 / FB-103 — the SAME card, titled by what it is actually drawing. The title is the toggle, so it must never disagree with the axis.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Trend'**
+  String get historyChartCurrentTitle;
+
+  /// design 0089 / FB-103 — the today variant. A separate string rather than a composed one: Chinese 今日電流趨勢 is not 今日 + 電流趨勢 glued together.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s Current Trend'**
+  String get historyChartTodayCurrentTitle;
+
   /// No description provided for @historyRangeToday.
   ///
   /// In en, this message translates to:

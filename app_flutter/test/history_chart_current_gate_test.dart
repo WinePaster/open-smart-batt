@@ -37,6 +37,8 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 
+import 'support/series_host.dart';
+
 void main() {
   final en = AppLocalizationsEn();
   final t0 = DateTime(2026, 8, 27, 10, 0);
@@ -66,19 +68,28 @@ void main() {
         locale: const Locale('en'),
         home: Scaffold(
           body: SingleChildScrollView(
-            child: HistoryTrendCard(
-              buckets: buckets ?? run(),
-              stats: stats,
-              tempUnit: TempUnit.celsius,
-              multiDay: false,
-              bucketMs: 60000,
-              deviceClass: cls,
+            // 🔵 design 0089 — heading above, controlled card below, exactly
+            // as production arranges them. The switch is the heading.
+            child: SeriesHost(
+              cls: cls,
+              child: (series, onChanged) => HistoryTrendCard(
+                buckets: buckets ?? run(),
+                stats: stats,
+                tempUnit: TempUnit.celsius,
+                multiDay: false,
+                bucketMs: 60000,
+                deviceClass: cls,
+                series: series,
+                onSeriesChanged: onChanged,
+              ),
             ),
           ),
         ),
       );
 
-  final toggle = find.widgetWithIcon(IconButton, Icons.swap_vert);
+  // 🔵 design 0089 — the ⇅ now sits in the heading's trailing slot, and the
+  // whole heading row is the button. Present ⇒ switchable; absent ⇒ not.
+  final toggle = seriesToggle();
 
   HistoryTrendPainter painterOf(WidgetTester tester) => tester
       .widgetList<CustomPaint>(find.byType(CustomPaint))
@@ -211,7 +222,8 @@ void main() {
       await t.pumpWidget(host(ProductClass.smartBattery));
       await t.pump();
 
-      expect(t.widget<IconButton>(toggle).onPressed, isNotNull);
+      expect(toggle, findsOneWidget,
+          reason: 'design 0089 — a switchable card shows the ⇅ beside its title');
       expect(painterOf(t).series, HistoryChartSeries.voltage);
       expect(find.text(en.historyLegendCurrent), findsNothing);
       // Two "Voltage"s to start with: the chart legend and the stats strip's
@@ -339,10 +351,16 @@ void main() {
       await t.pumpWidget(host(ProductClass.supercapacitor));
       await t.pump();
 
-      // ⛔ Disabled, not hidden: a control that vanishes takes its explanation
-      // with it, and one that silently does nothing reads as broken.
-      expect(toggle, findsOneWidget);
-      expect(t.widget<IconButton>(toggle).onPressed, isNull);
+      // 🔵 design 0089 §3.1 — the shape changed on 2026-08-29. It used to be
+      // "disabled, not hidden"; the switch is the TITLE now, and a greyed-out
+      // title reads as broken rather than as unavailable (FB-64). What 0085
+      // §3.4 actually protects — the reason being on screen — is unchanged,
+      // and asserted on the next line.
+      expect(toggle, findsNothing,
+          reason: 'design 0089 §3.1 — the ⇅ is absent, not greyed: the '
+              'EXPLANATION does not go with it (the note below the plot is '
+              'independent), so 0085 §3.4 is still satisfied, while a '
+              'greyed-out TITLE would just read as broken (FB-64)');
       expect(find.text(en.capacitorChartNoCurrentNote), findsOneWidget);
     });
 
@@ -364,12 +382,21 @@ void main() {
       expect(_zeroLines(rec, p.vColor), isEmpty);
     });
 
-    testWidgets('tapping the dead toggle changes nothing', (t) async {
+    testWidgets('there is nothing to tap, and tapping the title does nothing',
+        (t) async {
       await t.pumpWidget(host(ProductClass.supercapacitor));
       await t.pump();
-      await t.tap(toggle, warnIfMissed: false);
+      // 🔵 design 0089 — the old test tapped a dead IconButton. There is no
+      // such button now; the equivalent is that the TITLE is inert.
+      expect(toggle, findsNothing);
+      await t.tap(chartHeading(), warnIfMissed: false);
       await t.pump();
-      expect(painterOf(t).series, HistoryChartSeries.voltage);
+      expect(painterOf(t).series, HistoryChartSeries.voltage,
+          reason: 'the refusal has to survive a tap on the title, not merely '
+              'be the opening state');
+      expect(find.text(en.historyChartTodayCurrentTitle.toUpperCase()),
+          findsNothing,
+          reason: 'and the title must never name a series the card cannot draw');
     });
   });
 
@@ -379,7 +406,11 @@ void main() {
       await t.pumpWidget(host(null));
       await t.pump();
 
-      expect(t.widget<IconButton>(toggle).onPressed, isNull);
+      expect(toggle, findsNothing,
+          reason: 'design 0089 §3.1 — the ⇅ is absent, not greyed: the '
+              'EXPLANATION does not go with it (the note below the plot is '
+              'independent), so 0085 §3.4 is still satisfied, while a '
+              'greyed-out TITLE would just read as broken (FB-64)');
       expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsOneWidget);
       // ⛔ It must not borrow the capacitor's sentence: this scope's units may
       // measure current perfectly well.
@@ -407,8 +438,12 @@ void main() {
       await t.pump();
       // Including when the user tries: the refusal has to survive the tap, not
       // merely be the opening state.
-      expect(t.widget<IconButton>(toggle).onPressed, isNull);
-      await t.tap(toggle, warnIfMissed: false);
+      expect(toggle, findsNothing,
+          reason: 'design 0089 §3.1 — the ⇅ is absent, not greyed: the '
+              'EXPLANATION does not go with it (the note below the plot is '
+              'independent), so 0085 §3.4 is still satisfied, while a '
+              'greyed-out TITLE would just read as broken (FB-64)');
+      await t.tap(chartHeading(), warnIfMissed: false);
       await t.pump();
 
       final p = painterOf(t);
@@ -441,7 +476,11 @@ void main() {
     await t.pump();
 
     expect(painterOf(t).series, HistoryChartSeries.voltage);
-    expect(t.widget<IconButton>(toggle).onPressed, isNull);
+    expect(toggle, findsNothing,
+          reason: 'design 0089 §3.1 — the ⇅ is absent, not greyed: the '
+              'EXPLANATION does not go with it (the note below the plot is '
+              'independent), so 0085 §3.4 is still satisfied, while a '
+              'greyed-out TITLE would just read as broken (FB-64)');
     expect(find.text(en.capacitorChartNoCurrentNote), findsOneWidget);
   });
 }
