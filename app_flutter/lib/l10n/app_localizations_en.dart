@@ -2179,7 +2179,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Save this device first to set warnings';
 
   @override
-  String get alertsEntryBadgeOn => 'On';
+  String get alertsEntryBadgeWatching => 'Watching';
+
+  @override
+  String get alertsEntryBadgeNotWatching => 'Not watching';
+
+  @override
+  String get alertsEntryBadgeGlobalOff => 'Not enabled';
 
   @override
   String get alertsEntryBadgeOff => 'Off';
