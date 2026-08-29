@@ -2197,6 +2197,48 @@ class HistoryRow extends StatelessWidget {
   }
 }
 
+/// The per-row status badge — 🔵 **and since FB-104 it is drawn only for the
+/// rows that have something to report.**
+///
+/// ## Why `normal` is not drawn (design 0090, ruled 2026-08-29)
+///
+/// A user asked for "one colour" on this list, saying it was 太花俏／看不清楚.
+/// The literal reading of that report is already true — the direction words
+/// (靜置／充電中／放電中) live inside [HistoryRow._subLine]'s single muted
+/// string and have never been coloured. What they were actually looking at is
+/// THIS widget, and the reason they read it as a DIRECTION is the defect:
+///
+/// | colour | dashboard means | this list means |
+/// |---|---|---|
+/// | [AppSemantics.good] | **charging** (`powerFlowColor`) | **normal** |
+/// | [AppSemantics.warn] | **discharging** (`powerFlowColor`) | **warning** |
+///
+/// 🔴 **Two meanings sharing one pair of colours.** `power_flow.dart` already
+/// forbids the mirror image of this ("a second copy of this table is how
+/// charging ends up green on one line and amber on the line below it") — but
+/// that rule guards one meaning against two tables, and nothing guarded this
+/// direction. Dropping green from the history list severs the false
+/// correspondence at the only end that was wrong.
+///
+/// It also costs nothing to read: `normal` is ~all of them. Across the whole
+/// corpus only **165 of 567,201** samples classify as `event` (0.029%), so the
+/// brightest semantic colour in the app was being spent, on almost every row,
+/// to say that nothing happened — which is what buried the warnings that
+/// matter. ⛔ **The badge is NOT removed for `warning`**: FB-100 made the
+/// thresholds read-only, so this badge is the only protection signal a user can
+/// still see.
+///
+/// ## Why it is hidden rather than omitted (Q2, ruled 案 (a) 保留空位)
+///
+/// [Visibility.maintainSize] keeps the box, so a `normal` row's text column is
+/// exactly as wide as it was before this change and as wide as a `warning`
+/// row's. Returning nothing instead would let rows with and without a badge
+/// wrap their sub-line differently, and a per-minute list is precisely where
+/// that reads as breakage.
+///
+/// ⚠️ **The child therefore stays in the widget tree** — `find.text('正常')`
+/// still finds it. Tests must assert on [Visibility.visible] (and on the
+/// painted output), never on the Text being absent.
 class _StatusTag extends StatelessWidget {
   const _StatusTag({required this.status});
 
@@ -2222,7 +2264,7 @@ class _StatusTag extends StatelessWidget {
         fg = AppSemantics.event;
         label = l10n.historyStatusEvent;
     }
-    return Container(
+    final tag = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: fg.withValues(alpha: 0.12),
@@ -2232,6 +2274,22 @@ class _StatusTag extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(fontSize: 9, letterSpacing: 1, color: fg),
+      ),
+    );
+    if (status != HistoryRowStatus.normal) return tag;
+    // 🔑 `maintainSize` forces `maintainAnimation` and `maintainState`, so all
+    // three are set together — that is the API, not three separate opinions.
+    // `ExcludeSemantics` is explicit rather than left to `Visibility`'s own
+    // handling: a badge that cannot be seen must not be read out either, and
+    // stating it here means the guarantee survives a Flutter upgrade that
+    // changes that default.
+    return ExcludeSemantics(
+      child: Visibility(
+        visible: false,
+        maintainSize: true,
+        maintainAnimation: true,
+        maintainState: true,
+        child: tag,
       ),
     );
   }
