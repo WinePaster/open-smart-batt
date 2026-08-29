@@ -605,5 +605,53 @@ void main() {
 
       expect(find.text('這台裝置在此範圍內沒有紀錄。'), findsOneWidget);
     });
+
+    // FB-104 / design 0090 §9.6.1 — 🔴 this screen had NO screen-level
+    // assertion about its row widget at all, and that gap predates FB-104.
+    //
+    // `device_history_tab_test.dart` pins the same thing six times over for the
+    // OTHER host (T79-8/9/11 each do `find.byType(HistoryRow)` + `isNotEmpty` +
+    // the `status` values), so swapping the row widget out there turns tests
+    // red immediately. Doing the same here turned up nothing — which meant the
+    // main History tab could have stopped using `HistoryRow`, or started
+    // passing a different `status`, with the whole suite still green.
+    //
+    // 🔑 The badge half is asserted here as well, and it is NOT a duplicate of
+    // `history_row_status_colour_test.dart`: that file drives `HistoryRow` in
+    // isolation, so it proves the WIDGET hides a normal badge. This proves the
+    // SCREEN reaches that widget with a status that makes it hide — the two
+    // together are what design 0090's S3 originally asked for.
+    testWidgets('FB-104 — the screen renders HistoryRow, and a clean row '
+        'carries no visible badge', (t) async {
+      await boot(t);
+      final now = DateTime.now();
+      await seed(t, () async {
+        await services.devices.save(SavedDevice(
+            id: cap, alias: 'Capacitor', lastSeen: now));
+        await addRow(cap, now.subtract(const Duration(minutes: 5)), 13.5);
+        await addRow(cap, now.subtract(const Duration(minutes: 4)), 13.4);
+      });
+
+      await pumpHistory(t);
+
+      final rows = t.widgetList<HistoryRow>(find.byType(HistoryRow));
+      expect(rows, isNotEmpty,
+          reason: 'the main History tab must actually use HistoryRow');
+      // No thresholds are known offline and nothing here trips an event, so
+      // every row is `normal` — which is exactly the case FB-104 changed.
+      expect(rows.map((r) => r.status),
+          everyElement(HistoryRowStatus.normal));
+
+      // The badge's Text stays in the tree (Visibility.maintainSize — Q2 保留空位),
+      // so absence is asserted through the wrapper, never through `findsNothing`.
+      // ⛔ Rewriting this as `expect(find.text('正常'), findsNothing)` would pass
+      // only if someone had reclaimed the space, i.e. it would silently enforce
+      // the OPPOSITE ruling.
+      final hidden = t
+          .widgetList<Visibility>(find.byType(Visibility))
+          .where((v) => !v.visible && v.maintainSize);
+      expect(hidden.length, rows.length,
+          reason: 'one hidden, space-keeping badge per normal row');
+    });
   });
 }
