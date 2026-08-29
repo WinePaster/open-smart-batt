@@ -63,6 +63,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../devices/save_device_flow.dart';
 import '../util/alert_thresholds_lookup.dart';
+import '../util/alert_watch_state.dart';
 import '../widgets/industrial.dart';
 
 // The two value formatters moved to the models layer in P3 (see the note at the
@@ -161,7 +162,8 @@ class AlertSettingsEntry extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              if (saved != null) _EntryBadge(saved: saved),
+              if (saved != null)
+                _EntryBadge(saved: saved, deviceId: deviceId),
               const SizedBox(width: 4),
               Icon(Icons.chevron_right, size: 16, color: context.colors.muted),
             ],
@@ -212,24 +214,65 @@ class AlertSettingsEntry extends StatelessWidget {
   }
 }
 
-/// On / Off / Muted, for the entry row's right edge.
+/// What is happening to this unit's warnings RIGHT NOW (design 0091, FB-105).
+///
+/// 🔴 It used to read `saved.alertEnabled` and print 「已開啟」, which is a
+/// statement about a database column. The five states below are statements
+/// about the phone, and the ladder that picks between them lives in
+/// [alertWatchStateFor] so it can be tested without a widget pump — and so the
+/// order stays `AlertSuppression`'s rather than becoming a second one.
 class _EntryBadge extends StatelessWidget {
-  const _EntryBadge({required this.saved});
+  const _EntryBadge({required this.saved, required this.deviceId});
 
   final SavedDevice saved;
+  final String deviceId;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+
+    // 🔑 `select`, not `watch`: TelemetryController notifies on every frame, and
+    // this row must not rebuild at 29 Hz for a word that changes twice an hour.
+    // The stall watch already flips only on transitions
+    // (`TelemetryController._evaluateStall`), so the selected record is stable
+    // between them.
+    final health = context.select<TelemetryController, (bool, bool)>(
+        (c) => (c.hasTelemetry, c.telemetryStalled));
+    final connectedId = context
+        .select<ConnectionController, String?>((c) => c.connectedDeviceId);
+    final alertsEnabled =
+        context.select<SettingsController, bool>((c) => c.alertsEnabled);
+
     // The clock is read once, here, rather than by the model — see
     // [SavedDevice.isMutedAt]. Nothing on this row ticks: a badge that had to
     // re-render on the minute would put a timer on the dashboard for a word.
-    final muted = saved.isMutedAt(DateTime.now());
-    final (label, color) = muted
-        ? (l10n.alertsEntryBadgeMuted, AppSemantics.warn)
-        : saved.alertEnabled
-            ? (l10n.alertsEntryBadgeOn, AppSemantics.good)
-            : (l10n.alertsEntryBadgeOff, context.colors.muted);
+    final state = alertWatchStateFor(
+      alertsEnabled: alertsEnabled,
+      saved: saved,
+      deviceId: deviceId,
+      connectedDeviceId: connectedId,
+      hasTelemetry: health.$1,
+      telemetryStalled: health.$2,
+      now: DateTime.now(),
+    );
+
+    final (label, color) = switch (state) {
+      // Amber, not grey, and not red. Grey is what 「已關閉」 wears, and the
+      // whole point of this state is that the user believes it is ON — that
+      // difference has to be visible. Red would read as a fault report about
+      // the battery, which is the one thing this badge is not about.
+      AlertWatchState.notWatching =>
+        (l10n.alertsEntryBadgeNotWatching, AppSemantics.warn),
+      AlertWatchState.watching =>
+        (l10n.alertsEntryBadgeWatching, AppSemantics.good),
+      AlertWatchState.muted => (l10n.alertsEntryBadgeMuted, AppSemantics.warn),
+      // Its own word, not 「已關閉」: the two are fixed on different screens,
+      // and one label for both would send the user to the wrong one.
+      AlertWatchState.globallyDisabled =>
+        (l10n.alertsEntryBadgeGlobalOff, context.colors.muted),
+      AlertWatchState.deviceDisabled =>
+        (l10n.alertsEntryBadgeOff, context.colors.muted),
+    };
     return _Pill(label: label, color: color);
   }
 }

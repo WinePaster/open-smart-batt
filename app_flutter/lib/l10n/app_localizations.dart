@@ -3650,11 +3650,23 @@ abstract class AppLocalizations {
   /// **'Save this device first to set warnings'**
   String get alertsEntrySummaryUnsaved;
 
-  /// No description provided for @alertsEntryBadgeOn.
+  /// No description provided for @alertsEntryBadgeWatching.
   ///
   /// In en, this message translates to:
-  /// **'On'**
-  String get alertsEntryBadgeOn;
+  /// **'Watching'**
+  String get alertsEntryBadgeWatching;
+
+  /// No description provided for @alertsEntryBadgeNotWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'Not watching'**
+  String get alertsEntryBadgeNotWatching;
+
+  /// No description provided for @alertsEntryBadgeGlobalOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enabled'**
+  String get alertsEntryBadgeGlobalOff;
 
   /// No description provided for @alertsEntryBadgeOff.
   ///

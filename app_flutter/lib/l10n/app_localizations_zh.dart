@@ -2054,7 +2054,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alertsEntrySummaryUnsaved => '先儲存這台裝置才能設定警告';
 
   @override
-  String get alertsEntryBadgeOn => '已開啟';
+  String get alertsEntryBadgeWatching => '偵測中';
+
+  @override
+  String get alertsEntryBadgeNotWatching => '沒有在偵測';
+
+  @override
+  String get alertsEntryBadgeGlobalOff => '未啟用';
 
   @override
   String get alertsEntryBadgeOff => '已關閉';
