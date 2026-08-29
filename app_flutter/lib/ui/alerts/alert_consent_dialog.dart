@@ -13,15 +13,23 @@
 ///     stated first — asking at launch buys a high refusal rate on a permission
 ///     you get one chance at.
 ///
-/// ## 🔴 The five bullets are the honesty clause (§6.1), not marketing
+/// ## 🔴 The three bullets are the honesty clause (§6.1), not marketing
 ///
-/// Three of them are what the feature CANNOT do. They are here rather than only
-/// in Settings because this dialog is the moment the user forms their
-/// expectation, and every wrong expectation formed here comes back later as
-/// "the app did not warn me". The forbidden sentences are named in §6.1 and in
-/// the `.arb` description on `settingsAlertsLimitsTitle`: never 「電池有異常會
-/// 通知你」, never "24-hour monitoring", never "offline guardian", and never any
-/// claim about iOS delivering in the background.
+/// They are here rather than only in Settings because this dialog is the moment
+/// the user forms their expectation, and every wrong expectation formed here
+/// comes back later as "the app did not warn me". The forbidden sentences are
+/// named in §6.1 and in the `.arb` description on `settingsAlertsLimitsTitle`:
+/// never 「電池有異常會通知你」, never "24-hour monitoring", never "offline
+/// guardian", and never any claim about iOS delivering in the background.
+///
+/// 🔴 **It was five bullets until FB-105.** The two that named a platform
+/// described the MECHANISM — "the device's data wakes the app for short
+/// windows" — and a real iOS user read that and concluded detection was
+/// intermittent. It is not: alerts are evaluated per frame on both platforms,
+/// and design 0047's Phase 2 measurement found 65 minutes of background windows
+/// with zero gaps. ⛔ Not-overclaiming is what §6.1 requires, and NOT WRITING a
+/// sentence already satisfies it — explaining CoreBluetooth on a settings
+/// screen was never the way to comply.
 ///
 /// Cancelling writes nothing and asks for nothing — the switch springs back and
 /// the OS never sees a request. That is the difference between an opt-in and a
@@ -55,14 +63,15 @@ Future<bool> showAlertsConsentDialog(BuildContext context) async {
             children: [
               Text(l10n.alertsConsentIntro, style: bodyStyle),
               const SizedBox(height: 10),
-              // Both platforms' lines are shown on both platforms, following
-              // the Settings card's precedent: a user reads this to decide
-              // whether to trust the feature, and one line about the phone in
-              // their hand does not tell them what they lose by switching.
+              // 🔴 FB-105 — the two per-platform lines are GONE from this list.
+              // Same reason as the Settings card (see settings_screen.dart):
+              // they explained our implementation, not the user's decision, and
+              // the iOS one made a reporter believe detection was intermittent.
+              // This dialog is a one-time gate before asking for notification
+              // permission, so what belongs here are the LIMITS a user must
+              // know to consent — not how CoreBluetooth wakes the process.
               for (final line in [
                 l10n.alertsConsentPointConnected,
-                l10n.alertsConsentPointAndroid,
-                l10n.alertsConsentPointIos,
                 l10n.alertsConsentPointPermission,
                 l10n.alertsConsentPointThresholds,
               ])

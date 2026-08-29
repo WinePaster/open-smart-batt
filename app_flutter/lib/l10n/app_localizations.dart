@@ -4022,18 +4022,6 @@ abstract class AppLocalizations {
   /// **'Detection only happens while the app is CONNECTED to the device. Nothing is checked after the link drops.'**
   String get settingsAlertsLimitsBody;
 
-  /// No description provided for @settingsAlertsLimitsAndroid.
-  ///
-  /// In en, this message translates to:
-  /// **'Android: detection continues while connected, even with the screen off.'**
-  String get settingsAlertsLimitsAndroid;
-
-  /// No description provided for @settingsAlertsLimitsIos.
-  ///
-  /// In en, this message translates to:
-  /// **'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.'**
-  String get settingsAlertsLimitsIos;
-
   /// No description provided for @settingsAlertsStepDown.
   ///
   /// In en, this message translates to:
@@ -4093,18 +4081,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.'**
   String get alertsConsentPointConnected;
-
-  /// No description provided for @alertsConsentPointAndroid.
-  ///
-  /// In en, this message translates to:
-  /// **'Android: detection continues while connected, even with the screen off.'**
-  String get alertsConsentPointAndroid;
-
-  /// No description provided for @alertsConsentPointIos.
-  ///
-  /// In en, this message translates to:
-  /// **'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.'**
-  String get alertsConsentPointIos;
 
   /// No description provided for @alertsConsentPointPermission.
   ///

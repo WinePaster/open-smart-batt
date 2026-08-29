@@ -671,26 +671,27 @@ class _AlertsCardState extends State<_AlertsCard> {
                 ),
               ),
               const SizedBox(height: 6),
+              // 🔴 FB-105 — the two per-platform lines that used to sit here
+              // are GONE, and the reason is worth keeping.
+              //
+              // They described the MECHANISM ("the device's data wakes the app
+              // for short windows"), which answers no question a user asks on
+              // this screen. A real iOS user read "short windows" and concluded
+              // detection was intermittent — it is not: alerts are evaluated
+              // per frame on BOTH platforms, and design 0047's Phase 2
+              // measurement found 65 minutes of background windows with zero
+              // gaps. The copy made normal operation sound worse than it is,
+              // while burying the one thing that genuinely ends detection
+              // (the system reclaiming the app) in a trailing clause.
+              //
+              // What a user needs is below and on the switch itself
+              // ("連線期間偵測到超標時通知"). ⛔ Do not re-add a paragraph here:
+              // if the app cannot say WHEN it stopped watching, the fix is to
+              // show that state, not to warn in advance that it might happen.
               Text(
                 l10n.settingsAlertsLimitsBody,
                 style: TextStyle(
                     fontSize: 11.5, height: 1.65, color: context.colors.muted),
-              ),
-              const SizedBox(height: 6),
-              // Both platforms, on every platform. A user reads this to decide
-              // whether to trust the feature, and one line about the phone in
-              // their hand does not tell them what they lose by switching —
-              // whereas FB-26 is what showing only the OTHER platform's advice
-              // cost.
-              Text(
-                l10n.settingsAlertsLimitsAndroid,
-                style: const TextStyle(
-                    fontSize: 11.5, height: 1.65, color: AppSemantics.good),
-              ),
-              Text(
-                l10n.settingsAlertsLimitsIos,
-                style: const TextStyle(
-                    fontSize: 11.5, height: 1.65, color: AppSemantics.warn),
               ),
             ],
           ),
