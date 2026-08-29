@@ -2397,14 +2397,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Detection only happens while the app is CONNECTED to the device. Nothing is checked after the link drops.';
 
   @override
-  String get settingsAlertsLimitsAndroid =>
-      'Android: detection continues while connected, even with the screen off.';
-
-  @override
-  String get settingsAlertsLimitsIos =>
-      'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.';
-
-  @override
   String get settingsAlertsStepDown => 'Decrease';
 
   @override
@@ -2437,14 +2429,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get alertsConsentPointConnected =>
       'Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.';
-
-  @override
-  String get alertsConsentPointAndroid =>
-      'Android: detection continues while connected, even with the screen off.';
-
-  @override
-  String get alertsConsentPointIos =>
-      'iPhone: in the background, detection only happens during the short windows where the device\'s data wakes the app; it stops once the system reclaims the app.';
 
   @override
   String get alertsConsentPointPermission =>

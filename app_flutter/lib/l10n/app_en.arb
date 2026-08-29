@@ -1514,8 +1514,6 @@
   "settingsAlertsLimitsTitle": "What this feature can do",
   "@settingsAlertsLimitsTitle": {"description": "design 0080 §6.1 RED LINE. Never '24-hour monitoring', never 'offline guardian', never any iOS background promise."},
   "settingsAlertsLimitsBody": "Detection only happens while the app is CONNECTED to the device. Nothing is checked after the link drops.",
-  "settingsAlertsLimitsAndroid": "Android: detection continues while connected, even with the screen off.",
-  "settingsAlertsLimitsIos": "iPhone: in the background, detection only happens during the short windows where the device's data wakes the app; it stops once the system reclaims the app.",
   "settingsAlertsStepDown": "Decrease",
   "settingsAlertsStepUp": "Increase",
 
@@ -1529,8 +1527,6 @@
   "alertsConsentTitle": "Turn on warning notifications",
   "alertsConsentIntro": "Before you turn this on, what it does and does not do:",
   "alertsConsentPointConnected": "Detection only happens while the app is CONNECTED to a device. Nothing is checked after the link drops.",
-  "alertsConsentPointAndroid": "Android: detection continues while connected, even with the screen off.",
-  "alertsConsentPointIos": "iPhone: in the background, detection only happens during the short windows where the device's data wakes the app; it stops once the system reclaims the app.",
   "alertsConsentPointPermission": "Next you will be asked to allow system notifications. You can refuse — warnings still appear on screen, your phone just stays quiet.",
   "alertsConsentPointThresholds": "Limits are set per device, under 「Warnings」 on each device's page.",
   "alertsConsentEnable": "Turn on",

@@ -2257,13 +2257,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAlertsLimitsBody => '只有在 App 連著裝置的時候才會偵測。斷線之後不會有任何檢查。';
 
   @override
-  String get settingsAlertsLimitsAndroid => 'Android：連線中即使螢幕關閉也會持續偵測。';
-
-  @override
-  String get settingsAlertsLimitsIos =>
-      'iPhone：切到背景後，只有在裝置送資料喚醒 App 的短暫期間會偵測；系統回收 App 之後就會停止。';
-
-  @override
   String get settingsAlertsStepDown => '減少';
 
   @override
@@ -2293,13 +2286,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alertsConsentPointConnected => '只有在 App 連著裝置的時候才會偵測。斷線之後不會有任何檢查。';
-
-  @override
-  String get alertsConsentPointAndroid => 'Android：連線中即使螢幕關閉也會持續偵測。';
-
-  @override
-  String get alertsConsentPointIos =>
-      'iPhone：切到背景後，只有在裝置送資料喚醒 App 的短暫期間會偵測；系統回收 App 之後就會停止。';
 
   @override
   String get alertsConsentPointPermission =>
