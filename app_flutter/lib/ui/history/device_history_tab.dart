@@ -348,6 +348,10 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
   /// each surface keeps its own, exactly as it already did for the presets.
   HistoryRangeSel _sel = HistoryRangeSel.initial;
 
+  /// design 0089 (FB-103) — lifted out of `HistoryTrendCard`; the heading is
+  /// the switch now and has to read the same value the axis does.
+  HistoryChartSeries _series = HistoryChartSeries.voltage;
+
   /// The unit's FULL span — the calendar's bounds, and the reason the button
   /// can be disabled before it is tapped rather than after (design 0083
   /// §3.3.4). Null while it is still loading, which reads the same as "not
@@ -812,7 +816,10 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
     double? uv,
     double? ot,
   }) {
-    final framing = historyChartFraming(l10n, _sel);
+    // 🔵 design 0089 — `deviceClass` is already resolved by the caller here,
+    // so the title can say whether current is on offer without a second lookup.
+    final framing = historyChartFraming(l10n, _sel,
+        deviceClass: deviceClass, series: _series);
     final chartEmpty = data.buckets.length < 2;
     // 🔴 The tab is still DRAWN when there is nothing in it. A surface that
     // vanishes for a unit with no records is the dead-end shape FB-53 and
@@ -835,7 +842,21 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
             // in `history_screen.dart`, four lines apart in two files.
             heading: framing.heading,
             headingIcon: Icons.show_chart,
+            // 🔵 design 0089 (FB-103) — the heading IS the switch. Null when
+            // the gate is closed, so the title stays inert rather than
+            // becoming a control that does nothing (FB-64).
+            onHeadingTap: framing.canSwitch
+                ? () => setState(() => _series =
+                    framing.series == HistoryChartSeries.current
+                        ? HistoryChartSeries.voltage
+                        : HistoryChartSeries.current)
+                : null,
+            headingTrailing: framing.canSwitch
+                ? Icon(Icons.swap_vert, size: 14, color: context.colors.muted)
+                : null,
             child: HistoryTrendCard(
+              series: framing.series,
+              onSeriesChanged: (v) => setState(() => _series = v),
               sel: _sel,
               buckets: data.buckets,
               stats: data.stats,

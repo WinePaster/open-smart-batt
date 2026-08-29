@@ -607,6 +607,14 @@
   "historyExportSubject": "OpenSmartBatt History",
   "historyChartTodayTitle": "Today's Voltage Trend",
   "historyChartTitle": "Voltage Trend",
+  "historyChartCurrentTitle": "Current Trend",
+  "@historyChartCurrentTitle": {
+    "description": "design 0089 / FB-103 — the SAME card, titled by what it is actually drawing. The title is the toggle, so it must never disagree with the axis."
+  },
+  "historyChartTodayCurrentTitle": "Today's Current Trend",
+  "@historyChartTodayCurrentTitle": {
+    "description": "design 0089 / FB-103 — the today variant. A separate string rather than a composed one: Chinese 今日電流趨勢 is not 今日 + 電流趨勢 glued together."
+  },
   "historyRangeToday": "Today",
   "historyRangeWeek": "7d",
   "@historyRangeWeek": {

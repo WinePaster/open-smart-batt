@@ -57,6 +57,8 @@ Widget _host({ScrollController? controller}) => MaterialApp(
             controller: controller,
             children: [
               HistoryTrendCard(
+              series: HistoryChartSeries.voltage,
+              onSeriesChanged: (_) {},
                 buckets: _buckets,
                 stats: _stats,
                 tempUnit: TempUnit.celsius,

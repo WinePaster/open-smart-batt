@@ -42,6 +42,8 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../data/history_repo.dart';
 import '../../protocol/protocol.dart';
 import '../../state/state.dart';
+import '../../models/models.dart';
+import 'history_chart_core.dart';
 
 /// Selectable chart/list time range.
 ///
@@ -499,18 +501,55 @@ Future<({List<HistoryBucket> buckets, int bucketMs})> loadHistoryWindow(
 /// "Today's …" heading even when it happens to be exactly today: the user
 /// picked dates, and a title claiming otherwise would be a second, quieter
 /// statement about what is on screen.
-({String heading, bool multiDay}) historyChartFraming(
+/// 🔵 **design 0089 (FB-103) — the heading now names the SERIES too, and the
+/// gate is resolved here rather than at each surface.**
+///
+/// 🔴 **The title used to be the string `電壓趨勢`, unconditionally.** That is
+/// the whole of FB-103: the owner reported "current is nowhere to be seen" on
+/// `v0.7.35`, and the reason was not that the toggle is small (it is) — it is
+/// that the card had already answered the question. A heading saying "Voltage
+/// Trend" tells a reader there is no current here, so nobody goes looking for
+/// the control. Worse, after switching, the axis showed current while the
+/// heading still said voltage: not merely hard to find, actively false.
+///
+/// So the two facts are derived together, once, and returned together:
+/// whoever draws the heading also learns which series it is naming, and cannot
+/// draw one without the other.
+///
+/// [canSwitch] is [historyChartCurrentGate] resolved for [deviceClass]; when it
+/// is false the returned [series] is forced back to voltage, so "the toggle is
+/// unavailable" and "the axis is voltage" and "the title says voltage" are one
+/// fact rather than three that have to be kept in step (the same reasoning
+/// design 0085 S3 applied inside the card, moved up to where the title lives).
+({String heading, bool multiDay, bool canSwitch, HistoryChartSeries series})
+    historyChartFraming(
   AppLocalizations l10n,
-  HistoryRangeSel sel,
-) {
-  if (sel.isCustom) {
-    final span = sel.span ?? Duration.zero;
-    return (
-      heading: l10n.historyChartTitle,
-      multiDay: span > const Duration(hours: 24)
-    );
-  }
-  return sel.kind == HistoryRange.today
-      ? (heading: l10n.historyChartTodayTitle, multiDay: false)
-      : (heading: l10n.historyChartTitle, multiDay: true);
+  HistoryRangeSel sel, {
+  ProductClass? deviceClass,
+  HistoryChartSeries series = HistoryChartSeries.voltage,
+  // 🔑 Defaulted so a caller that has no notion of a series — and the tests
+  // that predate 0089 — still get the voltage framing they used to get.
+  // ⚠️ `deviceClass` defaults to null, which `historyChartCurrentGate` reads as
+  // the ALL-DEVICES scope, i.e. "cannot switch". That is the safe default: a
+  // surface that forgets to pass it gets a title that cannot lie.
+}) {
+  final canSwitch =
+      historyChartCurrentGate(deviceClass) == HistoryChartCurrentGate.available;
+  final eff = canSwitch ? series : HistoryChartSeries.voltage;
+  final isCurrent = eff == HistoryChartSeries.current;
+  final today = !sel.isCustom && sel.kind == HistoryRange.today;
+  final heading = today
+      ? (isCurrent
+          ? l10n.historyChartTodayCurrentTitle
+          : l10n.historyChartTodayTitle)
+      : (isCurrent ? l10n.historyChartCurrentTitle : l10n.historyChartTitle);
+  final multiDay = sel.isCustom
+      ? (sel.span ?? Duration.zero) > const Duration(hours: 24)
+      : !today;
+  return (
+    heading: heading,
+    multiDay: multiDay,
+    canSwitch: canSwitch,
+    series: eff
+  );
 }

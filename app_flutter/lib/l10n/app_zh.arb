@@ -235,6 +235,8 @@
   "historyExportSubject": "OpenSmartBatt 歷史紀錄",
   "historyChartTodayTitle": "今日電壓趨勢",
   "historyChartTitle": "電壓趨勢",
+  "historyChartCurrentTitle": "電流趨勢",
+  "historyChartTodayCurrentTitle": "今日電流趨勢",
   "historyRangeToday": "今天",
   "historyRangeWeek": "近 7 天",
   "historyRangeAll": "全部",

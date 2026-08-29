@@ -880,6 +880,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyChartTitle => 'Voltage Trend';
 
   @override
+  String get historyChartCurrentTitle => 'Current Trend';
+
+  @override
+  String get historyChartTodayCurrentTitle => 'Today\'s Current Trend';
+
+  @override
   String get historyRangeToday => 'Today';
 
   @override

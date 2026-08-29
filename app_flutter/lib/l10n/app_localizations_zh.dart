@@ -836,6 +836,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyChartTitle => '電壓趨勢';
 
   @override
+  String get historyChartCurrentTitle => '電流趨勢';
+
+  @override
+  String get historyChartTodayCurrentTitle => '今日電流趨勢';
+
+  @override
   String get historyRangeToday => '今天';
 
   @override

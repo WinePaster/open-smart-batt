@@ -27,6 +27,8 @@ import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/series_host.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
@@ -259,19 +261,27 @@ void main() {
           locale: const Locale('en'),
           home: Scaffold(
             body: SingleChildScrollView(
-              child: HistoryTrendCard(
-                buckets: run(),
-                stats: stats,
-                tempUnit: TempUnit.celsius,
-                multiDay: false,
-                bucketMs: 60000,
-                deviceClass: cls,
+              // 🔵 design 0089 — heading above, controlled card below, as
+              // production arranges them. The switch is the heading now.
+              child: SeriesHost(
+                cls: cls,
+                child: (series, onChanged) => HistoryTrendCard(
+                  buckets: run(),
+                  stats: stats,
+                  tempUnit: TempUnit.celsius,
+                  multiDay: false,
+                  bucketMs: 60000,
+                  deviceClass: cls,
+                  series: series,
+                  onSeriesChanged: onChanged,
+                ),
               ),
             ),
           ),
         );
 
-    final toggle = find.widgetWithIcon(IconButton, Icons.swap_vert);
+    // 🔵 design 0089 — the switch is the heading; the ⇅ is its affordance.
+    final toggle = chartHeading();
 
     testWidgets('voltage mode is exactly what it was before S4', (t) async {
       // Regression. Nothing about the default view moves.
@@ -370,8 +380,10 @@ void main() {
       // strip must not print them, and it must not need its own copy of the
       // rule to avoid it (the caller resolves `historyChartCurrentGate` first).
       await t.pumpWidget(host(ProductClass.supercapacitor));
-      expect(isDisabled(t, toggle), isTrue);
-      await t.tap(toggle);
+      // 🔵 design 0089 §3.1 — the ⇅ is absent, not greyed, when the gate is
+      // closed; tapping the (inert) title must change nothing.
+      expect(seriesToggle(), findsNothing);
+      await t.tap(toggle, warnIfMissed: false);
       await t.pump();
       expect(find.text(en.historyLegendCurrent), findsNothing);
       expect(find.text('-0.7A'), findsNothing);
@@ -387,8 +399,10 @@ void main() {
       // never put a number on that, and unlike the chart it has no band or
       // axis to hint with.
       await t.pumpWidget(host(null));
-      expect(isDisabled(t, toggle), isTrue);
-      await t.tap(toggle);
+      // 🔵 design 0089 §3.1 — the ⇅ is absent, not greyed, when the gate is
+      // closed; tapping the (inert) title must change nothing.
+      expect(seriesToggle(), findsNothing);
+      await t.tap(toggle, warnIfMissed: false);
       await t.pump();
       expect(find.text(en.historyLegendCurrent), findsNothing);
       expect(find.text('-0.7A'), findsNothing);
@@ -414,23 +428,28 @@ void main() {
           locale: const Locale('en'),
           home: Scaffold(
             body: SingleChildScrollView(
-              child: HistoryTrendCard(
-                buckets: run(),
-                // Temperature is filled in so the three `--` below can only
-                // have come from the current row.
-                stats: const HistoryStats(
-                  minPvlt: 12.98,
-                  maxPvlt: 13.31,
-                  avgPvlt: 13.20,
-                  minTemp: 24.0,
-                  maxTemp: 26.0,
-                  avgTemp: 25.0,
-                  count: 360,
+              child: SeriesHost(
+                cls: ProductClass.smartBattery,
+                child: (series, onChanged) => HistoryTrendCard(
+                  buckets: run(),
+                  // Temperature is filled in so the three `--` below can only
+                  // have come from the current row.
+                  stats: const HistoryStats(
+                    minPvlt: 12.98,
+                    maxPvlt: 13.31,
+                    avgPvlt: 13.20,
+                    minTemp: 24.0,
+                    maxTemp: 26.0,
+                    avgTemp: 25.0,
+                    count: 360,
+                  ),
+                  tempUnit: TempUnit.celsius,
+                  multiDay: false,
+                  bucketMs: 60000,
+                  deviceClass: ProductClass.smartBattery,
+                  series: series,
+                  onSeriesChanged: onChanged,
                 ),
-                tempUnit: TempUnit.celsius,
-                multiDay: false,
-                bucketMs: 60000,
-                deviceClass: ProductClass.smartBattery,
               ),
             ),
           ),
