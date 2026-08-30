@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../config/app_config.dart';
 import '../data/data.dart';
 import '../theme/app_theme.dart';
 
@@ -22,7 +23,13 @@ class StartupFailureApp extends StatelessWidget {
     super.key,
     required this.error,
     required this.onRetry,
+    this.config = AppConfig.open,
   });
+
+  /// This build's branding (design 0092). Threaded by CONSTRUCTOR and not read
+  /// from an [AppConfigScope], because this screen is what runs when the
+  /// composition root could not be built — there is nothing above it to read.
+  final AppConfig config;
 
   /// What [AppServices.create] threw.
   final Object error;
@@ -32,7 +39,7 @@ class StartupFailureApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'OpenSmartBatt',
+        title: config.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),

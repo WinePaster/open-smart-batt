@@ -39,15 +39,17 @@ String updateUrlFor(UpdateInfo update, {required bool isIOS}) =>
     isIOS ? update.htmlUrl : (update.apkUrl ?? update.htmlUrl);
 
 class UpdateService {
-  const UpdateService();
+  const UpdateService({required this.repo});
 
-  static const String _repo = 'WinePaster/open-smart-batt';
-  static const String _api =
-      'https://api.github.com/repos/$_repo/releases/latest';
+  /// `owner/repo` on GitHub. Injected (design 0092 §8.1) rather than hard-coded:
+  /// an edition with no releases of its own must not send its users to somebody
+  /// else's, and the caller is the only place that knows which edition this is.
+  final String repo;
+
+  String get _api => 'https://api.github.com/repos/$repo/releases/latest';
 
   /// Release listing page (used as the manual-download fallback).
-  static const String releasesPage =
-      'https://github.com/$_repo/releases';
+  String get releasesPage => 'https://github.com/$repo/releases';
 
   /// Returns the latest release iff it is strictly newer than [currentVersion]
   /// (e.g. "0.3.2"); returns null when up-to-date or on any error (silent).

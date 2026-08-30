@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'ble/ble.dart';
+import 'config/app_config.dart';
 import 'data/data.dart';
 import 'models/models.dart';
 import 'protocol/protocol.dart';
@@ -24,9 +25,6 @@ import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
 
-/// Public project page (shown in the community disclaimer + Settings → About).
-const String kProjectUrl = 'https://github.com/WinePaster/open-smart-batt';
-
 /// Open-build entry point: boots with the default no-op metadata seam.
 Future<void> main() => bootstrap();
 
@@ -40,9 +38,14 @@ Future<void> main() => bootstrap();
 ///   [AppServices.create]. Open default = [NoopMetadataParser].
 /// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
 ///   open build (no panel; the open app never reads [DeviceMetadata] content).
+/// - [config]: per-edition branding (design 0092). Open default =
+///   [AppConfig.open], so this build says exactly what it said before the
+///   parameter existed. It carries NO behaviour — see the header of
+///   `config/app_config.dart` for what may and may not live in it.
 Future<void> bootstrap({
   MetadataParser parser = const NoopMetadataParser(),
   WidgetBuilder? deviceInfoPanelBuilder,
+  AppConfig config = AppConfig.open,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
@@ -74,9 +77,11 @@ Future<void> bootstrap({
     runApp(
       StartupFailureApp(
         error: e,
+        config: config,
         onRetry: () => bootstrap(
           parser: parser,
           deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+          config: config,
         ),
       ),
     );
@@ -131,6 +136,7 @@ Future<void> bootstrap({
     OpenSmartBattApp(
       services: services,
       deviceInfoPanelBuilder: deviceInfoPanelBuilder,
+      config: config,
     ),
   );
 }
@@ -167,9 +173,14 @@ class OpenSmartBattApp extends StatefulWidget {
     super.key,
     required this.services,
     this.deviceInfoPanelBuilder,
+    this.config = AppConfig.open,
   });
 
   final AppServices services;
+
+  /// This build's branding (design 0092). Published to the subtree via
+  /// [AppConfigScope] so screens do not each need it threaded down.
+  final AppConfig config;
 
   /// Closed-side "device info" panel builder, or null on the open build (no
   /// panel). Held here so a closed composition
@@ -280,74 +291,80 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   Widget build(BuildContext context) {
     final s = widget.services;
-    return MultiProvider(
-      providers: [
-        // Services the UI may read directly (history/log/CSV export, raw BLE).
-        Provider<AppServices>.value(value: s),
-        Provider<BleService>.value(value: s.ble),
-        Provider<HistoryRepo>.value(value: s.historyRepo),
-        Provider<DeviceRepo>.value(value: s.deviceRepo),
-        Provider<SettingsRepo>.value(value: s.settingsRepo),
-        Provider<LogRepo>.value(value: s.logRepo),
-        // Controllers (lifecycle owned by AppServices, hence .value).
-        ChangeNotifierProvider<SettingsController>.value(value: s.settings),
-        ChangeNotifierProvider<DeviceController>.value(value: s.devices),
-        // design 0057. Every consumer looks it up as `DeviceFactsController?`,
-        // which provider resolves to null where it is absent — a screen that
-        // does not get one falls back to exactly the pre-0057 behaviour rather
-        // than throwing, and no test harness has to learn about a table it is
-        // not testing.
-        ChangeNotifierProvider<DeviceFactsController>.value(value: s.facts),
-        ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
-        ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
-        ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
-        ChangeNotifierProvider<GForceController>.value(value: s.gforce),
-        // design 0080 P3. Watched by the device page's event banner, the
-        // per-device warning screen and the Settings card — and, unlike the two
-        // above, it is also what a notification tap arrives through.
-        ChangeNotifierProvider<AlertController>.value(value: s.alerts),
-      ],
-      // Rebuild MaterialApp when the theme preference changes.
-      child: Consumer<SettingsController>(
-        builder: (context, settings, _) => MaterialApp(
-          title: 'OpenSmartBatt',
-          debugShowCheckedModeBanner: false,
-          // Real light / dark themes (DEFAULT light); `auto` follows the OS.
-          // 🔴 These are no longer constant across the app's life: picking an
-          // accent rebuilds both, which is what repaints the tree. That is the
-          // intended cost — a colour change that did not repaint would be a
-          // colour change nobody could see.
-          theme: AppTheme.light(accent: _accentOf(settings)),
-          darkTheme: AppTheme.dark(accent: _accentOf(settings)),
-          themeMode: _themeModeOf(settings.themeMode),
-          // i18n wiring -------------------------------------------------------
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: _localeOf(settings.lang), // null => follow device locale
-          // -------------------------------------------------------------------
-          home: RootShell(
-            deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
-          ),
-          // Global font bump on top of the user's system text scale. The factor
-          // is [AppTheme.baseTextScale], not a literal, because the dashboard
-          // has to divide it back out to tell how much the USER enlarged text
-          // (see AppTheme.gaugeDiameter).
-          builder: (context, child) {
-            final mq = MediaQuery.of(context);
-            return MediaQuery(
-              data: mq.copyWith(
-                textScaler: TextScaler.linear(
-                  mq.textScaler.scale(1) * AppTheme.baseTextScale,
+    // design 0092: branding is published ABOVE the MaterialApp, so
+    // `AppConfigScope.of` answers from any screen without each one having it
+    // threaded through its constructor.
+    return AppConfigScope(
+      config: widget.config,
+      child: MultiProvider(
+        providers: [
+          // Services the UI may read directly (history/log/CSV export, raw BLE).
+          Provider<AppServices>.value(value: s),
+          Provider<BleService>.value(value: s.ble),
+          Provider<HistoryRepo>.value(value: s.historyRepo),
+          Provider<DeviceRepo>.value(value: s.deviceRepo),
+          Provider<SettingsRepo>.value(value: s.settingsRepo),
+          Provider<LogRepo>.value(value: s.logRepo),
+          // Controllers (lifecycle owned by AppServices, hence .value).
+          ChangeNotifierProvider<SettingsController>.value(value: s.settings),
+          ChangeNotifierProvider<DeviceController>.value(value: s.devices),
+          // design 0057. Every consumer looks it up as `DeviceFactsController?`,
+          // which provider resolves to null where it is absent — a screen that
+          // does not get one falls back to exactly the pre-0057 behaviour rather
+          // than throwing, and no test harness has to learn about a table it is
+          // not testing.
+          ChangeNotifierProvider<DeviceFactsController>.value(value: s.facts),
+          ChangeNotifierProvider<ConnectionController>.value(value: s.connection),
+          ChangeNotifierProvider<TelemetryController>.value(value: s.telemetry),
+          ChangeNotifierProvider<GpsSpeedController>.value(value: s.speed),
+          ChangeNotifierProvider<GForceController>.value(value: s.gforce),
+          // design 0080 P3. Watched by the device page's event banner, the
+          // per-device warning screen and the Settings card — and, unlike the two
+          // above, it is also what a notification tap arrives through.
+          ChangeNotifierProvider<AlertController>.value(value: s.alerts),
+        ],
+        // Rebuild MaterialApp when the theme preference changes.
+        child: Consumer<SettingsController>(
+          builder: (context, settings, _) => MaterialApp(
+            title: widget.config.appName,
+            debugShowCheckedModeBanner: false,
+            // Real light / dark themes (DEFAULT light); `auto` follows the OS.
+            // 🔴 These are no longer constant across the app's life: picking an
+            // accent rebuilds both, which is what repaints the tree. That is the
+            // intended cost — a colour change that did not repaint would be a
+            // colour change nobody could see.
+            theme: AppTheme.light(accent: _accentOf(settings)),
+            darkTheme: AppTheme.dark(accent: _accentOf(settings)),
+            themeMode: _themeModeOf(settings.themeMode),
+            // i18n wiring -------------------------------------------------------
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: _localeOf(settings.lang), // null => follow device locale
+            // -------------------------------------------------------------------
+            home: RootShell(
+              deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+            ),
+            // Global font bump on top of the user's system text scale. The factor
+            // is [AppTheme.baseTextScale], not a literal, because the dashboard
+            // has to divide it back out to tell how much the USER enlarged text
+            // (see AppTheme.gaugeDiameter).
+            builder: (context, child) {
+              final mq = MediaQuery.of(context);
+              return MediaQuery(
+                data: mq.copyWith(
+                  textScaler: TextScaler.linear(
+                    mq.textScaler.scale(1) * AppTheme.baseTextScale,
+                  ),
                 ),
-              ),
-              child: child!,
-            );
-          },
+                child: child!,
+              );
+            },
+          ),
         ),
       ),
     );
@@ -642,10 +659,11 @@ class _RootShellState extends State<RootShell> {
     // stay up on every tab.
     _syncDashboardVisible();
     final l10n = AppLocalizations.of(context);
+    final appName = AppConfigScope.of(context).appName;
     context.read<ConnectionController>().setNotificationStrings(
-      title: l10n.monitorNotificationTitle,
-      titleConnecting: l10n.monitorNotificationTitleConnecting,
-      titleStalled: l10n.monitorNotificationTitleStalled,
+      title: l10n.monitorNotificationTitle(appName),
+      titleConnecting: l10n.monitorNotificationTitleConnecting(appName),
+      titleStalled: l10n.monitorNotificationTitleStalled(appName),
       stopLabel: l10n.monitorNotificationStop,
       channelName: l10n.monitorChannelName,
       channelDescription: l10n.monitorChannelDescription,
@@ -1404,7 +1422,8 @@ class _GitHubButton extends StatelessWidget {
         onPressed: () async {
           final l10n = AppLocalizations.of(context);
           final messenger = ScaffoldMessenger.of(context);
-          final uri = Uri.parse(kProjectUrl);
+          final projectUrl = AppConfigScope.of(context).projectUrl;
+          final uri = Uri.parse(projectUrl);
           var opened = false;
           try {
             opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1412,11 +1431,11 @@ class _GitHubButton extends StatelessWidget {
             opened = false;
           }
           if (!opened) {
-            await Clipboard.setData(const ClipboardData(text: kProjectUrl));
+            await Clipboard.setData(ClipboardData(text: projectUrl));
             messenger.showSnackBar(
               SnackBar(
                 duration: const Duration(milliseconds: 1600),
-                content: Text(l10n.commonOpenBrowserFailed(kProjectUrl)),
+                content: Text(l10n.commonOpenBrowserFailed(projectUrl)),
               ),
             );
           }

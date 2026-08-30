@@ -871,7 +871,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyExportCsv => 'Export CSV';
 
   @override
-  String get historyExportSubject => 'OpenSmartBatt History';
+  String historyExportSubject(String appName) {
+    return '$appName History';
+  }
 
   @override
   String get historyChartTodayTitle => 'Today\'s Voltage Trend';
@@ -1212,14 +1214,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)';
 
   @override
-  String get monitorNotificationTitle => 'OpenSmartBatt · monitoring';
+  String monitorNotificationTitle(String appName) {
+    return '$appName · monitoring';
+  }
 
   @override
-  String get monitorNotificationTitleConnecting =>
-      'OpenSmartBatt · connecting…';
+  String monitorNotificationTitleConnecting(String appName) {
+    return '$appName · connecting…';
+  }
 
   @override
-  String get monitorNotificationTitleStalled => 'OpenSmartBatt · no data';
+  String monitorNotificationTitleStalled(String appName) {
+    return '$appName · no data';
+  }
 
   @override
   String get monitorNotificationStop => 'Stop';
@@ -1562,7 +1569,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsClearHistoryLabel => 'Clear history';
 
   @override
-  String get settingsExportSubjectAllData => 'OpenSmartBatt all data';
+  String settingsExportSubjectAllData(String appName) {
+    return '$appName all data';
+  }
 
   @override
   String get settingsClearHistoryTitle => 'Clear history';
@@ -1635,7 +1644,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogEmpty => 'Diagnostic log is empty';
 
   @override
-  String get settingsExportSubjectDiagLog => 'OpenSmartBatt diagnostic log';
+  String settingsExportSubjectDiagLog(String appName) {
+    return '$appName diagnostic log';
+  }
 
   @override
   String get startupFailedTitle => 'Couldn\'t start';
@@ -1718,7 +1729,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsVersionLabel => 'Version';
 
   @override
-  String get settingsVersionSub => 'OpenSmartBatt Community Edition';
+  String settingsVersionSub(String appName, String edition) {
+    return '$appName $edition';
+  }
+
+  @override
+  String get editionCommunity => 'Community Edition';
+
+  @override
+  String get editionPro => 'Pro';
 
   @override
   String get settingsCheckUpdateLabel => 'Check for updates';

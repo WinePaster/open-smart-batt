@@ -20,6 +20,7 @@ import '../alerts/alert_consent_dialog.dart';
 import '../dashboard/capture_mark_labels.dart';
 import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
+import '../../config/app_config.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -1023,6 +1024,8 @@ class _DataCardState extends State<_DataCard> {
         AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
     final speedDetection = appSettings.speedDetectionEffective;
     final gMeter = appSettings.gMeterEffective;
+    // design 0092: same pre-await capture rule as everything above it.
+    final appName = AppConfigScope.of(context).appName;
     try {
       final filename = exportFileName(
         base: 'opensmartbatt-history',
@@ -1061,7 +1064,7 @@ class _DataCardState extends State<_DataCard> {
         labelFor: labelFor,
         classFor: classFor,
         header: exportHeaderLines(
-          title: 'OpenSmartBatt history export',
+          title: '\$appName history export',
           exportedAt: DateTime.now(),
           appBuild: services.appBuild,
           platform: services.platform,
@@ -1097,7 +1100,7 @@ class _DataCardState extends State<_DataCard> {
         file: file,
         filename: filename,
         mimeType: 'text/csv',
-        subject: l10n.settingsExportSubjectAllData,
+        subject: l10n.settingsExportSubjectAllData(appName),
         sharePositionOrigin: origin,
       );
     } catch (e) {
@@ -1254,6 +1257,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
     // Captured now: the lookup runs after an await, when this screen may be gone.
+    final appName = AppConfigScope.of(context).appName;
     final devices = context.read<DeviceController>();
     final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
@@ -1292,7 +1296,8 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       final header =
           await _logHeader(
               tele, services, target, rawLog, logMode, logThemeMode,
-              logAccent, speedOn, gMeterOn, layout, home, identities);
+              logAccent, speedOn, gMeterOn, layout, home, identities,
+              appName);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -1313,7 +1318,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           extension: 'log',
         ),
         mimeType: 'text/plain',
-        subject: l10n.settingsExportSubjectDiagLog,
+        subject: l10n.settingsExportSubjectDiagLog(appName),
         sharePositionOrigin: origin,
       );
     } catch (e) {
@@ -1435,12 +1440,16 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     String layout,
     String home,
     List<ExportDeviceIdentity> devices,
+    // design 0092, same pre-await capture rule as `rawPacketLog` above: this
+    // method awaits before it builds the header, so the branding has to arrive
+    // already read rather than be looked up off a context that may be gone.
+    String appName,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
         : await tele.logSessionCount(deviceId: target.deviceId);
     return exportHeaderLines(
-      title: 'OpenSmartBatt diagnostic log',
+      title: '\$appName diagnostic log',
       exportedAt: DateTime.now(),
       appBuild: services.appBuild,
       platform: services.platform,
@@ -1565,13 +1574,17 @@ class _AboutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final config = AppConfigScope.of(context);
     return IndustrialCard(
       heading: l10n.settingsAboutHeading,
       child: Column(
         children: [
           SettingsRow(
             label: l10n.settingsVersionLabel,
-            sub: l10n.settingsVersionSub,
+            sub: l10n.settingsVersionSub(
+              config.appName,
+              config.edition.label(l10n),
+            ),
             trailing: FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
               builder: (context, snap) {
@@ -1589,7 +1602,11 @@ class _AboutCard extends StatelessWidget {
           ),
           // Android-only: iOS updates come via TestFlight / the App Store, and
           // GitHub releases carry only the Android APK, so hide this on iOS.
-          if (!Platform.isIOS)
+          //
+          // design 0092 §8.1: also hidden when the edition has no release
+          // channel of its own. The row would otherwise offer a DIFFERENT app
+          // as this one's update.
+          if (!Platform.isIOS && config.updateRepo != null)
             SettingsLinkRow(
               icon: Icons.system_update_alt,
               label: l10n.settingsCheckUpdateLabel,

@@ -827,7 +827,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyExportCsv => '匯出 CSV';
 
   @override
-  String get historyExportSubject => 'OpenSmartBatt 歷史紀錄';
+  String historyExportSubject(String appName) {
+    return '$appName 歷史紀錄';
+  }
 
   @override
   String get historyChartTodayTitle => '今日電壓趨勢';
@@ -1137,13 +1139,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsKeepAwakeSub => '螢幕不自動關閉，方便邊騎邊看（連線時生效）';
 
   @override
-  String get monitorNotificationTitle => 'OpenSmartBatt · 監看中';
+  String monitorNotificationTitle(String appName) {
+    return '$appName · 監看中';
+  }
 
   @override
-  String get monitorNotificationTitleConnecting => 'OpenSmartBatt · 連線中…';
+  String monitorNotificationTitleConnecting(String appName) {
+    return '$appName · 連線中…';
+  }
 
   @override
-  String get monitorNotificationTitleStalled => 'OpenSmartBatt · 無資料';
+  String monitorNotificationTitleStalled(String appName) {
+    return '$appName · 無資料';
+  }
 
   @override
   String get monitorNotificationStop => '停止監看';
@@ -1466,7 +1474,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsClearHistoryLabel => '清除歷史紀錄';
 
   @override
-  String get settingsExportSubjectAllData => 'OpenSmartBatt 全部資料';
+  String settingsExportSubjectAllData(String appName) {
+    return '$appName 全部資料';
+  }
 
   @override
   String get settingsClearHistoryTitle => '清除歷史紀錄';
@@ -1535,7 +1545,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLogEmpty => '診斷日誌為空';
 
   @override
-  String get settingsExportSubjectDiagLog => 'OpenSmartBatt 診斷日誌';
+  String settingsExportSubjectDiagLog(String appName) {
+    return '$appName 診斷日誌';
+  }
 
   @override
   String get startupFailedTitle => '無法啟動';
@@ -1613,7 +1625,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsVersionLabel => '版本';
 
   @override
-  String get settingsVersionSub => 'OpenSmartBatt 社群版';
+  String settingsVersionSub(String appName, String edition) {
+    return '$appName $edition';
+  }
+
+  @override
+  String get editionCommunity => '社群版';
+
+  @override
+  String get editionPro => '專業版';
 
   @override
   String get settingsCheckUpdateLabel => '檢查更新';
