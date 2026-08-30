@@ -604,7 +604,15 @@
   },
   "historyFilterWarning": "Warnings",
   "historyExportCsv": "Export CSV",
-  "historyExportSubject": "OpenSmartBatt History",
+  "historyExportSubject": "{appName} History",
+  "@historyExportSubject": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
   "historyChartTodayTitle": "Today's Voltage Trend",
   "historyChartTitle": "Voltage Trend",
   "historyChartCurrentTitle": "Current Trend",
@@ -874,9 +882,33 @@
   "settingsBackgroundMonitorSubIos": "While the app is in the background or the screen is off, recording continues for as long as the connection can be maintained. Background execution is subject to iOS scheduling and Low Power Mode, so the link is not guaranteed to stay up; periods where it is down are not recorded. Enabling this increases battery use.",
   "settingsKeepAwakeLabel": "Keep screen awake while connected",
   "settingsKeepAwakeSub": "Screen won't turn off automatically, handy for viewing while riding (active when connected)",
-  "monitorNotificationTitle": "OpenSmartBatt · monitoring",
-  "monitorNotificationTitleConnecting": "OpenSmartBatt · connecting…",
-  "monitorNotificationTitleStalled": "OpenSmartBatt · no data",
+  "monitorNotificationTitle": "{appName} · monitoring",
+  "@monitorNotificationTitle": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+  "monitorNotificationTitleConnecting": "{appName} · connecting…",
+  "@monitorNotificationTitleConnecting": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+  "monitorNotificationTitleStalled": "{appName} · no data",
+  "@monitorNotificationTitleStalled": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
   "monitorNotificationStop": "Stop",
   "monitorChannelName": "Background monitoring",
   "monitorChannelDescription": "Ongoing notification showing live voltage and charge while connected",
@@ -1164,7 +1196,15 @@
   },
   "settingsExportAllLabel": "Export all data (CSV)",
   "settingsClearHistoryLabel": "Clear history",
-  "settingsExportSubjectAllData": "OpenSmartBatt all data",
+  "settingsExportSubjectAllData": "{appName} all data",
+  "@settingsExportSubjectAllData": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
   "settingsClearHistoryTitle": "Clear history",
   "settingsClearHistoryBody": "This will delete all telemetry history on this device. This action cannot be undone.",
   "settingsClearConfirm": "Clear",
@@ -1186,7 +1226,15 @@
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
-  "settingsExportSubjectDiagLog": "OpenSmartBatt diagnostic log",
+  "settingsExportSubjectDiagLog": "{appName} diagnostic log",
+  "@settingsExportSubjectDiagLog": {
+    "description": "design 0092 \u2014 the app name is injected so both editions share one string.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
   "startupFailedTitle": "Couldn't start",
   "startupFailedBody": "The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).",
   "startupDowngradeTitle": "App is older than your data",
@@ -1244,7 +1292,20 @@
   "settingsLogCleared": "Diagnostic log cleared",
   "settingsAboutHeading": "About",
   "settingsVersionLabel": "Version",
-  "settingsVersionSub": "OpenSmartBatt Community Edition",
+  "settingsVersionSub": "{appName} {edition}",
+  "@settingsVersionSub": {
+    "description": "design 0092 \u2014 app name + edition word, both injected. The edition word is what makes this line WRONG on a pro build if left hard-coded.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      },
+      "edition": {
+        "type": "String"
+      }
+    }
+  },
+  "editionCommunity": "Community Edition",
+  "editionPro": "Pro",
   "settingsCheckUpdateLabel": "Check for updates",
   "settingsGithubLabel": "GitHub project page",
   "settingsProtocolDocLabel": "Protocol document PROTOCOL.md",

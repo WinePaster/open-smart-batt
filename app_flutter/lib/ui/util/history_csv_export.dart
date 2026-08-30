@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../config/app_config.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -56,6 +57,8 @@ Future<void> exportHistoryCsv(
   required String window,
 }) async {
   final l10n = AppLocalizations.of(context);
+  // design 0092: read with the other pre-await captures below.
+  final appName = AppConfigScope.of(context).appName;
   final messenger = ScaffoldMessenger.of(context);
   // Captured now: every lookup below runs after an await, when the screen that
   // started this may already be gone.
@@ -176,7 +179,7 @@ Future<void> exportHistoryCsv(
       file: file,
       filename: filename,
       mimeType: 'text/csv',
-      subject: l10n.historyExportSubject,
+      subject: l10n.historyExportSubject(appName),
       sharePositionOrigin: origin,
     );
   } catch (e) {

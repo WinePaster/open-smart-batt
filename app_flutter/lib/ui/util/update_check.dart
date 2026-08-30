@@ -12,17 +12,25 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/app_config.dart';
 import '../../data/data.dart';
 import '../../theme/app_theme.dart';
 
 /// Checks GitHub for a newer release. [manual] true → also surfaces an
 /// "already up to date / offline" SnackBar; false (on-launch) → silent unless
 /// an update exists.
+///
+/// Does nothing at all when the edition has no release channel of its own
+/// ([AppConfig.updateRepo] null, design 0092 §8.1) — including on the manual
+/// path, whose entry row is hidden for the same reason. Checking somebody
+/// else's repo would offer the user a DIFFERENT app as "an update".
 Future<void> runUpdateCheck(BuildContext context, {required bool manual}) async {
+  final repo = AppConfigScope.of(context).updateRepo;
+  if (repo == null) return;
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
   final info = await PackageInfo.fromPlatform();
-  final update = await const UpdateService().checkForUpdate(info.version);
+  final update = await UpdateService(repo: repo).checkForUpdate(info.version);
   if (!context.mounted) return;
 
   if (update == null) {

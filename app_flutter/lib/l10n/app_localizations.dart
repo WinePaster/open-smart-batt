@@ -1490,11 +1490,11 @@ abstract class AppLocalizations {
   /// **'Export CSV'**
   String get historyExportCsv;
 
-  /// No description provided for @historyExportSubject.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt History'**
-  String get historyExportSubject;
+  /// **'{appName} History'**
+  String historyExportSubject(String appName);
 
   /// No description provided for @historyChartTodayTitle.
   ///
@@ -1922,23 +1922,23 @@ abstract class AppLocalizations {
   /// **'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)'**
   String get settingsKeepAwakeSub;
 
-  /// No description provided for @monitorNotificationTitle.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt · monitoring'**
-  String get monitorNotificationTitle;
+  /// **'{appName} · monitoring'**
+  String monitorNotificationTitle(String appName);
 
-  /// No description provided for @monitorNotificationTitleConnecting.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt · connecting…'**
-  String get monitorNotificationTitleConnecting;
+  /// **'{appName} · connecting…'**
+  String monitorNotificationTitleConnecting(String appName);
 
-  /// No description provided for @monitorNotificationTitleStalled.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt · no data'**
-  String get monitorNotificationTitleStalled;
+  /// **'{appName} · no data'**
+  String monitorNotificationTitleStalled(String appName);
 
   /// No description provided for @monitorNotificationStop.
   ///
@@ -2552,11 +2552,11 @@ abstract class AppLocalizations {
   /// **'Clear history'**
   String get settingsClearHistoryLabel;
 
-  /// No description provided for @settingsExportSubjectAllData.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt all data'**
-  String get settingsExportSubjectAllData;
+  /// **'{appName} all data'**
+  String settingsExportSubjectAllData(String appName);
 
   /// No description provided for @settingsClearHistoryTitle.
   ///
@@ -2684,11 +2684,11 @@ abstract class AppLocalizations {
   /// **'Diagnostic log is empty'**
   String get settingsLogEmpty;
 
-  /// No description provided for @settingsExportSubjectDiagLog.
+  /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt diagnostic log'**
-  String get settingsExportSubjectDiagLog;
+  /// **'{appName} diagnostic log'**
+  String settingsExportSubjectDiagLog(String appName);
 
   /// No description provided for @startupFailedTitle.
   ///
@@ -2828,11 +2828,23 @@ abstract class AppLocalizations {
   /// **'Version'**
   String get settingsVersionLabel;
 
-  /// No description provided for @settingsVersionSub.
+  /// design 0092 — app name + edition word, both injected. The edition word is what makes this line WRONG on a pro build if left hard-coded.
   ///
   /// In en, this message translates to:
-  /// **'OpenSmartBatt Community Edition'**
-  String get settingsVersionSub;
+  /// **'{appName} {edition}'**
+  String settingsVersionSub(String appName, String edition);
+
+  /// No description provided for @editionCommunity.
+  ///
+  /// In en, this message translates to:
+  /// **'Community Edition'**
+  String get editionCommunity;
+
+  /// No description provided for @editionPro.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro'**
+  String get editionPro;
 
   /// No description provided for @settingsCheckUpdateLabel.
   ///
