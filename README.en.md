@@ -44,7 +44,8 @@ open-smart-batt/
 ├── README.md / README.en.md      docs (zh / en)
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
-│   ├── PROTOCOL.md               protocol spec (facts; clean-room analysis role)
+│   ├── PROTOCOL.md               protocol INDEX (§ → file; holds no facts itself)
+│   ├── protocol/                 the spec, in nine topic files (facts; clean-room analysis role)
 │   └── VERSIONING.md             version scheme
 ├── app_flutter/                  ★ Android / iOS app (Flutter, written from the spec)
 ├── tools/parse_btsnoop.py        btsnoop → GATT extractor (privacy-safe)
@@ -55,11 +56,11 @@ open-smart-batt/
 `docs/` holds the protocol spec & verification (**facts**). `app_flutter/` and `app/`
 are written **only** from `docs/`, never touching the original app.
 
-## Status (2026-06)
+## Status (2026-08-31)
 
 - ✅ Android / iOS app implemented: BLE connect, live telemetry dashboard, device list +
   aliases, history + CSV export, settings (incl. a default-OFF diagnostic log).
-  `flutter analyze` clean, 167 unit tests pass, release APK and iOS archive build.
+  `flutter analyze` clean, **2,509 unit tests pass**, release APK and iOS archive build.
 - ✅ **Monitoring needs no password**: once connected you see voltage / temp / SOH /
   capacitor check (telemetry streams without auth).
 - ⚠️ **Super-capacitor**: monitoring + capacitor-check focused. `cut-off / anti-theft`
@@ -76,10 +77,25 @@ are written **only** from `docs/`, never touching the original app.
 - **Build from source (recommended)**: install Flutter, then
   `cd app_flutter && flutter build apk --release`; the APK lands in
   `build/app/outputs/flutter-apk/`.
-- Or let the GitHub Actions **Release APK** workflow produce it (with a SHA256;
-  currently debug-signed — verify the hash).
-- Android can be **sideloaded onto any device with no account** (debug-signed APK +
-  SHA256 trust).
+- Or download the APK straight from
+  [GitHub Releases](https://github.com/WinePaster/open-smart-batt/releases) (built by CI,
+  published with a SHA256).
+- 🔑 **When sideloading, check the signing certificate — not just the file hash.** Since
+  `v0.6.10` every release is signed with the **same stable release key**. (Before that
+  each build generated a throwaway debug key, so every release carried a different
+  certificate, Android refused to update in place, and the only way forward was to
+  uninstall — which wipes the history the app exists to collect.)
+
+  ```
+  apksigner verify --print-certs open-smart-batt-<version>.apk
+  # certificate SHA-256 must be
+  # eabe10efb4512cef6debdd171e2bb07ff95e54eccc2702ffaa6d6b94302b8063
+  ```
+
+  **The certificate is identical on every release; the file hash is different on every
+  release** — so for "did this file come from this project?", the certificate is the
+  stronger test. CI also asserts the APK is not debug-signed and fails the build if it is.
+- Android can be **sideloaded onto any device with no account**.
 
 ### iOS
 
@@ -124,7 +140,8 @@ subject to copyright.
 
 ## Protocol documentation
 
-Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md).
+Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md) (an index; the spec itself lives in
+the nine topic files under [`docs/protocol/`](./docs/protocol/)).
 
 ---
 
