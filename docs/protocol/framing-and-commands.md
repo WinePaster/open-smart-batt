@@ -165,3 +165,14 @@ values identify the device class in field reports: `01680102` on batteries and
 (`list.reduce((a,b) => a ^ b)`; closure body is a single `eor`). The single-byte
 result is appended as the **final** element of every outbound binary frame before
 writing.
+
+✅ **Checked against the wire, not only described.** The 2026-08-04 capture holds
+eight mode / auth / read-back frames and **all eight are XOR-clean** — the table
+sits in §6.2 ([`modes-and-auth.md`](modes-and-auth.md)), where
+`B8 23 00 01 `**`02`** folds to `98` and `B8 23 00 01 `**`00`** folds to `9A`.
+
+> 🔑 The pointer is here because a reader who arrives at §7 to implement the
+> checksum has no reason to open the cut-off section, and this is the only place
+> in the document set where the fold is verified rather than asserted. Everything
+> else about the fold — including the `eor` reading — comes from analysis of the
+> reference app, and §9 lists what analysis alone has previously got wrong.
