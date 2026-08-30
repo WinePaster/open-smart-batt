@@ -32,6 +32,7 @@ import 'custom_range_sheet.dart';
 import 'history_chart_core.dart';
 import 'history_chart_page.dart';
 import 'history_query.dart';
+import 'history_series_switch.dart';
 import 'minute_seconds_sheet.dart';
 
 // ⚠️ `export` alone does not put those names in THIS library's scope — the
@@ -448,10 +449,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ? HistoryChartSeries.voltage
                                   : HistoryChartSeries.current)
                           : null,
-                      headingTrailing: framing.canSwitch
-                          ? Icon(Icons.swap_vert,
-                              size: 14, color: context.colors.muted)
-                          : null,
+                      // 🔵 FB-107 (2026-08-30) — the glyph now travels with
+                      // the word 「切換」. One builder for both card surfaces;
+                      // see `history_series_switch.dart` for why the null
+                      // branch lives in there rather than out here.
+                      headingTrailing: historySeriesSwitchAffordance(
+                          context, l10n,
+                          canSwitch: framing.canSwitch),
                       child: HistoryTrendCard(
                         series: framing.series,
                         onSeriesChanged: (v) => setState(() => _series = v),

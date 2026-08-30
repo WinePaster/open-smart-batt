@@ -63,6 +63,7 @@ import '../widgets/industrial.dart';
 import 'custom_range_sheet.dart';
 import 'history_chart_page.dart';
 import 'history_screen.dart';
+import 'history_series_switch.dart';
 import 'minute_seconds_sheet.dart';
 
 // ---------------------------------------------------------------------------
@@ -851,9 +852,10 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                         ? HistoryChartSeries.voltage
                         : HistoryChartSeries.current)
                 : null,
-            headingTrailing: framing.canSwitch
-                ? Icon(Icons.swap_vert, size: 14, color: context.colors.muted)
-                : null,
+            // 🔵 FB-107 (2026-08-30) — glyph plus the word 「切換」, from the
+            // one builder the History tab's card also uses.
+            headingTrailing: historySeriesSwitchAffordance(context, l10n,
+                canSwitch: framing.canSwitch),
             child: HistoryTrendCard(
               series: framing.series,
               onSeriesChanged: (v) => setState(() => _series = v),

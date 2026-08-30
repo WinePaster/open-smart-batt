@@ -1604,6 +1604,12 @@ abstract class AppLocalizations {
   /// **'Switch between voltage and current'**
   String get historyChartSeriesToggle;
 
+  /// FB-107 (2026-08-30, owner). The VISIBLE label beside the history chart card's swap_vert glyph, in the heading's trailing slot. design 0089 shipped that glyph bare and the owner still could not find it — FB-70's shape a third time. Kept to one word: it shares a row with the chart title and a fade rule, and the title must keep its ellipsis budget. The full sentence stays on historyChartSeriesToggle as the tooltip / semantics label.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch'**
+  String get historyChartSeriesSwitchLabel;
+
   /// Design 0085 Q4 ③ — the ONE sentence this design adds. Shown beside the disabled voltage/current toggle when the history scope is All devices. 🔴 It must attribute the absence to the SCOPE: the chart's buckets are grouped by time and not by device_id, so a battery discharging at −3 A and a power bank discharging at +3 A would be averaged to 0 A and drawn as at rest. Wording it as plain “no current data” would state a second falsehood — that nothing was measured.
   ///
   /// In en, this message translates to:
