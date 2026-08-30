@@ -32,7 +32,8 @@ open-smart-batt/
 ├── README.md / README.en.md      說明（中／英）
 ├── LICENSE / COPYRIGHT / CLEANROOM / CONTRIBUTING
 ├── docs/
-│   ├── PROTOCOL.md               通訊協定規格（事實，淨室分析角色整理）
+│   ├── PROTOCOL.md               通訊協定索引（§ → 檔案；本身不放事實）
+│   ├── protocol/                 通訊協定規格九個主題檔（事實，淨室分析角色整理）
 │   └── VERSIONING.md             版號規則
 ├── app_flutter/                  ★ Android／iOS App（Flutter，依規格全新撰寫）
 ├── tools/parse_btsnoop.py        btsnoop → GATT 萃取器（去識別化）
@@ -42,9 +43,9 @@ open-smart-batt/
 
 `docs/` 為協定規格與驗證文件（**事實**）。`app_flutter/`、`app/` **僅**依 `docs/` 撰寫，未接觸原廠 App。
 
-## 現況（2026-06）
+## 現況（2026-08-31）
 
-- ✅ Android／iOS App 已實作：BLE 連線、即時遙測儀表板、裝置清單＋別名、歷史＋CSV 匯出、設定（含預設關閉的診斷日誌）。`flutter analyze` 乾淨、單元測試 167 項通過、release APK 與 iOS archive 皆可編。
+- ✅ Android／iOS App 已實作：BLE 連線、即時遙測儀表板、裝置清單＋別名、歷史＋CSV 匯出、設定（含預設關閉的診斷日誌）。`flutter analyze` 乾淨、**單元測試 2,509 項通過**、release APK 與 iOS archive 皆可編。
 - ✅ **監看不需任何密碼**：連線後即可看電壓／溫度／SOH／檢測電容（遙測串流不需認證）。
 - ⚠️ **超級電容**：主打監看＋檢測電容。`斷電／防盜`屬電池型功能；電容的「異常鎖定保護」解除尚未實作（需故障單位的 HCI 擷取）。
 - 🧪 解除指令支援「輸入斷電密碼」「直接輸入驗證值（cb／pwSum）」與實驗性「只送 mode、跳過驗證」三種路徑；實際是否解除請以硬體電氣行為驗證。
@@ -54,8 +55,17 @@ open-smart-batt/
 ### Android
 
 - **自行編譯（建議）**：安裝 Flutter，`cd app_flutter && flutter build apk --release`，APK 於 `build/app/outputs/flutter-apk/`。
-- 或由 GitHub Actions 的 **Release APK** 工作流程自動產生（附 SHA256；目前為 debug 簽章，請核對雜湊）。
-- Android 可在**任意裝置免帳號側載**（debug 簽章 APK + SHA256 信任）。
+- 或直接下載 [GitHub Releases](https://github.com/WinePaster/open-smart-batt/releases) 的 APK（由 CI 自動建置並附 SHA256）。
+- 🔑 **側載時請核對簽章憑證，不只是檔案雜湊。** 自 `v0.6.10` 起每一版都以**同一把穩定的 release 金鑰**簽署（先前是每次建置隨機產生的 debug 金鑰，導致每一版憑證都不同、Android 拒絕就地更新，只能解除安裝——而那會清掉歷史紀錄）：
+
+  ```
+  apksigner verify --print-certs open-smart-batt-<版本>.apk
+  # 憑證 SHA-256 應為
+  # eabe10efb4512cef6debdd171e2bb07ff95e54eccc2702ffaa6d6b94302b8063
+  ```
+
+  **憑證每一版都相同，檔案雜湊每一版都不同** ⇒ 對「這個檔是不是本專案發的」而言，憑證是比雜湊更強的判準。CI 也會在發版時斷言 APK 不是 debug 簽章，是的話直接讓建置失敗。
+- Android 可在**任意裝置免帳號側載**。
 
 ### iOS
 
@@ -84,7 +94,7 @@ open-smart-batt/
 
 ## 協定文件
 
-完整規格見 [`docs/PROTOCOL.md`](./docs/PROTOCOL.md)。
+完整規格見 [`docs/PROTOCOL.md`](./docs/PROTOCOL.md)（索引；規格本體在 [`docs/protocol/`](./docs/protocol/) 底下九個主題檔）。
 
 ---
 
