@@ -886,6 +886,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyChartSeriesToggle => '切換電壓／電流';
 
   @override
+  String get historyChartSeriesSwitchLabel => '切換';
+
+  @override
   String get historyChartAllDevicesNoCurrentNote =>
       '選「全部裝置」時不顯示電流：電池與行動電源的電流正負號相反，混在一起平均會把方向抵消掉。改選單一裝置就看得到。';
 

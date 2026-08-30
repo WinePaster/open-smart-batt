@@ -20,6 +20,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/ui/history/history_chart_core.dart';
 import 'package:open_smart_batt/ui/history/history_query.dart';
+import 'package:open_smart_batt/ui/history/history_series_switch.dart';
 import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 
 typedef SeriesChildBuilder = Widget Function(
@@ -63,8 +64,10 @@ class _SeriesHostState extends State<SeriesHost> {
                   ? HistoryChartSeries.voltage
                   : HistoryChartSeries.current)
           : null,
-      headingTrailing:
-          framing.canSwitch ? const Icon(Icons.swap_vert, size: 14) : null,
+      // 🔵 FB-107 — the SAME builder production uses, so a test can assert on
+      // the word 「切換」 and mean the thing the user sees.
+      headingTrailing: historySeriesSwitchAffordance(context, l10n,
+          canSwitch: framing.canSwitch),
       child: widget.child(framing.series, (v) => setState(() => _series = v)),
     );
   }

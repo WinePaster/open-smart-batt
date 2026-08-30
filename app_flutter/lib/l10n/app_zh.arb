@@ -251,6 +251,7 @@
   "historyLegendVoltage": "電壓",
   "historyLegendCurrent": "電流",
   "historyChartSeriesToggle": "切換電壓／電流",
+  "historyChartSeriesSwitchLabel": "切換",
   "historyChartAllDevicesNoCurrentNote": "選「全部裝置」時不顯示電流：電池與行動電源的電流正負號相反，混在一起平均會把方向抵消掉。改選單一裝置就看得到。",
   "historyLegendTemperature": "溫度",
   "historyLegendRange": "區間範圍（最小–最大）",

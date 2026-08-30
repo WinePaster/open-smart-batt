@@ -930,6 +930,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyChartSeriesToggle => 'Switch between voltage and current';
 
   @override
+  String get historyChartSeriesSwitchLabel => 'Switch';
+
+  @override
   String get historyChartAllDevicesNoCurrentNote =>
       'Current is not shown for “All devices”: battery and power-bank units sign current the opposite way round, so averaging them together would cancel the direction out. Pick one device to see its current.';
 
