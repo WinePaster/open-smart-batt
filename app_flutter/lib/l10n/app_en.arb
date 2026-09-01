@@ -799,11 +799,11 @@
   "@historySecondsEmpty": {
     "description": "Reachable only if the rows went away between the list query and the tap — a retention purge, or a cleared history."
   },
-  "historyChartExpand": "Expand chart",
+  "historyChartExpand": "Full screen",
   "historyChartGapMinutes": "{count, plural, =1{Not connected for 1 minute} other{Not connected for {count} minutes}}",
   "historyChartGapHours": "{count, plural, =1{Not connected for 1 hour} other{Not connected for {count} hours}}",
   "@historyChartExpand": {
-    "description": "Tooltip/label for the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share."
+    "description": "VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share. \ud83d\udd35 FB-108 (2026-09-02) changed the wording from 'Expand chart' to 'Full screen': the reporter called it \u300c\u5168\u87a2\u5e55\u300d, and that is already this app's word for the same idea on the home tab (fullscreenEnter). \u26a0\ufe0f Two keys deliberately keep the same string \u2014 they are two different actions (immersive home grid vs. landscape chart page) that happen to share a name; do not merge them."
   },
   "@historyChartGapMinutes": {
     "description": "Drawn inside a hatched gap on the LANDSCAPE chart only (design 0081 Q6 = C). Says a stretch of time holds no rows at all — the app was not connected. The embedded card uses the hatch alone (Q6 = B) because 244 px cannot hold this sentence.",

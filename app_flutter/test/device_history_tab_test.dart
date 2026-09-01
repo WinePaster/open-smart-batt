@@ -616,12 +616,16 @@ void main() {
       await addRows(tester, unitA, vA, count: 40);
       await pumpSection(tester, deviceId: unitA, live: false);
 
-      final button = find.byIcon(Icons.open_in_full);
+      // 🔵 FB-108 — `Icons.fullscreen`, not `open_in_full`: one concept, one
+      // glyph, and the home tab already spends `Icons.fullscreen` on it.
+      final button = find.byIcon(Icons.fullscreen);
       expect(button, findsOneWidget, reason: 'the card must offer the door');
       // FB-70's floor, restated where it can regress.
-      expect(tester.getSize(find.ancestor(
-              of: button, matching: find.byType(IconButton))).height,
-          greaterThanOrEqualTo(40));
+      final target =
+          find.ancestor(of: button, matching: find.byType(InkWell)).first;
+      final size = tester.getSize(target);
+      expect(size.height, greaterThanOrEqualTo(40));
+      expect(size.width, greaterThanOrEqualTo(40));
 
       await tester.tap(button);
       await tester.pump();
@@ -672,7 +676,7 @@ void main() {
         }
       });
       await pumpSection(tester, deviceId: unitA, live: false);
-      expect(find.byIcon(Icons.open_in_full), findsNothing);
+      expect(find.byIcon(Icons.fullscreen), findsNothing);
     });
 
     testWidgets('T65-12b — the width follows the DATA, not the clock (0081 S1)',

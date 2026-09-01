@@ -1155,31 +1155,73 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             child: Icon(Icons.bolt, size: 18, color: context.accent.accent),
           ),
           const SizedBox(width: 10),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'OPENSMARTBATT',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
-                  color: context.colors.text,
-                ),
+          // 🔵 FB-108 — `Flexible`, and this is a fix in its own right. The
+          // brand text was unbounded in a `Row` inside the bar, so on a 320 dp
+          // phone at a large text scale the bar OVERFLOWED rather than
+          // shortening anything (measured 2026-09-02: 191 px past the right
+          // edge in the fixed-advance test font). Adding a word to the action
+          // beside it would have made that worse; ellipsising the brand name
+          // is the one thing in this bar that can be lost without losing
+          // information the user needs.
+          Flexible(
+            child: Text(
+              'OPENSMARTBATT',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: context.colors.text,
               ),
-            ],
+            ),
           ),
         ],
       ),
       actions: [
+        // 🔵 **FB-108 (2026-09-02) — the glyph travels with the word**, the
+        // same correction the history chart's own full-screen entry took in
+        // the same batch (`history_screen.dart`).
+        //
+        // 🔴 This button has been reported once already: 2026-08-15, from the
+        // field, verbatim 「但看不到」 — and the answer then was to make it
+        // bigger (22 px) and drop `muted` for the body colour, while leaving it
+        // wordless. It is still the only way in (design 0062 Q1 rules out a
+        // gesture), and this project has now been told four times that a
+        // wordless entry is one nobody finds (FB-70 / FB-103 / FB-107 / FB-108).
         if (onEnterFullscreen != null)
-          IconButton(
-            onPressed: onEnterFullscreen,
-            iconSize: 22,
-            icon: const Icon(Icons.fullscreen),
-            color: context.colors.text,
-            tooltip: AppLocalizations.of(context).fullscreenEnter,
+          Semantics(
+            button: true,
+            label: AppLocalizations.of(context).fullscreenEnter,
+            child: InkWell(
+              onTap: onEnterFullscreen,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                // 40 px floor on both axes (FB-70) — the height is this
+                // padding plus the 22 px glyph.
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Word first, glyph second — the bar reads left-to-right
+                    // into this control, so a leading glyph would put the
+                    // unlabelled thing back in the reported position.
+                    Text(
+                      AppLocalizations.of(context).fullscreenEnter,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.text,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(Icons.fullscreen,
+                        size: 22, color: context.colors.text),
+                  ],
+                ),
+              ),
+            ),
           ),
         Padding(
           padding: const EdgeInsets.only(right: 14),

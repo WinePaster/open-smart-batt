@@ -1023,7 +1023,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historySecondsEmpty => '這一分鐘沒有任何紀錄。';
 
   @override
-  String get historyChartExpand => '放大檢視';
+  String get historyChartExpand => '全螢幕';
 
   @override
   String historyChartGapMinutes(num count) {

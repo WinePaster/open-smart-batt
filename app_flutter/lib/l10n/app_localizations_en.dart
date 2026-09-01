@@ -1079,7 +1079,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historySecondsEmpty => 'No readings stored for this minute.';
 
   @override
-  String get historyChartExpand => 'Expand chart';
+  String get historyChartExpand => 'Full screen';
 
   @override
   String historyChartGapMinutes(num count) {
