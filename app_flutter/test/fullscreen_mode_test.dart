@@ -34,6 +34,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/main.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:provider/provider.dart';
@@ -352,10 +353,17 @@ void main() {
   // `tune` must be absent from the bar, and the surviving icon must be bigger
   // than the 18 px that failed. Assert the icon SIZE, not just that the widget
   // exists — "it is in the tree" was true every previous time too.
+  //
+  // 🔵 **FB-108 (2026-09-02) — bigger was not enough either.** 何先生 reported
+  // the chart's own full-screen entry as unrecognisable, and the ruling was to
+  // fix BOTH doors in one pass: the glyph now travels with the word 「全螢幕」,
+  // here as well as on the chart card. That makes this a labelled control
+  // rather than an `IconButton`, so what F9 measures changed shape — the
+  // assertions below are the same three properties (not `tune`, not 18 px,
+  // still the only action) plus the word.
   // ===========================================================================
-  testWidgets('F9: the entry icon is the only action, and it is not 18 px', (
-    tester,
-  ) async {
+  testWidgets('F9: the entry is labelled, is not 18 px, and is the only action',
+      (tester) async {
     await pumpShell(tester);
 
     final appBar = find.byType(AppBar);
@@ -369,22 +377,45 @@ void main() {
           'of the full-screen icon',
     );
 
-    final button = tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byIcon(Icons.fullscreen),
-        matching: find.byType(IconButton),
-      ),
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(AppBar)),
+    );
+    final label = find.descendant(
+      of: appBar,
+      matching: find.text(l10n.fullscreenEnter),
+    );
+    expect(label, findsOneWidget,
+        reason: 'FB-108 — a tooltip needs a long-press on a glyph the user has '
+            'not noticed; the word is what makes it a door');
+
+    final icon = tester.widget<Icon>(
+      find.descendant(of: appBar, matching: find.byIcon(Icons.fullscreen)),
     );
     expect(
-      button.iconSize,
+      icon.size,
       greaterThan(18.0),
       reason: '18 px muted is the size the owner could not see',
     );
 
-    // …and it is still the ONE action, so growing it did not cost the pill.
+    // The word has to be part of the button, not a caption beside it — and the
+    // whole thing still has to clear FB-70's floor.
+    final target =
+        find.ancestor(of: label, matching: find.byType(InkWell)).first;
+    final size = tester.getSize(target);
+    expect(size.width, greaterThanOrEqualTo(40));
+    expect(size.height, greaterThanOrEqualTo(40));
+    await tester.tap(label);
+    await drain(tester);
+    expect(find.byType(NavigationBar), findsNothing,
+        reason: 'pressing the WORD has to enter full screen');
+    await tapWhileImmersive(tester, find.byIcon(Icons.fullscreen_exit));
+    await drain(tester);
+
+    // …and it is still the ONE action, so labelling it did not cost the pill:
+    // exactly two pressable things in the bar, this and the connection pill.
     expect(
-      find.descendant(of: appBar, matching: find.byType(IconButton)),
-      findsOneWidget,
+      find.descendant(of: appBar, matching: find.byType(InkWell)),
+      findsNWidgets(2),
     );
 
     expect(tester.takeException(), isNull);

@@ -11,6 +11,8 @@
 /// warning compared against the device's live OV/UV/OT thresholds when known).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1567,54 +1569,75 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         // when its middle `Text` could not wrap — see the comment inside it.
         // Appending the dates there would be re-running that.
         if (widget.sel != null) HistoryCustomRangeLine(sel: widget.sel!),
-        Row(
-          children: [
-            // 🔴 A fixed 40 on the left, matching the button's box on the
-            // right, so the note stays centred ON THE CARD whether or not the
-            // button is there. The first attempt used `Spacer` + `Expanded`
-            // and overflowed by 20 px the moment the English string ("Each
-            // point on the chart averages 1 minute") could not wrap — a Row
-            // does not give a `Text` the width to break in.
-            //
-            // 🔵 design 0085 S3 puts the voltage/current toggle INTO that
-            // reserved box rather than adding a row for it. The card is 160 px
-            // of chart inside a scroll view and the brief was explicitly "the
-            // existing toolbar, no new chrome"; the box was already there,
-            // already 40x40 (FB-70's floor), and already mirrored by the
-            // expand button on the right, so the note stays centred either way.
-            // 🔵 design 0089 Q3 (FB-103) — the 16 px `swap_vert` that used to
-            // live here is GONE. It was the only way to reach current, it
-            // carried no label, and its explanation was a tooltip nobody
-            // long-presses on a phone. The card's HEADING is the switch now.
-            // ⛔ Do not put a second one back: two controls doing one thing is
-            // how the next reader stops knowing which is authoritative.
-            const SizedBox(width: 40),
-            Expanded(
-              child: Text(
-                historyBucketWidthNote(l10n, widget.bucketMs),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 10, color: context.colors.muted),
-              ),
-            ),
-            SizedBox(
-              width: 40,
-              child: widget.onExpand == null
-                  ? null
-                  : IconButton(
+        // 🔵 FB-108 — the two ends of this row are ONE number, measured once
+        // per layout: the button's natural width, capped so the row can never
+        // run out of space no matter how long the label gets. 40 % each side
+        // still leaves a fifth of the card for the sentence between them, and
+        // the cap only ever bites at an accessibility text scale — at which
+        // point an ellipsised 「全螢幕」 is a better outcome than a row that
+        // overflows (this exact row overflowed by 20 px once already, design
+        // 0081 §3.3.5).
+        LayoutBuilder(
+          builder: (context, c) {
+            final box = math.min(
+              _expandButtonWidth(context, l10n),
+              c.maxWidth * 0.4,
+            );
+            return Row(
+              children: [
+                // 🔴 A fixed 40 on the left, matching the button's box on the
+                // right, so the note stays centred ON THE CARD whether or not the
+                // button is there. The first attempt used `Spacer` + `Expanded`
+                // and overflowed by 20 px the moment the English string ("Each
+                // point on the chart averages 1 minute") could not wrap — a Row
+                // does not give a `Text` the width to break in.
+                //
+                // 🔵 design 0085 S3 puts the voltage/current toggle INTO that
+                // reserved box rather than adding a row for it. The card is 160 px
+                // of chart inside a scroll view and the brief was explicitly "the
+                // existing toolbar, no new chrome"; the box was already there,
+                // already 40x40 (FB-70's floor), and already mirrored by the
+                // expand button on the right, so the note stays centred either way.
+                // 🔵 design 0089 Q3 (FB-103) — the 16 px `swap_vert` that used to
+                // live here is GONE. It was the only way to reach current, it
+                // carried no label, and its explanation was a tooltip nobody
+                // long-presses on a phone. The card's HEADING is the switch now.
+                // ⛔ Do not put a second one back: two controls doing one thing is
+                // how the next reader stops knowing which is authoritative.
+                //
+                // 🔵 **FB-108 (2026-09-02) — the left box now MEASURES the button**
+                // instead of hard-coding 40. The button grew a word, so its width
+                // is whatever the label comes to in this locale at this text
+                // scale: 40 was right for a bare glyph and is wrong for 「全螢幕」,
+                // and wrong by a different amount again for "Full screen".
+                //
+                // ⛔ Not a `Visibility(maintainSize:)` copy of the button, which
+                // was the first attempt: it reserves the right box, but it also
+                // puts a second copy of the label and the glyph in the widget
+                // tree, so `find.byIcon(Icons.fullscreen)` starts finding two of
+                // a thing the user can only see one of.
+                SizedBox(width: box),
+                Expanded(
+                  child: Text(
+                    historyBucketWidthNote(l10n, widget.bucketMs),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: context.colors.muted),
+                  ),
+                ),
+                if (widget.onExpand == null)
+                  SizedBox(width: box)
+                else
+                  SizedBox(
+                    width: box,
+                    child: _expandButton(
+                      context,
+                      l10n,
                       onPressed: widget.onExpand,
-                      icon: const Icon(Icons.open_in_full, size: 16),
-                      tooltip: l10n.historyChartExpand,
-                      // 40x40 floor — FB-70 is the entry that cost this
-                      // project a user who could not hit a 14x14 control.
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
-                      padding: EdgeInsets.zero,
-                      color: context.colors.muted,
                     ),
-            ),
-          ],
+                  ),
+              ],
+            );
+          },
         ),
         // 🔴 **Q4 ③ / §1.5 — the refusal says WHY, in words, always visible.**
         //
@@ -1649,6 +1672,108 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
           series: series,
         ),
       ],
+    );
+  }
+
+  /// The way into the landscape chart — 🔵 **FB-108 (2026-09-02, 經銷商何先生)**.
+  ///
+  /// 🔴 It used to be a bare 16 px `open_in_full` in `muted`, explained only by
+  /// a tooltip. Verbatim report: 「曲線圖的全螢幕icon的辨識度有點低 user不好理解
+  /// 那是全螢幕」 — the FOURTH time this project has shipped an entry nobody
+  /// could see (FB-70 → FB-103 → FB-107 → this). Three things were wrong at
+  /// once, and each is fixed here:
+  ///
+  ///  1. **No word.** A tooltip needs a long-press on a glyph the user has not
+  ///     noticed — design 0089 Q3 retired the neighbouring ⇅ for exactly that.
+  ///  2. **The wrong glyph.** `open_in_full` is a diagonal "expand / open
+  ///     elsewhere" arrow; full screen is the four-corner one, and this app's
+  ///     OWN home-tab button already uses `Icons.fullscreen` (`main.dart`).
+  ///     One concept must not have two symbols inside one app.
+  ///  3. **The weakest thing on the card.** 16 px of `muted` beside a 10 px
+  ///     `muted` footnote, while it is the ONLY route to the landscape page
+  ///     (design 0081 Q1 = E2, and Q3's ruling left no second door).
+  ///
+  /// 🔑 Drawn in `colors.text`, deliberately not `muted` — the same correction
+  /// the owner's 2026-08-15 field report (「但看不到」) forced on the home-tab
+  /// button, which was made bigger and moved off `muted` for this same reason.
+  ///
+  /// ⚠️ Word FIRST, glyph second, as in `history_series_switch.dart`: the row
+  /// reads left-to-right and ends here, so a glyph ahead of its own label puts
+  /// the unlabelled thing back in the position that was reported about.
+  ///
+  /// 🔑 [_expandButtonWidth] mirrors this on the other side of the row, and the
+  /// four constants below are the whole contract between them. Change one and
+  /// the footnote drifts off centre — `fullscreen_entry_label_test.dart` pins
+  /// it in both languages for exactly that reason.
+  static const double _expandFont = 11.5;
+  static const double _expandGlyph = 18;
+  static const double _expandGap = 3;
+  static const double _expandPadH = 7;
+
+  TextStyle _expandLabelStyle(BuildContext context) =>
+      DefaultTextStyle.of(context).style.copyWith(
+        fontSize: _expandFont,
+        fontWeight: FontWeight.w600,
+        color: context.colors.text,
+      );
+
+  /// What the button will measure, without building a second one.
+  ///
+  /// 🔴 Laid out with the SAME style and the ambient [TextScaler], because the
+  /// number this returns is the left half of the row's symmetry. A constant
+  /// would be right in one locale and at one text scale and wrong everywhere
+  /// else. Floored at 40 so a card with nothing to expand keeps the box the
+  /// old fixed spacer reserved (FB-70's target size is also the row's rhythm).
+  double _expandButtonWidth(BuildContext context, AppLocalizations l10n) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: l10n.historyChartExpand,
+        style: _expandLabelStyle(context),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    return math.max(40, tp.width + _expandGap + _expandGlyph + _expandPadH * 2);
+  }
+
+  Widget _expandButton(
+    BuildContext context,
+    AppLocalizations l10n, {
+    required VoidCallback? onPressed,
+  }) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        // 40 px floor on BOTH axes — FB-70 is the entry that cost this project
+        // a user who could not hit a 14x14 control. The height comes from this
+        // padding plus the 18 px glyph; the width from the label plus this
+        // padding, and the label alone already clears 40.
+        padding: const EdgeInsets.symmetric(
+          horizontal: _expandPadH,
+          vertical: 11,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                l10n.historyChartExpand,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _expandLabelStyle(context),
+              ),
+            ),
+            const SizedBox(width: _expandGap),
+            Icon(
+              Icons.fullscreen,
+              size: _expandGlyph,
+              color: context.colors.text,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

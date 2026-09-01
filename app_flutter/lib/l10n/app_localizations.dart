@@ -1784,10 +1784,10 @@ abstract class AppLocalizations {
   /// **'No readings stored for this minute.'**
   String get historySecondsEmpty;
 
-  /// Tooltip/label for the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share.
+  /// VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share. 🔵 FB-108 (2026-09-02) changed the wording from 'Expand chart' to 'Full screen': the reporter called it 「全螢幕」, and that is already this app's word for the same idea on the home tab (fullscreenEnter). ⚠️ Two keys deliberately keep the same string — they are two different actions (immersive home grid vs. landscape chart page) that happen to share a name; do not merge them.
   ///
   /// In en, this message translates to:
-  /// **'Expand chart'**
+  /// **'Full screen'**
   String get historyChartExpand;
 
   /// Drawn inside a hatched gap on the LANDSCAPE chart only (design 0081 Q6 = C). Says a stretch of time holds no rows at all — the app was not connected. The embedded card uses the hatch alone (Q6 = B) because 244 px cannot hold this sentence.
