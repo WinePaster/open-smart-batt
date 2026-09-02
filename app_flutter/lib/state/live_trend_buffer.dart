@@ -40,6 +40,40 @@ enum TrendField {
   soc,
 }
 
+/// The read side of a trend series — everything a painter needs and nothing it
+/// can write through.
+///
+/// Two things implement it and the second one is the reason it exists:
+/// [LiveTrendBuffer], which advances, and [FrozenTrendSnapshot], which does
+/// not. Design 0093 §3.3 ruled that the full-screen chart FREEZES on a
+/// disconnect, and a frozen picture cannot be drawn by a second painter — FB-74
+/// / design 0065 §6 R5 is one unit, two pictures. So the painter reads this,
+/// and neither implementation knows which surface is asking.
+abstract interface class TrendSource {
+  /// Bumped on every mutation; a painter compares it in `shouldRepaint`.
+  int get revision;
+
+  /// Number of entries currently held.
+  int get length;
+
+  /// Milliseconds since epoch of the oldest / newest entry, or null when empty.
+  double? get firstMs;
+  double? get lastMs;
+
+  /// Timestamp of entry [i], oldest first.
+  double timeAt(int i);
+
+  /// Value of [field] at entry [i], oldest first. NaN where the sample did not
+  /// carry that field.
+  double valueAt(TrendField field, int i);
+
+  /// True when at least two entries carry a finite value for [field].
+  bool hasData(TrendField field);
+
+  /// Finite min/max of [field], or null when it has no data.
+  ({double min, double max})? rangeOf(TrendField field);
+}
+
 /// Ring buffer of recent telemetry, one entry per decoded sample.
 ///
 /// Capacity is a count, not a duration: samples arrive at whatever rate the
@@ -51,7 +85,7 @@ enum TrendField {
 /// Writes are unthrottled on purpose: every sample goes in, because the shape
 /// is the point and a dropped sample is a dropped transient. Throttling belongs
 /// to the reader — the chart repaints at a capped rate, driven by [revision].
-class LiveTrendBuffer extends ChangeNotifier {
+class LiveTrendBuffer extends ChangeNotifier implements TrendSource {
   LiveTrendBuffer({this.capacity = defaultCapacity})
       : assert(capacity > 1),
         _t = Float64List(capacity),
@@ -76,17 +110,21 @@ class LiveTrendBuffer extends ChangeNotifier {
 
   /// Bumped on every mutation. A painter compares it in `shouldRepaint` so a
   /// rebuild that changed nothing does not re-rasterise the chart.
+  @override
   int get revision => _revision;
 
   /// Number of entries currently held (<= [capacity]).
+  @override
   int get length => _len;
 
   bool get isEmpty => _len == 0;
 
   /// Milliseconds since epoch of the oldest retained entry, or null when empty.
+  @override
   double? get firstMs => _len == 0 ? null : _t[_indexOf(0)];
 
   /// Milliseconds since epoch of the newest entry, or null when empty.
+  @override
   double? get lastMs => _len == 0 ? null : _t[_indexOf(_len - 1)];
 
   /// Wall-clock span covered, or [Duration.zero] when fewer than two entries.
@@ -133,10 +171,12 @@ class LiveTrendBuffer extends ChangeNotifier {
   }
 
   /// Timestamp of entry [i], oldest first.
+  @override
   double timeAt(int i) => _t[_indexOf(i)];
 
   /// Value of [field] at entry [i], oldest first. NaN where the sample did not
   /// carry that field — callers must skip those rather than plot them as zero.
+  @override
   double valueAt(TrendField field, int i) {
     final k = _indexOf(i);
     return switch (field) {
@@ -150,6 +190,7 @@ class LiveTrendBuffer extends ChangeNotifier {
 
   /// True when at least two entries carry a finite value for [field] — i.e.
   /// there is a line to draw at all.
+  @override
   bool hasData(TrendField field) {
     var n = 0;
     for (var i = 0; i < _len; i++) {
@@ -159,6 +200,7 @@ class LiveTrendBuffer extends ChangeNotifier {
   }
 
   /// Finite min/max of [field] over the buffer, or null when it has no data.
+  @override
   ({double min, double max})? rangeOf(TrendField field) {
     var lo = double.infinity, hi = double.negativeInfinity;
     for (var i = 0; i < _len; i++) {
@@ -172,4 +214,81 @@ class LiveTrendBuffer extends ChangeNotifier {
 
   int _indexOf(int i) =>
       _len < capacity ? i : (_next + i) % capacity;
+}
+
+/// An immutable copy of a [TrendSource] at one instant.
+///
+/// 🔴 Taken while the link is UP, on the chart's own frame tick — not on the
+/// disconnect. `TelemetryController._onLinkState` calls `LiveTrendBuffer.clear()`
+/// unconditionally when the link drops, and nothing orders that call against
+/// another listener's, so a snapshot taken in reaction to the disconnect can
+/// arrive to find the buffer already empty. Copying on the tick costs ~25 KB of
+/// memcpy at 10 Hz while a full-screen chart is open and is immune to listener
+/// order (design 0093 §3.3).
+///
+/// ⛔ Never extended with live data afterwards. That is the same rule the
+/// unconditional `clear()` exists for: a trace continued across a disconnect
+/// joins two units with a line neither of them produced.
+class FrozenTrendSnapshot implements TrendSource {
+  FrozenTrendSnapshot._(this._t, this._v, this.length, this.revision);
+
+  /// Copy [src] as it stands.
+  factory FrozenTrendSnapshot.from(TrendSource src) {
+    final n = src.length;
+    final t = Float64List(n);
+    final v = <TrendField, Float32List>{
+      for (final f in TrendField.values) f: Float32List(n),
+    };
+    for (var i = 0; i < n; i++) {
+      t[i] = src.timeAt(i);
+      for (final f in TrendField.values) {
+        v[f]![i] = src.valueAt(f, i);
+      }
+    }
+    return FrozenTrendSnapshot._(t, v, n, src.revision);
+  }
+
+  final Float64List _t;
+  final Map<TrendField, Float32List> _v;
+
+  @override
+  final int length;
+
+  /// The revision the copy was taken at. It never changes again, which is what
+  /// stops the painter re-rasterising a picture that cannot move.
+  @override
+  final int revision;
+
+  @override
+  double? get firstMs => length == 0 ? null : _t[0];
+
+  @override
+  double? get lastMs => length == 0 ? null : _t[length - 1];
+
+  @override
+  double timeAt(int i) => _t[i];
+
+  @override
+  double valueAt(TrendField field, int i) => _v[field]![i];
+
+  @override
+  bool hasData(TrendField field) {
+    var n = 0;
+    for (var i = 0; i < length; i++) {
+      if (valueAt(field, i).isFinite && ++n > 1) return true;
+    }
+    return false;
+  }
+
+  @override
+  ({double min, double max})? rangeOf(TrendField field) {
+    var lo = double.infinity, hi = double.negativeInfinity;
+    for (var i = 0; i < length; i++) {
+      final v = valueAt(field, i);
+      if (!v.isFinite) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    return lo.isFinite ? (min: lo, max: hi) : null;
+  }
 }

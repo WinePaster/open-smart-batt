@@ -39,6 +39,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/card_view.dart';
 import '../../state/live_trend_buffer.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/fullscreen_entry_button.dart';
 import '../widgets/industrial_card.dart';
 import 'readout_grid.dart';
 import 'live_trend_chart.dart';
@@ -273,6 +274,7 @@ class TrendChartCard extends StatelessWidget {
     required this.buffer,
     required this.tracks,
     this.chartFootnote,
+    this.onExpand,
   });
 
   final LiveTrendBuffer buffer;
@@ -281,6 +283,17 @@ class TrendChartCard extends StatelessWidget {
   /// Small note under the chart — used to say why a series a viewer might
   /// expect is absent.
   final String? chartFootnote;
+
+  /// Opens the full-screen landscape chart, or null where there is none.
+  ///
+  /// 🔵 design 0093 §4 Q4 (owner, 2026-09-02). Null on the HOME grid, and that
+  /// is decided by `dashboardCardFor` from its [CardSurface] — not here and not
+  /// by measuring the tile. This card is literally the same widget on both
+  /// surfaces (design 0046 Step 7), and a 1x1 home tile is ~120 px wide: the
+  /// width that already produced a striped RenderFlex bar across this chart
+  /// once. An entry that hid itself below some size would be a feature that
+  /// silently does not exist, which is the FB-70 shape all over again.
+  final VoidCallback? onExpand;
 
   @override
   Widget build(BuildContext context) {
@@ -296,9 +309,27 @@ class TrendChartCard extends StatelessWidget {
             tracks: tracks,
             emptyLabel: l10n.dashboardChartWaiting,
           ),
-          if (chartFootnote != null) ...[
+          if (chartFootnote != null || onExpand != null) ...[
             const SizedBox(height: 4),
-            Text(chartFootnote!, style: AppTextStyles.label(context)),
+            Row(
+              children: [
+                // The footnote keeps the left, where it has always been: on a
+                // capacitor it is the line saying the missing current track is
+                // the device's own constant zero, and it must not be the thing
+                // that gets pushed off the row.
+                Expanded(
+                  child: chartFootnote == null
+                      ? const SizedBox.shrink()
+                      : Text(chartFootnote!,
+                          style: AppTextStyles.label(context)),
+                ),
+                if (onExpand != null)
+                  FullscreenEntryButton(
+                    label: l10n.liveChartExpand,
+                    onPressed: onExpand,
+                  ),
+              ],
+            ),
           ],
         ],
       ),

@@ -4293,6 +4293,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count}'**
   String alertsBannerMore(String count);
+
+  /// VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape LIVE chart (design 0093). 🔑 Deliberately the same string as historyChartExpand and fullscreenEnter, and deliberately a THIRD key: they are three different actions (immersive home grid, landscape history chart, landscape live chart) that share a name. FB-108 (2026-09-02) is why the wording is 'Full screen' and not 'Expand' — do not reword one of the three alone.
+  ///
+  /// In en, this message translates to:
+  /// **'Full screen'**
+  String get liveChartExpand;
+
+  /// design 0093 §3.3 (owner ruling 2026-09-02: freeze the picture and say so). Shown under the full-screen live chart once the link drops. 🔴 The buffer is cleared unconditionally on a disconnect, so what is on screen is a local snapshot that will never advance again — this line is what stops it reading as a chart that is still updating.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnected · frozen at {time}'**
+  String liveChartFrozen(String time);
+
+  /// design 0093 §4 Q5 (owner: 「換新」). Shown after the link comes back while the full-screen live chart is open. ⚠️ NOT 'resumed': the ~3 minutes held before the disconnect are gone and are not stored anywhere, so the honest word is 'restarted'.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnected · recording restarted'**
+  String get liveChartRestarted;
 }
 
 class _AppLocalizationsDelegate

@@ -2581,4 +2581,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertsBannerMore(String count) {
     return '+$count';
   }
+
+  @override
+  String get liveChartExpand => 'Full screen';
+
+  @override
+  String liveChartFrozen(String time) {
+    return 'Disconnected · frozen at $time';
+  }
+
+  @override
+  String get liveChartRestarted => 'Reconnected · recording restarted';
 }

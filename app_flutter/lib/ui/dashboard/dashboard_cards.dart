@@ -38,6 +38,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial_card.dart';
+import 'live_trend_chart_page.dart';
 import '../widgets/pending_note.dart';
 import 'clock_card.dart';
 import 'display_modules.dart';
@@ -211,140 +212,34 @@ Widget? dashboardCardFor(
       );
 
     case DisplayModule.chart:
-      if (isPowerBank) {
-        final flow =
-            powerFlowOf(tele.current, portFlagsRaw: tele.portFlagsRaw);
-        return TrendChartCard(
-          buffer: tele.trend,
-          // A power bank's current has its direction spread over two
-          // registers — 0x49 while charging, 0x4A while discharging — and
-          // since FB-46 both reach `current` as one signed number. The track
-          // stays signed and zero-crossing, and MUST: a sign flip mid-window
-          // is how a start-up load is recognised at a glance, which no
-          // magnitude plot can show. Nothing here is direction-switched.
-          tracks: [
-            if (modules.hasTrack(TrendField.current))
-              TrendTrack(
-                field: TrendField.current,
-                label: l10n.powerBankTrackCurrent,
-                unit: 'A',
-                color: context.accent.accentSecondary,
-                decimals: 2,
-                spanZero: true,
-                // 🔵 design 0056 §9 Q1 ① (ruled 2026-08-27). This track was
-                // the LAST signed current on screen with nothing saying which
-                // half is which — and unexplained signs on a power bank are
-                // literally what FB-47 was filed for.
-                //
-                // 🔴 Its OWN key, never `dashboardTrackCurrentDirectionKey`:
-                // a power bank derives current from `0x4A − 0x49` where
-                // POSITIVE is discharging, a pack from `0x2E` where negative
-                // is (`power_flow.dart`: "THE SIGN IS THE OPPOSITE"). The pack
-                // key here would be a precise, confident lie.
-                //
-                // ⚠️ design 0056 §5 ② scoped the axis key to the pack track —
-                // explicitly ("僅 pack 電流軌帶"), so this is not a forgotten
-                // case. What that section never recorded was WHY a power bank
-                // does not need one, and the reason it gave for the pack half
-                // (an unexplained sign reads as a fault) applies here word for
-                // word. §9 is that missing argument.
-                directionKey: l10n.powerBankTrackCurrentDirectionKey,
-                minSpan: 1,
-                height: 92,
-              ),
-            if (modules.hasTrack(TrendField.svlt))
-              TrendTrack(
-                field: TrendField.svlt,
-                // Direction-aware, exactly like the energy-path row's own
-                // voltage label. The two are separate CARDS on the same page
-                // (design 0040 split the chart out of the readouts card), which
-                // makes this matter more, not less: a legend reading "output
-                // voltage" a few centimetres below a row reading "input" is
-                // self-contradictory on one screen.
-                label: flow == PowerFlow.charging
-                    ? l10n.powerBankTrackInput
-                    : l10n.powerBankTrackOutput,
-                unit: 'V',
-                color: context.accent.accent,
-                decimals: 2,
-                minSpan: 0.5,
-              ),
-            if (modules.hasTrack(TrendField.soc))
-              TrendTrack(
-                field: TrendField.soc,
-                label: l10n.powerBankTrackSoc,
-                unit: '%',
-                color: AppSemantics.good,
-                minSpan: 5,
-              ),
-          ],
-        );
-      }
+      // 📦 The TRACKS moved to `live_trend_chart_core.dart` on 2026-09-02
+      // (design 0093 §4 Q6), value for value. They had to: the full-screen
+      // shell draws the same chart, and a copy of this list taken at push time
+      // would freeze a power bank's 輸入／輸出 legend against a flow that keeps
+      // changing. One list, two shells — the same rule as the painter.
       return TrendChartCard(
         buffer: tele.trend,
-        // Same class gate as the current readout below: a capacitor streams
-        // 0x2E as a constant 0.0 A, so a current track would draw a flat line
-        // at zero and read as "measured 0 A" — worse than leaving it out.
-        // Voltage and temperature do move on a capacitor, so the chart is still
-        // offered, just without that track.
-        tracks: [
-          if (modules.hasTrack(TrendField.current))
-            TrendTrack(
-              field: TrendField.current,
-              label: l10n.dashboardTrackCurrent,
-              unit: 'A',
-              color: context.accent.accentSecondary,
-              // Signed, and the axis must cross zero (2026-08-03 ruling,
-              // design 0030 §3.2: `abs()` was explicitly rejected — flattening
-              // the track would erase the reversal that makes a cranking load
-              // recognisable, which is the one thing a curve shows that a
-              // number cannot).
-              //
-              // 🔴 What DID change (design 0056): the axis now says which half
-              // is which. Until 2026-08-11 it deliberately did not, because
-              // 0x2E's direction was unverified and a label would have smuggled
-              // out an unsettled conclusion. `telemetry-decoding.md` §8.2 now
-              // states it — negative = discharge, positive = charge — so the
-              // silence has lost its reason, and an unexplained sign is exactly
-              // what FB-47 was reported for.
-              spanZero: true,
-              directionKey: l10n.dashboardTrackCurrentDirectionKey,
-              minSpan: 10,
-              height: 92,
-            ),
-          if (modules.hasTrack(TrendField.pvlt))
-            TrendTrack(
-              field: TrendField.pvlt,
-              label: l10n.dashboardTrackPvlt,
-              unit: 'V',
-              color: context.accent.accent,
-              decimals: 2,
-              minSpan: 0.5,
-            ),
-          // A capacitor has one track MORE than a battery, not fewer.
-          if (modules.hasTrack(TrendField.svlt))
-            TrendTrack(
-              field: TrendField.svlt,
-              label: l10n.capacitorTrackSvlt,
-              unit: 'V',
-              color: context.accent.accentSecondary,
-              decimals: 2,
-              minSpan: 0.5,
-            ),
-          if (modules.hasTrack(TrendField.temperature))
-            TrendTrack(
-              field: TrendField.temperature,
-              label: l10n.dashboardTrackTemperature,
-              unit: '°C',
-              color: AppSemantics.good,
-              minSpan: 4,
-            ),
-        ],
+        tracks: chartTracksFor(
+          context,
+          modules: modules,
+          isPowerBank: isPowerBank,
+          tele: tele,
+        ),
         // Travels with the CHART, not with the readouts (design 0040 §3.1). On
         // a capacitor this is the line explaining that the absent current track
         // is the device's own constant zero, not a fetch the app got wrong —
-        // the single most losable piece of this whole split.
+        // the single most losable piece of this whole split. (Null for a power
+        // bank, as it always has been: `DisplayModules.powerBank` declares no
+        // footnote, so folding the two branches together changed nothing.)
         chartFootnote: modules.chartFootnote?.call(l10n),
+        // 🔵 design 0093 §4 Q4 — the device page gets the full-screen entry,
+        // the home grid does not. Decided from the surface rather than from the
+        // tile's size, and by the same parameter the 標示容量 tile is decided
+        // by (`card_surface.dart`, owner ruling 2026-08-21).
+        onExpand: surface == CardSurface.deviceDetail
+            ? () => showLiveTrendChartPage(context,
+                shellClass: shellClass, tele: tele)
+            : null,
       );
 
     case DisplayModule.readouts:
