@@ -2434,4 +2434,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String alertsBannerMore(String count) {
     return '＋$count';
   }
+
+  @override
+  String get liveChartExpand => '全螢幕';
+
+  @override
+  String liveChartFrozen(String time) {
+    return '連線中斷 · 畫面停在 $time';
+  }
+
+  @override
+  String get liveChartRestarted => '已重新連線 · 重新開始記錄';
 }

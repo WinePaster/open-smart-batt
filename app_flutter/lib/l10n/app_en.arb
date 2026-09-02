@@ -1657,5 +1657,18 @@
   "@alertsBannerMore": {
     "description": "design 0086 — appended to the collapsed banner when more than one warning is raised; count is the number NOT shown on the line.",
     "placeholders": {"count": {"type": "String"}}
+  },
+  "liveChartExpand": "Full screen",
+  "@liveChartExpand": {
+    "description": "VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape LIVE chart (design 0093). \ud83d\udd11 Deliberately the same string as historyChartExpand and fullscreenEnter, and deliberately a THIRD key: they are three different actions (immersive home grid, landscape history chart, landscape live chart) that share a name. FB-108 (2026-09-02) is why the wording is 'Full screen' and not 'Expand' \u2014 do not reword one of the three alone."
+  },
+  "liveChartFrozen": "Disconnected \u00b7 frozen at {time}",
+  "@liveChartFrozen": {
+    "description": "design 0093 \u00a73.3 (owner ruling 2026-09-02: freeze the picture and say so). Shown under the full-screen live chart once the link drops. \ud83d\udd34 The buffer is cleared unconditionally on a disconnect, so what is on screen is a local snapshot that will never advance again \u2014 this line is what stops it reading as a chart that is still updating.",
+    "placeholders": {"time": {"type": "String"}}
+  },
+  "liveChartRestarted": "Reconnected \u00b7 recording restarted",
+  "@liveChartRestarted": {
+    "description": "design 0093 \u00a74 Q5 (owner: \u300c\u63db\u65b0\u300d). Shown after the link comes back while the full-screen live chart is open. \u26a0\ufe0f NOT 'resumed': the ~3 minutes held before the disconnect are gone and are not stored anywhere, so the honest word is 'restarted'."
   }
 }

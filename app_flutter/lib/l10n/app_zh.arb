@@ -702,5 +702,8 @@
   "alertsBannerUnsavedNoteBrief": "手機不會響。警告本身仍在追蹤。",
   "alertsBannerCollapse": "收合",
   "alertsBannerExpand": "展開完整警告",
-  "alertsBannerMore": "＋{count}"
+  "alertsBannerMore": "＋{count}",
+  "liveChartExpand": "\u5168\u87a2\u5e55",
+  "liveChartFrozen": "\u9023\u7dda\u4e2d\u65b7 \u00b7 \u756b\u9762\u505c\u5728 {time}",
+  "liveChartRestarted": "\u5df2\u91cd\u65b0\u9023\u7dda \u00b7 \u91cd\u65b0\u958b\u59cb\u8a18\u9304"
 }
