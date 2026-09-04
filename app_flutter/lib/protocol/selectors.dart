@@ -100,6 +100,18 @@ class Selectors {
   /// The two minute fields are since-wake, not lifetime (corrected 2026-08-07).
   static const int systemCounters = 0x34;
 
+  /// Function flags, 2 bytes. Byte 0 is a bit field; byte 1 is not decoded.
+  ///
+  /// 🔴 **Byte 0's meaning is PER PRODUCT CLASS and this app reads it for
+  /// SUPER-CAPACITORS ONLY** — see [CapacitorMos]. A battery and a power bank
+  /// both emit `0x3A` with entirely different bits, and applying the capacitor
+  /// reading to them would be FB-22's failure exactly: a class-agnostic formula
+  /// on a class-specific byte.
+  ///
+  /// Streamed by every unit of all three classes on every `#` poll, so this is
+  /// a read of something already arriving — nothing new is asked for.
+  static const int functionFlags = 0x3A;
+
   /// Device RTC, 7 bytes: `[u16 year BE][MM][DD][hh][mm][ss]`.
   ///
   /// **`MM` and `DD` are 0-based** (verified 2026-08-01): `MM = 0x07` is August,
@@ -382,4 +394,67 @@ class CapacitorStatus {
   /// unit is busy.
   static bool isSelfCheck(int? mode) =>
       mode == selfCheckStarting || mode == selfCheckRunning;
+}
+
+/// Whether a SUPER-CAPACITOR's output MOSFETs are open, read off byte 0 of
+/// [Selectors.functionFlags] (`0x3A`).
+///
+/// ⚠️ **Capacitor only.** Batteries and power banks emit `0x3A` too, with their
+/// own unrelated bit meanings; nothing here may be applied to them. Callers
+/// gate on a positively-read device type, never on the byte alone.
+///
+/// **How the two bits were derived — from our own captures, and only from
+/// them.** Across the corpus every capacitor `0x3A` byte 0 falls into two
+/// disjoint groups that track `0x23`:
+///
+/// ```
+///   0x51 / 0x41 / 0x71   output live   (bit0 set, bit3 clear)
+///   0x58 / 0x78          output cut    (bit3 set, bit0 clear)
+/// ```
+///
+/// Bit 0 is present in all three of the first group and absent from both of the
+/// second; bit 3 is exactly the reverse. No observed value carries both or
+/// neither. That is the whole inference — two bits that partition the observed
+/// set — and it is why anything outside the pattern reads as [unknown] rather
+/// than being guessed at.
+///
+/// 🔴 **Why this matters at all (FB-111).** The pairing with `0x23` was once
+/// recorded as an equivalence at 166/166 with no counter-example. It is not one:
+/// capture 2026.09.03/002 has `0x23` returning to [CapacitorStatus.healthy]
+/// **5.61 s before** the MOS reopened, and the app's self-check unlock read
+/// only `0x23` — so for those seconds it told the owner the check had finished
+/// while the unit's output was still cut.
+class CapacitorMos {
+  CapacitorMos._();
+
+  /// Byte 0, bit 0 — observed on every value whose output was live.
+  static const int bitAllOpen = 0x01;
+
+  /// Byte 0, bit 3 — observed on every value whose output was cut.
+  static const int bitAllClosed = 0x08;
+
+  /// `true` open, `false` cut, `null` for "no reading" or a pattern outside the
+  /// two observed groups.
+  ///
+  /// [funcFlags] is the register as stored — the big-endian u16 of its two
+  /// payload bytes, so `5100` on the wire arrives here as `0x5100` and byte 0
+  /// is the high half.
+  ///
+  /// 🔑 Three-valued on purpose. A capacitor that has not answered `0x3A` yet,
+  /// and one whose byte carries neither bit, are both states in which we do not
+  /// know — and a caller that has to wait for the output to come back must be
+  /// able to tell "still cut" from "never said". Collapsing either into `false`
+  /// would leave a user stuck at 「檢測中」 on a unit that never reports this
+  /// register at all.
+  static bool? allOpen(int? funcFlags) {
+    if (funcFlags == null) return null;
+    final b0 = (funcFlags >> 8) & 0xFF;
+    final open = b0 & bitAllOpen != 0;
+    final closed = b0 & bitAllClosed != 0;
+    // Both bits, or neither: not one of the observed shapes. Say so rather than
+    // pick one — the whole point of this register here is that a claim about
+    // the output is a claim about whether the unit is safe to use.
+    if (open == closed) return null;
+    return open;
+  }
 }

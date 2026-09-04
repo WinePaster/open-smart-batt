@@ -178,8 +178,8 @@ listed "38" — that was decimal for `0x26`, listed twice under two radices.
 
 | Bit | Meaning | Evidence | Caveat |
 |---|---|---|---|
-| **bit 5** | **PD output** | 184/184, no counterexample. Set across **two different contract voltages** — ≈9.2 V and ≈12.2 V — ⇒ it tracks the protocol, not one voltage rail; and a **matched-power A/B within a single capture** (2026-08-13) rules out a power threshold. 🔴 **Revised 2026-08-13** — the former wording, ~~"same bit at port voltages from 9.05 V to **13.30 V**"~~, overstated the span at both ends: **13.30 V is a discrete misread, not a contract voltage**. See "On bit 5: the 13.30 V upper bound was a misread" below | — |
-| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands. 🔑 **But the counterexamples are now accounted for (2026-08-05): all 62 of them set bit 4 instead.** No ≥8 V charge in the corpus leaves both bits clear (0 of 2,042). See the bit-4 section |
+| **bit 5** | ~~**PD output**~~ 🔵 **narrowed 2026-09-04 to "non-5 V output contract"** (the output contract is above the USB-default 5 V) | **2,872/2,872, no counterexample** (was ~~184/184~~ — the corpus grew ×15.6). Two kinds of evidence now. **(a) Separation:** across **8,429** complete `0x49`+`0x4B` bursts on one unit, every burst with bit 5 set reads **8,192 – 10,232 mV** and every burst with it clear reads **3,144 – 5,348 mV** — **not one sample lands between them**. **(b) 🆕 A new evidence type — switching inside one connection** (2026-09-02 batch): **10 transitions across 8 separate connections with no disconnect in between**, bit 5 changing together with the port voltage moving between the 9 V and 5 V families, within **≤17.9 s and mostly ≈5 s**. Set across **two different contract voltages** — ≈9.2 V and ≈12.2 V — ⇒ it tracks the contract, not one voltage rail; and a **matched-power A/B within a single capture** (2026-08-13) rules out a power threshold. 🔴 **Revised 2026-08-13** — the former wording, ~~"same bit at port voltages from 9.05 V to **13.30 V**"~~, overstated the span at both ends: **13.30 V is a discrete misread, not a contract voltage**. See "On bit 5: the 13.30 V upper bound was a misread" below | ⚠️ **"PD" was never observed — only voltage was.** No capture in this corpus records which protocol the far end negotiated, so the evidenced claim is *"the contract is above 5 V"*, not *"the contract is PD"*. See "On bit 5: why the label is no longer 'PD'" below |
+| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. ~~**Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power~~ 🔺 **Strengthened 2026-09-04 — same conclusion, a second unit, and roughly ten times the margin.** The A/B's 6.07 W vs 5.77 W (and the **6.14 W** high-water mark for a non-PD input anywhere in that capture) was the whole of the "not a power threshold" case, and it rested on **one unit at a 5 % margin**. A 2026-09-03 capture of a **different** unit caught the **14 s before PD negotiation**: the port sat in the USB-default 5 V family at **4.880 V × 2.117 A = 10.33 W** with **bit 3 clear**, and bit 3 then set as the port stepped to 9.05 V **in the same poll**. The same capture's PD section runs down to **9.32 V × 0.114 A = 1.06 W** with bit 3 **set**. ⇒ the non-PD ceiling moves **6.14 W ⇒ 10.33 W**, and the refutation is now **two units at ≈10×**, not one unit at 5 %. See "On bit 3: the 2026-09-03 pre-negotiation window" below | ⚠️ **One-way only** still stands. 🔑 **But the counterexamples are now accounted for (2026-08-05): all 62 of them set bit 4 instead.** No ≥8 V charge in the corpus leaves both bits clear (0 of 2,042). See the bit-4 section |
 | **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, ~~every~~ **128 of 133** `b7 = 0x00` frames have the port voltage at cell potential (count and exceptions revised 2026-08-05 — see the `b7 = 0x00` section below) | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
 | **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
 | **bit 4** | **unknown**, but **structurally paired with bit 3** | Appears only as `0x12` (bit1+bit4), **62** frames (was "16" — corpus has grown), on **one** unit. ⚠️ **The "firmware variant" reading is dead** — see below | 🚫 Not decoded. But bit 3 and bit 4 are **mutually exclusive** (0 co-occurrences in 42,142 paired bursts), and **every** ≥8 V charge sets exactly one of them |
@@ -230,8 +230,74 @@ clear is what kills a power threshold, and there are four of them.
 
 **Practical note for clients.** The misread runs at roughly **6 %** of samples, so
 a port voltage rendered straight from `0x37` flickers to ≈11.3 V or ≈13.3 V about
-every 14th update during a 12 V PD output. A median or rate limit on that readout
-is worth having; the flag byte itself is unaffected.
+every 14th update during a 12 V ~~PD~~ **non-5 V** output contract. A median or
+rate limit on that readout is worth having; the flag byte itself is unaffected.
+
+**On bit 5: why the label is no longer "PD" — and what the 2026-09-02 batch
+actually added** (2026-09-04).
+
+🔵 **Narrowed: ~~"PD output"~~ ⇒ "non-5 V output contract".** The narrowing of the
+wording and the upgrade of the sample are **one change, not two** — the evidence
+got *stronger* at the same moment the claim got *weaker*. Read either half alone
+and you will draw the wrong conclusion about which way this row moved.
+
+**What got stronger.** One power bank, 8,429 complete
+`0x49`+`0x4B` bursts:
+
+| | before (through 2026-08-13) | 🆕 2026-09-02 batch |
+|---|---|---|
+| bursts with bit 5 set | 184 | **2,872** |
+| separation | — | set: **8,192 – 10,232 mV**; clear (5,557 bursts): **3,144 – 5,348 mV**; **no sample in between** |
+| kind of evidence | comparison **between** captures | 🆕 **10 switches inside 8 single connections, no disconnect** — 9 V ⇄ 5 V, bit 5 following within **≤17.9 s**, mostly **≈5 s** |
+
+The in-connection switches are the part that is new in kind, not just in size.
+They hold everything else fixed — same unit, same cable, same port, same session,
+same firmware — so only the contract moves. Nothing before this ruled out "bit 5
+is a property of how the session started".
+
+**Why "PD" is nevertheless the wrong word.** Not because of a counterexample —
+there is none — but because **no capture in this corpus has ever recorded which
+protocol the far end negotiated.** Every bit-5 observation is a *voltage*
+observation; "PD" was inferred from that voltage being ≈9 V or ≈12 V. The
+2026-09-02 batch is no exception: it carries no port labels and no capture marks,
+so nobody can say what was plugged in. ⇒ what the corpus evidences is **"the
+output contract is above USB-default 5 V"**, and that is now what the row claims.
+
+🔲 **PPS remains open — as a possibility, not as the explanation.** USB-PD's
+programmable-supply mode is continuously adjustable rather than stepped, so a
+contract that does not land on 5/9/12/15/20 V is still compatible with PD. ⚠️ It
+is **untested**, and the paragraph below removes the observation that made it look
+necessary. Do not write PPS down as a finding.
+
+🔴 **In-place correction to the argument that prompted this narrowing.** The batch
+analysis argued from **143 bit-5 bursts reading 10.0 – 10.4 V**, on the grounds
+that 10.2 V is not a PD fixed voltage. **Re-measured against the same log
+(2026-09-04), that argument does not survive** — and what kills it is already in
+this document, in the 13.30 V section above:
+
+* **140 of the 143** sit at exactly **(a value observed in the same unit's 9 V cluster) + 1,024 mV** — 2¹⁰, the same flipped bit.
+* They are **isolated samples, not a contract**: the 143 fall into **135 runs, of which 128 are a single burst** with 9 V bursts on both sides. A negotiated 10.2 V contract would hold for a run of bursts; 128 one-burst "contracts" is a misread.
+* The **131** bit-5 bursts *below* 8.8 V mirror this exactly: **130 of 131** are **(a 9 V cluster value) − 1,024 mV**, in **121 runs of which 112 are one burst long**.
+* Combined satellite rate **274 / 2,872 = 9.5 %**, against the **≈6 %** this document already records for the same defect.
+
+⇒ **The 10.0 – 10.4 V group is the same ±1,024 mV discrete misread as 13.30 V, not
+a third contract voltage.** The narrowing therefore rests entirely on the *other*
+reason — that the protocol itself was never observed — which is independent of the
+10.2 V group and is unaffected by this correction. 🔲 **Recorded rather than
+silently rewritten**: the ruling stands on that second reason, and whether it
+should stand on it alone is a question for the owner, not for this file.
+
+**The capture that would settle it:** a **QC-only (non-PD) load** — a QuickCharge
+handset, or a QC trigger board — on this unit's output port for **90 s**, with the
+port and the load written down.
+
+* bit 5 **set** ⇒ it tracks *"output above 5 V"*, independent of protocol, and the wording above is right.
+* bit 5 **clear**, with `0x49` confirming the port genuinely rose to ≈9 V ⇒ "PD" was correct all along, and the label can go back.
+
+📌 This is the same shape as the open question on **bit 3** (a non-PD 9 V charge
+would look like a PD one), one port over — input side there, output side here.
+⛔ They are **two captures and two rows**; do not try to close both with one run,
+and do not carry a finding from one to the other.
 
 **On bit 3: the A/B that removes "power" and "voltage" as explanations**
 (2026-08-04).
@@ -263,6 +329,58 @@ those captures was never recorded.
 **The capture that would settle it:** a **QuickCharge 9 V (non-PD)** charger
 into the same unit for 90 s. bit 3 clear with `0x49` reading ≈9 V ⇒ the caveat
 can be lifted and bit 3 becomes two-way.
+
+**On bit 3: the 2026-09-03 pre-negotiation window — a second unit, and a 10×
+margin** (added 2026-09-04).
+
+🔺 **This strengthens the row above; it does not revise it.** The label stays
+**PD input** and the "one-way only" caveat stays exactly as written. What changed
+is the strength of the evidence against reading bit 3 as *power*.
+
+The 2026-08-04 A/B could only put **6.07 W vs 5.77 W** — a 5 % gap on **one
+unit** — between "PD" and "power", with **6.14 W** the highest non-PD input
+anywhere in that capture. A 2026-09-03 capture of a **different** power bank
+recorded the 14 s **between the cable going in and the PD contract landing**:
+
+| segment | `b7` | bits | `0x49` port mV | `0x49` charge mA | input power |
+|---|---|---|---|---|---|
+| pre-negotiation, ~14 s | `0x03` | 0 + 1 | **4,880** | **2,117** | **10.33 W**, bit 3 **clear** |
+| after negotiation | `0x0a` | 1 + 3 | 9,050 | 1,441 | 13.04 W, bit 3 **set** |
+| same capture, CV tail | `0x0a` | 1 + 3 | 9,320 | 114 | **1.06 W**, bit 3 **set** |
+
+* The pre-negotiation segment is a **non-PD input at 10.33 W with bit 3 clear**;
+  the tail is a **PD input at 1.06 W with bit 3 set**. Any power threshold would
+  have to sit above 10.33 W and below 1.06 W at once.
+* ⇒ the non-PD ceiling for this refutation moves **6.14 W ⇒ 10.33 W**, and the
+  result now rests on **two independent units** rather than one.
+* 4.880 V is the USB-default 5 V rail after cable drop, so this is the ordinary
+  5 V charge case — not an exotic one constructed to break the reading.
+
+🔑 **Why this is worth its own paragraph:** the 2026-08-04 A/B was a *matched*
+comparison, which is the strongest shape available on one unit but leaves a 5 %
+gap that a sloppy threshold could still live in. This is the opposite shape — an
+*unmatched* comparison with the sign deliberately wrong-way-round — and 10× is
+outside anything a threshold could absorb. **Two different failure modes, both
+now closed.**
+
+⛔ **Do not merge this with the 2026-09-04 narrowing of bit 5.** They landed on
+the same day and both touch "PD", and they are unrelated:
+
+* **bit 5** was narrowed because **the protocol was never observed** — every
+  bit-5 observation is a *voltage* observation, so the corpus could not say
+  whether the contract was PD.
+* **That reason does not apply to bit 3.** Bit 3 has a **ground-truth-labelled
+  instance**: the 2026-08-04 charge segment above, whose port and protocol come
+  from the **owner's own statement of what was plugged in** (21/21 frames, see
+  the ground-truth block earlier in this section). It is the only place in this
+  file where the protocol itself was recorded rather than inferred.
+* ⇒ bit 5 got **weaker wording with stronger numbers**; bit 3 got **stronger
+  numbers with unchanged wording**. Carrying either conclusion across is wrong.
+
+📌 Source: `feedback-analysis/2026.09.03-007.md` §1.1 (capture 2026-09-03,
+Android `0.7.41`). ⚠️ **Single capture, single unit for the new half** — it is a
+second unit relative to the 2026-08-04 A/B, which is the point, but it is not a
+population.
 
 **On bit 4: the "firmware variant" reading is refuted, and bit 3 / bit 4 turn out
 to be one field** (2026-08-05).
@@ -661,7 +779,8 @@ collected here so an implementer does not have to reconstruct it from prose.
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
 | `0x49` mV field | ~~**Not published.** Tracks PVLT, so decoding it again would just rename an existing number~~ 🔴 **Corrected 2026-08-05: it tracks the PORT voltage (`0x37`), not PVLT (`0x19`)** — five units, median +4 mV, against a mis-paired control at +1,634 mV (see the mV-fields section above). Still **not decoded by this app** | — (identified). 🔲 What is open is whether to *use* it: it is same-burst with `0x4B` where `0x37` free-runs, so it could close design 0035 §4.5's accepted deviation. Needs a ruling, not a capture |
-| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 62 counterexamples (was "16"; corpus grew). Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver. 🔑 **2026-08-05: the counterexamples are exactly the bit-4 frames** — this row and the bit-4 row are one question, not two | 🔲 A **labelled** non-PD 9 V (QuickCharge) charge. If bit 4 is what a non-PD fast charge looks like, both rows close together |
+| `0x4B` b7 **bit 5** — is the contract actually **PD**? | 🔲 **Open, and never tested.** The bit itself is evidenced **2,872/2,872** as *"output contract above 5 V"* (including 10 switches inside 8 unbroken connections), but **no capture in the corpus records the protocol the far end negotiated** — every observation is a voltage observation. ~~"PD output"~~ was narrowed on 2026-09-04 for that reason. 🔲 PPS stays possible and untested. ⚠️ The "10.2 V is not a PD step" argument is **withdrawn** — 140 of those 143 bursts are (9 V cluster value) + 1,024 mV, 128 of them isolated single samples | A **QC-only (non-PD)** load on the output port for **90 s**, with port and load written down. bit 5 set ⇒ the narrowed wording is right; bit 5 clear with `0x49` at ≈9 V ⇒ "PD" can go back. ⛔ Separate capture from the bit-3 row below — do not close both with one run |
+| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 62 counterexamples (was "16"; corpus grew). Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver — 🔺 **strengthened 2026-09-04 to two units and ≈10×** (a 2026-09-03 capture of a second unit charging at **10.33 W with bit 3 clear**, 14 s before PD negotiation; non-PD ceiling ~~6.14 W~~ ⇒ **10.33 W**). ⛔ **Unrelated to the bit-5 narrowing of the same date** — bit 3 has a ground-truth-labelled instance, bit 5 has none. 🔑 **2026-08-05: the counterexamples are exactly the bit-4 frames** — this row and the bit-4 row are one question, not two | 🔲 A **labelled** non-PD 9 V (QuickCharge) charge. If bit 4 is what a non-PD fast charge looks like, both rows close together |
 | Spurious single-poll `b7 = 0x00` | 🔲 **Hypothesis, one unit.** 5 frames in 36,152 bursts (0.014 %) read `0x00` with the rail demonstrably up and the same burst's `0x49` mV corrupted too. Does not affect the meaning of `0x00`; it means a lone `0x00` is not proof of it | The same 1 Hz, ≥2 A, 30-minute run on a second unit — then check `0x37`'s free-running series either side of every `0x00` |
 | bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
 

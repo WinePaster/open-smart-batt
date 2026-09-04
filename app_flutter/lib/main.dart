@@ -72,7 +72,7 @@ Future<void> bootstrap({
   // open. Fall back to a screen that says what happened instead.
   final AppServices services;
   try {
-    services = await AppServices.create(parser: parser);
+    services = await AppServices.create(parser: parser, config: config);
   } catch (e) {
     runApp(
       StartupFailureApp(

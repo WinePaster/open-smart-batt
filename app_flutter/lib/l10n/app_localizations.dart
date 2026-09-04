@@ -788,6 +788,12 @@ abstract class AppLocalizations {
   /// **'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.'**
   String get capacitorSelfCheckStillRunningSnack;
 
+  /// No description provided for @capacitorSelfCheckOutputStillOffSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The unit reports normal mode again, but it is still reporting its output as cut. That usually clears within a few seconds. Wait for the reading to come back before relying on this unit — the app has not sent anything to change it.'**
+  String get capacitorSelfCheckOutputStillOffSnack;
+
   /// No description provided for @capacitorSelfCheckNoResponseSnack.
   ///
   /// In en, this message translates to:

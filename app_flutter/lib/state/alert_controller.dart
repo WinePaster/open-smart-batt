@@ -52,6 +52,7 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
+import '../config/app_config.dart';
 import '../models/models.dart';
 import '../platform/alert_notifier.dart';
 import 'alert_evaluator.dart';
@@ -102,14 +103,23 @@ class AlertNotificationStrings {
   /// Neutral placeholders, used until the first frame resolves l10n.
   ///
   /// 🔑 Not English copy, and not empty: `ConnectionController` seeds its own
-  /// notification title with the bare brand name for the same reason. A
+  /// notification title from the same injected name for the same reason. A
   /// notification that slipped out in this window would be terse rather than
   /// in a language the user did not pick — and in practice the window is closed
   /// before any link exists, since `didChangeDependencies` runs on the first
   /// frame and a breach needs a connection plus `sustain` seconds.
-  static AlertNotificationStrings get placeholder => AlertNotificationStrings(
-        channelName: 'OpenSmartBatt',
-        channelDescription: 'OpenSmartBatt',
+  ///
+  /// 🔴 **Takes [appName] rather than writing one** (FB-109, extended). The two
+  /// channel fields are what Android shows in ITS OWN notification settings, so
+  /// a hard-coded brand here is a pro build calling itself the open build in a
+  /// screen this app does not draw. It is a narrow window — the alerts channel
+  /// is not created until the first `post()`, and re-creating it with the same
+  /// id updates the name anyway (`MonitorService.ensureChannel`) — but a window
+  /// that costs one parameter to close is not one to argue about.
+  static AlertNotificationStrings placeholderFor(String appName) =>
+      AlertNotificationStrings(
+        channelName: appName,
+        channelDescription: appName,
         overVoltage: 'OV',
         underVoltage: 'UV',
         overTemperature: 'OT',
@@ -202,11 +212,13 @@ class AlertController extends ChangeNotifier implements TelemetryAlertSink {
     required SettingsController settings,
     AlertNotifier? notifier,
     AlertEvaluator? evaluator,
+    AppConfig config = AppConfig.open,
   }) {
     // Assigned in the body rather than in an initializer list, matching
     // [TelemetryController]: the fields are private, Dart has no private named
     // formal, and the two optional dependencies have to be defaulted here
     // anyway.
+    _strings = AlertNotificationStrings.placeholderFor(config.appName);
     _resolve = resolve;
     _devices = devices;
     _settings = settings;
@@ -265,7 +277,9 @@ class AlertController extends ChangeNotifier implements TelemetryAlertSink {
   /// banner takes on screen; the warning itself never stops being displayed.
   final Map<String, Set<AlertKind>> _bannerCollapsed = <String, Set<AlertKind>>{};
 
-  AlertNotificationStrings _strings = AlertNotificationStrings.placeholder;
+  /// Seeded from the injected [AppConfig] in the constructor, replaced by
+  /// [setNotificationStrings] on the first frame that resolves l10n.
+  late AlertNotificationStrings _strings;
 
   AlertPermission _permission = AlertPermission.unknown;
 

@@ -279,6 +279,7 @@
   "capacitorSelfCheckNotReady": "This unit has not sent the details needed to authorise the command yet. Please wait a moment and try again.",
   "capacitorSelfCheckDoneSnack": "Self-check finished — the unit reports normal again.",
   "capacitorSelfCheckStillRunningSnack": "The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.",
+  "capacitorSelfCheckOutputStillOffSnack": "The unit reports normal mode again, but it is still reporting its output as cut. That usually clears within a few seconds. Wait for the reading to come back before relying on this unit — the app has not sent anything to change it.",
   "capacitorSelfCheckNoResponseSnack": "The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.",
   "capacitorSelfCheckFailedSnack": "Could not send the self-check command: {error}",
   "@capacitorSelfCheckFailedSnack": {

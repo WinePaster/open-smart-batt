@@ -37,6 +37,7 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
@@ -74,11 +75,19 @@ class _FakeBleService extends BleService {
   /// Mode byte to report back after the next write, or null to stay silent.
   int? answerWriteWithMode;
 
+  /// 🔵 FB-111. The `0x3A` register every emitted sample carries.
+  ///
+  /// 🔑 Defaults to NULL — "this unit has never answered that register" — so
+  /// every test written before FB-111 keeps describing exactly the device it
+  /// described then. The MOS-aware paths set it explicitly.
+  int? funcFlags;
+
   /// Extra fields every emitted sample carries, so the body under test sees a
   /// classified capacitor with a dealer code (auth is derived from it).
   TelemetrySample _sampleWith(int? mode) => TelemetrySample(
         timestamp: DateTime.now(),
         mode: mode,
+        funcFlagsRaw: funcFlags,
         deviceType: kSuperCapacitorDeviceType,
         dealerCode: '01680217',
         pvlt: 13.2,
@@ -546,4 +555,243 @@ void main() {
       expect(find.text('Normal'), findsOneWidget);
     });
   });
+
+  // =========================================================================
+  // 🔵 FB-111 — 「檢測完成」 while the output was still cut
+  // =========================================================================
+  //
+  // WHAT WAS WRONG. The unlock read `0x23` alone. `docs/devices/supercapacitor.md`
+  // recorded `0x23`=`05` ⟺ `0x3A` MOS-all-open at **166/166, zero
+  // counter-examples**, so one register was believed to stand for both. Capture
+  // 2026.09.03/002 — the first in the corpus where OUR app sent the self-check —
+  // has five counter-examples in one connection:
+  //
+  //     12:35:17.526  TX   self-check command
+  //     12:35:17.948  RX   0x3A = 5800   MOS all CLOSED
+  //     12:35:23.166  RX   0x23 = 05     "normal" again   ← we unlocked here
+  //     12:35:28.779  RX   0x3A = 5100   MOS open again   ← 5.61 s LATER
+  //
+  // For those 5.61 seconds the app told the owner 「檢測結束 —— 裝置已回報正常」
+  // about a unit whose output was still disconnected. On a capacitor fitted to
+  // start a vehicle, "finished" is read as "you can use it".
+  //
+  // 🔑 THE SHAPE, so it is not re-learned a third time: two independent
+  // registers describing one physical event do not move together, and an
+  // equivalence with no counter-example is not an equivalence — it is a
+  // sample. The one the user acts on is the one carrying the load.
+
+  group('FB-111 — CapacitorMos reads only the shapes we have observed', () {
+    test('every capacitor 0x3A value in the corpus decodes to its group', () {
+      // Left column is the wire value as stored (big-endian u16 of the two
+      // payload bytes). These five are the complete observed set.
+      expect(CapacitorMos.allOpen(0x5100), isTrue, reason: 'healthy gen-2');
+      expect(CapacitorMos.allOpen(0x4100), isTrue, reason: 'gen-3 0x18, LED off');
+      expect(CapacitorMos.allOpen(0x7101), isTrue, reason: 'open + test bit');
+      expect(CapacitorMos.allOpen(0x5800), isFalse, reason: 'pre-charge / cut');
+      expect(CapacitorMos.allOpen(0x7801), isFalse, reason: 'cut + test bit');
+    });
+
+    test('anything outside those shapes is UNKNOWN, never guessed', () {
+      // 🔑 Null is a third answer, not a failure. "We have no reading" and "the
+      // output is cut" lead to opposite copy on screen.
+      expect(CapacitorMos.allOpen(null), isNull, reason: 'never reported');
+      expect(CapacitorMos.allOpen(0x0000), isNull, reason: 'neither bit');
+      expect(CapacitorMos.allOpen(0x0900), isNull, reason: 'both bits');
+    });
+
+    test('it reads byte 0, not the whole word', () {
+      // Byte 1 varies independently (`7101` vs `7100`) and carries nothing we
+      // have decoded, so it must not reach the answer.
+      expect(CapacitorMos.allOpen(0x5100), CapacitorMos.allOpen(0x51FF));
+      expect(CapacitorMos.allOpen(0x5800), CapacitorMos.allOpen(0x58FF));
+    });
+  });
+
+  group('FB-111 — 0x3A reaches the sample without touching storage', () {
+    TelemetrySample decode(List<int> payload) {
+      final d = TelemetryDecoder();
+      final frame = InboundFrame(
+        selector: Selectors.functionFlags,
+        flag: 0x01,
+        len: payload.length,
+        payload: Uint8List.fromList(payload),
+        checksumOk: true,
+      );
+      return d.ingest(frame);
+    }
+
+    test('the two payload bytes arrive as one big-endian word', () {
+      expect(decode([0x51, 0x00]).funcFlagsRaw, 0x5100);
+      expect(decode([0x58, 0x00]).funcFlagsRaw, 0x5800);
+      expect(decode([0x71, 0x01]).funcFlagsRaw, 0x7101);
+    });
+
+    test('a short frame is dropped rather than zero-padded', () {
+      // A fabricated `0x0000` would decode to "neither MOS bit", i.e. a state
+      // the app would then have to explain. Better to have no reading.
+      expect(decode([0x51]).funcFlagsRaw, isNull);
+      expect(decode(const []).funcFlagsRaw, isNull);
+    });
+
+    test('it is NOT persisted — no schema change, no history column', () {
+      // It is a live-link fact ("is this unit's output cut right now"), and
+      // nothing reads it back out of a stored row.
+      final s = decode([0x51, 0x00]);
+      expect(s.funcFlagsRaw, 0x5100);
+      expect(s.toMap().containsKey('func_flags'), isFalse);
+      expect(s.toMap().values.contains(0x5100), isFalse);
+    });
+  });
+
+  group('FB-111 — the unlock waits for BOTH registers', () {
+    testWidgets(
+        '🔴 0x23 says normal while the MOS is still cut ⇒ NOT "finished"',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = 0x5100; // open, before anything happens
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.writes.clear();
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      // The command goes out with the MOS about to drop, exactly as the wire
+      // shows it (0x3A = 5800 arrives 422 ms after the write).
+      fakeBle.funcFlags = 0x5800;
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+      await step(tester, times: 4);
+
+      // The unit reports normal again — and the old code stopped here.
+      fakeBle.emitMode(CapacitorStatus.healthy);
+      await step(tester, times: 4);
+      expect(find.textContaining('Self-check finished'), findsNothing,
+          reason: 'the output is still cut; "finished" is a claim about a unit '
+              'that cannot yet carry its load');
+
+      // Let the watch run out with the MOS never reopening.
+      final stillOff = find.textContaining('still reporting its output as cut');
+      for (var i = 0; i < 200 && stillOff.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      expect(stillOff, findsOneWidget);
+      // ⛔ Not silent, and not a claim of success — but also NOT a write. Rule 3
+      // is untouched by FB-111.
+      expect(find.textContaining('finished'), findsNothing);
+      expect(fakeBle.writes, hasLength(2),
+          reason: 'the self-check pair and its read-back, and nothing else');
+    });
+
+    testWidgets('both registers back ⇒ finished, without waiting out the window',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = 0x5100;
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      fakeBle.funcFlags = 0x5800;
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+      await step(tester, times: 4);
+
+      // The captured order: 0x23 first, 0x3A about five seconds later.
+      fakeBle.emitMode(CapacitorStatus.healthy);
+      await step(tester, times: 4);
+      fakeBle.funcFlags = 0x5100;
+      fakeBle.emitMode(CapacitorStatus.healthy);
+
+      final done = find.textContaining('Self-check finished');
+      // Well inside the 30 s limit: ~12 s of clock. If the unlock had started
+      // depending on the window expiring, this is what would catch it.
+      for (var i = 0; i < 20 && done.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      expect(done, findsOneWidget);
+      expect(find.textContaining('still reporting its output as cut'),
+          findsNothing);
+    });
+
+    testWidgets(
+        '🔑 a unit that never reports 0x3A is not held hostage by it',
+        (tester) async {
+      // The FB-50 / FB-52 shape, and the reason `allOpen` is three-valued: a
+      // gate keyed on a register the device does not answer is a state with no
+      // exit. Batteries and older firmware are exactly that case.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = null; // never answers 0x3A
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+      await step(tester, times: 4);
+      fakeBle.emitMode(CapacitorStatus.healthy);
+
+      final done = find.textContaining('Self-check finished');
+      for (var i = 0; i < 20 && done.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      expect(done, findsOneWidget,
+          reason: 'no 0x3A reading must mean "do not gate", never "cut"');
+    });
+
+    testWidgets('🔴 the watch still ENDS — the button never locks forever',
+        (tester) async {
+      // The give-up path with BOTH registers stuck. Whatever the copy, the
+      // guarantee is that the user gets an answer and the control comes back.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = 0x5800;
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+
+      final gaveUp = find.textContaining('has not reported normal yet');
+      for (var i = 0; i < 200 && gaveUp.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      // `stillRunning`, not `outputStillOff`: `0x23` never came back either, so
+      // the honest sentence is the older one.
+      expect(gaveUp, findsOneWidget);
+      expect(find.textContaining('still reporting its output as cut'),
+          findsNothing);
+      expect(fakeBle.writes, hasLength(2));
+    });
+  });
+
 }

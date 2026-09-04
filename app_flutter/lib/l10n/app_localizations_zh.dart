@@ -426,6 +426,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '裝置還沒有回報恢復正常，可能仍在檢測模式；App 沒有送出任何把它拉回正常模式的指令。請繼續看上方的狀態。';
 
   @override
+  String get capacitorSelfCheckOutputStillOffSnack =>
+      '裝置已回報正常模式，但它仍然回報輸出處於斷開狀態。這通常會在數秒內自行恢復。請等讀數回來再依賴這顆電容 —— App 沒有送出任何改變它的指令。';
+
+  @override
   String get capacitorSelfCheckNoResponseSnack =>
       '指令已送出，但裝置沒有回報進入檢測模式。就 App 看得到的部分，什麼都沒有改變。';
 

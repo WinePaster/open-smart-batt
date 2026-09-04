@@ -209,7 +209,57 @@ void main() {
     // app_flutter is replaced wholesale from this repo, so a brand string
     // re-hard-coded here silently un-does design 0092 on the pro side, and
     // nothing on the pro side would report it.
+    //
+    // 🔴 **REWRITTEN FOR FB-109, and the rewrite is the lesson.** This group
+    // existed, was green, and MISSED BOTH HALVES of FB-109:
+    //
+    //   (a) it iterated a HAND-WRITTEN list of four files copied from design
+    //       0092 §1.5 — so it inherited that list's own omission verbatim.
+    //       `lib/ui/util/history_csv_export.dart` still said
+    //       `title: 'OpenSmartBatt history export'` outright, and no assertion
+    //       was pointed at it. A list of call sites written by the same person
+    //       who missed a call site cannot find the one that was missed;
+    //   (b) its matcher asked whether the source CONTAINS the brand — and
+    //       `title: '\$appName history export'`, an escaped dollar that never
+    //       interpolates, passes that question while shipping the literal text
+    //       `$appName` to every user.
+    //
+    // So the list below is DERIVED from `lib/` (the shape
+    // `direction_followups_test.dart` X5 already uses for the same preamble),
+    // and the escaped-dollar form has an assertion of its own. The "does it
+    // equal the injected name" half — the only question that actually settles
+    // it — lives in `export_brand_header_test.dart`, which drives the real
+    // call sites.
     const brand = 'OpenSmartBatt';
+
+    // Two things here are deliberate and were both learned the hard way:
+    //   * `[^'\n]` — an apostrophe in prose ("the app's name") pairs with a
+    //     later one across many lines and swallows real code in between,
+    //     which is how this matcher first "found" `OpenSmartBattApp`.
+    //   * matching only INSIDE quotes — `OpenSmartBattApp` is the root
+    //     widget's class name, a Dart identifier, and renaming it is not
+    //     what design 0092 is about.
+    final literal = RegExp("'[^'\n]*$brand[^'\n]*'");
+
+    /// Every `.dart` under `lib/`, path-relative, sorted — no hand list.
+    List<String> libSources() => (Directory('lib')
+            .listSync(recursive: true)
+            .whereType<File>()
+            .map((f) => f.path)
+            .where((p) => p.endsWith('.dart'))
+            .toList()
+          ..sort());
+
+    // 🔵 **The placeholder exemption is GONE, and that is the point.** It used
+    // to name `lib/state/alert_controller.dart` and
+    // `lib/state/connection_controller.dart`, whose pre-l10n seeds were written
+    // out as `'OpenSmartBatt'` on the argument that the first frame overwrites
+    // them. Two of those five seeds were the ANDROID CHANNEL NAME AND
+    // DESCRIPTION — what the OS shows in its own notification settings, a
+    // screen this app never draws — so "it gets overwritten" was an argument
+    // about the app's own UI applied to somebody else's. Both files now take
+    // the name from the injected `AppConfig`, so the derived sweep below runs
+    // over `lib/` with NO exemption at all.
 
     test('neither .arb still carries the brand name', () {
       for (final f in ['lib/l10n/app_en.arb', 'lib/l10n/app_zh.arb']) {
@@ -222,33 +272,92 @@ void main() {
       }
     });
 
-    test('the four extracted call sites hold no brand literal', () {
-      // Two things here are deliberate and were both learned the hard way:
-      //   * `[^'\n]` — an apostrophe in prose ("the app's name") pairs with a
-      //     later one across many lines and swallows real code in between,
-      //     which is how this matcher first "found" `OpenSmartBattApp`.
-      //   * matching only INSIDE quotes — `OpenSmartBattApp` is the root
-      //     widget's class name, a Dart identifier, and renaming it is not
-      //     what design 0092 is about.
-      final literal = RegExp("'[^'\n]*\$brand[^'\n]*'");
-      for (final f in [
-        'lib/main.dart',
-        'lib/ui/startup_failure.dart',
-        'lib/ui/settings/settings_screen.dart',
-        'lib/data/update_service.dart',
+    test('🔴 FB-109: NO file under lib/ holds a brand literal — derived, '
+        'not hand-listed', () {
+      final offenders = <String>[];
+      for (final f in libSources()) {
+        if (f == 'lib/config/app_config.dart') continue; // its one legal home
+        if (literal.hasMatch(File(f).readAsStringSync())) offenders.add(f);
+      }
+      expect(offenders, isEmpty,
+          reason: 'hard-coded brand string literal(s) again (design 0092 §3.3) '
+              '— inject AppConfig.appName instead');
+    });
+
+    test('🔴 FB-109: the two pre-l10n seeds take the injected name', () {
+      // Not "they no longer say OpenSmartBatt" — the sweep above already
+      // settles that, and it would stay green if somebody deleted the seeds and
+      // shipped an empty channel name. This asserts the POSITIVE: each file
+      // reads `config.appName`, which is the only thing that makes a pro build
+      // say `OSB Pro` in Android's notification settings.
+      for (final f in const [
+        'lib/state/alert_controller.dart',
+        'lib/state/connection_controller.dart',
       ]) {
-        expect(
-          literal.hasMatch(File(f).readAsStringSync()),
-          isFalse,
-          reason: '$f has a hard-coded brand string literal again '
-              '(design 0092 §3.3)',
-        );
+        expect(File(f).readAsStringSync(), contains('config.appName'),
+            reason: '$f seeds its pre-l10n notification strings from a literal '
+                'again — take them from the injected AppConfig (FB-109)');
+      }
+    });
+
+    test('🔴 FB-109: nowhere under lib/ escapes the dollar off an injected '
+        'field', () {
+      // THE defect, at source level and across the whole tree rather than four
+      // named files: `'\$appName …'` in a single-quoted literal compiles, reads
+      // correctly at a glance, and prints the six characters `\$appName` into a
+      // file somebody else has to interpret.
+      final escaped = RegExp(r'\\\$(appName|projectUrl|updateRepo|edition)\b');
+      final offenders = <String>[];
+      for (final f in libSources()) {
+        if (escaped.hasMatch(File(f).readAsStringSync())) offenders.add(f);
+      }
+      expect(offenders, isEmpty,
+          reason: 'an escaped dollar prints the variable NAME, not its value '
+              '(FB-109) — use a double-quoted string or drop the backslash');
+    });
+
+    test('🔴 FB-109: every exportHeaderLines call site titles the file with '
+        'the injected name', () {
+      // X5's shape (`direction_followups_test.dart`): the caller list comes
+      // from `lib/` itself, so a new export surface is covered the day it is
+      // written rather than the day somebody remembers this file.
+      final grep = Process.runSync(
+          'grep', ['-rn', 'exportHeaderLines(', 'lib/'],
+          runInShell: false);
+      final callers = (grep.stdout as String)
+          .trim()
+          .split('\n')
+          .where((l) => l.isNotEmpty)
+          .map((l) => l.split(':'))
+          // `path:line:source`. A doc comment that names the function is not a
+          // call to it.
+          .where((p) => !p.sublist(2).join(':').trimLeft().startsWith('//'))
+          .map((p) => p.first)
+          .where((f) => !f.endsWith('export_header.dart'))
+          .toSet();
+      expect(callers, {
+        'lib/ui/util/history_csv_export.dart',
+        'lib/ui/settings/settings_screen.dart',
+      });
+      for (final f in callers) {
+        final src = File(f).readAsStringSync();
+        final titles = RegExp(r"title: '([^'\n]*)'")
+            .allMatches(src)
+            .map((m) => m.group(1)!)
+            .toList();
+        expect(titles, isNotEmpty, reason: '$f passes no title: at all');
+        for (final t in titles) {
+          expect(t, startsWith(r'$appName '),
+              reason: '$f titles an exported file with a literal instead of '
+                  'the injected name (FB-109)');
+          expect(t, isNot(contains(brand)), reason: f);
+        }
       }
     });
 
     test('the only place the open name is written is AppConfig.open', () {
       final src = File('lib/config/app_config.dart').readAsStringSync();
-      expect(src, contains("appName: 'OpenSmartBatt'"));
+      expect(src, contains("appName: '$brand'"));
     });
   });
 }

@@ -26,6 +26,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
+import '../config/app_config.dart';
 import '../data/data.dart';
 import '../models/models.dart';
 import '../platform/platform.dart';
@@ -174,7 +175,12 @@ class ConnectionController extends ChangeNotifier {
     MonitorService? monitor,
     PendingWrites? pending,
     AutoConnectArmRepo? autoConnectArm,
+    AppConfig config = AppConfig.open,
   }) {
+    // Before any subscription below, so no link event can read an unset seed.
+    _notifyTitle = config.appName;
+    _notifyTitleConnecting = config.appName;
+    _notifyTitleStalled = config.appName;
     _settings = settings;
     _devices = devices;
     _facts = facts;
@@ -408,9 +414,13 @@ class ConnectionController extends ChangeNotifier {
   late final MonitorService _monitor;
   bool _monitorRunning = false;
   DateTime? _lastNotifyAt;
-  String _notifyTitle = 'OpenSmartBatt';
-  String _notifyTitleConnecting = 'OpenSmartBatt';
-  String _notifyTitleStalled = 'OpenSmartBatt';
+  /// Pre-l10n seeds for the three ongoing-notification titles, replaced by
+  /// [setNotificationStrings] on the first frame. Seeded from the injected
+  /// [AppConfig] rather than written here (FB-109, extended): a pro build must
+  /// not name itself after the open one, not even for one frame.
+  late String _notifyTitle;
+  late String _notifyTitleConnecting;
+  late String _notifyTitleStalled;
   String _notifyBody = '';
   String _notifyStopLabel = '';
   String _notifyChannelName = '';

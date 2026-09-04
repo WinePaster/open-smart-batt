@@ -444,6 +444,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.';
 
   @override
+  String get capacitorSelfCheckOutputStillOffSnack =>
+      'The unit reports normal mode again, but it is still reporting its output as cut. That usually clears within a few seconds. Wait for the reading to come back before relying on this unit — the app has not sent anything to change it.';
+
+  @override
   String get capacitorSelfCheckNoResponseSnack =>
       'The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.';
 

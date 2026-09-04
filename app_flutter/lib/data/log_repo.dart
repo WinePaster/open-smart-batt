@@ -2,7 +2,9 @@
 ///
 /// Optional TX/RX hex packet log, only written when `AppSettings.rawPacketLog`
 /// is ON (DEFAULT OFF). Capped/rotated by an approximate byte budget
-/// (`AppSettings.logMaxBytes`, default 5 MB) — oldest rows are dropped first.
+/// (`AppSettings.logMaxBytes`) — oldest rows are dropped first, EXCEPT the
+/// user's capture marks, which rotation steps over (FB-110). Every export says
+/// whether it was rotated, so a recipient never has to infer it.
 ///
 /// Rotation accounting is O(1) per insert: a running byte total is kept in
 /// memory and only crossing the cap queries the database. It used to run
@@ -30,6 +32,16 @@ class LogRepo {
   /// Fixed per-row overhead (bytes) approximating timestamp + direction +
   /// separators when rendered via [LogEntry.toLogLine], used for rotation math.
   static const int _rowOverheadBytes = 40;
+
+  /// What a capture mark's `note` starts with — see [CaptureMark.logLine].
+  ///
+  /// 🔑 **ONE definition, read by both sides (FB-110).** [_markSummary] counts
+  /// marks with it and [_deleteOldest] protects them with it. They were written
+  /// three months apart and only one of them existed until FB-110, which is
+  /// exactly how the two halves of a rule drift: rotation deleted rows the
+  /// summary was still counting, and the export then said `marks: none` about a
+  /// capture whose owner had made five of them by hand.
+  static const String markNotePrefix = 'mark: ';
 
   /// When a trim runs, it drops down to this fraction of the cap rather than to
   /// just under it, leaving headroom before the next one is due.
@@ -217,9 +229,22 @@ class LogRepo {
     // own other connections, which the `connections=N` header line already
     // covers; counting them here would read as data loss when it is not.
     final fromOthers = deviceId == null ? 0 : await _countOtherDevices(deviceId);
+    // 🔴 FB-110. Whether this file starts at the beginning of the log, or at
+    // whatever survived the byte cap.
+    //
+    // A recipient who does not know the front is missing does arithmetic across
+    // the gap — a reader of one of these files subtracted two frame counters
+    // over a rotation and got **-495,912**. Emitted UNCONDITIONALLY, `none`
+    // included: a line that appears only when there is something to report
+    // makes its absence mean both "nothing was dropped" and "an older build
+    // wrote this", which is the same rule `marks:` already follows.
+    final dropped = await droppedByRotation();
     final out = <String>[
       ...header.map((h) => '# $h'),
       if (header.isNotEmpty) '# rows: ${rows.length}',
+      if (header.isNotEmpty)
+        '# rotated: ${dropped == 0 ? 'none' : 'dropped=$dropped oldest rows '
+            '(log size cap)'}',
       // Say up front whether this file carries user-declared ground truth (the
       // capture marks), and which states it covers. Whoever receives it should
       // not have to scan ten thousand lines to find out that it has none.
@@ -283,9 +308,10 @@ class LogRepo {
     var total = 0;
     for (final r in rows) {
       final note = r['note'] as String?;
-      if (note == null || !note.startsWith('mark: ')) continue;
+      if (note == null || !note.startsWith(markNotePrefix)) continue;
       total++;
-      final code = note.substring(6).split(' |').first.trim();
+      final code =
+          note.substring(markNotePrefix.length).split(' |').first.trim();
       if (code.isNotEmpty && !codes.contains(code)) codes.add(code);
     }
     if (total == 0) return 'none';
@@ -332,8 +358,17 @@ class LogRepo {
   }
 
   /// Delete every log row.
+  ///
+  /// 🔵 FB-110: also resets the table's AUTOINCREMENT high-water mark, so the
+  /// next row is `id` 1 again and [droppedByRotation] reads 0. Without this a
+  /// user who cleared their own log would find every later export headed
+  /// `rotated: dropped=…` and blaming the app for rows they deleted on
+  /// purpose. Safe by construction — the table is empty at that point, so no id
+  /// can collide.
   Future<int> clearLog() async {
     final n = await _db.delete(Db.tableDiagLog);
+    await _db.delete('sqlite_sequence',
+        where: 'name = ?', whereArgs: [Db.tableDiagLog]);
     _estimatedBytes = 0;
     return n;
   }
@@ -366,18 +401,75 @@ class LogRepo {
       final avg = (total / rows).ceil().clamp(1, total);
       // +1 row of slack so we drop strictly below the target.
       final toRemove = (((total - target) / avg).ceil() + 1).clamp(1, rows);
-      await _deleteOldest(toRemove);
+      // 🔴 FB-110. Marks first-class: the ordinary path steps over them.
+      final dropped = await _deleteOldest(toRemove, protectMarks: true);
+      // 🔑 THE BOUNDARY, and it is the whole judgement of FB-110.
+      //
+      // A shortfall here can mean only one thing. `toRemove` is clamped to the
+      // TOTAL row count, and the protected delete takes the oldest `n`
+      // non-mark rows — so it comes up short if and only if fewer than
+      // `toRemove` non-mark rows exist at all, i.e. the table is by now mostly
+      // capture marks. In that state protecting them would mean the cap simply
+      // stops being enforced: [insertLog] would call this on EVERY insert (two
+      // full-table scans each), the log would grow past `logMaxBytes` without
+      // limit, and the user would have neither their marks nor a working log.
+      //
+      // So protection is a PREFERENCE, not a guarantee, and it degrades in the
+      // one direction that keeps the promise the setting makes: the byte cap
+      // always holds. In practice the fallback is unreachable — marks are a
+      // handful of rows against ~97,000 at the 100 MiB default — and the test
+      // that pins it has to build the state deliberately.
+      if (dropped < toRemove) {
+        await _deleteOldest(toRemove - dropped, protectMarks: false);
+      }
     }
     // Both passes deleted, so the last figure is stale. One more query keeps
     // the estimate exact on exit rather than leaving it reading high.
     _estimatedBytes = await approxBytes();
   }
 
-  Future<void> _deleteOldest(int n) async {
-    await _db.rawDelete(
+  /// Delete the [n] oldest rows and return how many actually went.
+  ///
+  /// With [protectMarks] the candidate set excludes capture-mark rows — the
+  /// user's own ground truth, which they cannot re-record after the fact
+  /// (FB-110). `substr(note, 1, 6) = 'mark: '` rather than `LIKE 'mark:%'`
+  /// deliberately: SQLite's `LIKE` is case-insensitive over ASCII, and the
+  /// reading side ([_markSummary]) uses a case-SENSITIVE `String.startsWith`.
+  /// Two predicates that disagree on `MARK: ` would protect a row nothing
+  /// counts, or count one nothing protects.
+  Future<int> _deleteOldest(int n, {required bool protectMarks}) async {
+    final keep = protectMarks
+        ? 'WHERE note IS NULL OR substr(note, 1, ${markNotePrefix.length}) != ? '
+        : '';
+    return _db.rawDelete(
       'DELETE FROM ${Db.tableDiagLog} WHERE id IN '
-      '(SELECT id FROM ${Db.tableDiagLog} ORDER BY id ASC LIMIT ?)',
-      [n],
+      '(SELECT id FROM ${Db.tableDiagLog} $keep'
+      'ORDER BY id ASC LIMIT ?)',
+      [if (protectMarks) markNotePrefix, n],
     );
+  }
+
+  /// How many rows were dropped off the FRONT of the log, or 0 for a log that
+  /// has never rotated.
+  ///
+  /// 🔑 Derived from the `id` gap, not from a counter: `diag_log.id` is
+  /// `INTEGER PRIMARY KEY AUTOINCREMENT`, so ids are strictly increasing and
+  /// never reused, and the lowest surviving id is therefore exactly one more
+  /// than the number of rows that have gone. That needs no new column and no
+  /// schema bump — and it survives the app being restarted, which an in-memory
+  /// flag would not.
+  ///
+  /// ⚠️ Deliberately WHOLE-TABLE, never scoped. A per-device export's oldest
+  /// row has a high id simply because that unit connected late; reading that as
+  /// truncation would put a false `rotated:` on most files.
+  ///
+  /// [clearLog] resets the sequence, so a log the user cleared themselves reads
+  /// as "not rotated" rather than reporting the cleared rows as losses.
+  Future<int> droppedByRotation() async {
+    final r = await _db.rawQuery(
+      'SELECT MIN(id) AS lowest FROM ${Db.tableDiagLog}',
+    );
+    final lowest = (r.first['lowest'] as num?)?.toInt();
+    return lowest == null ? 0 : lowest - 1;
   }
 }
