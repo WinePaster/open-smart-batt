@@ -584,11 +584,16 @@ void main() {
     test('every capacitor 0x3A value in the corpus decodes to its group', () {
       // Left column is the wire value as stored (big-endian u16 of the two
       // payload bytes). These five are the complete observed set.
-      expect(CapacitorMos.allOpen(0x5100), isTrue, reason: 'healthy gen-2');
-      expect(CapacitorMos.allOpen(0x4100), isTrue, reason: 'gen-3 0x18, LED off');
-      expect(CapacitorMos.allOpen(0x7101), isTrue, reason: 'open + test bit');
-      expect(CapacitorMos.allOpen(0x5800), isFalse, reason: 'pre-charge / cut');
-      expect(CapacitorMos.allOpen(0x7801), isFalse, reason: 'cut + test bit');
+      expect(CapacitorMos.allOpen(0x5100), isTrue,
+          reason: '0x5100 — device type 0x17');
+      expect(CapacitorMos.allOpen(0x4100), isTrue,
+          reason: '0x4100 — device type 0x18');
+      expect(CapacitorMos.allOpen(0x7101), isTrue,
+          reason: '0x7101 — byte 0 = 0x71, byte 1 = 0x01');
+      expect(CapacitorMos.allOpen(0x5800), isFalse,
+          reason: '0x5800 — device type 0x17');
+      expect(CapacitorMos.allOpen(0x7801), isFalse,
+          reason: '0x7801 — byte 0 = 0x78, byte 1 = 0x01');
     });
 
     test('anything outside those shapes is UNKNOWN, never guessed', () {

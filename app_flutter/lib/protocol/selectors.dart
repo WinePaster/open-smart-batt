@@ -405,12 +405,17 @@ class CapacitorStatus {
 ///
 /// **How the two bits were derived — from our own captures, and only from
 /// them.** Across the corpus every capacitor `0x3A` byte 0 falls into two
-/// disjoint groups that track `0x23`:
+/// disjoint groups:
 ///
 /// ```
 ///   0x51 / 0x41 / 0x71   output live   (bit0 set, bit3 clear)
 ///   0x58 / 0x78          output cut    (bit3 set, bit0 clear)
 /// ```
+///
+/// ⛔ **The split is NOT a restatement of `0x23`.** In 1,447 of 1,551 frames
+/// across five units `0x3A` sits in the cut group while `0x23` still reads
+/// healthy `05` — so `0x23` on its own cannot see this change of state at all,
+/// which is the whole reason FB-111 exists.
 ///
 /// Bit 0 is present in all three of the first group and absent from both of the
 /// second; bit 3 is exactly the reverse. No observed value carries both or

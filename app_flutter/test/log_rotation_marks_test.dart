@@ -123,16 +123,27 @@ void main() {
 
     test('the marks are kept even when they are the very oldest rows',
         () async {
-      // Same rows, ids 1..5, i.e. exactly what `ORDER BY id ASC LIMIT n` takes
+      // The mark is row id 1, i.e. exactly what `ORDER BY id ASC LIMIT n` takes
       // first. If the WHERE clause were dropped this is what breaks.
       await mark(CaptureMark.packIdle, 'parked');
       for (var i = 0; i < 200; i++) {
         await packet(i);
       }
+      final before = await logs.count();
       await logs.trimToBytes((await logs.approxBytes()) ~/ 4);
       final rows = await logs.queryLog();
-      expect(rows.first.id, greaterThan(1),
-          reason: 'newest-first: something must have been dropped at all');
+
+      // 🔴 The premise, and it has to be able to FAIL. This used to read
+      // `rows.first.id, greaterThan(1)` — but `queryLog()` is newest-first, so
+      // `rows.first.id` is `MAX(id)`, which is above 1 the moment a second row
+      // exists whether rotation deleted anything or not. Made the trim a no-op
+      // and the case stayed green.
+      expect(rows, hasLength(lessThan(before)),
+          reason: 'rotation deleted nothing at all — the mark sitting at id 1 '
+              'must not stop the ordinary rows above it from going');
+      // …and the protected mark really is the oldest surviving row.
+      expect(rows.last.id, 1,
+          reason: 'the mark was row id 1 and must still be there');
       expect(rows.map((e) => e.note).where((n) => n != null && n.startsWith('mark: ')),
           hasLength(1));
     });

@@ -372,21 +372,53 @@ are so lopsided: on a super-capacitor `0x3A` answers **every `#`**, while the
 [`transport-and-gatt.md`](transport-and-gatt.md) §2. A small battery count here
 is a polling artefact, not a quiet register.
 
-**What each class sends** (✅ verified — whole-corpus count with `tools/fb.py`,
-run 2026-09-04). Class is the `0x10` byte read **in the same device section**;
-"machines" is `fb.py machines` under the inline-verified gate, whose known
-over- and under-count risks the tool prints with every run:
+**What each class sends** (✅ verified — whole-corpus count, run 2026-09-04;
+🔵 **the Machines column was recounted on 2026-09-05 — see the caliber note under
+the table**). Class is the `0x10` byte read **in the same device section**;
+~~"machines" is `fb.py machines` under the inline-verified gate, whose known
+over- and under-count risks the tool prints with every run~~ ⇒ 🔑 **"Machines"
+here is `COUNT(DISTINCT MAC)`, where the MAC is the one that device row decodes
+out of its own `0x38` frames.** It is **not** `wire_id`, and **not**
+`fb.py machines`:
 
 | `0x10` | Payloads observed (frames) | Frames | Machines | Log files |
 |---|---|---|---|---|
-| `0x02` battery | `0300` (2,186) · `0700` (884) · `0500` (136) · `4500` (2) · `4700` (1) · `0701` (1) | 3,210 | 6 · 30 · 3 · 1 · 1 · 1 | 157 |
-| `0x17` capacitor, 2nd gen | `5100` (176,768) · `5800` (1,453) · `7801` (98) · `7101` (69) | 178,388 | 21 · 5 · 1 · 1 | 56 |
-| `0x18` capacitor, 3rd gen | `4100` (217,817) | 217,817 | 7 | 19 |
+| `0x02` battery | `0300` (2,186) · `0700` (884) · `0500` (136) · `4500` (2) · `4700` (1) · `0701` (1) | 3,210 | 6 · ~~30~~ **24** · 3 · 1 · 1 · 1 | 157 |
+| `0x17` capacitor, 2nd gen | `5100` (176,768) · `5800` (1,453) · `7801` (98) · `7101` (69) | 178,388 | ~~21~~ **19** · 5 · 1 · 1 | 56 |
+| `0x18` capacitor, 3rd gen | `4100` (217,817) | 217,817 | ~~7~~ **5** | 19 |
 | `0x22` power bank | `0000` (111,528) | 111,528 | 6 | 59 |
 
 ⚠️ One device row merges a capacitor and a battery section (the header-less
 capture that §10.1 elsewhere marks as **not to be counted**); its 488 `5100`
 frames are excluded from every figure in this section.
+
+📏 **Caliber of the Machines column, and why the struck-through figures were too
+high** (2026-09-05). Every device row counted in this section decodes a MAC out
+of its **own** `0x38` frames — **0 rows without one** — so each row resolves to
+exactly one BLE address and the count is simply `COUNT(DISTINCT MAC)` over the
+rows that sent that payload. 🔴 **The struck-through figures came from
+`fb.py machines`, which answers a different question**: that command resolves a
+device row to a machine only when the MAC is already registered in the corpus
+index's `hardware` table, and **falls back to the raw `wire_id` when it is not**.
+That table currently holds **19** rows against **63** distinct self-reported MACs
+in the corpus ⇒ **44 unregistered**, and **179 device rows that do send `0x38`
+are counted by their `wire_id` anyway** — so one physical unit renamed between
+captures is counted twice. 🔑 **The worst case is `0x18` `4100`, and it carries
+both error directions at once**: a single unit (**213,191 of the
+217,817 frames**) is spread over **three** `wire_id`s, while a fourth `wire_id`
+is shared by **two** different MACs ⇒ 7 labels, ~~7~~ **5** units.
+
+⚠️ **No conclusion in this section moves.** The exclusivity, the state relation
+and the `0x23` pairing are frame counts, and the machine counts they do quote
+(**6** machines seen in both states; **5** / **1** / **1** in the `0x23` split)
+were re-checked under the MAC caliber and are **unchanged**. What was overstated
+is only **how many independent units** stand behind the numbers — by **40 %** on
+`0x18`, and by **6 units** on battery `0700`.
+
+📌 **General note, beyond this section: `fb.py machines` currently over-counts**
+for the reason above, and will do so for as long as `hardware` lags the corpus.
+⛔ **Do not quote its output without first establishing the caliber** — "machine"
+means a registered MAC there, and a `wire_id` everywhere it could not find one.
 
 🔑 **No payload is shared between two classes.** A decoder must therefore gate on
 `0x10` before reading any bit of this register, and **the capacitor reading below
@@ -395,7 +427,19 @@ must not be carried to a battery or a power bank.**
 #### 8.5.1 What is established on super-capacitors
 
 Restricted to `0x10` = `0x17` or `0x18` — **396,205 frames · 90 device rows ·
-31 wire ids · 29 machines · 72 log files · 2026-07-28 → 2026-09-03**:
+~~31~~ 30 wire ids · ~~29~~ 25 machines · 72 log files · 2026-07-28 → 2026-09-03**
+(🔵 both recounted 2026-09-05):
+
+> 📏 **Both corrected figures are measured under this section's own gate** — the
+> one stated just above, i.e. every capacitor `0x3A` frame in the corpus **except**
+> the 488 belonging to the merged header-less device row. Under that gate the
+> frames (396,205), device rows (90) and log files (72) reproduce exactly, and the
+> distinct `wire_id`s come to **30**, not 31. ⛔ **31 is only reachable by counting
+> the merged row's own label as a 31st**, which contradicts the sentence excluding
+> it. **29 machines** was `fb.py machines`; the MAC caliber defined above gives
+> **25**, and 25 is also what the stricter `fb.py` frame gate gives (which drops a
+> further 5 frames on 5 `unattributed` rows, all of them a MAC already counted)
+> ⇒ **the machine figure does not depend on which of the two gates is used.**
 
 * ✅ **Byte 0 bit 0 and byte 0 bit 3 are mutually exclusive, 396,205 / 396,205.**
   Exactly one of the two is set in every capacitor frame — never both, never
@@ -404,8 +448,8 @@ Restricted to `0x10` = `0x17` or `0x18` — **396,205 frames · 90 device rows �
   and **11** of `b4..b5`.) ⇒ the pair reads as **one two-valued state**, not as
   two independent flags.
 * ⚠️ **The bit-3 state has only ever been seen on 2nd-generation (`0x17`) units.**
-  All **217,817** frames from the seven `0x18` machines are `4100`, i.e. the
-  bit-0 state, and that register never moved. So the exclusivity above is
+  All **217,817** frames from the ~~seven~~ **five** `0x18` machines are `4100`,
+  i.e. the bit-0 state, and that register never moved. So the exclusivity above is
   arithmetically true across both generations but **only carries information on
   `0x17`** — on `0x18` it is satisfied vacuously. Do not quote it as a
   cross-generation result.

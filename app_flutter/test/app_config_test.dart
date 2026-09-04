@@ -232,14 +232,19 @@ void main() {
     // call sites.
     const brand = 'OpenSmartBatt';
 
-    // Two things here are deliberate and were both learned the hard way:
-    //   * `[^'\n]` — an apostrophe in prose ("the app's name") pairs with a
+    // Three things here are deliberate and were all learned the hard way:
+    //   * `[^'"\n]` — an apostrophe in prose ("the app's name") pairs with a
     //     later one across many lines and swallows real code in between,
     //     which is how this matcher first "found" `OpenSmartBattApp`.
     //   * matching only INSIDE quotes — `OpenSmartBattApp` is the root
     //     widget's class name, a Dart identifier, and renaming it is not
     //     what design 0092 is about.
-    final literal = RegExp("'[^'\n]*$brand[^'\n]*'");
+    //   * 🔴 **BOTH quote styles.** This swept single quotes only, and Dart
+    //     takes either — `"OpenSmartBatt debug tag"` dropped into
+    //     `lib/protocol/gatt.dart` left the whole file green. Worse, the
+    //     escaped-dollar guard below used to advise "use a double-quoted
+    //     string", i.e. it pointed the fix straight out of this sweep's range.
+    final literal = RegExp('[\'"][^\'"\n]*$brand[^\'"\n]*[\'"]');
 
     /// Every `.dart` under `lib/`, path-relative, sorted — no hand list.
     List<String> libSources() => (Directory('lib')
@@ -313,7 +318,8 @@ void main() {
       }
       expect(offenders, isEmpty,
           reason: 'an escaped dollar prints the variable NAME, not its value '
-              '(FB-109) — use a double-quoted string or drop the backslash');
+              '(FB-109) — drop the backslash so it interpolates (either quote '
+              'style is fine; the brand sweep above covers both)');
     });
 
     test('🔴 FB-109: every exportHeaderLines call site titles the file with '
