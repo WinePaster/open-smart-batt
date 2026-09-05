@@ -450,19 +450,25 @@ void main() {
           await _columnsOf(fresh.db, 'settings'));
     });
 
-    test('both report schema version 23', () async {
+    test('both report schema version 24', () async {
       final upgraded = await upgradeFromV22Ver();
       final fresh = await freshDatabase('v22_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current EXACT pin, inherited from `schema_v21_test.dart` and
-        // moved on 2026-08-28 when v23 landed (design 0077 / FB-93 —
-        // `saved_devices.former_ids`), exactly as the previous note said to.
-        // Move it again when v24 lands; the registry in `Db.schemaVersion`'s
-        // doc comment is the arbiter, and this line is what makes two branches
-        // claiming one number collide here rather than on a user's phone.
-        expect(Db.schemaVersion, 23);
+        // The current EXACT pin, inherited from `schema_v21_test.dart`, moved
+        // on 2026-08-28 when v23 landed (design 0077 / FB-93 —
+        // `saved_devices.former_ids`) and again on 2026-09-05 when v24 landed
+        // (FB-110 — realigning `diag_log`'s AUTOINCREMENT high-water mark),
+        // exactly as each previous note said to. Move it again when v25 lands;
+        // the registry in `Db.schemaVersion`'s doc comment is the arbiter, and
+        // this line is what makes two branches claiming one number collide here
+        // rather than on a user's phone.
+        //
+        // ⚠️ v24 adds no column, so the parity cases above it stay green
+        // whatever it does — this pin and `schema_v24_test.dart` are the only
+        // two places that would notice it going missing.
+        expect(Db.schemaVersion, 24);
       }
     });
   });

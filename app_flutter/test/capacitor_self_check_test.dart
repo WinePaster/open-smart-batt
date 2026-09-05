@@ -561,19 +561,21 @@ void main() {
   // =========================================================================
   //
   // WHAT WAS WRONG. The unlock read `0x23` alone. `docs/devices/supercapacitor.md`
-  // recorded `0x23`=`05` ⟺ `0x3A` MOS-all-open at **166/166, zero
+  // recorded `0x23`=`05` ⟺ `0x3A` in its bit-0 group at **166/166, zero
   // counter-examples**, so one register was believed to stand for both. Capture
   // 2026.09.03/002 — the first in the corpus where OUR app sent the self-check —
   // has five counter-examples in one connection:
   //
   //     12:35:17.526  TX   self-check command
-  //     12:35:17.948  RX   0x3A = 5800   MOS all CLOSED
+  //     12:35:17.948  RX   0x3A = 5800   → bit-3 group
   //     12:35:23.166  RX   0x23 = 05     "normal" again   ← we unlocked here
-  //     12:35:28.779  RX   0x3A = 5100   MOS open again   ← 5.61 s LATER
+  //     12:35:28.779  RX   0x3A = 5100   → bit-0 group again  ← 5.61 s LATER
   //
   // For those 5.61 seconds the app told the owner 「檢測結束 —— 裝置已回報正常」
-  // about a unit whose output was still disconnected. On a capacitor fitted to
-  // start a vehicle, "finished" is read as "you can use it".
+  // about a unit that was still reporting a state it had not been in when the
+  // check started. ⛔ What that state IS remains unestablished (B1): the corpus
+  // shows the two groups exist and that `0x23` cannot see the difference, and
+  // says nothing about which one means the output is carrying its load.
   //
   // 🔑 THE SHAPE, so it is not re-learned a third time: two independent
   // registers describing one physical event do not move together, and an
@@ -581,34 +583,50 @@ void main() {
   // sample. The one the user acts on is the one carrying the load.
 
   group('FB-111 — CapacitorMos reads only the shapes we have observed', () {
+    // 🔑 These pin VALUE → GROUP, which is a fact our own captures establish,
+    // and deliberately nothing beyond it. ~~value → output live / output cut~~
+    // was what this group used to assert; the polarity behind those labels came
+    // from outside our captures and has been removed (B1). Swapping the two bit
+    // constants still turns every expectation here red, because the partition
+    // itself is measured — 396,205 of 396,205 frames carry exactly one bit.
     test('every capacitor 0x3A value in the corpus decodes to its group', () {
       // Left column is the wire value as stored (big-endian u16 of the two
       // payload bytes). These five are the complete observed set.
-      expect(CapacitorMos.allOpen(0x5100), isTrue,
+      expect(CapacitorMos.group(0x5100), CapacitorMosGroup.bit0,
           reason: '0x5100 — device type 0x17');
-      expect(CapacitorMos.allOpen(0x4100), isTrue,
+      expect(CapacitorMos.group(0x4100), CapacitorMosGroup.bit0,
           reason: '0x4100 — device type 0x18');
-      expect(CapacitorMos.allOpen(0x7101), isTrue,
+      expect(CapacitorMos.group(0x7101), CapacitorMosGroup.bit0,
           reason: '0x7101 — byte 0 = 0x71, byte 1 = 0x01');
-      expect(CapacitorMos.allOpen(0x5800), isFalse,
+      expect(CapacitorMos.group(0x5800), CapacitorMosGroup.bit3,
           reason: '0x5800 — device type 0x17');
-      expect(CapacitorMos.allOpen(0x7801), isFalse,
+      expect(CapacitorMos.group(0x7801), CapacitorMosGroup.bit3,
           reason: '0x7801 — byte 0 = 0x78, byte 1 = 0x01');
     });
 
+    test('the two groups are exclusive, and named after their own bit', () {
+      // The one structural claim the corpus supports: bit 0 and bit 3 partition
+      // the observed set. Nothing here says which group is which physically.
+      expect(CapacitorMos.bitGroup0, 0x01);
+      expect(CapacitorMos.bitGroup3, 0x08);
+      expect(CapacitorMos.bitGroup0 & CapacitorMos.bitGroup3, 0,
+          reason: 'the two bits must be distinct, or the partition is not one');
+      expect(CapacitorMosGroup.values, hasLength(2));
+    });
+
     test('anything outside those shapes is UNKNOWN, never guessed', () {
-      // 🔑 Null is a third answer, not a failure. "We have no reading" and "the
-      // output is cut" lead to opposite copy on screen.
-      expect(CapacitorMos.allOpen(null), isNull, reason: 'never reported');
-      expect(CapacitorMos.allOpen(0x0000), isNull, reason: 'neither bit');
-      expect(CapacitorMos.allOpen(0x0900), isNull, reason: 'both bits');
+      // 🔑 Null is a third answer, not a failure. "We have no reading" and "it
+      // is in the other group" lead to opposite copy on screen.
+      expect(CapacitorMos.group(null), isNull, reason: 'never reported');
+      expect(CapacitorMos.group(0x0000), isNull, reason: 'neither bit');
+      expect(CapacitorMos.group(0x0900), isNull, reason: 'both bits');
     });
 
     test('it reads byte 0, not the whole word', () {
       // Byte 1 varies independently (`7101` vs `7100`) and carries nothing we
       // have decoded, so it must not reach the answer.
-      expect(CapacitorMos.allOpen(0x5100), CapacitorMos.allOpen(0x51FF));
-      expect(CapacitorMos.allOpen(0x5800), CapacitorMos.allOpen(0x58FF));
+      expect(CapacitorMos.group(0x5100), CapacitorMos.group(0x51FF));
+      expect(CapacitorMos.group(0x5800), CapacitorMos.group(0x58FF));
     });
   });
 
@@ -658,7 +676,7 @@ void main() {
         await s.dispose();
       });
 
-      fakeBle.funcFlags = 0x5100; // open, before anything happens
+      fakeBle.funcFlags = 0x5100; // bit-0 group, before anything happens
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
       fakeBle.writes.clear();
@@ -667,8 +685,9 @@ void main() {
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
       await tester.pumpAndSettle();
-      // The command goes out with the MOS about to drop, exactly as the wire
-      // shows it (0x3A = 5800 arrives 422 ms after the write).
+      // The command goes out with 0x3A about to leave its baseline group,
+      // exactly as the wire shows it (0x3A = 5800 arrives 422 ms after the
+      // write).
       fakeBle.funcFlags = 0x5800;
       await tester.tap(find.text('I understand — start it'));
       await tester.pump();
@@ -678,15 +697,16 @@ void main() {
       fakeBle.emitMode(CapacitorStatus.healthy);
       await step(tester, times: 4);
       expect(find.textContaining('Self-check finished'), findsNothing,
-          reason: 'the output is still cut; "finished" is a claim about a unit '
-              'that cannot yet carry its load');
+          reason: '0x3A is still in the other group; "finished" would claim '
+              'every register we can see is back where the check found it');
 
       // Let the watch run out with the MOS never reopening.
-      final stillOff = find.textContaining('still reporting its output as cut');
-      for (var i = 0; i < 200 && stillOff.evaluate().isEmpty; i++) {
+      final notBack =
+          find.textContaining('has not gone back to the value it had');
+      for (var i = 0; i < 200 && notBack.evaluate().isEmpty; i++) {
         await tester.pump(const Duration(milliseconds: 600));
       }
-      expect(stillOff, findsOneWidget);
+      expect(notBack, findsOneWidget);
       // ⛔ Not silent, and not a claim of success — but also NOT a write. Rule 3
       // is untouched by FB-111.
       expect(find.textContaining('finished'), findsNothing);
@@ -715,7 +735,8 @@ void main() {
       await tester.pump();
       await step(tester, times: 4);
 
-      // The captured order: 0x23 first, 0x3A about five seconds later.
+      // The captured order: 0x23 first, 0x3A back to its baseline group about
+      // five seconds later.
       fakeBle.emitMode(CapacitorStatus.healthy);
       await step(tester, times: 4);
       fakeBle.funcFlags = 0x5100;
@@ -728,7 +749,90 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
       }
       expect(done, findsOneWidget);
-      expect(find.textContaining('still reporting its output as cut'),
+      expect(find.textContaining('has not gone back to the value it had'),
+          findsNothing);
+    });
+
+    testWidgets(
+        '🔑 the gate is SYMMETRIC — it needs no polarity at all',
+        (tester) async {
+      // 🔴 The reason B1 could remove the polarity without losing FB-111. This
+      // unit rests in the bit-3 group and moves to bit-0 during the check —
+      // the exact mirror of the captured unit. The old code read bit-0 as
+      // "output live" and would have called this **finished**; comparing
+      // against the pre-check reading calls it what it is: a register that has
+      // not come back.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = 0x5800; // baseline: the bit-3 group
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      fakeBle.funcFlags = 0x5100; // it leaves the baseline group…
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+      await step(tester, times: 4);
+
+      // …and `0x23` comes back while it is still away, exactly as in the
+      // captured order — only with the two groups the other way round.
+      fakeBle.emitMode(CapacitorStatus.healthy);
+      await step(tester, times: 4);
+      expect(find.textContaining('Self-check finished'), findsNothing,
+          reason: 'whichever group it rested in, it has not returned to it');
+
+      final notBack =
+          find.textContaining('has not gone back to the value it had');
+      for (var i = 0; i < 200 && notBack.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      expect(notBack, findsOneWidget);
+      expect(fakeBle.writes, hasLength(2),
+          reason: 'the self-check pair and its read-back, and nothing else');
+    });
+
+    testWidgets('🔑 back to the baseline group ⇒ finished, either way round',
+        (tester) async {
+      // The same mirrored unit, this time returning. Pins that "back where it
+      // started" unlocks for BOTH groups — a gate that only unlocked on bit-0
+      // would leave this owner watching the whole window run out.
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+
+      fakeBle.funcFlags = 0x5800;
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      fakeBle.funcFlags = 0x5100;
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+      await step(tester, times: 4);
+
+      fakeBle.emitMode(CapacitorStatus.healthy);
+      await step(tester, times: 4);
+      fakeBle.funcFlags = 0x5800; // back to where the check found it
+      fakeBle.emitMode(CapacitorStatus.healthy);
+
+      final done = find.textContaining('Self-check finished');
+      for (var i = 0; i < 20 && done.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+      expect(done, findsOneWidget);
+      expect(find.textContaining('has not gone back to the value it had'),
           findsNothing);
     });
 
@@ -762,7 +866,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
       }
       expect(done, findsOneWidget,
-          reason: 'no 0x3A reading must mean "do not gate", never "cut"');
+          reason: 'no 0x3A reading must mean "do not gate", never "not back"');
     });
 
     testWidgets('🔴 the watch still ENDS — the button never locks forever',
@@ -790,10 +894,11 @@ void main() {
       for (var i = 0; i < 200 && gaveUp.evaluate().isEmpty; i++) {
         await tester.pump(const Duration(milliseconds: 600));
       }
-      // `stillRunning`, not `outputStillOff`: `0x23` never came back either, so
-      // the honest sentence is the older one.
+      // `stillRunning`, not `flagNotBack`: `0x23` never came back either, and
+      // `0x3A` never LEFT the group it started in, so the honest sentence is
+      // the older one.
       expect(gaveUp, findsOneWidget);
-      expect(find.textContaining('still reporting its output as cut'),
+      expect(find.textContaining('has not gone back to the value it had'),
           findsNothing);
       expect(fakeBle.writes, hasLength(2));
     });

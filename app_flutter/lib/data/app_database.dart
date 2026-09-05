@@ -418,7 +418,42 @@ class Db {
   /// CLAIMING A NUMBER (see the note under v8): 23 was taken after checking
   /// every local and remote ref on 2026-08-28 — the highest anywhere was 22
   /// (29 refs at 22, 22 at 21).
-  static const int schemaVersion = 23;
+  ///
+  /// v24 — FB-110. NO COLUMN AND NO TABLE: the one statement in this branch
+  /// aligns `sqlite_sequence`'s `diag_log` high-water mark with the table's own
+  /// `MAX(id)`.
+  ///
+  /// 🔴 **A migration exists here because a behaviour change was retro-active
+  /// and its data was not.** `LogRepo.clearLog` now resets that high-water mark
+  /// so that a log the user emptied on purpose does not read as rotated; but
+  /// every database that was cleared under v0.7.42 or earlier still carries the
+  /// OLD mark, and `LogRepo.droppedByRotation`
+  /// (~~`MAX(id) - COUNT(*)`~~ **`sqlite_sequence.seq - COUNT(*)`**, changed by
+  /// the owner's ruling after this branch was written — the statement below is
+  /// the SAME either way, which is why it did not move) reads it as loss. Without this branch, the first export after upgrading would be
+  /// headed `rotated: dropped=N` where N is exactly the number of rows the
+  /// owner deleted themselves — and it would keep saying so until they cleared
+  /// the log again on the new build.
+  ///
+  /// ⚠️ **What it does NOT cure, stated rather than glossed.** It can only
+  /// remove a stale mark that no surviving row sits above. A user who cleared
+  /// the log under the old build and then RECORDED before upgrading already has
+  /// rows carrying ids above the stale mark, and no `sqlite_sequence` edit can
+  /// take that back — the only thing that would is renumbering the whole table,
+  /// which would also erase genuine rotation from every other database. Those
+  /// installs are corrected by their next `clearLog`. In practice the exposed
+  /// set is small: `raw_packet_log` DEFAULTs to 0, so a cleared log is normally
+  /// still empty when the upgrade arrives.
+  ///
+  /// Idempotent, and it has to be — `_onUpgrade` is a cumulative `if (from < N)`
+  /// chain. Running it on an already-aligned database is a no-op, and on a
+  /// database that has never inserted a `diag_log` row there is no
+  /// `sqlite_sequence` row to update.
+  ///
+  /// CLAIMING A NUMBER: 24 was taken after reading
+  /// `static const int schemaVersion` out of every local and remote ref on
+  /// 2026-09-05 — the highest anywhere was 23 (28 refs at 23, 32 at 22).
+  static const int schemaVersion = 24;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -957,6 +992,23 @@ class AppDatabase {
       // no reason. See [Db.schemaVersion] v23.
       await db.execute(
         'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN former_ids TEXT',
+      );
+    }
+    if (from < 24) {
+      // FB-110. Bring the AUTOINCREMENT high-water mark back down to what the
+      // surviving rows justify — see [Db.schemaVersion] v24 for why this is a
+      // migration rather than a one-line fix in `clearLog`, and for the case it
+      // cannot reach.
+      //
+      // ⚠️ Written as an UPDATE, not a DELETE, deliberately. Deleting the row
+      // would be equivalent here (SQLite treats a missing row as 0), but this
+      // form is also correct on a NON-empty table, where deleting the mark would
+      // let the next insert re-use an id that a surviving row already holds.
+      await db.execute(
+        'UPDATE sqlite_sequence '
+        'SET seq = (SELECT COALESCE(MAX(id), 0) FROM ${Db.tableDiagLog}) '
+        'WHERE name = ?',
+        [Db.tableDiagLog],
       );
     }
   }

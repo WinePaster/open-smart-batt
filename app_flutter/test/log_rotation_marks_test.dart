@@ -20,6 +20,18 @@
 //      A reader subtracted two frame counters across a rotation gap and got
 //      **-495,912** — a number that only looks like data corruption.
 //
+//   3. 🔴 And then the fix for (1) broke the fix for (2). `droppedByRotation`
+//      was `MIN(id) - 1`, which is the count of dropped rows only while the
+//      oldest surviving row is the oldest row ever written. Protecting marks is
+//      exactly what stops that being true: the first mark the user made now
+//      survives for ever, `MIN(id)` freezes on it, and the header reported
+//      **0** on a log that had just lost 220 of 305 rows. Now
+//      ~~`MAX(id) - COUNT(*)`~~ **`sqlite_sequence.seq - COUNT(*)`** — ids ever
+//      ISSUED minus rows still here — which does not care where the protected
+//      rows sit, and unlike `MAX(id)` does not fall when the newest row is one
+//      of the ones deleted. That last difference is a whole case: see
+//      「the degenerate shape」 below.
+//
 // ---------------------------------------------------------------------------
 // What the fix promises, and what it deliberately does NOT
 // ---------------------------------------------------------------------------
@@ -203,6 +215,115 @@ void main() {
       expect(dropped, greaterThan(0), reason: 'the premise');
       expect(await rotatedLine(),
           'rotated: dropped=$dropped oldest rows (log size cap)');
+    });
+
+    test('🔴 …and it still says so when the log HAS marks in it', () async {
+      // 🔑 THE CASE THE OTHER TEN MISSED, and the reason it was missed is
+      // structural: every case with marks in it asserted on `marks:` and never
+      // looked at `rotated:`, and every case that read `rotated:` inserted no
+      // marks. Nothing here was untested — the two halves were tested apart,
+      // and the defect lived exactly in the seam.
+      //
+      // The two halves of FB-110 broke each other. Protecting the marks is what
+      // made the count lie: `MIN(id) - 1` reads the oldest SURVIVING id, the
+      // user's first mark is now never deleted, so `MIN(id)` freezes at 1 and
+      // the header reported `none` on a file that had lost 220 of its 305 rows.
+      await mark(CaptureMark.powerBankOutA, 'A out');
+      await mark(CaptureMark.powerBankOutC5v, 'C 5V');
+      await mark(CaptureMark.powerBankOutCPd, 'C PD');
+      await mark(CaptureMark.powerBankIn, 'charging');
+      await mark(CaptureMark.powerBankIdle, 'idle');
+      for (var i = 0; i < 300; i++) {
+        await packet(i);
+      }
+      final before = await logs.count();
+      await logs.trimToBytes((await logs.approxBytes()) ~/ 3);
+      final after = await logs.count();
+      final dropped = before - after;
+
+      expect(dropped, greaterThan(0), reason: 'the premise: it did rotate');
+      // Half one: the marks are still there…
+      expect(await markLine(), startsWith('marks: 5 ('));
+      // 🔴 …which is precisely what used to make half two lie. This assertion
+      // is the fault line: the oldest surviving row is mark id 1, so anything
+      // derived from `MIN(id)` reports 0 here no matter how much went.
+      expect((await logs.queryLog()).last.id, 1,
+          reason: 'the premise of the defect: MIN(id) is pinned at 1 by the '
+              'protected mark, so a MIN(id)-derived count cannot see the loss');
+      // Half two, now measured against the same rows the first half counted.
+      expect(await rotatedLine(),
+          'rotated: dropped=$dropped oldest rows (log size cap)');
+    });
+
+    test('🔴 a mark in the MIDDLE does not truncate the count either',
+        () async {
+      // The second measured shape: the mark is not the oldest row, so `MIN(id)`
+      // is not frozen at 1 — it is frozen at the mark, and the count comes out
+      // as "everything before the mark" instead of everything that went. The
+      // reported figure is plausible, which is worse than obviously zero.
+      for (var i = 0; i < 100; i++) {
+        await packet(i);
+      }
+      await mark(CaptureMark.packIdle, 'parked');
+      for (var i = 100; i < 900; i++) {
+        await packet(i);
+      }
+      final before = await logs.count();
+      await logs.trimToBytes((await logs.approxBytes()) ~/ 4);
+      final after = await logs.count();
+      final dropped = before - after;
+
+      expect(dropped, greaterThan(101),
+          reason: 'the premise: rotation reached past the mark at id 101');
+      expect((await logs.queryLog()).last.id, 101,
+          reason: 'the protected mark is the oldest survivor, so MIN(id)-1 '
+              'would report exactly 100 whatever the real figure is');
+      expect(await rotatedLine(),
+          'rotated: dropped=$dropped oldest rows (log size cap)');
+    });
+
+    test(
+        '🔴 the degenerate shape: mostly marks, and the NEWEST rows go too',
+        () async {
+      // 🔑 THE CASE THAT KILLED `MAX(id) - COUNT(*)`. When the table is almost
+      // entirely marks, `trimToBytes`'s protected pass runs out of non-mark
+      // rows and falls back to an unprotected delete — so the rows that go
+      // include the newest one, and `MAX(id)` DROPS WITH IT. A count derived
+      // from the surviving rows therefore under-reports by exactly the number
+      // of rows deleted off the top.
+      //
+      // `sqlite_sequence.seq` is a property of the table's history rather than
+      // of its surviving rows, so nothing but `clearLog` moves it down — which
+      // is why this test can assert the real figure instead of documenting a
+      // gap. Under `MAX(id) - COUNT(*)` this reports 3; the truth is 6.
+      await mark(CaptureMark.powerBankOutA, 'A out');
+      await mark(CaptureMark.powerBankOutC5v, 'C 5V');
+      await mark(CaptureMark.powerBankOutCPd, 'C PD');
+      await mark(CaptureMark.powerBankIn, 'charging');
+      await mark(CaptureMark.powerBankIdle, 'idle');
+      for (var i = 0; i < 3; i++) {
+        await packet(i);
+      }
+      expect(await logs.count(), 8);
+
+      // Aim the byte budget at "remove 6 of the 8", derived from the rows this
+      // test actually wrote rather than from a hard-coded size — `trimToBytes`
+      // computes its batch from the measured average row.
+      final total = await logs.approxBytes();
+      final avg = (total / 8).ceil();
+      final maxBytes = ((total - (avg * 4.5).round()) / 0.9).ceil();
+      await logs.trimToBytes(maxBytes);
+
+      final after = await logs.count();
+      expect(after, 2, reason: 'the premise: 6 of the 8 rows went');
+      // The fallback took marks off the FRONT and the protected pass had
+      // already taken every packet, including the newest row in the table.
+      expect((await logs.queryLog()).first.id, 5,
+          reason: 'the newest surviving row is a mark, so MAX(id) has fallen '
+              'from 8 to 5 — that fall is the whole defect');
+      expect(await rotatedLine(),
+          'rotated: dropped=6 oldest rows (log size cap)',
+          reason: 'six rows went; MAX(id) - COUNT(*) would say three');
     });
 
     test('🔵 a log the USER cleared is not reported as rotated', () async {

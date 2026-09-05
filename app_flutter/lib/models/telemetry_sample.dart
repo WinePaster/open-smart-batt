@@ -230,13 +230,13 @@ class TelemetrySample {
   ///
   /// 🔴 **Recorded raw, interpreted only per product class.** Every class emits
   /// it and the bits mean different things in each; the ONE reading this app
-  /// makes is [CapacitorMos.allOpen], and only for a unit positively read as a
+  /// makes is [CapacitorMos.group], and only for a unit positively read as a
   /// super-capacitor. Do not add a second interpretation without a class gate —
   /// that is FB-22's shape.
   ///
   /// NOT persisted: [toMap] has no column for it, so no schema change. It is a
-  /// live-link fact (is this capacitor's output cut right now), which nothing
-  /// reads back out of history.
+  /// live-link fact (which of the two observed groups this capacitor is
+  /// reporting right now), which nothing reads back out of history.
   final int? funcFlagsRaw;
 
   const TelemetrySample({

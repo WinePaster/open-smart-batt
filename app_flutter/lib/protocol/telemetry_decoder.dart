@@ -403,8 +403,8 @@ class TelemetryDecoder {
         // FB-111. Stored raw as the big-endian u16 of the two payload bytes;
         // the ONE interpretation lives in [CapacitorMos] and is class-gated at
         // the call site. A short frame is dropped rather than zero-padded — a
-        // fabricated `0x0000` decodes to "neither MOS bit", which is a state
-        // the app would then have to explain.
+        // fabricated `0x0000` carries neither of the two observed bits, which
+        // is a reading the app would then have to explain.
         if (f.payload.length < 2) return base;
         return base.copyWith(timestamp: ts, funcFlagsRaw: f.u16(4));
       default:

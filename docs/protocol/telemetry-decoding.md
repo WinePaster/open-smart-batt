@@ -475,7 +475,7 @@ Restricted to `0x10` = `0x17` or `0x18` — **396,205 frames · 90 device rows �
 #### 8.5.2 What is NOT established — read this before using the register
 
 * 🔲 **Which state means what.** ⛔ **This corpus does not say what the two states
-  are.** Three quantities could have separated them; none does:
+  are.** ~~Three~~ **Four** quantities could have separated them; none does:
   * **`0x2E` main current is `0` in every capacitor frame** the corpus holds
     (4,275 nearest-in-time pairs on the machines that show both states, every one
     of them `512 − 512 = 0 A`). It separates nothing.
@@ -486,12 +486,54 @@ Restricted to `0x10` = `0x17` or `0x18` — **396,205 frames · 90 device rows �
     (13.25 → 5.84 V), and that is the same machine whose `0x23` reads `07`,
     i.e. a condition `0x23` already reports on its own.
   * **`0x23` reads the healthy `05` in 93 % of the bit-3 frames** (above).
-* ⚠️ **This app's own reading is therefore an assumption, not a finding.**
-  `CapacitorMos` in `app_flutter/lib/protocol/selectors.dart` treats the bit-0
-  state as *output engaged* and the bit-3 state as *output cut*. **The
-  exclusivity it rests on is verified above; the polarity is not.** ⛔ A client
-  must not present either state to a user as a measured fact, and this document
-  does not corroborate the labels.
+  * 🔵 **2026-09-05 — a fourth quantity was tried and is now RULED OUT: the
+    separation between the two voltage rails, `|0x37 SVLT − 0x19 PVLT|`.** The
+    idea was that a large separation could only occur while the two rails were
+    NOT tied together, so the state carrying it would be identifiable. **The
+    corpus disproves it: a separation ≥ 1.8 V occurs in BOTH states.** Pairing
+    every capacitor `0x3A` frame with the nearest `0x19` **and** the nearest
+    `0x37` within 1 s (the same pairing this section already uses for `0x23`),
+    over the §8.5.1 gate:
+
+    | state | frames paired | of those, separation ≥ 1.8 V | device rows | machines (MAC) |
+    |---|---|---|---|---|
+    | bit-0 | 394,631 | **666** | 2 | **1** |
+    | bit-3 | 1,551 | 1,486 | 9 | 5 |
+
+    The bit-0 counter-examples are not scattered noise. All **666** carry byte 0
+    = `0x51`, they belong to **one** physical machine (two device rows, one
+    self-reported MAC), their separation is **mean 5.87 V, min 5.73, max 5.98**,
+    and they run **2026-08-15T15:42:41 → 15:49:40** — i.e. the condition is held
+    for **seven minutes**, not a transient. Through that window `0x23` reads the
+    resting `05` in **407 / 407** frames and `0x2E` reads `0200` = **0 A** in
+    **407 / 407**, and the same unit's `0x3A` visits **both** groups (368 frames
+    `5100`, 39 frames `5800`) while the separation stays ~5.9 V. Median PVLT
+    12.50 V against median SVLT 6.61 V.
+
+    🔑 **Why this is recorded rather than dropped:** the inference is a natural
+    one and was reached independently once already. Without this note the next
+    reader spends the same effort to arrive at the same dead end.
+
+    <details><summary>How to reproduce</summary>
+
+    Over `tools/fb.db`: take the device rows that report `0x10` ∈ {`0x17`,
+    `0x18`} (super-capacitors), drop the merged header-less row §8.5.1 excludes,
+    and for every `0x3A` frame on them classify byte 0 into the bit-0 / bit-3
+    group and attach the nearest `0x19` and `0x37` frame on the same device row
+    within ±1 s; count the frames whose `|SVLT − PVLT|` is ≥ 1.8 V per group.
+    Frame counts reproduce §8.5.1's 396,205 exactly.
+
+    </details>
+* ✅ **2026-09-05 — this app no longer claims a polarity.** ~~`CapacitorMos` in
+  `app_flutter/lib/protocol/selectors.dart` treats the bit-0 state as *output
+  engaged* and the bit-3 state as *output cut*~~ — those labels were not
+  supported by our own captures and have been removed. `CapacitorMos.group()`
+  now answers `CapacitorMosGroup.bit0` / `.bit3` / `null`, named after the
+  distinguishing bit and nothing else, and the one feature that consumes it (the
+  capacitor self-check unlock, FB-111) compares against **the group the register
+  was in before the check started** — which needs no polarity at all. ⛔ A client
+  must not present either state to a user as a physical fact, and this document
+  does not corroborate any such label.
 * 🔲 **The other six bits of byte 0 are unresolved.** Across the five observed
   values, bit 6 is set in all five, bit 4 in four (not in `0x41`, the 3rd-gen
   value), bit 5 in two, bit 7 in none. Nothing in the corpus separates them, so

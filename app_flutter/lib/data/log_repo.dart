@@ -452,24 +452,70 @@ class LogRepo {
   /// How many rows were dropped off the FRONT of the log, or 0 for a log that
   /// has never rotated.
   ///
-  /// 🔑 Derived from the `id` gap, not from a counter: `diag_log.id` is
-  /// `INTEGER PRIMARY KEY AUTOINCREMENT`, so ids are strictly increasing and
-  /// never reused, and the lowest surviving id is therefore exactly one more
-  /// than the number of rows that have gone. That needs no new column and no
-  /// schema bump — and it survives the app being restarted, which an in-memory
-  /// flag would not.
+  /// 🔑 Derived from the `id` sequence, not from a counter: `diag_log.id` is
+  /// `INTEGER PRIMARY KEY AUTOINCREMENT`, so SQLite keeps its own high-water
+  /// mark for the table in `sqlite_sequence.seq` — the highest id it has ever
+  /// ISSUED, which never goes down on a delete and is therefore how many rows
+  /// have EVER existed since the last [clearLog]. Subtract how many are left and
+  /// what remains is what rotation took. That needs no new column — and it
+  /// survives the app being restarted, which an in-memory flag would not.
+  ///
+  /// 🔴 **It used to read `MIN(id) - 1`, and that was wrong the moment marks
+  /// became protected.** ~~the lowest surviving id is therefore exactly one
+  /// more than the number of rows that have gone~~ — [_deleteOldest] with
+  /// `protectMarks: true` steps OVER capture marks, so the oldest surviving row
+  /// is the user's first mark and `MIN(id)` freezes there for ever. Measured on
+  /// the two shapes FB-110 is about:
+  ///
+  ///   * 5 marks, then 300 packets, trimmed → **220 rows deleted**, `MIN(id)`
+  ///     still 1, reported **0**, and the header said `rotated: none` on a file
+  ///     that had lost two thirds of its front;
+  ///   * 1,000 packets, one mark, 9,000 packets, trimmed → **8,000 deleted**,
+  ///     reported **1,000**.
+  ///
+  /// The two halves of FB-110 broke each other: protecting the marks is what
+  /// made the `rotated:` line lie.
+  ///
+  /// ✅ **It reads `sqlite_sequence.seq`, NOT `MAX(id)`, and that is the whole
+  /// difference between right and nearly right.**
+  /// ~~⚠️ One case this still under-reports … if the table is by now almost
+  /// entirely marks, the protected pass can take every non-mark row INCLUDING
+  /// the newest, and `MAX(id)` then drops with it — 5 marks + 3 packets trimmed
+  /// by 6 reports 3, not 6 … it is simply not fixed~~ — **fixed, by changing
+  /// the formula rather than by accepting the gap** (owner's ruling). `MAX(id)`
+  /// is a property of the SURVIVING rows, so deleting the newest row moves it;
+  /// `sqlite_sequence.seq` is a property of the TABLE'S HISTORY, so nothing but
+  /// [clearLog] moves it down. In that degenerate shape the sequence still
+  /// reads 8 while 2 rows survive ⇒ **6, which is what actually went.**
+  ///
+  /// The migration this needed already existed: `Db.schemaVersion` v24 aligns
+  /// the sequence on databases written before [clearLog] learned to reset it,
+  /// and it is the same statement either formula wants.
   ///
   /// ⚠️ Deliberately WHOLE-TABLE, never scoped. A per-device export's oldest
   /// row has a high id simply because that unit connected late; reading that as
   /// truncation would put a false `rotated:` on most files.
   ///
   /// [clearLog] resets the sequence, so a log the user cleared themselves reads
-  /// as "not rotated" rather than reporting the cleared rows as losses.
+  /// as "not rotated" rather than reporting the cleared rows as losses — and
+  /// `Db.schemaVersion` v24 aligns the sequence on databases written before
+  /// [clearLog] learned to do that.
   Future<int> droppedByRotation() async {
+    // ⚠️ `sqlite_sequence` has NO ROW for a table that has never taken an
+    // insert (SQLite creates it lazily), and [clearLog] deletes the row again —
+    // so the absent case is the common one, not an edge case, and it must read
+    // as 0 rather than as null.
     final r = await _db.rawQuery(
-      'SELECT MIN(id) AS lowest FROM ${Db.tableDiagLog}',
+      'SELECT COALESCE('
+      '(SELECT seq FROM sqlite_sequence WHERE name = ?), 0) AS issued, '
+      '(SELECT COUNT(*) FROM ${Db.tableDiagLog}) AS n',
+      [Db.tableDiagLog],
     );
-    final lowest = (r.first['lowest'] as num?)?.toInt();
-    return lowest == null ? 0 : lowest - 1;
+    final issued = (r.first['issued'] as num?)?.toInt() ?? 0;
+    final surviving = (r.first['n'] as num?)?.toInt() ?? 0;
+    final dropped = issued - surviving;
+    // Never negative: the clamp costs nothing and keeps a header line that is
+    // read by people from ever showing `dropped=-3`.
+    return dropped > 0 ? dropped : 0;
   }
 }
