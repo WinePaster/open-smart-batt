@@ -229,8 +229,8 @@
       }
     }
   },
-  "disconnectedStalledTitle": "Connected, but the device is not answering",
-  "disconnectedStalledBody": "Bluetooth linked up, but no data came back. Tried {attempts} times.",
+  "disconnectedStalledTitle": "Connected, but no data",
+  "disconnectedStalledBody": "Tried {attempts} times.",
   "@disconnectedStalledBody": {
     "placeholders": {
       "attempts": {
@@ -238,7 +238,7 @@
       }
     }
   },
-  "disconnectedStalledHint": "Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.",
+  "disconnectedStalledHint": "Leaving and coming back retries automatically. If that fails, close the app and reopen.",
   "disconnectedStalledRetry": "Try again",
   "disconnectedGaveUpTitle": "Could not connect to this device",
   "disconnectedGaveUpBody": "Several attempts went by without a connection, so it has stopped trying.",
@@ -1421,7 +1421,7 @@
   "@devicesAutoConnectSkippedLastError": {
     "description": "FB-82 Q4, the `last error not cleared` gate. The error code is deliberately not repeated here — it is already in the card above, turned into an instruction."
   },
-  "devicesAutoConnectSkippedStalled": "The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.",
+  "devicesAutoConnectSkippedStalled": "The previous connection stalled part-way through setup. Use the button below to connect now.",
   "@devicesAutoConnectSkippedStalled": {
     "description": "FB-82 Q4, the `setup stalled` gate (FB-50: linked but never ready)."
   },
