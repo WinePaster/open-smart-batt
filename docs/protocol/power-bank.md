@@ -117,6 +117,24 @@ ruling of its own.
   33 and `b8` read 47/48. Correlation with |current| is only r ≈ 0.5–0.7, one unit
   ran 33→73→67, and a single sample moved 29 → 65 → 28 within 8.9 s. **Not
   decoded.**
+  * ⚠️ **Read that r ≈ 0.5–0.7 as an *un-lagged* figure, not as weak coupling.**
+    On a 2026-08-13 capture (one unit, 186 same-burst `0x4B`+`0x4A`+`0x49`
+    samples, median 4.96 s apart, driven through no-load → 5 V load → 12 V load →
+    unload) the correlation between `b8` and the instantaneous cell-side power is
+    **r = 0.695** — inside the band recorded above. (⚠️ Not the identical
+    quantity: the r ≈ 0.5–0.7 above is against |current|, this one against
+    cell-side power. They land in the same range; they are not the same fit.)
+    Pass the power through a one-pole low-pass first and it climbs to
+    **r = 0.980** at α = 0.05,
+    i.e. **τ ≈ 99 s**; it falls away on either side (α = 0.1 → 0.952,
+    α = 0.02 → 0.747), so the time constant is pinned rather than fitted.
+    ⇒ Whatever `b8` is, it is a **slow variable, not an instantaneous reading**,
+    and the low correlation above is what an instantaneous fit to a lagged signal
+    looks like.
+  * ⛔ **This changes how a number is read; it decodes nothing.** `b8` stays
+    **undecoded**, and "NOT a temperature" above is untouched — that verdict rests
+    on the vendor-app comparison and the 33→73→67 unit, neither of which this
+    capture touches. One unit, one capture: **not a multi-unit result.**
 
 ### `0x4B` `b7` — port and protocol flags
 
