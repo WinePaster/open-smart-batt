@@ -1340,7 +1340,7 @@ void main() {
       'Not connected': 'No device connected',
       'Connecting': 'Connecting…',
       'Connection failed': 'Could not connect to this device',
-      'Not answering': 'Connected, but the device is not answering',
+      'Not answering': 'Connected, but no data',
       'Connected': '',
     };
 

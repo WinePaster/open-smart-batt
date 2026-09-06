@@ -629,19 +629,19 @@ abstract class AppLocalizations {
   /// No description provided for @disconnectedStalledTitle.
   ///
   /// In en, this message translates to:
-  /// **'Connected, but the device is not answering'**
+  /// **'Connected, but no data'**
   String get disconnectedStalledTitle;
 
   /// No description provided for @disconnectedStalledBody.
   ///
   /// In en, this message translates to:
-  /// **'Bluetooth linked up, but no data came back. Tried {attempts} times.'**
+  /// **'Tried {attempts} times.'**
   String disconnectedStalledBody(int attempts);
 
   /// No description provided for @disconnectedStalledHint.
   ///
   /// In en, this message translates to:
-  /// **'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.'**
+  /// **'Leaving and coming back retries automatically. If that fails, close the app and reopen.'**
   String get disconnectedStalledHint;
 
   /// No description provided for @disconnectedStalledRetry.
@@ -3311,7 +3311,7 @@ abstract class AppLocalizations {
   /// FB-82 Q4, the `setup stalled` gate (FB-50: linked but never ready).
   ///
   /// In en, this message translates to:
-  /// **'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.'**
+  /// **'The previous connection stalled part-way through setup. Use the button below to connect now.'**
   String get devicesAutoConnectSkippedStalled;
 
   /// No description provided for @devicesSave.

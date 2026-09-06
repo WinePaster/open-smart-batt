@@ -332,16 +332,15 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get disconnectedStalledTitle => '已連上，但這台裝置沒有回應';
+  String get disconnectedStalledTitle => '已連上，但讀不到資料';
 
   @override
   String disconnectedStalledBody(int attempts) {
-    return '藍牙確實連上了，但讀不到資料。已經試過 $attempts 次。';
+    return '已試過 $attempts 次。';
   }
 
   @override
-  String get disconnectedStalledHint =>
-      '請把 App 完全關掉再重新打開 —— 目前唯一實測有效的做法就是這個。乾等沒有用：同樣的狀況曾經持續 40 分鐘都沒自己好。';
+  String get disconnectedStalledHint => '切出去再回來會自動再試。仍然不行就把 App 關掉重開。';
 
   @override
   String get disconnectedStalledRetry => '重新連線';
@@ -1889,8 +1888,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '上一次的連線問題還沒有清除，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
 
   @override
-  String get devicesAutoConnectSkippedStalled =>
-      '上一次的連線還卡在設定階段沒有完成，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
+  String get devicesAutoConnectSkippedStalled => '上一次連線卡在設定階段。可以按下面的按鈕現在連。';
 
   @override
   String get devicesSave => '儲存';

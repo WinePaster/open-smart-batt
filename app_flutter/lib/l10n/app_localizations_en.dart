@@ -345,17 +345,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get disconnectedStalledTitle =>
-      'Connected, but the device is not answering';
+  String get disconnectedStalledTitle => 'Connected, but no data';
 
   @override
   String disconnectedStalledBody(int attempts) {
-    return 'Bluetooth linked up, but no data came back. Tried $attempts times.';
+    return 'Tried $attempts times.';
   }
 
   @override
   String get disconnectedStalledHint =>
-      'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.';
+      'Leaving and coming back retries automatically. If that fails, close the app and reopen.';
 
   @override
   String get disconnectedStalledRetry => 'Try again';
@@ -2006,7 +2005,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesAutoConnectSkippedStalled =>
-      'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.';
+      'The previous connection stalled part-way through setup. Use the button below to connect now.';
 
   @override
   String get devicesSave => 'Save';
