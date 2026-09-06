@@ -35,6 +35,37 @@ jobs:
       - name: pub get
         working-directory: ${{ env.APP_DIR }}
         run: flutter pub get
+      # 🅱️ The generated localizations must match the .arb they came from.
+      #
+      # WHY THIS STEP EXISTS. Commit 3e15a73 changed four strings in
+      # app_{en,zh}.arb and did NOT commit the three regenerated tracked files
+      # lib/l10n/app_localizations{,_en,_zh}.dart. Everything downstream then
+      # read the OLD strings: three tests asserting the old wording stayed
+      # green, and that batch's "2,578 all green" was a false green. Neither
+      # `flutter analyze` (the stale files are valid Dart) nor `flutter test`
+      # (it never runs gen-l10n) can see this — only somebody running
+      # `flutter build` did, two days later.
+      #
+      # `flutter gen-l10n` takes no arguments here: app_flutter/l10n.yaml
+      # already names arb-dir, template-arb-file and output-localization-file.
+      #
+      # Deliberately ONLY in this job. The ios-build job runs the same pub
+      # get + analyze pair, but this check is platform-independent and running
+      # it twice would just cost a macOS minute.
+      - name: l10n generated files are in sync with the .arb
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          flutter gen-l10n
+          # Two questions, because `git diff` answers only one of them: a
+          # CHANGED tracked file shows up there, but a file gen-l10n newly
+          # CREATED (adding a locale writes app_localizations_<x>.dart) is
+          # untracked and invisible to it.
+          untracked="$(git ls-files --others --exclude-standard -- lib/l10n/)"
+          if ! git diff --exit-code -- lib/l10n/ || [ -n "$untracked" ]; then
+            [ -n "$untracked" ] && echo "untracked generated file(s): $untracked"
+            echo "::error title=l10n out of sync::lib/l10n/app_localizations*.dart do not match lib/l10n/app_*.arb. Editing an .arb is only half the change: run 'flutter gen-l10n' in app_flutter/ and COMMIT the regenerated files alongside it. Until you do, flutter test keeps reading the old strings and stays green on wording that no longer ships (the 3e15a73 false green)."
+            exit 1
+          fi
       - name: analyze
         working-directory: ${{ env.APP_DIR }}
         run: flutter analyze

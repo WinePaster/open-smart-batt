@@ -123,9 +123,18 @@ void main() {
   /// Paths handed to the platform share sheet, in order.
   final shared = <String>[];
 
+  /// The share sheet's SUBJECT line, in order — see `l10n_placeholder_test.dart`
+  /// for why this is asserted here rather than there. The three `title:` values
+  /// this file already checks are plain Dart literals; the subject beside them
+  /// is the l10n message (`historyExportSubject` /
+  /// `settingsExportSubject{AllData,DiagLog}`), i.e. the OTHER half of FB-109's
+  /// blast radius and the only half an `.arb` edit can break on its own.
+  final subjects = <String>[];
+
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('osb-brand-header');
     shared.clear();
+    subjects.clear();
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     // `exportTempFile` asks path_provider where to write. Without this the
@@ -145,6 +154,8 @@ void main() {
           for (final p in (args['paths'] as List?) ?? const []) {
             shared.add(p as String);
           }
+          final subject = args['subject'];
+          if (subject is String) subjects.add(subject);
         }
         return 'com.example.test';
       },
@@ -226,6 +237,20 @@ void main() {
         reason: 'a hard-coded brand survived injection');
   }
 
+  /// The subject the recipient sees on the share, asserted the same way as the
+  /// preamble line: an EQUALITY against the injected name, never an absence.
+  void expectSubject(String tail) {
+    expect(subjects, isNotEmpty, reason: 'the share carried no subject at all');
+    expect(subjects.last, '${_injected.appName} $tail');
+    // The two shapes an unsubstituted placeholder reaches a user in — the
+    // escaped-dollar FB-109 shipped, and an ICU brace gen-l10n emitted verbatim
+    // because it was never declared.
+    expect(subjects.last, isNot(matches(RegExp(r'\$[A-Za-z_]|\{[A-Za-z_]'))),
+        reason: 'unsubstituted placeholder in the share subject (FB-109)');
+    expect(subjects.last, isNot(contains('OpenSmartBatt')),
+        reason: 'a hard-coded brand survived injection');
+  }
+
   Widget host(Widget home) => AppConfigScope(
         config: _injected,
         child: MultiProvider(
@@ -286,6 +311,8 @@ void main() {
     await settle(tester, untilShared: true);
 
     expectBranded(await firstSharedLine(tester), 'history export');
+    // en locale, `settingsExportSubjectAllData` = "{appName} all data".
+    expectSubject('all data');
   });
 
   testWidgets(
@@ -307,6 +334,8 @@ void main() {
     await settle(tester, untilShared: true);
 
     expectBranded(await firstSharedLine(tester), 'diagnostic log');
+    // en locale, `settingsExportSubjectDiagLog` = "{appName} diagnostic log".
+    expectSubject('diagnostic log');
   });
 
   testWidgets(
@@ -338,5 +367,7 @@ void main() {
     await settle(tester, untilShared: true);
 
     expectBranded(await firstSharedLine(tester), 'history export');
+    // en locale, `historyExportSubject` = "{appName} History".
+    expectSubject('History');
   });
 }
