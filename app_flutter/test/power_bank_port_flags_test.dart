@@ -6,7 +6,9 @@
 //   bit1 = Type-C cable / CC   → usbPort == UsbPort.typeC (else unknown)
 //   bit2 = output active       → isOutputActive
 //   bit3 = PD input (one-way)  → isPdIn
-//   bit5 = PD output           → isPdOut
+//   bit5 = non-5 V output contract → isPdOut  (narrowed from "PD output"
+//                                    2026-09-04: the protocol was never
+//                                    observed, only the voltage)
 //   b7 == 0x00                 → isRailOff  (boost rail off)
 //   bit0 and bit4              → decoded to NOTHING
 //
@@ -18,6 +20,8 @@
 //
 // CLEAN-ROOM: bit positions and their meanings come from docs/protocol
 // power-bank.md plus our own captures; no raw byte is ever shown to a user.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/protocol/protocol.dart';
@@ -108,8 +112,10 @@ void main() {
     });
   });
 
-  group('bit5 (PD output) is independent of bit3 (PD input)', () {
-    test('0x24 (bit2+bit5) → PD output set, PD input clear, not crossed', () {
+  group('bit5 (non-5 V output contract) is independent of bit3 (PD input)',
+      () {
+    test('0x24 (bit2+bit5) → output contract set, PD input clear, not crossed',
+        () {
       final s = withB7(0x24);
       expect(s.isPdOut, isTrue); // bit5
       expect(s.isPdIn, isFalse); // bit3 clear — never crossed
@@ -136,6 +142,81 @@ void main() {
       );
       expect(s.portFlagsRaw, isNull);
       expect(s.usbPort, isNull);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 🔵 The wording narrowing of 2026-09-04, made mechanical.
+  //
+  // `docs/protocol/power-bank.md` withdrew "PD output" for bit 5: the bit is
+  // 2,872/2,872 solid as "the output contract is above 5 V", but NO capture in
+  // the corpus records which protocol the far end negotiated — "PD" was
+  // inferred from a voltage and then written down as though it had been seen.
+  //
+  // 🔑 Why a test and not just an edit: the previous wording reached SEVEN
+  // places across four files by being copied, and the doc that governs it lives
+  // in a directory this suite cannot read. A comment sync with no guard is one
+  // paste away from coming back, and nothing would report it.
+  //
+  // ⛔ bit3 is deliberately NOT covered. Its "PD" has ground truth — the owner
+  // stated, of the capture it came from, that a Type-C PD charger was plugged
+  // in — so "PD input" stays a claim this project can make.
+  group('🔵 bit5: the withdrawn "PD output" wording cannot come back', () {
+    /// Every `.dart` under `lib/` and `test/`, path-relative, sorted.
+    List<String> sources() => ['lib', 'test']
+        .expand((d) => Directory(d)
+            .listSync(recursive: true)
+            .whereType<File>()
+            .map((f) => f.path)
+            .where((p) => p.endsWith('.dart')))
+        .toList()
+      ..sort();
+
+    test('no source phrases bit5 as PD on the output side', () {
+      // Separator-required on purpose: the IDENTIFIER `isPdOut` and the capture
+      // mark `pb_out_c_pd` are names, not claims, and renaming them is a
+      // separate decision (see [TelemetrySample.isPdOut]). Only the PROSE form
+      // is withdrawn: "PD output", "PD **output**", "output PD", "output-PD".
+      final withdrawn = RegExp(
+        r'\bPD[ *_-]+out|\bout(?:put)?[ *_-]+\*{0,2}PD\b',
+        caseSensitive: false,
+      );
+      // The one legal use: naming the old wording INSIDE a sentence that says
+      // it was withdrawn. "It used to say X" is history; "it says X" is a
+      // claim. This test's own prose qualifies under exactly that rule, which
+      // is why it needs no self-exemption.
+      final history = RegExp('narrowed|withdrawn|withdrew', caseSensitive: false);
+      final offenders = <String>[];
+      for (final f in sources()) {
+        // ⛔ The ONE exemption, and it is not a loophole: a capture mark is the
+        // USER writing down what they plugged in. `pb_out_c_pd` is the single
+        // place in this app where "PD" is an OBSERVATION rather than an
+        // inference from a voltage — it is the ground truth the narrowed row is
+        // still waiting for, not a repetition of the withdrawn claim.
+        if (f == 'lib/models/capture_mark.dart') continue;
+        for (final line in File(f).readAsLinesSync()) {
+          if (!withdrawn.hasMatch(line)) continue;
+          if (history.hasMatch(line)) continue;
+          offenders.add('$f: ${line.trim()}');
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: 'bit5 is evidenced as "a non-5 V output contract", never as '
+              'PD — no capture records the negotiated protocol '
+              '(docs/protocol/power-bank.md, narrowed 2026-09-04)');
+    });
+
+    test('the getter that decodes bit5 says what it is now evidenced as', () {
+      // The negative above would stay green if somebody deleted the doc
+      // comment outright. This is the positive half.
+      final src = File('lib/models/telemetry_sample.dart').readAsStringSync();
+      final before = src.split('bool? get isPdOut').first;
+      // Just the doc block attached to the getter — everything after the last
+      // blank line before it. Reading the whole file would pass on any other
+      // mention of the phrase and prove nothing about this getter.
+      final doc = before.split('\n\n').last;
+      expect(doc, contains('non-5 V output contract'));
+      expect(doc, contains('bit5'));
     });
   });
 }

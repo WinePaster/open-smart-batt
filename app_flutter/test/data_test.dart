@@ -765,6 +765,21 @@ class _CountingDb implements Database {
   Future<int> rawDelete(String sql, [List<Object?>? arguments]) =>
       _inner.rawDelete(sql, arguments);
 
+  /// Single-row writes to `settings` — the FB-110 v25 rotation tally.
+  ///
+  /// Counted, not just forwarded: this class exists so a new query path has to
+  /// be looked at rather than slipped in, and the thing worth knowing about
+  /// this one is that it is a keyed UPDATE, not a scan. The scan assertions
+  /// below are therefore unaffected by it, and that is now visible rather than
+  /// assumed.
+  int rawUpdates = 0;
+
+  @override
+  Future<int> rawUpdate(String sql, [List<Object?>? arguments]) {
+    rawUpdates++;
+    return _inner.rawUpdate(sql, arguments);
+  }
+
   /// Everything else throws. Declared so the class satisfies [Database] without
   /// stubbing 16 unused members — and so an uncounted query path is a loud
   /// failure rather than a silent one.

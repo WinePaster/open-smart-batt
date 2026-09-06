@@ -1064,7 +1064,7 @@ class _DataCardState extends State<_DataCard> {
         labelFor: labelFor,
         classFor: classFor,
         header: exportHeaderLines(
-          title: '\$appName history export',
+          title: '$appName history export',
           exportedAt: DateTime.now(),
           appBuild: services.appBuild,
           platform: services.platform,
@@ -1449,7 +1449,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
         ? 1
         : await tele.logSessionCount(deviceId: target.deviceId);
     return exportHeaderLines(
-      title: '\$appName diagnostic log',
+      title: '$appName diagnostic log',
       exportedAt: DateTime.now(),
       appBuild: services.appBuild,
       platform: services.platform,

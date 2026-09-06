@@ -307,7 +307,9 @@ class TelemetryController extends ChangeNotifier
   @override
   bool? get isPdIn => _sample.isPdIn;
 
-  /// PD output (b7 bit5). Null until b7 is seen.
+  /// A **non-5 V output contract** (b7 bit5) — narrowed from "PD output" on
+  /// 2026-09-04; the protocol itself was never observed, only the voltage. See
+  /// [TelemetrySample.isPdOut]. Null until b7 is seen.
   @override
   bool? get isPdOut => _sample.isPdOut;
 
@@ -318,6 +320,12 @@ class TelemetryController extends ChangeNotifier
 
   /// Reported mode/status code (selector 0x23).
   int? get mode => _sample.mode;
+
+  /// Raw function-flag register (selector 0x3A), or null until one arrives.
+  ///
+  /// 🔴 Class-specific. Read it only through [CapacitorMos] and only for a unit
+  /// positively read as a super-capacitor — see [TelemetrySample.funcFlagsRaw].
+  int? get funcFlagsRaw => _sample.funcFlagsRaw;
 
 
 

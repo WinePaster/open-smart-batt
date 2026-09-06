@@ -100,6 +100,18 @@ class Selectors {
   /// The two minute fields are since-wake, not lifetime (corrected 2026-08-07).
   static const int systemCounters = 0x34;
 
+  /// Function flags, 2 bytes. Byte 0 is a bit field; byte 1 is not decoded.
+  ///
+  /// 🔴 **Byte 0's meaning is PER PRODUCT CLASS and this app reads it for
+  /// SUPER-CAPACITORS ONLY** — see [CapacitorMos]. A battery and a power bank
+  /// both emit `0x3A` with entirely different bits, and applying the capacitor
+  /// reading to them would be FB-22's failure exactly: a class-agnostic formula
+  /// on a class-specific byte.
+  ///
+  /// Streamed by every unit of all three classes on every `#` poll, so this is
+  /// a read of something already arriving — nothing new is asked for.
+  static const int functionFlags = 0x3A;
+
   /// Device RTC, 7 bytes: `[u16 year BE][MM][DD][hh][mm][ss]`.
   ///
   /// **`MM` and `DD` are 0-based** (verified 2026-08-01): `MM = 0x07` is August,
@@ -382,4 +394,110 @@ class CapacitorStatus {
   /// unit is busy.
   static bool isSelfCheck(int? mode) =>
       mode == selfCheckStarting || mode == selfCheckRunning;
+}
+
+/// Which of the two observed groups a SUPER-CAPACITOR's `0x3A` byte 0 is in.
+///
+/// ⚠️ **Capacitor only.** Batteries and power banks emit `0x3A` too, with their
+/// own unrelated bit meanings; nothing here may be applied to them. Callers
+/// gate on a positively-read device type, never on the byte alone.
+///
+/// 🔑 **Named after the bits, because that is all our captures establish.**
+/// Across the corpus every capacitor `0x3A` byte 0 falls into one of two
+/// disjoint groups:
+///
+/// ```
+///   0x51 / 0x41 / 0x71   bit 0 set, bit 3 clear   ⇒ CapacitorMosGroup.bit0
+///   0x58 / 0x78          bit 3 set, bit 0 clear   ⇒ CapacitorMosGroup.bit3
+/// ```
+///
+/// Those five values are the complete observed set and the partition is exact:
+/// **396,205 of 396,205** capacitor frames carry exactly one of the two bits,
+/// never both and never neither. That — two bits that partition the observed
+/// set — is the whole inference, and it is why anything outside the pattern
+/// reads as `null` here rather than being guessed at.
+///
+/// ⛔ **WHICH group is which is NOT established, and nothing in this app may
+/// claim it.** ~~bit 0 = output live, bit 3 = output cut~~ — that labelling had
+/// no support in our own captures and has been removed. `0x2E` main current is
+/// `0` in every capacitor frame the corpus holds, and `0x19` PVLT moves in
+/// opposite directions on different machines, so neither separates the groups.
+/// See `docs/protocol/telemetry-decoding.md` §8.5.1–§8.5.2 for the measured
+/// evidence and for the candidate inferences that have already been ruled out.
+/// ⛔ Do not present either group to a user as a physical state.
+///
+/// ⛔ **The split is NOT a restatement of `0x23`.** In 1,447 of 1,551 frames
+/// across five units `0x3A` sits in the [CapacitorMosGroup.bit3] group while
+/// `0x23` still reads the resting `05` — so `0x23` on its own cannot see this
+/// change of state at all, which is the whole reason FB-111 exists.
+///
+/// 🔴 **Why this matters at all (FB-111).** The pairing with `0x23` was once
+/// recorded as an equivalence at 166/166 with no counter-example. It is not one:
+/// capture 2026.09.03/002 has `0x23` returning to [CapacitorStatus.healthy]
+/// **5.61 s before** `0x3A` came back to the group it was in beforehand, and
+/// the app's self-check unlock read only `0x23` — so for those seconds it told
+/// the owner the check had finished while the unit was still reporting a state
+/// it had not been in before the check.
+/// 🔴 **THE NAME IS BORROWED, AND OUR CAPTURES DO NOT SUPPORT IT.**
+///
+/// "MOS" comes from the vendor's engineering app, whose `[3A]` screen labels
+/// these bits as an output MOSFET. Everything WE can show is weaker: `0x3A`
+/// byte 0 carries two mutually exclusive bits, they partition the corpus
+/// cleanly, and `0x23` alone cannot see the transition between them. What the
+/// bits physically switch is **not established by anything we hold**.
+///
+/// The polarity claim was already removed for this reason (`bitAllOpen` /
+/// `bitAllClosed` ⇒ [bitGroup0] / [bitGroup3]; [group] returns which group, not
+/// which state). This note is the other half: the class name still asserts the
+/// hardware, so the assertion is labelled here rather than left to be read as
+/// ours. ⛔ Do not write "MOS is open/closed" in a document on the strength of
+/// this type — say which group `0x3A` is in.
+class CapacitorMos {
+  CapacitorMos._();
+
+  /// Byte 0, bit 0 — the bit shared by `0x51` / `0x41` / `0x71`.
+  static const int bitGroup0 = 0x01;
+
+  /// Byte 0, bit 3 — the bit shared by `0x58` / `0x78`.
+  static const int bitGroup3 = 0x08;
+
+  /// Which observed group [funcFlags] belongs to, or `null` for "no reading"
+  /// or a pattern outside the two observed groups.
+  ///
+  /// [funcFlags] is the register as stored — the big-endian u16 of its two
+  /// payload bytes, so `5100` on the wire arrives here as `0x5100` and byte 0
+  /// is the high half.
+  ///
+  /// 🔑 Three-valued on purpose. A capacitor that has not answered `0x3A` yet,
+  /// and one whose byte carries neither bit, are both states in which we do not
+  /// know — and a caller waiting for the register to come back to where it was
+  /// must be able to tell "somewhere else" from "never said". Collapsing either
+  /// into a group would leave a user stuck at 「檢測中」 on a unit that never
+  /// reports this register at all.
+  static CapacitorMosGroup? group(int? funcFlags) {
+    if (funcFlags == null) return null;
+    final b0 = (funcFlags >> 8) & 0xFF;
+    final g0 = b0 & bitGroup0 != 0;
+    final g3 = b0 & bitGroup3 != 0;
+    // Both bits, or neither: not one of the observed shapes. Say so rather than
+    // pick one — every caller of this is about to put something in front of a
+    // user, and a guess here would be indistinguishable from a reading.
+    if (g0 == g3) return null;
+    return g0 ? CapacitorMosGroup.bit0 : CapacitorMosGroup.bit3;
+  }
+}
+
+/// The two mutually exclusive shapes observed in a capacitor's `0x3A` byte 0.
+///
+/// ⛔ **Deliberately named after the distinguishing bit and nothing else.** Our
+/// captures establish that the two groups exist, are exclusive, and that `0x23`
+/// cannot see the difference; they do NOT establish what either group means
+/// physically. A name like `outputLive` would be a claim we cannot back — see
+/// [CapacitorMos].
+enum CapacitorMosGroup {
+  /// `0x51` / `0x41` / `0x71` — byte 0 bit 0 set, bit 3 clear.
+  bit0,
+
+  /// `0x58` / `0x78` — byte 0 bit 3 set, bit 0 clear.
+  bit3,
 }

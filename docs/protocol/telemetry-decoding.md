@@ -5,13 +5,19 @@
 > original `§` numbering is preserved so every cross-reference in this document
 > set (and in the app source) still resolves. The index maps `§` to file.
 >
-> **Covers:** §8 · §8.1 Constants · §8.2 Field → selector → formula · §8.2.1 VADJ · §8.2.2 Warning thresholds · §8.3 Write-path inverse
+> **Covers:** §8 · §8.1 Constants · §8.2 Field → selector → formula · §8.2.1 VADJ · §8.2.2 Warning thresholds · §8.3 Write-path inverse · §8.4 `0x34` system counters · §8.5 `0x3A` function flags
 
 > Two sibling subsections of §8 live in their own files because they are
 > separate protocol topics: the identity / housekeeping registers and the
 > device clock are **§8.2.3** in [`identity-and-rtc.md`](identity-and-rtc.md),
 > and the TWF status register is **§8.4** in [`twf-status.md`](twf-status.md).
 > The `b[n]` notation used by all three is defined at the head of §8 below.
+>
+> ⚠️ **`§8.4` is used twice in this document set, and always was** — the TWF
+> register in [`twf-status.md`](twf-status.md) and the `0x34` system counters
+> below. Cite them by selector, not by number. The new `0x3A` section was
+> numbered **§8.5** rather than adding a third `§8.4`; `docs/PROTOCOL.md` (the
+> `§` → file index) does not yet carry a row for either `§8.4 0x34` or `§8.5`.
 
 ---
 
@@ -331,3 +337,216 @@ falsifiable rather than taken on trust:
   obvious guess and is untested.
 * 🚫 **Nothing here is decoded by this app.** These are system counters, not
   telemetry; they are documented so the field is not re-opened as "undecoded".
+
+---
+
+### 8.5 `0x3A` — function-flag register 🟡 **partially decoded, super-capacitors only**
+
+> 🔵 **Ruling, 2026-09-04 (owner).** Publishing the `0x3A` decoding in this
+> **public** repository was ruled in on that date. It was prompted by FB-111: the
+> capacitor self-check gate now requires **both** `0x23` and `0x3A` to read
+> normal, and `app_flutter` decodes `0x3A` accordingly — so leaving this document
+> saying *"no hypothesis"* would put the repository in the mirror image of the
+> failure it recorded on 2026-07-30, when the protocol document published a
+> meaning that the shipped `selectors.dart` did not carry. **Code decoding a
+> register that the document calls unknown is the same inconsistency, pointed the
+> other way.**
+>
+> ⚠️ **Relationship to the ruling of 2026-08-23** ("declassified, but this round
+> the public repo adds no words"): this is a **per-selector exception for `0x3A`
+> alone**. ⛔ It does **not** lift that ruling wholesale and is **not** a
+> precedent for any other selector — each still needs its own ruling.
+>
+> ⛔ **Scope of what is published here.** Only what this project's **own captures**
+> support: the wire shape, the per-class value sets counted from this project's
+> own corpus, and the one relation those values establish. **Every other bit of
+> this register is left unresolved**, and no bit labels from any other source
+> appear below or may be added to this section.
+
+**Wire shape** (✅ verified). LEN is **2 in 511,431 of 511,431 frames**, so the
+payload is a single **big-endian u16**, `b4..b5`. `b4` is called **byte 0** below.
+
+⚠️ **How often it answers differs by class**, which is why the frame counts below
+are so lopsided: on a super-capacitor `0x3A` answers **every `#`**, while the
+2026-07-30 battery measurement puts it in the **`!#`-only** set — see
+[`transport-and-gatt.md`](transport-and-gatt.md) §2. A small battery count here
+is a polling artefact, not a quiet register.
+
+**What each class sends** (✅ verified — whole-corpus count, run 2026-09-04;
+🔵 **the Machines column was recounted on 2026-09-05 — see the caliber note under
+the table**). Class is the `0x10` byte read **in the same device section**;
+~~"machines" is `fb.py machines` under the inline-verified gate, whose known
+over- and under-count risks the tool prints with every run~~ ⇒ 🔑 **"Machines"
+here is `COUNT(DISTINCT MAC)`, where the MAC is the one that device row decodes
+out of its own `0x38` frames.** It is **not** `wire_id`, and **not**
+`fb.py machines`:
+
+| `0x10` | Payloads observed (frames) | Frames | Machines | Log files |
+|---|---|---|---|---|
+| `0x02` battery | `0300` (2,186) · `0700` (884) · `0500` (136) · `4500` (2) · `4700` (1) · `0701` (1) | 3,210 | 6 · ~~30~~ **24** · 3 · 1 · 1 · 1 | 157 |
+| `0x17` capacitor, 2nd gen | `5100` (176,768) · `5800` (1,453) · `7801` (98) · `7101` (69) | 178,388 | ~~21~~ **19** · 5 · 1 · 1 | 56 |
+| `0x18` capacitor, 3rd gen | `4100` (217,817) | 217,817 | ~~7~~ **5** | 19 |
+| `0x22` power bank | `0000` (111,528) | 111,528 | 6 | 59 |
+
+⚠️ One device row merges a capacitor and a battery section (the header-less
+capture that §10.1 elsewhere marks as **not to be counted**); its 488 `5100`
+frames are excluded from every figure in this section.
+
+📏 **Caliber of the Machines column, and why the struck-through figures were too
+high** (2026-09-05). Every device row counted in this section decodes a MAC out
+of its **own** `0x38` frames — **0 rows without one** — so each row resolves to
+exactly one BLE address and the count is simply `COUNT(DISTINCT MAC)` over the
+rows that sent that payload. 🔴 **The struck-through figures came from
+`fb.py machines`, which answers a different question**: that command resolves a
+device row to a machine only when the MAC is already registered in the corpus
+index's `hardware` table, and **falls back to the raw `wire_id` when it is not**.
+That table currently holds **19** rows against **63** distinct self-reported MACs
+in the corpus ⇒ **44 unregistered**, and **179 device rows that do send `0x38`
+are counted by their `wire_id` anyway** — so one physical unit renamed between
+captures is counted twice. 🔑 **The worst case is `0x18` `4100`, and it carries
+both error directions at once**: a single unit (**213,191 of the
+217,817 frames**) is spread over **three** `wire_id`s, while a fourth `wire_id`
+is shared by **two** different MACs ⇒ 7 labels, ~~7~~ **5** units.
+
+⚠️ **No conclusion in this section moves.** The exclusivity, the state relation
+and the `0x23` pairing are frame counts, and the machine counts they do quote
+(**6** machines seen in both states; **5** / **1** / **1** in the `0x23` split)
+were re-checked under the MAC caliber and are **unchanged**. What was overstated
+is only **how many independent units** stand behind the numbers — by **40 %** on
+`0x18`, and by **6 units** on battery `0700`.
+
+📌 **General note, beyond this section: `fb.py machines` currently over-counts**
+for the reason above, and will do so for as long as `hardware` lags the corpus.
+⛔ **Do not quote its output without first establishing the caliber** — "machine"
+means a registered MAC there, and a `wire_id` everywhere it could not find one.
+
+🔑 **No payload is shared between two classes.** A decoder must therefore gate on
+`0x10` before reading any bit of this register, and **the capacitor reading below
+must not be carried to a battery or a power bank.**
+
+#### 8.5.1 What is established on super-capacitors
+
+Restricted to `0x10` = `0x17` or `0x18` — **396,205 frames · 90 device rows ·
+~~31~~ 30 wire ids · ~~29~~ 25 machines · 72 log files · 2026-07-28 → 2026-09-03**
+(🔵 both recounted 2026-09-05):
+
+> 📏 **Both corrected figures are measured under this section's own gate** — the
+> one stated just above, i.e. every capacitor `0x3A` frame in the corpus **except**
+> the 488 belonging to the merged header-less device row. Under that gate the
+> frames (396,205), device rows (90) and log files (72) reproduce exactly, and the
+> distinct `wire_id`s come to **30**, not 31. ⛔ **31 is only reachable by counting
+> the merged row's own label as a 31st**, which contradicts the sentence excluding
+> it. **29 machines** was `fb.py machines`; the MAC caliber defined above gives
+> **25**, and 25 is also what the stricter `fb.py` frame gate gives (which drops a
+> further 5 frames on 5 `unattributed` rows, all of them a MAC already counted)
+> ⇒ **the machine figure does not depend on which of the two gates is used.**
+
+* ✅ **Byte 0 bit 0 and byte 0 bit 3 are mutually exclusive, 396,205 / 396,205.**
+  Exactly one of the two is set in every capacitor frame — never both, never
+  neither. Byte 0 takes five values: `0x51`, `0x41`, `0x71` carry **bit 0**;
+  `0x58`, `0x78` carry **bit 3**. (In big-endian-u16 terms those are bits **8**
+  and **11** of `b4..b5`.) ⇒ the pair reads as **one two-valued state**, not as
+  two independent flags.
+* ⚠️ **The bit-3 state has only ever been seen on 2nd-generation (`0x17`) units.**
+  All **217,817** frames from the ~~seven~~ **five** `0x18` machines are `4100`,
+  i.e. the bit-0 state, and that register never moved. So the exclusivity above is
+  arithmetically true across both generations but **only carries information on
+  `0x17`** — on `0x18` it is satisfied vacuously. Do not quote it as a
+  cross-generation result.
+* ✅ **It is a state, not a per-unit constant.** Six machines have been observed
+  in both states, and in **10 (device row, log file) pairs** both states occur
+  **inside a single capture**.
+* ✅ **`0x3A` carries a state that `0x23` does not report.** Pairing every
+  capacitor `0x3A` frame with the nearest `0x23` within 1 s (**396,193 of
+  396,205** frames pair): the bit-0 state is accompanied by `0x23` = `05` in
+  **394,642 / 394,642** frames — and so is the bit-3 state, in **1,447 of 1,551**
+  frames on **5 machines**. The remaining 104 read `07` (98 frames, one machine)
+  and `06` (6 frames, one machine). 🔑 **`0x23` = `05` is the resting code
+  [`modes-and-auth.md`](modes-and-auth.md) §6.2 records for a super-capacitor**
+  (that section records `0x06` there only as a ~1 s pulse following a mode
+  write, and records no `0x07` at all),
+  so a client watching `0x23` alone cannot see this state change at all. **That
+  is the whole reason FB-111 needs both registers**, and it is measured here, not
+  assumed.
+* ✅ **Byte 1 is `0x00` on every machine but one.** One 2nd-gen unit sends `0x01`
+  there, in **both** states (`7101` / `7801`). One machine ⇒ nothing is inferred
+  from it.
+
+#### 8.5.2 What is NOT established — read this before using the register
+
+* 🔲 **Which state means what.** ⛔ **This corpus does not say what the two states
+  are.** ~~Three~~ **Four** quantities could have separated them; none does:
+  * **`0x2E` main current is `0` in every capacitor frame** the corpus holds
+    (4,275 nearest-in-time pairs on the machines that show both states, every one
+    of them `512 − 512 = 0 A`). It separates nothing.
+  * **`0x19` PVLT does not separate them on 5 of the 6 machines.** Per-machine
+    medians, bit-0 state → bit-3 state: 13.21 → 13.31 V, 12.37 → 12.30 V,
+    12.50 → 12.30 V, 13.61 → 13.48 V, 12.95 → 13.09 V — **two go up, three go
+    down, all by less than the within-state spread.** Only the sixth collapses
+    (13.25 → 5.84 V), and that is the same machine whose `0x23` reads `07`,
+    i.e. a condition `0x23` already reports on its own.
+  * **`0x23` reads the healthy `05` in 93 % of the bit-3 frames** (above).
+  * 🔵 **2026-09-05 — a fourth quantity was tried and is now RULED OUT: the
+    separation between the two voltage rails, `|0x37 SVLT − 0x19 PVLT|`.** The
+    idea was that a large separation could only occur while the two rails were
+    NOT tied together, so the state carrying it would be identifiable. **The
+    corpus disproves it: a separation ≥ 1.8 V occurs in BOTH states.** Pairing
+    every capacitor `0x3A` frame with the nearest `0x19` **and** the nearest
+    `0x37` within 1 s (the same pairing this section already uses for `0x23`),
+    over the §8.5.1 gate:
+
+    | state | frames paired | of those, separation ≥ 1.8 V | device rows | machines (MAC) |
+    |---|---|---|---|---|
+    | bit-0 | 394,631 | **666** | 2 | **1** |
+    | bit-3 | 1,551 | 1,486 | 9 | 5 |
+
+    The bit-0 counter-examples are not scattered noise. All **666** carry byte 0
+    = `0x51`, they belong to **one** physical machine (two device rows, one
+    self-reported MAC), their separation is **mean 5.87 V, min 5.73, max 5.98**,
+    and they run **2026-08-15T15:42:41 → 15:49:40** — i.e. the condition is held
+    for **seven minutes**, not a transient. Through that window `0x23` reads the
+    resting `05` in **407 / 407** frames and `0x2E` reads `0200` = **0 A** in
+    **407 / 407**, and the same unit's `0x3A` visits **both** groups (368 frames
+    `5100`, 39 frames `5800`) while the separation stays ~5.9 V. Median PVLT
+    12.50 V against median SVLT 6.61 V.
+
+    🔑 **Why this is recorded rather than dropped:** the inference is a natural
+    one and was reached independently once already. Without this note the next
+    reader spends the same effort to arrive at the same dead end.
+
+    <details><summary>How to reproduce</summary>
+
+    Over `tools/fb.db`: take the device rows that report `0x10` ∈ {`0x17`,
+    `0x18`} (super-capacitors), drop the merged header-less row §8.5.1 excludes,
+    and for every `0x3A` frame on them classify byte 0 into the bit-0 / bit-3
+    group and attach the nearest `0x19` and `0x37` frame on the same device row
+    within ±1 s; count the frames whose `|SVLT − PVLT|` is ≥ 1.8 V per group.
+    Frame counts reproduce §8.5.1's 396,205 exactly.
+
+    </details>
+* ✅ **2026-09-05 — this app no longer claims a polarity.** ~~`CapacitorMos` in
+  `app_flutter/lib/protocol/selectors.dart` treats the bit-0 state as *output
+  engaged* and the bit-3 state as *output cut*~~ — those labels were not
+  supported by our own captures and have been removed. `CapacitorMos.group()`
+  now answers `CapacitorMosGroup.bit0` / `.bit3` / `null`, named after the
+  distinguishing bit and nothing else, and the one feature that consumes it (the
+  capacitor self-check unlock, FB-111) compares against **the group the register
+  was in before the check started** — which needs no polarity at all. ⛔ A client
+  must not present either state to a user as a physical fact, and this document
+  does not corroborate any such label.
+* 🔲 **The other six bits of byte 0 are unresolved.** Across the five observed
+  values, bit 6 is set in all five, bit 4 in four (not in `0x41`, the 3rd-gen
+  value), bit 5 in two, bit 7 in none. Nothing in the corpus separates them, so
+  nothing is claimed about them. ⛔ Do not fill them in from any other source.
+* 🔲 **Battery and power-bank halves stay undecoded**, and stay in
+  [`undecoded-and-metadata.md`](undecoded-and-metadata.md) §10.1. The battery
+  value set moves per unit; the power bank has sent `0000` and nothing else in
+  111,528 frames, which is the "constant" warning at the foot of §10.1, not a
+  decoding.
+
+**The capture that would settle the polarity:** one super-capacitor on a bench
+with a **measurable load on its output**, driven through whatever action moves
+byte 0 from `0x51` to `0x58`, with the load current recorded on both sides of the
+transition. Everything above is passive-observation evidence — **nothing in this
+corpus was captured with the capacitor's output instrumented**, which is exactly
+why the polarity is still open.

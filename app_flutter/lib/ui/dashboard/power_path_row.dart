@@ -26,6 +26,16 @@
 ///     would be fabrication (§4.4). We show the measured voltage and let it
 ///     speak for itself.
 ///
+///     🔵 **The two halves of that badge no longer rest on the same evidence.**
+///     bit3 has ground truth (the owner said, of that capture, that it was a
+///     Type-C PD charge). bit5 does NOT: it was narrowed on 2026-09-04 to "the
+///     output contract is above 5 V", because no capture in the corpus records
+///     which protocol the far end negotiated (see [TelemetrySample.isPdOut]).
+///     🔲 So on the discharge side this badge currently prints a word the
+///     protocol docs no longer claim. Changing the LABEL is a product decision
+///     and is deliberately not made here — the wording sync stopped at the
+///     comments.
+///
 /// Standby is ONE shape: an in-band current reads "standby", whether the boost
 /// rail is up or down. Before the first `0x4B` arrives (up to ~10 s per connect)
 /// the row says "waiting · connected N s" rather than a decoded zero (§4.6). A
@@ -218,10 +228,12 @@ class _PowerPathRowState extends State<PowerPathRow> {
     final active = flow == PowerFlow.charging || flow == PowerFlow.discharging;
     final isTypeC = !flagsContradicted && tele.usbPort == UsbPort.typeC;
 
-    // PD badge: bit3 while charging (input), bit5 while discharging (output).
-    // NEVER crossed, and never shown for idle/unknown. A CLEAR bit is not a
-    // "non-PD" claim — 16 charging counter-examples read bit3 clear (§4.4), so
-    // there is no negative label here, ever. Do not "helpfully" add one.
+    // PD badge: bit3 while charging (input), bit5 while discharging (a non-5 V
+    // output contract). NEVER crossed, and never shown for idle/unknown. A
+    // CLEAR bit is not a "non-PD" claim — 16 charging counter-examples read
+    // bit3 clear (§4.4), so there is no negative label here, ever. Do not
+    // "helpfully" add one. See the header for why the discharge half of this
+    // badge is now labelled more confidently than its evidence allows.
     final showPd = !flagsContradicted &&
         ((flow == PowerFlow.charging && tele.isPdIn == true) ||
             (flow == PowerFlow.discharging && tele.isPdOut == true));

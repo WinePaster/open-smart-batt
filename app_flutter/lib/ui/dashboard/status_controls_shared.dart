@@ -218,6 +218,18 @@ enum CapacitorSelfCheckOutcome {
   ///
   /// 🔴 NOT a failure and NOT a cancellation — see [capacitorSelfCheck].
   stillRunning,
+
+  /// 🔵 FB-111. `0x23` came back to [CapacitorStatus.healthy], but `0x3A` was
+  /// still in a DIFFERENT group from the one it was in before the check
+  /// started, when the watch ran out.
+  ///
+  /// A distinct outcome rather than a flavour of [finished], because the two
+  /// differ in something the user is about to act on: whether every register we
+  /// can see has come back to where the check found it.
+  ///
+  /// ⛔ Deliberately says nothing about what that group means physically — see
+  /// [CapacitorMos], whose polarity is not established by our own captures.
+  flagNotBack,
 }
 
 /// 檢測電容 — start a real self-check on a super-capacitor (design 0082 Q1).
@@ -241,9 +253,27 @@ enum CapacitorSelfCheckOutcome {
 ///    An `AlertDialog`, the same shape as the cut-off confirmation: two writes
 ///    that both change how a device behaves must not be presented differently.
 /// 2. **Unlock on what the DEVICE says, never on a stopwatch.** We wait for
-///    `0x23` to come back to [CapacitorStatus.healthy]. [_selfCheckWatchLimit]
-///    exists so the button cannot be locked forever, and its expiry is a fact
-///    about this app, not about the device.
+///    `0x23` to come back to [CapacitorStatus.healthy] **and** for `0x3A` to
+///    come back to the group it was in before we sent anything
+///    ([CapacitorMos.group]). [_selfCheckWatchLimit] exists so the button
+///    cannot be locked forever, and its expiry is a fact about this app, not
+///    about the device.
+///
+///    🔵 **Both registers, since FB-111.** `0x23` alone was believed sufficient
+///    on a 166/166 pairing with no counter-example. Capture 2026.09.03/002 is
+///    the counter-example: `0x23` returned to `0x05` **5.61 seconds before**
+///    `0x3A` came back, and for those seconds this function said 「檢測結束」
+///    about a unit that was still reporting a state it had not been in when the
+///    check started. Two independent registers describing the same physical
+///    event will not move together.
+///
+///    🔑 **The gate is "back where it started", not "in the good group" —
+///    and that is deliberate.** ~~`0x3A` bit 0 means the output is live, bit 3
+///    means it is cut~~ was removed: the polarity was never supported by our
+///    own captures (see [CapacitorMos]). Comparing against the pre-check
+///    reading needs no polarity at all — whatever the two groups mean, a unit
+///    that left one and came back to it has finished doing whatever it did —
+///    and it is strictly more honest than naming a group "good".
 /// 3. 🔴 **We never write the unit back out of self-check. Not on give-up, not
 ///    on any path.** (Owner's ruling, 2026-08-28, over an explicitly considered
 ///    alternative.) The known cost is accepted and is stated to the user rather
@@ -259,6 +289,23 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
+  // 🔑 Read BEFORE the dialog, not after it. This is the reference the unlock
+  // compares against, so it has to be the register's resting value — and the
+  // confirmation dialog can sit open for as long as the owner takes to read it,
+  // by which time `0x3A` may already have moved for reasons of its own.
+  //
+  // `null` (never answered, or a byte outside the two observed groups) means
+  // there is nothing to compare against, and the unlock then does not gate on
+  // `0x3A` at all — a gate keyed on a register the device does not answer is a
+  // state with no exit (FB-50 / FB-52's shape).
+  final baseline = CapacitorMos.group(tele.funcFlagsRaw);
+  bool backToBaseline() {
+    if (baseline == null) return true;
+    final now = CapacitorMos.group(tele.funcFlagsRaw);
+    // Unknown now = do not hold the user: same reason as a null baseline.
+    return now == null || now == baseline;
+  }
+
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -323,18 +370,37 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     return CapacitorSelfCheckOutcome.noResponse;
   }
 
+  // 🔵 FB-111: BOTH registers, inside the one existing window. The measured
+  // lag between them is 5.61 s against a 30 s limit, so a unit behaving like
+  // the captured one clears this comfortably; the limit did not need changing
+  // and deliberately was not, because it is a statement about how long this app
+  // holds its own button and nothing about it changed.
   final returned = await _waitFor(
-      tele, (m) => m == CapacitorStatus.healthy, _selfCheckWatchLimit);
+      tele,
+      (m) => m == CapacitorStatus.healthy && backToBaseline(),
+      _selfCheckWatchLimit);
+  // Which of the two halves is still outstanding decides what we say. Read
+  // AFTER the wait, so it describes the state we actually gave up in.
+  final modeBack = tele.mode == CapacitorStatus.healthy;
+  final flagMoved = !backToBaseline();
+  final outcome = returned
+      ? CapacitorSelfCheckOutcome.finished
+      : modeBack && flagMoved
+          ? CapacitorSelfCheckOutcome.flagNotBack
+          : CapacitorSelfCheckOutcome.stillRunning;
   messenger.showSnackBar(SnackBar(
     duration: const Duration(milliseconds: 4200),
-    content: Text(returned
-        ? l10n.capacitorSelfCheckDoneSnack
-        : l10n.capacitorSelfCheckStillRunningSnack),
+    content: Text(switch (outcome) {
+      CapacitorSelfCheckOutcome.finished => l10n.capacitorSelfCheckDoneSnack,
+      // ⛔ Never silent, and never "finished": the timeout that matters most is
+      // the one where the app would otherwise have claimed success.
+      CapacitorSelfCheckOutcome.flagNotBack =>
+        l10n.capacitorSelfCheckFlagNotBackSnack,
+      _ => l10n.capacitorSelfCheckStillRunningSnack,
+    }),
   ));
-  // 🔴 Nothing is written here on either branch. See rule 3 above.
-  return returned
-      ? CapacitorSelfCheckOutcome.finished
-      : CapacitorSelfCheckOutcome.stillRunning;
+  // 🔴 Nothing is written here on any branch. See rule 3 above.
+  return outcome;
 }
 
 /// Poll `0x23` until [test] accepts it or [window] runs out.

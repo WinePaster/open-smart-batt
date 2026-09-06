@@ -11,6 +11,7 @@ library;
 import 'dart:async';
 
 import '../ble/ble.dart';
+import '../config/app_config.dart';
 import '../data/data.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -125,6 +126,10 @@ class AppServices {
   ///   the platform's implementation (Android foreground service, else no-op).
   /// - [alertNotifier]: inject a fake local-notification handle in tests;
   ///   defaults to the platform's ([NoopAlertNotifier] off Android/iOS).
+  /// - [config]: this edition's branding (design 0092). Only two controllers
+  ///   need it, and only for the PRE-l10n seeds they hold — the notification
+  ///   titles and the Android alert channel's name. Everything else reads it
+  ///   from [AppConfigScope], which does not exist yet at this point.
   static Future<AppServices> create({
     String? dbPath,
     AppDatabase? appDatabase,
@@ -132,6 +137,7 @@ class AppServices {
     MonitorService? monitor,
     AlertNotifier? alertNotifier,
     MetadataParser parser = const NoopMetadataParser(),
+    AppConfig config = AppConfig.open,
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
     final bleService = ble ?? BleService(parser: parser);
@@ -187,6 +193,7 @@ class AppServices {
       monitor: monitorService,
       pending: pending,
       autoConnectArm: autoConnectArmRepo,
+      config: config,
     );
     // design 0060 §3.3 — immediately after construction, so no link event can
     // reach the controller before it knows there is an episode to close. A null
@@ -215,6 +222,7 @@ class AppServices {
     final alerts = AlertController(
       devices: devices,
       settings: settings,
+      config: config,
       notifier: alertNotifier ?? AlertNotifier.forPlatform(),
       resolve: (deviceId, sample) => alertThresholdsFor(
         devices,

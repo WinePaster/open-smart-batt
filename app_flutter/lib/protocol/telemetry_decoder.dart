@@ -399,6 +399,14 @@ class TelemetryDecoder {
         return base.copyWith(timestamp: ts, mode: f.b(4));
       case Selectors.twf:
         return base.copyWith(timestamp: ts, twfRaw: f.b(4));
+      case Selectors.functionFlags:
+        // FB-111. Stored raw as the big-endian u16 of the two payload bytes;
+        // the ONE interpretation lives in [CapacitorMos] and is class-gated at
+        // the call site. A short frame is dropped rather than zero-padded — a
+        // fabricated `0x0000` carries neither of the two observed bits, which
+        // is a reading the app would then have to explain.
+        if (f.payload.length < 2) return base;
+        return base.copyWith(timestamp: ts, funcFlagsRaw: f.u16(4));
       default:
         // Unknown / not-stored selector (e.g. 0x2F secondary current): no-op.
         return base;
