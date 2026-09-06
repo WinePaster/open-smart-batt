@@ -438,6 +438,20 @@ class CapacitorStatus {
 /// the app's self-check unlock read only `0x23` — so for those seconds it told
 /// the owner the check had finished while the unit was still reporting a state
 /// it had not been in before the check.
+/// 🔴 **THE NAME IS BORROWED, AND OUR CAPTURES DO NOT SUPPORT IT.**
+///
+/// "MOS" comes from the vendor's engineering app, whose `[3A]` screen labels
+/// these bits as an output MOSFET. Everything WE can show is weaker: `0x3A`
+/// byte 0 carries two mutually exclusive bits, they partition the corpus
+/// cleanly, and `0x23` alone cannot see the transition between them. What the
+/// bits physically switch is **not established by anything we hold**.
+///
+/// The polarity claim was already removed for this reason (`bitAllOpen` /
+/// `bitAllClosed` ⇒ [bitGroup0] / [bitGroup3]; [group] returns which group, not
+/// which state). This note is the other half: the class name still asserts the
+/// hardware, so the assertion is labelled here rather than left to be read as
+/// ours. ⛔ Do not write "MOS is open/closed" in a document on the strength of
+/// this type — say which group `0x3A` is in.
 class CapacitorMos {
   CapacitorMos._();
 

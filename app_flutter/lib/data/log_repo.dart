@@ -243,7 +243,13 @@ class LogRepo {
       ...header.map((h) => '# $h'),
       if (header.isNotEmpty) '# rows: ${rows.length}',
       if (header.isNotEmpty)
-        '# rotated: ${dropped == 0 ? 'none' : 'dropped=$dropped oldest rows '
+        // ⚠️ WHOLE-LOG, even in a device-scoped export — `# rows:` above it is
+        // scoped and this is not, and a reader who took them as the same scope
+        // would conclude THIS unit's capture lost its front. Said in the line
+        // itself rather than left to the reader: one phone can rotate away half
+        // a million rows of unit A while unit B's few thousand are all intact.
+        '# rotated: ${dropped == 0 ? 'none (whole log)' : 'dropped=$dropped '
+            'oldest rows from the whole log, not just this scope '
             '(log size cap)'}',
       // Say up front whether this file carries user-declared ground truth (the
       // capture marks), and which states it covers. Whoever receives it should
@@ -359,16 +365,23 @@ class LogRepo {
 
   /// Delete every log row.
   ///
-  /// 🔵 FB-110: also resets the table's AUTOINCREMENT high-water mark, so the
-  /// next row is `id` 1 again and [droppedByRotation] reads 0. Without this a
-  /// user who cleared their own log would find every later export headed
-  /// `rotated: dropped=…` and blaming the app for rows they deleted on
-  /// purpose. Safe by construction — the table is empty at that point, so no id
-  /// can collide.
+  /// 🔵 FB-110: also resets the rotation tally, so a user who emptied their own
+  /// log does not find every later export headed `rotated: dropped=…` blaming
+  /// the app for rows they deleted on purpose.
+  ///
+  /// ⚠️ The `sqlite_sequence` delete is kept, but it no longer carries that
+  /// argument — nothing reads the sequence since v25. It stays because ids
+  /// restarting at 1 on a deliberately emptied log is the behaviour shipped in
+  /// v0.7.42, and changing it would move what an export's `id` column means for
+  /// no gain.
   Future<int> clearLog() async {
     final n = await _db.delete(Db.tableDiagLog);
     await _db.delete('sqlite_sequence',
         where: 'name = ?', whereArgs: [Db.tableDiagLog]);
+    await _db.rawUpdate(
+      'UPDATE ${Db.tableLogStats} SET rotated_count = 0 WHERE id = ?',
+      [Db.logStatsRowId],
+    );
     _estimatedBytes = 0;
     return n;
   }
@@ -441,13 +454,29 @@ class LogRepo {
     final keep = protectMarks
         ? 'WHERE note IS NULL OR substr(note, 1, ${markNotePrefix.length}) != ? '
         : '';
-    return _db.rawDelete(
+    final gone = await _db.rawDelete(
       'DELETE FROM ${Db.tableDiagLog} WHERE id IN '
       '(SELECT id FROM ${Db.tableDiagLog} $keep'
       'ORDER BY id ASC LIMIT ?)',
       [if (protectMarks) markNotePrefix, n],
     );
+    // FB-110 (v25). THE counting point, and the only one: every caller of this
+    // method is rotation. `clearLog` deletes by a different path precisely so
+    // that a deliberate emptying is not counted as loss.
+    if (gone > 0) await _bumpRotatedCount(gone);
+    return gone;
   }
+
+  /// Add [n] to the persisted rotation tally.
+  ///
+  /// A single `UPDATE … SET x = x + ?` rather than read-modify-write: the trim
+  /// loop calls [_deleteOldest] twice in a pass and [insertLog] can re-enter
+  /// it, and a Dart-side increment would lose one of two overlapping bumps.
+  Future<void> _bumpRotatedCount(int n) => _db.rawUpdate(
+        'UPDATE ${Db.tableLogStats} '
+        'SET rotated_count = rotated_count + ? WHERE id = ?',
+        [n, Db.logStatsRowId],
+      );
 
   /// How many rows were dropped off the FRONT of the log, or 0 for a log that
   /// has never rotated.
@@ -488,34 +517,31 @@ class LogRepo {
   /// [clearLog] moves it down. In that degenerate shape the sequence still
   /// reads 8 while 2 rows survive ⇒ **6, which is what actually went.**
   ///
-  /// The migration this needed already existed: `Db.schemaVersion` v24 aligns
-  /// the sequence on databases written before [clearLog] learned to reset it,
-  /// and it is the same statement either formula wants.
+  /// ~~The migration this needed already existed: `Db.schemaVersion` v24~~
+  /// 🔴 **v24 is vestigial since v25** — nothing reads `sqlite_sequence`.
   ///
   /// ⚠️ Deliberately WHOLE-TABLE, never scoped. A per-device export's oldest
   /// row has a high id simply because that unit connected late; reading that as
   /// truncation would put a false `rotated:` on most files.
   ///
-  /// [clearLog] resets the sequence, so a log the user cleared themselves reads
-  /// as "not rotated" rather than reporting the cleared rows as losses — and
-  /// `Db.schemaVersion` v24 aligns the sequence on databases written before
-  /// [clearLog] learned to do that.
+  /// [clearLog] resets the tally, so a log the user cleared themselves reads as
+  /// "not rotated" rather than reporting the cleared rows as losses.
   Future<int> droppedByRotation() async {
-    // ⚠️ `sqlite_sequence` has NO ROW for a table that has never taken an
-    // insert (SQLite creates it lazily), and [clearLog] deletes the row again —
-    // so the absent case is the common one, not an edge case, and it must read
-    // as 0 rather than as null.
+    // FB-110 (v25). A COUNTER, not arithmetic over ids.
+    //
+    // 🔴 The previous two shapes (`MAX(id) - COUNT(*)`, then
+    // `sqlite_sequence.seq - COUNT(*)`) both inferred loss from the id space,
+    // and neither could tell rotation from the user's own `clearLog`. The v24
+    // migration only reached databases whose log happened to be EMPTY at
+    // upgrade time — and it is not, because `bootstrap()` writes two rows on
+    // every launch regardless of `raw_packet_log`. So "cleared it, opened the
+    // app, upgraded" kept reading as loss. See [Db.schemaVersion] v25.
     final r = await _db.rawQuery(
-      'SELECT COALESCE('
-      '(SELECT seq FROM sqlite_sequence WHERE name = ?), 0) AS issued, '
-      '(SELECT COUNT(*) FROM ${Db.tableDiagLog}) AS n',
-      [Db.tableDiagLog],
+      'SELECT rotated_count AS n FROM ${Db.tableLogStats} WHERE id = ?',
+      [Db.logStatsRowId],
     );
-    final issued = (r.first['issued'] as num?)?.toInt() ?? 0;
-    final surviving = (r.first['n'] as num?)?.toInt() ?? 0;
-    final dropped = issued - surviving;
-    // Never negative: the clamp costs nothing and keeps a header line that is
-    // read by people from ever showing `dropped=-3`.
-    return dropped > 0 ? dropped : 0;
+    if (r.isEmpty) return 0;
+    return (r.first['n'] as num?)?.toInt() ?? 0;
   }
+
 }

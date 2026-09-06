@@ -450,10 +450,37 @@ class Db {
   /// database that has never inserted a `diag_log` row there is no
   /// `sqlite_sequence` row to update.
   ///
+  /// v25 — FB-110, second attempt. `log_stats.rotated_count`: the number of
+  /// rows rotation has actually deleted, **counted at the delete** instead of
+  /// inferred from id arithmetic.
+  ///
+  /// 🔴 **Why the arithmetic had to go rather than be patched again.**
+  /// `seq - COUNT(*)` cannot tell rotation from a user's own `clearLog`, and
+  /// v24 only papered over the case where the log happened to be EMPTY at
+  /// upgrade time. It is not: `bootstrap()` writes the cold-start and restore
+  /// lines on every launch (`lib/main.dart`), and `ConnectionController._event`
+  /// writes on every link transition — none of them gated by `raw_packet_log`.
+  /// So "cleared, then opened the app once, then upgraded" leaves a non-empty
+  /// table, v24 changes nothing, and every export is headed `rotated: dropped=N`
+  /// naming rows the owner deleted themselves. That is the common path, and it
+  /// is the exact lie FB-110 exists to remove.
+  /// ⇒ v24's statement is now **vestigial**: nothing reads `sqlite_sequence`
+  /// any more. It is left in the chain because removing a shipped migration
+  /// changes what an install that already ran it would do on a re-run.
+  ///
+  /// 🔵 **Seeded to 0 (owner's ruling 2026-09-06, overriding an earlier one).**
+  /// ~~`schema_v24_test`'s 「a log that REALLY rotated keeps its count」~~ —
+  /// that pin said zeroing was the error nobody notices. The adversarial review
+  /// changed the weighing: the false POSITIVE is the common path (any legacy
+  /// database cleared and then merely opened carries a high `seq`), while the
+  /// false negative costs at most one under-reported export and self-heals on
+  /// the first rotation after the upgrade.
+  ///
   /// CLAIMING A NUMBER: 24 was taken after reading
   /// `static const int schemaVersion` out of every local and remote ref on
   /// 2026-09-05 — the highest anywhere was 23 (28 refs at 23, 32 at 22).
-  static const int schemaVersion = 24;
+  /// 25 follows it in the same branch.
+  static const int schemaVersion = 25;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -463,6 +490,19 @@ class Db {
   static const String tableSavedDevices = 'saved_devices';
   static const String tableSettings = 'settings';
   static const String tableDiagLog = 'diag_log';
+
+  /// FB-110 (v25). One row, one counter: how many `diag_log` rows rotation
+  /// has deleted.
+  ///
+  /// 🔴 **Its own table and NOT a `settings` column, and that is not taste.**
+  /// `SettingsRepo.saveSettings` writes the single settings row with
+  /// `ConflictAlgorithm.replace` and a map built from `AppSettings.toMap()`
+  /// — so a column that is not a setting is reset to its DEFAULT by the next
+  /// save of any unrelated preference. The first draft of v25 put it there
+  /// and `g_force_settings_test`'s 「EVERY settings column appears in
+  /// toMap()」 guard caught it. A counter is not a preference.
+  static const String tableLogStats = 'log_stats';
+  static const int logStatsRowId = 1;
 
   /// design 0057. Read the warning on [DeviceFacts] before wiring anything new
   /// to it: this table serves the READ-BACK of past records only.
@@ -1011,6 +1051,36 @@ class AppDatabase {
         [Db.tableDiagLog],
       );
     }
+    if (from < 25) {
+      // FB-110, second attempt — see [Db.schemaVersion] v25. Seeded to 0 on
+      // purpose: the pre-v25 figure is exactly the inference being retired.
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS ${Db.tableLogStats} ('
+        'id INTEGER PRIMARY KEY CHECK (id = ${Db.logStatsRowId}), '
+        'rotated_count INTEGER NOT NULL DEFAULT 0)',
+      );
+      // 🔵 **Seeded to 0 — owner's ruling, 2026-09-06, and it overrides an
+      // earlier one.** `schema_v24_test` used to pin the opposite
+      // (「a log that REALLY rotated keeps its count — the opposite error」),
+      // on the reasoning that reporting `none` on a truncated log puts the
+      // reader back in the arithmetic trap FB-110 started from.
+      //
+      // What changed is the measured weight of the two errors. The adversarial
+      // review established that the FALSE POSITIVE is the common path: every
+      // legacy database whose owner cleared the log and then merely opened the
+      // app carries a `seq` above its row count, and seeding from that
+      // arithmetic would have every one of those exports blaming the app for
+      // rows the owner deleted. Seeding 0 costs at most ONE under-reported
+      // export on a database that genuinely rotated, and it self-heals: the
+      // first rotation after the upgrade is counted at the delete.
+      //
+      // ⛔ Do not "restore" the arithmetic seed without a ruling — this line is
+      // the second decision on the same question, not an oversight of the first.
+      await db.execute(
+        'INSERT OR IGNORE INTO ${Db.tableLogStats} (id, rotated_count) '
+        'VALUES (${Db.logStatsRowId}, 0)',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -1158,6 +1228,15 @@ class AppDatabase {
       alert_repeat_min INTEGER NOT NULL DEFAULT 15,
       alert_max_per_event INTEGER NOT NULL DEFAULT 3
     )
+    ''',
+    '''
+    CREATE TABLE ${Db.tableLogStats} (
+      id INTEGER PRIMARY KEY CHECK (id = ${Db.logStatsRowId}),
+      rotated_count INTEGER NOT NULL DEFAULT 0
+    )
+    ''',
+    '''
+    INSERT OR IGNORE INTO ${Db.tableLogStats} (id, rotated_count) VALUES (${Db.logStatsRowId}, 0)
     ''',
     '''
     CREATE TABLE ${Db.tableDiagLog} (

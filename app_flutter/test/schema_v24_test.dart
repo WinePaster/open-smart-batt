@@ -16,7 +16,7 @@
 // cleared under v0.7.42 or earlier still carries the old mark, so the first
 // export after upgrading would be headed
 //
-//     # rotated: dropped=N oldest rows (log size cap)
+//     # rotated: dropped=N oldest rows from the whole log, not just this scope (log size cap)
 //
 // where N is exactly the number of rows the owner deleted themselves — a lie
 // about the app's own behaviour, addressed to whoever receives the file, and it
@@ -267,15 +267,32 @@ void main() {
       }
       expect((await logs.queryLog()).last.id, 1,
           reason: 'ids restart at 1, so MAX(id) counts rows that really existed');
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
     });
 
-    test('🔴 a log that REALLY rotated keeps its count — the opposite error',
+    test(
+        '🔵 a legacy log that REALLY rotated under-reports ONCE, then is exact',
         () async {
-      // A migration that simply zeroed the mark would be just as wrong, in the
-      // direction nobody notices: every honestly truncated log would start
+      // ~~A migration that simply zeroed the mark would be just as wrong, in
+      // the direction nobody notices: every honestly truncated log would start
       // saying `none`, and the reader who subtracted two frame counters across
-      // the gap would be back where FB-110 found them.
+      // the gap would be back where FB-110 found them.~~
+      //
+      // 🔵 **2026-09-06 owner's ruling reverses this test, and the reversal is
+      // the point of the case rather than a relaxation of it.**
+      //
+      // The v25 counter is seeded to 0. What changed the weighing is that the
+      // adversarial review measured the other error and found it is the COMMON
+      // path: `seq - COUNT(*)` reads a `clearLog` followed by merely opening
+      // the app as loss, and `bootstrap()` writes two rows on every launch, so
+      // "cleared it, opened it, upgraded" describes most legacy databases. That
+      // error blames the app for the owner's own deletion, on every export,
+      // until they clear the log again.
+      //
+      // The error this case now pins is bounded instead: ONE under-reported
+      // export on a database that genuinely rotated, and it self-heals — the
+      // assertion below the migration is what makes "self-heals" a fact rather
+      // than a promise.
       final db = await upgradeFromV23('v24_rotated', (legacy) async {
         for (var i = 0; i < 600; i++) {
           await legacy.insert('diag_log', {
@@ -295,9 +312,21 @@ void main() {
       expect(await sequenceOf(db.db), 600,
           reason: 'MAX(id) is 600, so there is nothing stale to take down');
       final logs = LogRepo(db.db);
-      expect(await logs.droppedByRotation(), 500);
-      expect(await rotatedLine(logs),
-          'rotated: dropped=500 oldest rows (log size cap)');
+      expect(await logs.droppedByRotation(), 0,
+          reason: 'the accepted cost: pre-v25 rotation is not recoverable, '
+              'because the only estimate of it is the arithmetic being retired');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
+
+      // …and the half that makes the cost bounded. One real rotation after the
+      // upgrade, and the number is exact — counted at the delete, not inferred.
+      await logs.trimToBytes((await logs.approxBytes()) ~/ 2);
+      final after = await logs.droppedByRotation();
+      expect(after, greaterThan(0),
+          reason: 'the first rotation on v25 is counted, so the under-report '
+              'does not persist');
+      expect(after, lessThan(500),
+          reason: 'and it counts only what THIS rotation took — it does not '
+              'silently absorb the legacy gap it just declined to guess at');
     });
 
     test('a database that has never written a diag_log row survives it',
@@ -311,10 +340,10 @@ void main() {
       expect(await sequenceOf(db.db), isNull);
       final logs = LogRepo(db.db);
       expect(await logs.droppedByRotation(), 0);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
       await packet(logs, 0);
       expect((await logs.queryLog()).single.id, 1);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
     });
 
     test('an upgraded log that was never cleared is left exactly as it was',
@@ -332,7 +361,7 @@ void main() {
       expect(await sequenceOf(db.db), 7);
       final logs = LogRepo(db.db);
       expect(await logs.count(), 7);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
     });
   });
 
@@ -347,10 +376,10 @@ void main() {
       );
       addTearDown(db.close);
       final logs = LogRepo(db.db);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
       await packet(logs, 0);
       expect((await logs.queryLog()).single.id, 1);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
     });
 
     test('🔵 clearLog on the new build reaches the same state the migration '
@@ -377,7 +406,7 @@ void main() {
       expect(afterClear, anyOf(0, isNull));
       await packet(logs, 0);
       expect((await logs.queryLog()).single.id, 1);
-      expect(await rotatedLine(logs), 'rotated: none');
+      expect(await rotatedLine(logs), 'rotated: none (whole log)');
     });
   });
 }

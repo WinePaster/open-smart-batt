@@ -201,7 +201,7 @@ void main() {
   group('🔴 the export says whether it was truncated', () {
     test('an untouched log says none — the line is never omitted', () async {
       await packet(0);
-      expect(await rotatedLine(), 'rotated: none');
+      expect(await rotatedLine(), 'rotated: none (whole log)');
     });
 
     test('after rotation it says how many rows went', () async {
@@ -214,7 +214,7 @@ void main() {
       final dropped = before - after;
       expect(dropped, greaterThan(0), reason: 'the premise');
       expect(await rotatedLine(),
-          'rotated: dropped=$dropped oldest rows (log size cap)');
+          'rotated: dropped=$dropped oldest rows from the whole log, not just this scope (log size cap)');
     });
 
     test('🔴 …and it still says so when the log HAS marks in it', () async {
@@ -252,7 +252,7 @@ void main() {
               'protected mark, so a MIN(id)-derived count cannot see the loss');
       // Half two, now measured against the same rows the first half counted.
       expect(await rotatedLine(),
-          'rotated: dropped=$dropped oldest rows (log size cap)');
+          'rotated: dropped=$dropped oldest rows from the whole log, not just this scope (log size cap)');
     });
 
     test('🔴 a mark in the MIDDLE does not truncate the count either',
@@ -279,7 +279,7 @@ void main() {
           reason: 'the protected mark is the oldest survivor, so MIN(id)-1 '
               'would report exactly 100 whatever the real figure is');
       expect(await rotatedLine(),
-          'rotated: dropped=$dropped oldest rows (log size cap)');
+          'rotated: dropped=$dropped oldest rows from the whole log, not just this scope (log size cap)');
     });
 
     test(
@@ -322,7 +322,7 @@ void main() {
           reason: 'the newest surviving row is a mark, so MAX(id) has fallen '
               'from 8 to 5 — that fall is the whole defect');
       expect(await rotatedLine(),
-          'rotated: dropped=6 oldest rows (log size cap)',
+          'rotated: dropped=6 oldest rows from the whole log, not just this scope (log size cap)',
           reason: 'six rows went; MAX(id) - COUNT(*) would say three');
     });
 
@@ -334,7 +334,7 @@ void main() {
       }
       await logs.clearLog();
       await packet(999);
-      expect(await rotatedLine(), 'rotated: none');
+      expect(await rotatedLine(), 'rotated: none (whole log)');
       expect((await logs.queryLog()).single.id, 1,
           reason: 'the AUTOINCREMENT high-water mark is reset with the rows');
     });
