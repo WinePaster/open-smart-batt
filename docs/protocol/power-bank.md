@@ -600,6 +600,22 @@ did. The threshold is somewhere between.
 (15:49:34 → 15:50:33). The two values differ only in bit 0. A 5 V rail cannot
 both set and clear the same bit.
 
+*Second instance, on a different unit — added 2026-09-07.* A controlled
+2026-08-04 capture on this corpus's long-serving power bank holds `0x06` at
+21:21:58.788 and `0x07` at 21:22:53.241 — **one connection, 54 s apart, port
+voltage 5.13 V both times**, discharge 22 mA vs 25 mA, **and the same capture
+mark on both**. The instance above is a different unit, so the same-session flip
+is now recorded on **two units**. ⛔ Nothing else moves: it is one more instance
+of an already-refuted reading, and every entry in the bit table stays as it is.
+
+> ⚠️ **That capture mark does not mean "both ports are empty".** Its label reads
+> *"everything unplugged"*, but the operator — who was also the reporter —
+> stated afterwards that **only the loads were pulled; the cables stayed in
+> both ports** for the whole session. A bit reading inferred from the *wording*
+> of such a mark therefore rests on something that was never observed. The
+> refutation table below does not depend on this: its "empty" rows come from
+> the operator's own account of the actions performed, not from a mark label.
+
 *Refuted — "bit 0 = load below some threshold":* the current ranges overlap.
 `0x07` bursts reach 268 mA while `0x06` bursts go down to 129 mA.
 
