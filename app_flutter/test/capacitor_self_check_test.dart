@@ -79,7 +79,7 @@ class _FakeBleService extends BleService {
   ///
   /// 🔑 Defaults to NULL — "this unit has never answered that register" — so
   /// every test written before FB-111 keeps describing exactly the device it
-  /// described then. The MOS-aware paths set it explicitly.
+  /// described then. The `0x3A`-aware paths set it explicitly.
   int? funcFlags;
 
   /// Extra fields every emitted sample carries, so the body under test sees a
@@ -582,7 +582,8 @@ void main() {
   // equivalence with no counter-example is not an equivalence — it is a
   // sample. The one the user acts on is the one carrying the load.
 
-  group('FB-111 — CapacitorMos reads only the shapes we have observed', () {
+  group('FB-111 — CapacitorFunctionFlags reads only the shapes we observed',
+      () {
     // 🔑 These pin VALUE → GROUP, which is a fact our own captures establish,
     // and deliberately nothing beyond it. ~~value → output live / output cut~~
     // was what this group used to assert; the polarity behind those labels came
@@ -592,41 +593,48 @@ void main() {
     test('every capacitor 0x3A value in the corpus decodes to its group', () {
       // Left column is the wire value as stored (big-endian u16 of the two
       // payload bytes). These five are the complete observed set.
-      expect(CapacitorMos.group(0x5100), CapacitorMosGroup.bit0,
+      expect(CapacitorFunctionFlags.group(0x5100), CapacitorFlagGroup.bit0,
           reason: '0x5100 — device type 0x17');
-      expect(CapacitorMos.group(0x4100), CapacitorMosGroup.bit0,
+      expect(CapacitorFunctionFlags.group(0x4100), CapacitorFlagGroup.bit0,
           reason: '0x4100 — device type 0x18');
-      expect(CapacitorMos.group(0x7101), CapacitorMosGroup.bit0,
+      expect(CapacitorFunctionFlags.group(0x7101), CapacitorFlagGroup.bit0,
           reason: '0x7101 — byte 0 = 0x71, byte 1 = 0x01');
-      expect(CapacitorMos.group(0x5800), CapacitorMosGroup.bit3,
+      expect(CapacitorFunctionFlags.group(0x5800), CapacitorFlagGroup.bit3,
           reason: '0x5800 — device type 0x17');
-      expect(CapacitorMos.group(0x7801), CapacitorMosGroup.bit3,
+      expect(CapacitorFunctionFlags.group(0x7801), CapacitorFlagGroup.bit3,
           reason: '0x7801 — byte 0 = 0x78, byte 1 = 0x01');
     });
 
     test('the two groups are exclusive, and named after their own bit', () {
       // The one structural claim the corpus supports: bit 0 and bit 3 partition
       // the observed set. Nothing here says which group is which physically.
-      expect(CapacitorMos.bitGroup0, 0x01);
-      expect(CapacitorMos.bitGroup3, 0x08);
-      expect(CapacitorMos.bitGroup0 & CapacitorMos.bitGroup3, 0,
+      expect(CapacitorFunctionFlags.bitGroup0, 0x01);
+      expect(CapacitorFunctionFlags.bitGroup3, 0x08);
+      expect(
+          CapacitorFunctionFlags.bitGroup0 &
+              CapacitorFunctionFlags.bitGroup3,
+          0,
           reason: 'the two bits must be distinct, or the partition is not one');
-      expect(CapacitorMosGroup.values, hasLength(2));
+      expect(CapacitorFlagGroup.values, hasLength(2));
     });
 
     test('anything outside those shapes is UNKNOWN, never guessed', () {
       // 🔑 Null is a third answer, not a failure. "We have no reading" and "it
       // is in the other group" lead to opposite copy on screen.
-      expect(CapacitorMos.group(null), isNull, reason: 'never reported');
-      expect(CapacitorMos.group(0x0000), isNull, reason: 'neither bit');
-      expect(CapacitorMos.group(0x0900), isNull, reason: 'both bits');
+      expect(CapacitorFunctionFlags.group(null), isNull,
+          reason: 'never reported');
+      expect(CapacitorFunctionFlags.group(0x0000), isNull,
+          reason: 'neither bit');
+      expect(CapacitorFunctionFlags.group(0x0900), isNull, reason: 'both bits');
     });
 
     test('it reads byte 0, not the whole word', () {
       // Byte 1 varies independently (`7101` vs `7100`) and carries nothing we
       // have decoded, so it must not reach the answer.
-      expect(CapacitorMos.group(0x5100), CapacitorMos.group(0x51FF));
-      expect(CapacitorMos.group(0x5800), CapacitorMos.group(0x58FF));
+      expect(CapacitorFunctionFlags.group(0x5100),
+          CapacitorFunctionFlags.group(0x51FF));
+      expect(CapacitorFunctionFlags.group(0x5800),
+          CapacitorFunctionFlags.group(0x58FF));
     });
   });
 
@@ -650,7 +658,7 @@ void main() {
     });
 
     test('a short frame is dropped rather than zero-padded', () {
-      // A fabricated `0x0000` would decode to "neither MOS bit", i.e. a state
+      // A fabricated `0x0000` would decode to "neither group bit", i.e. a state
       // the app would then have to explain. Better to have no reading.
       expect(decode([0x51]).funcFlagsRaw, isNull);
       expect(decode(const []).funcFlagsRaw, isNull);
@@ -668,7 +676,8 @@ void main() {
 
   group('FB-111 — the unlock waits for BOTH registers', () {
     testWidgets(
-        '🔴 0x23 says normal while the MOS is still cut ⇒ NOT "finished"',
+        '🔴 0x23 says normal while 0x3A is still in the other group ⇒ '
+        'NOT "finished"',
         (tester) async {
       final s = await makeServices(tester);
       addTearDown(() async {
@@ -700,7 +709,7 @@ void main() {
           reason: '0x3A is still in the other group; "finished" would claim '
               'every register we can see is back where the check found it');
 
-      // Let the watch run out with the MOS never reopening.
+      // Let the watch run out with `0x3A` never returning to its earlier group.
       final notBack =
           find.textContaining('has not gone back to the value it had');
       for (var i = 0; i < 200 && notBack.evaluate().isEmpty; i++) {

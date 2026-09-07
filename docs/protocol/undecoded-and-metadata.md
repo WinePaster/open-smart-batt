@@ -50,8 +50,11 @@
 * ~~**Exact total on-wire length of `switchMode`.**~~ **RESOLVED** — 15 bytes,
   no trailing payload. See §6.2.
 * **`0x96` capacity/SOH.** Not merely un-decoded — **never seen**. See §9.
-* **`0x4B` `b7` bit 0 and bit 4, and `b8`.** See §9.1; each needs a specific
-  capture, named there.
+* **`0x4B` `b7` bit 0 and bit 4, and `b8`.** ~~See §9.1~~ 🔵 **2026-09-07: the
+  two `b7` bits are now §9.2**, in
+  [`power-bank-port-flags.md`](power-bank-port-flags.md); `b8` stays in §9.1. The
+  pending-items table that names the specific capture each one needs stayed in
+  §9.1, [`power-bank.md`](power-bank.md), and covers both.
 * **Whether the power-bank current is measured cell-side or port-side.** Until
   this is settled, do not multiply it by the port voltage and call the result
   power (§9.1).

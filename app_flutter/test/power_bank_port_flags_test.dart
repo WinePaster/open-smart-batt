@@ -19,7 +19,8 @@
 //   * b7 = 0x00            : boost rail off
 //
 // CLEAN-ROOM: bit positions and their meanings come from docs/protocol
-// power-bank.md plus our own captures; no raw byte is ever shown to a user.
+// power-bank-port-flags.md (§9.2) plus our own captures; no raw byte is ever
+// shown to a user.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -148,9 +149,10 @@ void main() {
   // -------------------------------------------------------------------------
   // 🔵 The wording narrowing of 2026-09-04, made mechanical.
   //
-  // `docs/protocol/power-bank.md` withdrew "PD output" for bit 5: the bit is
-  // 2,872/2,872 solid as "the output contract is above 5 V", but NO capture in
-  // the corpus records which protocol the far end negotiated — "PD" was
+  // `docs/protocol/power-bank-port-flags.md` withdrew "PD output" for bit 5:
+  // the bit is 2,872/2,872 solid as "the output contract is above 5 V", but NO
+  // capture in the corpus records which protocol the far end negotiated — "PD"
+  // was
   // inferred from a voltage and then written down as though it had been seen.
   //
   // 🔑 Why a test and not just an edit: the previous wording reached SEVEN
@@ -203,7 +205,8 @@ void main() {
       expect(offenders, isEmpty,
           reason: 'bit5 is evidenced as "a non-5 V output contract", never as '
               'PD — no capture records the negotiated protocol '
-              '(docs/protocol/power-bank.md, narrowed 2026-09-04)');
+              '(docs/protocol/power-bank-port-flags.md, narrowed '
+              '2026-09-04)');
     });
 
     test('the getter that decodes bit5 says what it is now evidenced as', () {

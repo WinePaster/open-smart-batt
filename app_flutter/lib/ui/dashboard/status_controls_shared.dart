@@ -228,7 +228,8 @@ enum CapacitorSelfCheckOutcome {
   /// can see has come back to where the check found it.
   ///
   /// ⛔ Deliberately says nothing about what that group means physically — see
-  /// [CapacitorMos], whose polarity is not established by our own captures.
+  /// [CapacitorFunctionFlags], whose polarity is not established by our own
+  /// captures.
   flagNotBack,
 }
 
@@ -255,9 +256,9 @@ enum CapacitorSelfCheckOutcome {
 /// 2. **Unlock on what the DEVICE says, never on a stopwatch.** We wait for
 ///    `0x23` to come back to [CapacitorStatus.healthy] **and** for `0x3A` to
 ///    come back to the group it was in before we sent anything
-///    ([CapacitorMos.group]). [_selfCheckWatchLimit] exists so the button
-///    cannot be locked forever, and its expiry is a fact about this app, not
-///    about the device.
+///    ([CapacitorFunctionFlags.group]). [_selfCheckWatchLimit] exists so the
+///    button cannot be locked forever, and its expiry is a fact about this
+///    app, not about the device.
 ///
 ///    🔵 **Both registers, since FB-111.** `0x23` alone was believed sufficient
 ///    on a 166/166 pairing with no counter-example. Capture 2026.09.03/002 is
@@ -270,8 +271,9 @@ enum CapacitorSelfCheckOutcome {
 ///    🔑 **The gate is "back where it started", not "in the good group" —
 ///    and that is deliberate.** ~~`0x3A` bit 0 means the output is live, bit 3
 ///    means it is cut~~ was removed: the polarity was never supported by our
-///    own captures (see [CapacitorMos]). Comparing against the pre-check
-///    reading needs no polarity at all — whatever the two groups mean, a unit
+///    own captures (see [CapacitorFunctionFlags]). Comparing against the
+///    pre-check reading needs no polarity at all — whatever the two groups
+///    mean, a unit
 ///    that left one and came back to it has finished doing whatever it did —
 ///    and it is strictly more honest than naming a group "good".
 /// 3. 🔴 **We never write the unit back out of self-check. Not on give-up, not
@@ -298,10 +300,10 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   // there is nothing to compare against, and the unlock then does not gate on
   // `0x3A` at all — a gate keyed on a register the device does not answer is a
   // state with no exit (FB-50 / FB-52's shape).
-  final baseline = CapacitorMos.group(tele.funcFlagsRaw);
+  final baseline = CapacitorFunctionFlags.group(tele.funcFlagsRaw);
   bool backToBaseline() {
     if (baseline == null) return true;
-    final now = CapacitorMos.group(tele.funcFlagsRaw);
+    final now = CapacitorFunctionFlags.group(tele.funcFlagsRaw);
     // Unknown now = do not hold the user: same reason as a null baseline.
     return now == null || now == baseline;
   }

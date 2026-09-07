@@ -323,8 +323,9 @@ class TelemetryController extends ChangeNotifier
 
   /// Raw function-flag register (selector 0x3A), or null until one arrives.
   ///
-  /// 🔴 Class-specific. Read it only through [CapacitorMos] and only for a unit
-  /// positively read as a super-capacitor — see [TelemetrySample.funcFlagsRaw].
+  /// 🔴 Class-specific. Read it only through [CapacitorFunctionFlags] and only
+  /// for a unit positively read as a super-capacitor — see
+  /// [TelemetrySample.funcFlagsRaw].
   int? get funcFlagsRaw => _sample.funcFlagsRaw;
 
 

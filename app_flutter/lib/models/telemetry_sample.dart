@@ -230,8 +230,9 @@ class TelemetrySample {
   ///
   /// 🔴 **Recorded raw, interpreted only per product class.** Every class emits
   /// it and the bits mean different things in each; the ONE reading this app
-  /// makes is [CapacitorMos.group], and only for a unit positively read as a
-  /// super-capacitor. Do not add a second interpretation without a class gate —
+  /// makes is [CapacitorFunctionFlags.group], and only for a unit positively
+  /// read as a super-capacitor. Do not add a second interpretation without a
+  /// class gate —
   /// that is FB-22's shape.
   ///
   /// NOT persisted: [toMap] has no column for it, so no schema change. It is a
@@ -325,8 +326,9 @@ class TelemetrySample {
   /// under is above the USB-default 5 V.
   ///
   /// 🔵 **Narrowed 2026-09-04 from "PD output"**, in step with
-  /// `docs/protocol/power-bank.md`. The bit itself is as solid as anything in
-  /// this file — 2,872/2,872 bursts with no counter-example, the set and clear
+  /// `docs/protocol/power-bank-port-flags.md`. The bit itself is as solid as
+  /// anything in this file — 2,872/2,872 bursts with no counter-example, the
+  /// set and clear
   /// populations do not overlap by a single sample (8,192–10,232 mV vs
   /// 3,144–5,348 mV), it flips inside an unbroken connection when the port
   /// voltage moves between the 9 V and 5 V families, and it is set at two

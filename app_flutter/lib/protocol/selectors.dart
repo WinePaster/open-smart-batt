@@ -103,10 +103,10 @@ class Selectors {
   /// Function flags, 2 bytes. Byte 0 is a bit field; byte 1 is not decoded.
   ///
   /// 🔴 **Byte 0's meaning is PER PRODUCT CLASS and this app reads it for
-  /// SUPER-CAPACITORS ONLY** — see [CapacitorMos]. A battery and a power bank
-  /// both emit `0x3A` with entirely different bits, and applying the capacitor
-  /// reading to them would be FB-22's failure exactly: a class-agnostic formula
-  /// on a class-specific byte.
+  /// SUPER-CAPACITORS ONLY** — see [CapacitorFunctionFlags]. A battery and a
+  /// power bank both emit `0x3A` with entirely different bits, and applying the
+  /// capacitor reading to them would be FB-22's failure exactly: a
+  /// class-agnostic formula on a class-specific byte.
   ///
   /// Streamed by every unit of all three classes on every `#` poll, so this is
   /// a read of something already arriving — nothing new is asked for.
@@ -407,8 +407,8 @@ class CapacitorStatus {
 /// disjoint groups:
 ///
 /// ```
-///   0x51 / 0x41 / 0x71   bit 0 set, bit 3 clear   ⇒ CapacitorMosGroup.bit0
-///   0x58 / 0x78          bit 3 set, bit 0 clear   ⇒ CapacitorMosGroup.bit3
+///   0x51 / 0x41 / 0x71   bit 0 set, bit 3 clear   ⇒ CapacitorFlagGroup.bit0
+///   0x58 / 0x78          bit 3 set, bit 0 clear   ⇒ CapacitorFlagGroup.bit3
 /// ```
 ///
 /// Those five values are the complete observed set and the partition is exact:
@@ -427,7 +427,7 @@ class CapacitorStatus {
 /// ⛔ Do not present either group to a user as a physical state.
 ///
 /// ⛔ **The split is NOT a restatement of `0x23`.** In 1,447 of 1,551 frames
-/// across five units `0x3A` sits in the [CapacitorMosGroup.bit3] group while
+/// across five units `0x3A` sits in the [CapacitorFlagGroup.bit3] group while
 /// `0x23` still reads the resting `05` — so `0x23` on its own cannot see this
 /// change of state at all, which is the whole reason FB-111 exists.
 ///
@@ -438,22 +438,23 @@ class CapacitorStatus {
 /// the app's self-check unlock read only `0x23` — so for those seconds it told
 /// the owner the check had finished while the unit was still reporting a state
 /// it had not been in before the check.
-/// 🔴 **THE NAME IS BORROWED, AND OUR CAPTURES DO NOT SUPPORT IT.**
+/// 🔑 **Every name here is descriptive of the wire, and that is deliberate.**
 ///
-/// "MOS" comes from the vendor's engineering app, whose `[3A]` screen labels
-/// these bits as an output MOSFET. Everything WE can show is weaker: `0x3A`
-/// byte 0 carries two mutually exclusive bits, they partition the corpus
-/// cleanly, and `0x23` alone cannot see the transition between them. What the
-/// bits physically switch is **not established by anything we hold**.
+/// The whole of what we hold is above: `0x3A` byte 0 takes five values, they
+/// carry two mutually exclusive bits that partition the corpus, and `0x23`
+/// alone cannot see the transition between them. **What the bits physically
+/// switch is not established by anything we hold** — so neither the class
+/// name, the enum, nor the constants may name a component or a state.
 ///
-/// The polarity claim was already removed for this reason (`bitAllOpen` /
-/// `bitAllClosed` ⇒ [bitGroup0] / [bitGroup3]; [group] returns which group, not
-/// which state). This note is the other half: the class name still asserts the
-/// hardware, so the assertion is labelled here rather than left to be read as
-/// ours. ⛔ Do not write "MOS is open/closed" in a document on the strength of
-/// this type — say which group `0x3A` is in.
-class CapacitorMos {
-  CapacitorMos._();
+/// This was removed in two passes, both for the same reason. The polarity went
+/// first (`bitAllOpen` / `bitAllClosed` ⇒ [bitGroup0] / [bitGroup3]; [group]
+/// answers which group, not which state); the hardware reading went with the
+/// type names (`CapacitorMos` / `CapacitorMosGroup` ⇒
+/// [CapacitorFunctionFlags] / [CapacitorFlagGroup], after this register's name
+/// in `docs/protocol/telemetry-decoding.md` §8.5). ⛔ Do not reintroduce
+/// either on the strength of this type — say which group `0x3A` is in.
+class CapacitorFunctionFlags {
+  CapacitorFunctionFlags._();
 
   /// Byte 0, bit 0 — the bit shared by `0x51` / `0x41` / `0x71`.
   static const int bitGroup0 = 0x01;
@@ -474,7 +475,7 @@ class CapacitorMos {
   /// must be able to tell "somewhere else" from "never said". Collapsing either
   /// into a group would leave a user stuck at 「檢測中」 on a unit that never
   /// reports this register at all.
-  static CapacitorMosGroup? group(int? funcFlags) {
+  static CapacitorFlagGroup? group(int? funcFlags) {
     if (funcFlags == null) return null;
     final b0 = (funcFlags >> 8) & 0xFF;
     final g0 = b0 & bitGroup0 != 0;
@@ -483,7 +484,7 @@ class CapacitorMos {
     // pick one — every caller of this is about to put something in front of a
     // user, and a guess here would be indistinguishable from a reading.
     if (g0 == g3) return null;
-    return g0 ? CapacitorMosGroup.bit0 : CapacitorMosGroup.bit3;
+    return g0 ? CapacitorFlagGroup.bit0 : CapacitorFlagGroup.bit3;
   }
 }
 
@@ -493,8 +494,8 @@ class CapacitorMos {
 /// captures establish that the two groups exist, are exclusive, and that `0x23`
 /// cannot see the difference; they do NOT establish what either group means
 /// physically. A name like `outputLive` would be a claim we cannot back — see
-/// [CapacitorMos].
-enum CapacitorMosGroup {
+/// [CapacitorFunctionFlags].
+enum CapacitorFlagGroup {
   /// `0x51` / `0x41` / `0x71` — byte 0 bit 0 set, bit 3 clear.
   bit0,
 
