@@ -477,6 +477,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String modeLinkLostSnack(String action) {
+    return '$action結果無法確認 —— 等待裝置回報時藍牙連線中斷了。請重新連線後查看裝置狀態。';
+  }
+
+  @override
   String modeUnchangedRetriedSnack(String action, int count, String status) {
     return '已送出$action共 $count 次，裝置仍回報：$status。有時需多試幾次或重新連線後才生效，請稍後再試。';
   }

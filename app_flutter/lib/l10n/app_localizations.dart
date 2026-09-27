@@ -860,6 +860,12 @@ abstract class AppLocalizations {
   /// **'{action} sent without auth (experimental); the device state did not change (still: {status}).'**
   String modeUnchangedNoAuthSnack(String action, String status);
 
+  /// No description provided for @modeLinkLostSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t confirm {action} — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.'**
+  String modeLinkLostSnack(String action);
+
   /// No description provided for @modeUnchangedRetriedSnack.
   ///
   /// In en, this message translates to:

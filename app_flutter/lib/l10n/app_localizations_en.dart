@@ -496,6 +496,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String modeLinkLostSnack(String action) {
+    return 'Couldn\'t confirm $action — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.';
+  }
+
+  @override
   String modeUnchangedRetriedSnack(String action, int count, String status) {
     return '$action sent $count×, but the device still reports: $status. It can take a few tries or a reconnect — please try again shortly.';
   }
