@@ -325,6 +325,14 @@
   "modeChangedSnack": "{action} done — the device now reports: {status}.",
   "modeUnchangedSnack": "{action} command sent, but the device state did not change (still: {status}).",
   "modeUnchangedNoAuthSnack": "{action} sent without auth (experimental); the device state did not change (still: {status}).",
+  "modeLinkLostSnack": "Couldn't confirm {action} — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.",
+  "@modeLinkLostSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "modeUnchangedRetriedSnack": "{action} sent {count}×, but the device still reports: {status}. It can take a few tries or a reconnect — please try again shortly.",
   "@modeUnchangedRetriedSnack": {
     "placeholders": {

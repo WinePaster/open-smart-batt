@@ -407,7 +407,7 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
 
 /// Poll `0x23` until [test] accepts it or [window] runs out.
 ///
-/// The read-only sibling of [_modeChangedWithin]: that one asks "did it move
+/// The read-only sibling of [watchModeAfterWrite]: that one asks "did it move
 /// off the value it had", which cannot express "did it come back to 0x05" —
 /// and the self-check needs the second question, because the value it started
 /// from is the value it has to return to.
@@ -451,13 +451,13 @@ Future<String> _modeWriteOutcome(
   required bool skipAuth,
 }) async {
   const window = Duration(seconds: 6);
-  const step = Duration(milliseconds: 500);
-  final deadline = DateTime.now().add(window);
-  while (DateTime.now().isBefore(deadline)) {
-    await Future<void>.delayed(step);
-    if (tele.mode != before) {
+  switch (await watchModeAfterWrite(() => tele.mode, before, window)) {
+    case ModeWatch.changed:
       return l10n.modeChangedSnack(action, runStatusOf(l10n, tele.mode).label);
-    }
+    case ModeWatch.linkLost:
+      return l10n.modeLinkLostSnack(action);
+    case ModeWatch.unchanged:
+      break;
   }
   final status = runStatusOf(l10n, tele.mode).label;
   return skipAuth
@@ -465,18 +465,48 @@ Future<String> _modeWriteOutcome(
       : l10n.modeUnchangedSnack(action, status);
 }
 
-/// Polls `0x23` for up to [window] and returns whether it moved off [before].
-/// The bool form the release retry loop needs — [_modeWriteOutcome] is the
-/// message form used by the single-shot cut-off / anti-theft actions.
-Future<bool> _modeChangedWithin(
-    TelemetryController tele, int? before, Duration window) async {
+/// What watching `0x23` after a mode write found.
+@visibleForTesting
+enum ModeWatch {
+  /// The device reported a mode other than [before].
+  changed,
+
+  /// The window ran out with the device still reporting [before].
+  unchanged,
+
+  /// The live mode went from a value to nothing: the link dropped and the
+  /// telemetry controller cleared its sample. We stopped observing — that is
+  /// not an answer from the device, in either direction.
+  linkLost,
+}
+
+/// Polls `0x23` (via [read]) for up to [window] after a mode write.
+///
+/// 🔴 FB 2026.09.27/003: this used to be `mode != before`, and a disconnect
+/// clears the live sample to null — so a link dropped mid-watch (common on a
+/// reason-6 timeout ~0.7 s after the write) compared `null != 2`, returned
+/// "changed", and the app announced 「復電完成 —— 裝置現在回報：--」 for a pack
+/// that was still cut off. A null reading is never a change; it ends the watch
+/// as [ModeWatch.linkLost] when there was a value before, and is just "no
+/// reading yet" when there was not.
+///
+/// Shared by the release retry loop and [_modeWriteOutcome], so none of the
+/// three mode writes can report a disconnect as success.
+@visibleForTesting
+Future<ModeWatch> watchModeAfterWrite(
+    int? Function() read, int? before, Duration window) async {
   const step = Duration(milliseconds: 500);
-  final deadline = DateTime.now().add(window);
-  while (DateTime.now().isBefore(deadline)) {
+  final deadline = clock.now().add(window);
+  while (clock.now().isBefore(deadline)) {
     await Future<void>.delayed(step);
-    if (tele.mode != before) return true;
+    final now = read();
+    if (now == null) {
+      if (before != null) return ModeWatch.linkLost;
+      continue;
+    }
+    if (now != before) return ModeWatch.changed;
   }
-  return false;
+  return ModeWatch.unchanged;
 }
 
 /// Resolve release auth WITHOUT asking the user (design 0036 §4.2):
@@ -573,18 +603,25 @@ Future<void> releaseCutOff(
     creds = req.creds!;
   }
   try {
-    var changed = false;
-    for (var i = 0; i < _releaseAttempts && !changed; i++) {
+    var result = ModeWatch.unchanged;
+    // Stops on linkLost too: the next write would only throw on a dead link.
+    for (var i = 0;
+        i < _releaseAttempts && result == ModeWatch.unchanged;
+        i++) {
       await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
       await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
-      changed = await _modeChangedWithin(tele, before, _releaseWindow);
+      result = await watchModeAfterWrite(
+          () => tele.mode, before, _releaseWindow);
     }
     final status = runStatusOf(l10n, tele.mode).label;
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 4200),
-      content: Text(changed
-          ? l10n.modeChangedSnack(action, status)
-          : l10n.modeUnchangedRetriedSnack(action, _releaseAttempts, status)),
+      content: Text(switch (result) {
+        ModeWatch.changed => l10n.modeChangedSnack(action, status),
+        ModeWatch.linkLost => l10n.modeLinkLostSnack(action),
+        ModeWatch.unchanged =>
+          l10n.modeUnchangedRetriedSnack(action, _releaseAttempts, status),
+      }),
     ));
   } catch (e) {
     messenger.showSnackBar(
