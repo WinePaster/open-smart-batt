@@ -1532,6 +1532,24 @@ abstract class AppLocalizations {
   /// **'Today\'s Current Trend'**
   String get historyChartTodayCurrentTitle;
 
+  /// design 0096: history chart heading when voltage (left axis) and current (right axis) are drawn together. Names both — a heading naming one quantity over a chart showing two is FB-103.
+  ///
+  /// In en, this message translates to:
+  /// **'Voltage / Current Trend'**
+  String get historyChartBothTitle;
+
+  /// design 0096: the Today-range variant of historyChartBothTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s Voltage / Current Trend'**
+  String get historyChartTodayBothTitle;
+
+  /// design 0096 Q7: the landscape chart bar names the drawn series; this is the combined view. Must fit the 96 px cap in history_chart_page.dart, hence the abbreviation.
+  ///
+  /// In en, this message translates to:
+  /// **'V + A'**
+  String get historyChartSeriesBothName;
+
   /// No description provided for @historyRangeToday.
   ///
   /// In en, this message translates to:

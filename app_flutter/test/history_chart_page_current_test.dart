@@ -168,21 +168,31 @@ void main() {
     await open(t, ProductClass.smartBattery);
 
     expect(canSwitch(t), isTrue);
+    // 🔵 design 0096: the page opens on voltage＋current, named as such.
     // 🔴 The label is INSIDE the tap target. Without this, a refactor that put
     // the words beside the button instead of within it would still pass every
     // assertion below — and that arrangement is precisely FB-103.
     expect(
-        find.descendant(of: toggle, matching: find.text(en.historyLegendVoltage)),
+        find.descendant(
+            of: toggle, matching: find.text(en.historyChartSeriesBothName)),
         findsOneWidget);
+    expect(painterOf(t).series, HistoryChartSeries.both);
+    // Current is on the right axis, so its direction key is already needed.
+    expect(painterOf(t).currentDirectionLabel,
+        en.dashboardTrackCurrentDirectionKey);
+
+    // 🔴 The LABEL, not the icon. Cycle (design 0096 Q1): both → voltage →
+    // current → both.
+    await tapLabel(t, en.historyChartSeriesBothName);
+    await settle(t);
     expect(painterOf(t).series, HistoryChartSeries.voltage);
     // 🔴 The shell has no legend row, so the bar has to name the quantity —
     // current reuses voltage's colour and the axis numbers do not say which.
     expect(find.text(en.historyLegendVoltage), findsOneWidget);
+    expect(painterOf(t).currentDirectionLabel, isNull);
 
-    // 🔴 The LABEL, not the icon. Before 0089 this tap did nothing.
     await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
-
     expect(painterOf(t).series, HistoryChartSeries.current);
     expect(find.text(en.historyLegendCurrent), findsOneWidget);
     // 🔑 …and the label that is now showing is itself pressable, so the way
@@ -190,13 +200,16 @@ void main() {
     expect(canSwitch(t), isTrue);
     expect(painterOf(t).currentDirectionLabel,
         en.dashboardTrackCurrentDirectionKey);
+
+    await tapLabel(t, en.historyLegendCurrent);
+    await settle(t);
+    expect(painterOf(t).series, HistoryChartSeries.both);
   });
 
   testWidgets('a power bank is labelled with its own, opposite key', (t) async {
     await t.runAsync(seed);
     await open(t, ProductClass.powerBank);
-    await tapLabel(t, en.historyLegendVoltage);
-    await settle(t);
+    // Opens on voltage＋current (design 0096): current is already drawn.
 
     expect(painterOf(t).currentDirectionLabel,
         en.powerBankTrackCurrentDirectionKey);

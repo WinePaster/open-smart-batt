@@ -82,7 +82,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// design 0089 (FB-103) — lifted out of `HistoryTrendCard` so the heading,
   /// which is now the switch, reads the same value the axis does.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  ///
+  /// 🔵 design 0096 (owner, 2026-09-29): opens on voltage＋current. The gate
+  /// still forces voltage for a capacitor or the all-devices scope.
+  HistoryChartSeries _series = HistoryChartSeries.both;
 
   /// The SCOPED unit's full span — the calendar's bounds and the button's
   /// enabled state (design 0083 §3.3.4). See the device page's twin; loaded
@@ -446,10 +449,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       // Null when the gate is closed: an inert-looking title
                       // rather than a control that does nothing (FB-64).
                       onHeadingTap: framing.canSwitch
-                          ? () => setState(() => _series =
-                              framing.series == HistoryChartSeries.current
-                                  ? HistoryChartSeries.voltage
-                                  : HistoryChartSeries.current)
+                          ? () => setState(() => _series = nextHistoryChartSeries(framing.series))
                           : null,
                       // 🔵 FB-107 (2026-08-30) — the glyph now travels with
                       // the word 「切換」. One builder for both card surfaces;
@@ -1325,7 +1325,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   /// when it was recorded.
   HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
     width: width,
-    hasTemp: _hasTemp,
+    // 🔵 design 0096: the SAME formula the painter uses, from the same
+    // gate-resolved series — or a tap lands on the wrong bucket.
+    hasRight: HistoryChartGeometry.hasRightAxis(
+      hasTemp: _hasTemp,
+      series: historyChartCurrentGate(widget.deviceClass) ==
+              HistoryChartCurrentGate.available
+          ? widget.series
+          : HistoryChartSeries.voltage,
+    ),
     buckets: widget.buckets,
     bucketMs: widget.bucketMs,
   );
@@ -1403,6 +1411,8 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     final canSwitch = gate == HistoryChartCurrentGate.available;
     final series = canSwitch ? widget.series : HistoryChartSeries.voltage;
     final isCurrent = series == HistoryChartSeries.current;
+    // 🔵 design 0096: voltage left, current right, temperature not drawn.
+    final isBoth = series == HistoryChartSeries.both;
     final gateNote = historyChartCurrentGateNote(l10n, gate);
     if (buckets.length < 2) {
       // 🔴 FB-85. The strip used to be skipped with the chart, and the two are
@@ -1470,7 +1480,16 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                   ? l10n.historyLegendCurrent
                   : l10n.historyLegendVoltage,
             ),
-            if (hasTemp) ...[
+            // 🔴 design 0096 §3.3: in the combined view the second colour is
+            // CURRENT. Leaving the temperature entry here would label the cyan
+            // line as the one quantity that is NOT on the chart.
+            if (isBoth) ...[
+              const SizedBox(width: 16),
+              _LegendDot(
+                color: context.accent.accentSecondary,
+                label: l10n.historyLegendCurrent,
+              ),
+            ] else if (hasTemp) ...[
               const SizedBox(width: 16),
               _LegendDot(
                 color: context.accent.accentSecondary,
@@ -1529,7 +1548,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                     // Per family, and null for a unit with no family — see
                     // [historyChartCurrentDirectionLabel] for why the pack
                     // wording is not a fallback.
-                    currentDirectionLabel: isCurrent
+                    currentDirectionLabel: isCurrent || isBoth
                         ? historyChartCurrentDirectionLabel(
                             l10n,
                             widget.deviceClass,
@@ -1547,7 +1566,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         ),
         if (_selected != null && _selected! < buckets.length)
           _detail(context, l10n, buckets[_selected!], hasTemp,
-              isCurrent: isCurrent),
+              isCurrent: isCurrent, isBoth: isBoth),
         // design 0061 T10. `historyDetailSamples` says how MANY readings a
         // point folded; nothing said how much TIME it covered, and the width
         // moves between 1 minute and 24 hours with the range. At second
@@ -1783,6 +1802,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     HistoryBucket b,
     bool hasTemp, {
     required bool isCurrent,
+    bool isBoth = false,
   }) {
     final fmt = DateFormat(widget.multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
@@ -1828,7 +1848,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  isCurrent
+                  // 🔵 design 0096 Q3 (a): in the combined view temperature is
+                  // off the PICTURE, not off the page — it stays in this line.
+                  isBoth
+                      ? '${l10n.historyLegendVoltage} ${v(b.avgPvlt)}V '
+                            '(${v(b.minPvlt)}–${v(b.maxPvlt)})'
+                            '  ·  ${l10n.historyLegendCurrent} ${a(b.avgAmpere)}A '
+                            '(${a(b.minAmpere)}–${a(b.maxAmpere)})'
+                            '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}'
+                      : isCurrent
                       ? '${l10n.historyLegendCurrent} ${a(b.avgAmpere)}A '
                             '(${a(b.minAmpere)}–${a(b.maxAmpere)})'
                             '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}'
@@ -1961,6 +1989,7 @@ class _StatsStrip extends StatelessWidget {
     String t(double? x) => x == null
         ? '--'
         : '${historyDisplayTemp(x, tempUnit).toStringAsFixed(0)}${historyTempUnitLabel(tempUnit)}';
+    final isBoth = series == HistoryChartSeries.both;
     return Column(
       children: [
         _statRow(
@@ -1975,11 +2004,28 @@ class _StatsStrip extends StatelessWidget {
           max: isCurrent ? a(stats.maxAmpere) : v(stats.maxPvlt),
           l10n: l10n,
         ),
-        if (hasTemp) ...[
+        // 🔵 design 0096 Q3 (a): the combined view adds the current row, in
+        // the colour its line is drawn in.
+        if (isBoth) ...[
           const SizedBox(height: 6),
           _statRow(
             context,
             context.accent.accentSecondary,
+            l10n.historyLegendCurrent,
+            min: a(stats.minAmpere),
+            avg: a(stats.avgAmpere),
+            max: a(stats.maxAmpere),
+            l10n: l10n,
+          ),
+        ],
+        if (hasTemp) ...[
+          const SizedBox(height: 6),
+          _statRow(
+            context,
+            // ⚠️ design 0096: in the combined view cyan is CURRENT, so the
+            // temperature row — which is no longer on the chart — must not
+            // wear it. Muted says "a number, not a line above".
+            isBoth ? context.colors.muted : context.accent.accentSecondary,
             l10n.historyLegendTemperature,
             min: t(stats.minTemp),
             avg: t(stats.avgTemp),

@@ -536,13 +536,18 @@ Future<({List<HistoryBucket> buckets, int bucketMs})> loadHistoryWindow(
   final canSwitch =
       historyChartCurrentGate(deviceClass) == HistoryChartCurrentGate.available;
   final eff = canSwitch ? series : HistoryChartSeries.voltage;
-  final isCurrent = eff == HistoryChartSeries.current;
   final today = !sel.isCustom && sel.kind == HistoryRange.today;
-  final heading = today
-      ? (isCurrent
-          ? l10n.historyChartTodayCurrentTitle
-          : l10n.historyChartTodayTitle)
-      : (isCurrent ? l10n.historyChartCurrentTitle : l10n.historyChartTitle);
+  // 🔵 design 0096 Q2: the combined view names BOTH quantities — a heading
+  // saying only "Voltage" over a chart with current on it is FB-103 again.
+  final heading = switch (eff) {
+    HistoryChartSeries.voltage =>
+      today ? l10n.historyChartTodayTitle : l10n.historyChartTitle,
+    HistoryChartSeries.current => today
+        ? l10n.historyChartTodayCurrentTitle
+        : l10n.historyChartCurrentTitle,
+    HistoryChartSeries.both =>
+      today ? l10n.historyChartTodayBothTitle : l10n.historyChartBothTitle,
+  };
   final multiDay = sel.isCustom
       ? (sel.span ?? Duration.zero) > const Duration(hours: 24)
       : !today;
