@@ -61,6 +61,16 @@ String historyBucketWidthNote(AppLocalizations l10n, int bucketMs) {
   return l10n.historyChartBucketHours((minutes / 60).round().clamp(1, 1 << 30));
 }
 
+/// The same fact as [historyBucketWidthNote], short enough for the landscape
+/// page's 44 px bar (owner ruling 「Ａ」, 2026-09-29). Same rounding, so the two
+/// can never name different widths for one chart.
+String historyBucketWidthShort(AppLocalizations l10n, int bucketMs) {
+  final minutes = (bucketMs / 60000).round().clamp(1, 1 << 30);
+  if (minutes < 60) return l10n.historyChartBucketShortMinutes(minutes);
+  return l10n.historyChartBucketShortHours(
+      (minutes / 60).round().clamp(1, 1 << 30));
+}
+
 /// The landscape chart's visible window, and the arithmetic that moves it —
 /// design 0081 S3.
 ///

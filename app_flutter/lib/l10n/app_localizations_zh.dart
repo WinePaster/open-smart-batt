@@ -1083,6 +1083,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String historyChartBucketShortMinutes(int count) {
+    return '每點 $count 分鐘';
+  }
+
+  @override
+  String historyChartBucketShortHours(int count) {
+    return '每點 $count 小時';
+  }
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);

@@ -1844,6 +1844,18 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{Each point on the chart averages 1 hour} other{Each point on the chart averages {count} hours}}'**
   String historyChartBucketHours(int count);
 
+  /// Short form of historyChartBucketMinutes for the landscape chart bar (owner ruling A, 2026-09-29).
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min / point'**
+  String historyChartBucketShortMinutes(int count);
+
+  /// Hours form of historyChartBucketShortMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} h / point'**
+  String historyChartBucketShortHours(int count);
+
   /// No description provided for @historyFooter.
   ///
   /// In en, this message translates to:

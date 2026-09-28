@@ -303,6 +303,28 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   /// the plot on both shells either way. See design 0089 §8.
   Widget _seriesSwitch(AppLocalizations l10n) {
     final on = _gate == HistoryChartCurrentGate.available;
+    // 🔴 2026-09-29 owner field report (a super-capacitor): 「電容產品 全螢幕的
+    // 情況下仍然會顯示 切換按鈕」 — the label greyed out, but the ⇅ stayed and
+    // the tap target stayed, so it still read as a button that does nothing.
+    // The embedded card already answers "gate closed" by REMOVING the control
+    // (`historySeriesSwitchAffordance` returns null, design 0089 §3.1); this
+    // shell now does the same. What stays is the series NAME, as plain text:
+    // this shell has no legend row, so the bar still has to say what the left
+    // axis counts. The reason is the gate note on the plot, unchanged.
+    if (!on) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 96),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            l10n.historyLegendVoltage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: context.colors.muted),
+          ),
+        ),
+      );
+    }
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -355,8 +377,6 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   }
 
   Widget _topBar(AppLocalizations l10n) {
-    final multiDay = _win.spanMs > 24 * 3600000;
-    final fmt = DateFormat(multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     return SizedBox(
       height: _topBarH,
       child: Row(
@@ -374,18 +394,25 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           ),
           // design 0061 T10, landscape edition. 🔴 A bigger screen is not a
-          // reason to drop the one line that says how much time a point is.
-          Flexible(
-            flex: 2,
+          // reason to drop the one line that says how much time a point is —
+          // least of all HERE, where zooming changes it.
+          //
+          // 🔵 2026-09-29 owner ruling 「Ａ」: the bar truncated both the device
+          // name and this line on a 667 px landscape phone. The window's
+          // ends (`09:00 – 09:30`) are GONE from the bar — the x axis already
+          // prints exactly those two times — and the sentence is shortened.
+          // Not flexible: the title takes whatever is left, which is the point.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 140),
             child: Text(
-              '${fmt.format(_win.from)} – ${fmt.format(_win.to)}'
-              '  ·  ${historyBucketWidthNote(l10n, _bucketMs)}',
-              textAlign: TextAlign.center,
+              historyBucketWidthShort(l10n, _bucketMs),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono(context)
                   .copyWith(fontSize: 11, color: context.colors.muted),
             ),
           ),
+          const SizedBox(width: 6),
           // 🔵 design 0089 S6 — the NAME of the drawn series and the control
           // that changes it are one widget, as on the embedded card.
           //

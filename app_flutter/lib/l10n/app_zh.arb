@@ -291,6 +291,8 @@
   "historyChartGapHours": "未連線 {count} 小時",
   "historyChartBucketMinutes": "{count, plural, other{圖上每一點是 {count} 分鐘的平均}}",
   "historyChartBucketHours": "{count, plural, other{圖上每一點是 {count} 小時的平均}}",
+  "historyChartBucketShortMinutes": "每點 {count} 分鐘",
+  "historyChartBucketShortHours": "每點 {count} 小時",
   "historyFooter": "{count, plural, other{共 {count} 筆 · 本機 SQLite · 可匯出 CSV / 分享}}",
   "historyRowEventCutOff": "斷電模式已啟動",
   "historyRowEventAntiTheft": "防盜模式已啟動",

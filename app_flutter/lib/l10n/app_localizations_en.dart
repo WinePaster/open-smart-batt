@@ -1153,6 +1153,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String historyChartBucketShortMinutes(int count) {
+    return '$count min / point';
+  }
+
+  @override
+  String historyChartBucketShortHours(int count) {
+    return '$count h / point';
+  }
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);
