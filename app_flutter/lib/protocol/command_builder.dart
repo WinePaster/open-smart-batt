@@ -17,6 +17,18 @@ import 'selectors.dart';
 /// and is only ever sent to move a pack toward normal (release has no lock path).
 const int kDefaultCutoffPwSum = 0x01E4;
 
+/// `cb` the 復電 (release) path tries FIRST, before the value derived from the
+/// device's own dealer code (FB 2026.09.27/003, owner's ruling 2026-09-29).
+///
+/// 0x00A8 is the only `cb` ever seen on a release that moved `0x23` in this
+/// project's corpus (every such pack was a `0168…` dealer code, where the
+/// 4-char rule also yields 0x00A8). The derived value is NOT safe to lead with:
+/// on a `01690102` pack the derived 0x00A9 was written 32 times while the pack
+/// sat in cut-off, and `0x23` never moved. Own evidence cannot say whether cb
+/// or pwSum was the wrong half, so the derived value is kept as a fallback
+/// rather than dropped (see [releaseAuthPlan] in status_controls_shared.dart).
+const int kReleaseCbFirst = 0x00A8;
+
 /// Battery-specific auth credentials (live HCI capture).
 ///
 /// `cb`    — 16-bit echo derived from the device's dealer code (selector 0x27),

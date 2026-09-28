@@ -511,8 +511,11 @@ Future<ModeWatch> watchModeAfterWrite(
 
 /// Resolve release auth WITHOUT asking the user (design 0036 §4.2):
 ///   * `cb`    — from the device's own dealer code (selector 0x27), via
-///     [CommandBuilder.cbFromFieldCb] (the wire-confirmed 4-char rule:
-///     `01680102` → `0168` → 168 = 0x00A8).
+///     [CommandBuilder.cbFromFieldCb] (the 4-char rule: `01680102` → `0168` →
+///     168 = 0x00A8). ⚠️ Confirmed on `0168…` packs only; on a `0169…` pack the
+///     derived 0x00A9 never released (FB 2026.09.27/003). 復電 therefore leads
+///     with [kReleaseCbFirst] and uses this value only as the fallback — see
+///     [releaseAuthPlan].
 ///   * `pwSum` — the built-in [kDefaultCutoffPwSum]; the cut-off password is
 ///     assumed a dealer-wide constant (design 0036 §2, working assumption).
 /// Returns null when the dealer code has not arrived on the wire yet, so the
@@ -535,10 +538,57 @@ AuthCredentials? releaseAuthFromDealerCode(String? dealerCode) {
   }
 }
 
-/// Release retries the mode+auth ++ read-back pair this many times, watching
-/// `0x23` for [_releaseWindow] after each, before it reports (design 0036 §10).
+/// The credentials 復電 tries, in order (FB 2026.09.27/003, owner's ruling
+/// 2026-09-29): [kReleaseCbFirst] first, then — only if it differs — the `cb`
+/// derived from the device's own dealer code. Both carry [kDefaultCutoffPwSum].
+///
+/// For a `0168…` pack the two are the same value, so the plan has one entry and
+/// behaves exactly as before. Returns null when the dealer code has not arrived
+/// on the wire yet (same contract as [releaseAuthFromDealerCode]), so the caller
+/// still falls back to the manual auth dialog.
+@visibleForTesting
+List<AuthCredentials>? releaseAuthPlan(String? dealerCode) {
+  final derived = releaseAuthFromDealerCode(dealerCode);
+  if (derived == null) return null;
+  const first =
+      AuthCredentials(cb: kReleaseCbFirst, pwSum: kDefaultCutoffPwSum);
+  return [first, if (derived.cb != first.cb) derived];
+}
+
+/// Release retries the mode+auth ++ read-back pair this many times PER
+/// credential in the plan, watching `0x23` for [_releaseWindow] after each,
+/// before it moves on or reports (design 0036 §10).
 const int _releaseAttempts = 3;
 const Duration _releaseWindow = Duration(seconds: 3);
+
+/// Walks [plan] in order, sending each credential up to [perCredential] times
+/// and moving to the next one only after that many writes left `0x23`
+/// unchanged. Stops at the first [ModeWatch.changed], and on
+/// [ModeWatch.linkLost] (the next write would only throw on a dead link).
+///
+/// Returns the final watch result and how many writes actually went out, so
+/// the snack can report the real count (3 on a `0168…` pack, up to 6 otherwise).
+@visibleForTesting
+Future<({ModeWatch result, int writes})> runReleasePlan(
+  List<AuthCredentials> plan, {
+  required Future<void> Function(AuthCredentials creds) attempt,
+  required Future<ModeWatch> Function() watch,
+  int perCredential = _releaseAttempts,
+}) async {
+  var result = ModeWatch.unchanged;
+  var writes = 0;
+  for (final creds in plan) {
+    for (var i = 0; i < perCredential; i++) {
+      await attempt(creds);
+      writes++;
+      result = await watch();
+      if (result != ModeWatch.unchanged) {
+        return (result: result, writes: writes);
+      }
+    }
+  }
+  return (result: result, writes: writes);
+}
 
 /// 復電 — write "normal" (mode 0x00) bundled with the auth frame.
 ///
@@ -556,8 +606,14 @@ const Duration _releaseWindow = Duration(seconds: 3);
 /// and watches `0x23`. A single write was observed to be intermittent (an
 /// identical frame failed at 15:58 and succeeded at 16:17 on the same pack,
 /// FB 2026.08.04/003), so we retry the pair up to [_releaseAttempts] times
-/// before reporting. `0x23` back-reads make a wrong assumption (e.g. a different
-/// dealer's password) surface as "unchanged" rather than a false success.
+/// per credential before moving on or reporting. `0x23` back-reads make a wrong
+/// assumption (e.g. a different dealer's password) surface as "unchanged"
+/// rather than a false success.
+///
+/// Credentials come from [releaseAuthPlan]: [kReleaseCbFirst] three times,
+/// then — only on a pack whose dealer code derives a different `cb` — the
+/// derived value three times (FB 2026.09.27/003, owner's ruling 2026-09-29).
+/// ⚠️ Worst case is therefore six writes, about 20 s before the snack.
 ///
 /// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
 /// hence the control is no longer named after cut-off alone.
@@ -591,8 +647,8 @@ Future<void> releaseCutOff(
     ),
   );
   if (ok != true) return;
-  var creds = releaseAuthFromDealerCode(tele.dealerCode);
-  if (creds == null) {
+  var plan = releaseAuthPlan(tele.dealerCode);
+  if (plan == null) {
     // Dealer code not on the wire yet — let the owner supply auth manually.
     if (!context.mounted) return;
     final req = await showReleaseCutOffDialog(
@@ -600,27 +656,25 @@ Future<void> releaseCutOff(
       initialDealerCode: tele.dealerCode,
     );
     if (req == null || req.creds == null) return; // release requires auth (Q3)
-    creds = req.creds!;
+    plan = [req.creds!];
   }
   try {
-    var result = ModeWatch.unchanged;
-    // Stops on linkLost too: the next write would only throw on a dead link.
-    for (var i = 0;
-        i < _releaseAttempts && result == ModeWatch.unchanged;
-        i++) {
-      await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
-      await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
-      result = await watchModeAfterWrite(
-          () => tele.mode, before, _releaseWindow);
-    }
+    final run = await runReleasePlan(
+      plan,
+      attempt: (creds) async {
+        await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
+        await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
+      },
+      watch: () => watchModeAfterWrite(() => tele.mode, before, _releaseWindow),
+    );
     final status = runStatusOf(l10n, tele.mode).label;
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 4200),
-      content: Text(switch (result) {
+      content: Text(switch (run.result) {
         ModeWatch.changed => l10n.modeChangedSnack(action, status),
         ModeWatch.linkLost => l10n.modeLinkLostSnack(action),
         ModeWatch.unchanged =>
-          l10n.modeUnchangedRetriedSnack(action, _releaseAttempts, status),
+          l10n.modeUnchangedRetriedSnack(action, run.writes, status),
       }),
     ));
   } catch (e) {
