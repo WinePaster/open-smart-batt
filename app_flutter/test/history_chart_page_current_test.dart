@@ -15,6 +15,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
@@ -121,7 +122,7 @@ void main() {
   }
 
   Future<void> open(WidgetTester t, ProductClass? cls,
-      {String? deviceId = 'AA'}) async {
+      {String? deviceId = 'AA', String title = 'Unit'}) async {
     await t.pumpWidget(ChangeNotifierProvider<TelemetryController>.value(
       value: tele,
       child: MaterialApp(
@@ -132,7 +133,7 @@ void main() {
         home: HistoryChartPage(
           deviceId: deviceId,
           deviceClass: cls,
-          title: 'Unit',
+          title: title,
           tempUnit: TempUnit.celsius,
           dataFrom: from,
           dataTo: to,
@@ -265,5 +266,26 @@ void main() {
     await open(t, ProductClass.smartBattery);
     expect(find.text(en.capacitorChartNoCurrentNote), findsNothing);
     expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsNothing);
+  });
+
+  // 🔵 2026-09-29 owner ruling 「Ａ」 — the bar truncated the device name on a
+  // 667 px landscape phone. The window's ends left the bar (the x axis prints
+  // them), and the bucket width stayed, shortened.
+  testWidgets('the bar: short bucket width, no range, the name fits', (t) async {
+    t.view.physicalSize = const Size(667, 375);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.runAsync(seed);
+    const name = 'RCE-SCAP_II · 0f7a1599';
+    await open(t, ProductClass.smartBattery, title: name);
+
+    expect(find.text(historyBucketWidthShort(en, 60000)), findsOneWidget);
+    expect(find.text(historyBucketWidthNote(en, 60000)), findsNothing);
+    expect(find.textContaining(' – '), findsNothing,
+        reason: 'the range duplicated the x axis labels');
+    final p = t.renderObject<RenderParagraph>(find.text(name));
+    expect(p.size.width,
+        greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5),
+        reason: 'the device name is drawn whole, not ellipsised');
   });
 }

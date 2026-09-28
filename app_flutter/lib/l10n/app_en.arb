@@ -852,6 +852,24 @@
       }
     }
   },
+  "historyChartBucketShortMinutes": "{count} min / point",
+  "@historyChartBucketShortMinutes": {
+    "description": "Short form of historyChartBucketMinutes for the landscape chart bar (owner ruling A, 2026-09-29).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyChartBucketShortHours": "{count} h / point",
+  "@historyChartBucketShortHours": {
+    "description": "Hours form of historyChartBucketShortMinutes.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "historyFooter": "{count, plural, =1{1 record · Local SQLite · Export CSV / Share} other{{count} records · Local SQLite · Export CSV / Share}}",
   "@historyFooter": {
     "placeholders": {
