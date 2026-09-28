@@ -122,14 +122,16 @@ void main() {
   }
 
   Future<void> open(WidgetTester t, ProductClass? cls,
-      {String? deviceId = 'AA', String title = 'Unit'}) async {
+      {String? deviceId = 'AA',
+      String title = 'Unit',
+      Locale locale = const Locale('en')}) async {
     await t.pumpWidget(ChangeNotifierProvider<TelemetryController>.value(
       value: tele,
       child: MaterialApp(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
+        locale: locale,
         home: HistoryChartPage(
           deviceId: deviceId,
           deviceClass: cls,
@@ -288,4 +290,27 @@ void main() {
         greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5),
         reason: 'the device name is drawn whole, not ellipsised');
   });
+
+  // 🔴 2026-09-29 field report on `v0.7.44`: the battery's 「電壓＋電流」 label
+  // was ellipsised in the landscape bar — the 96 px cap outlived the text it
+  // was sized against. Checked at the default and two enlarged text scales,
+  // because a user who has raised the system font is exactly who hits a cap.
+  for (final scale in [1.0, 1.3, 1.5]) {
+    testWidgets('the switch label is drawn whole at text scale $scale',
+        (t) async {
+      t.view.physicalSize = const Size(667, 375);
+      t.view.devicePixelRatio = 1;
+      t.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(t.view.reset);
+      addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+      await t.runAsync(seed);
+      await open(t, ProductClass.smartBattery,
+          title: 'RCE-BikeBatt · 3cd72450', locale: const Locale('zh'));
+      // zh — the label on the report: 「電壓＋電流」.
+      final p = t.renderObject<RenderParagraph>(
+          find.text(lookupAppLocalizations(const Locale('zh')).historyChartSeriesBothName));
+      expect(p.size.width,
+          greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5));
+    });
+  }
 }
