@@ -328,6 +328,22 @@ void main() {
       return wanted.isBefore(midnight) ? now : wanted;
     }
 
+    /// Matches of [text] OUTSIDE the trend card — i.e. in the list rows.
+    ///
+    /// 🔵 design 0096: the card now opens on voltage＋current, so its stats
+    /// strip prints the signed current (`-35.0A`, by design 0085 S4 — the sign
+    /// is the direction there and the axis key names it). These tests are about
+    /// the LIST ROW's wording; a page-wide finder would be satisfied by the
+    /// other surface (the false-green shape design 0093 §9.2 recorded).
+    int outsideCard(WidgetTester tester, String text) =>
+        find.textContaining(text).evaluate().length -
+        find
+            .descendant(
+                of: find.byType(HistoryTrendCard),
+                matching: find.textContaining(text))
+            .evaluate()
+            .length;
+
     testWidgets('a battery row on screen reads 放電中, never −35.0A',
         (tester) async {
       await boot(tester);
@@ -353,7 +369,7 @@ void main() {
       await pumpHistory(tester);
 
       expect(find.textContaining('35.0A 放電中'), findsOneWidget);
-      expect(find.textContaining('-35.0A'), findsNothing);
+      expect(outsideCard(tester, '-35.0A'), 0);
     });
 
     testWidgets('P7 a power bank row on screen reads 充電中, never −0.4A',
@@ -384,7 +400,7 @@ void main() {
       await pumpHistory(tester);
 
       expect(find.textContaining('0.4A 充電中'), findsOneWidget);
-      expect(find.textContaining('-0.4A'), findsNothing);
+      expect(outsideCard(tester, '-0.4A'), 0);
       expect(find.textContaining('放電中'), findsNothing);
     });
   });

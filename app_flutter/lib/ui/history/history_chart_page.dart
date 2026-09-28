@@ -143,16 +143,23 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   /// two shells share a PAINTER, not a preference. Opening on voltage also
   /// keeps this page's first frame identical to the card the user expanded
   /// from, which is the whole promise of the expand button.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  ///
+  /// 🔵 design 0096: opens on voltage＋current, the cards' default too — so the
+  /// first frame still matches a card the user has not switched.
+  HistoryChartSeries _series = HistoryChartSeries.both;
 
   /// 🔵 Resolved from the class, never read straight out of [_series] — see the
   /// embedded card for why the gate and the drawn series are one fact.
   HistoryChartCurrentGate get _gate =>
       historyChartCurrentGate(widget.deviceClass);
 
-  bool get _isCurrent =>
-      _gate == HistoryChartCurrentGate.available &&
-      _series == HistoryChartSeries.current;
+  /// The gate-resolved series: [_series], or voltage when current is refused.
+  HistoryChartSeries get _eff => _gate == HistoryChartCurrentGate.available
+      ? _series
+      : HistoryChartSeries.voltage;
+
+  bool get _isCurrent => _eff == HistoryChartSeries.current;
+  bool get _isBoth => _eff == HistoryChartSeries.both;
 
   @override
   void initState() {
@@ -215,7 +222,8 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
 
   HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
         width: width,
-        hasTemp: _hasTemp,
+        hasRight:
+            HistoryChartGeometry.hasRightAxis(hasTemp: _hasTemp, series: _eff),
         buckets: _buckets,
         bucketMs: _bucketMs,
         from: _win.from,
@@ -300,7 +308,11 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
       children: [
         Flexible(
           child: Text(
-            _isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
+            _isBoth
+                ? l10n.historyChartSeriesBothName
+                : _isCurrent
+                ? l10n.historyLegendCurrent
+                : l10n.historyLegendVoltage,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
@@ -327,9 +339,7 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
           label: l10n.historyChartSeriesToggle,
           child: InkWell(
             onTap: on
-                ? () => setState(() => _series = _isCurrent
-                    ? HistoryChartSeries.voltage
-                    : HistoryChartSeries.current)
+                ? () => setState(() => _series = nextHistoryChartSeries(_eff))
                 : null,
             borderRadius: BorderRadius.circular(6),
             child: Padding(
@@ -439,10 +449,8 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                               multiDay: _win.spanMs > 24 * 3600000,
                               bucketMs: _bucketMs,
                               selected: _selected,
-                              series: _isCurrent
-                                  ? HistoryChartSeries.current
-                                  : HistoryChartSeries.voltage,
-                              currentDirectionLabel: _isCurrent
+                              series: _eff,
+                              currentDirectionLabel: _isCurrent || _isBoth
                                   ? historyChartCurrentDirectionLabel(
                                       l10n,
                                       widget.deviceClass,
@@ -536,7 +544,11 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                 style: AppTextStyles.mono(context).copyWith(
                     fontSize: 12, fontWeight: FontWeight.w700)),
             Text(
-              _isCurrent
+              // 🔵 design 0096 Q3 (a): both numbers, and temperature kept.
+              _isBoth
+                  ? '${v(b.avgPvlt)} V  ·  ${a(b.avgAmpere)} A '
+                      '(${a(b.minAmpere)}–${a(b.maxAmpere)})$t'
+                  : _isCurrent
                   ? '${a(b.avgAmpere)} A '
                       '(${a(b.minAmpere)}–${a(b.maxAmpere)})$t'
                   : '${v(b.avgPvlt)} V (${v(b.minPvlt)}–${v(b.maxPvlt)})$t',

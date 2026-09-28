@@ -61,7 +61,7 @@ void main() {
       ];
 
   HistoryChartGeometry geom(List<HistoryBucket> b) => HistoryChartGeometry(
-      width: size.width, hasTemp: false, buckets: b, bucketMs: bucketMs);
+      width: size.width, hasRight: false, buckets: b, bucketMs: bucketMs);
 
   _Recording paint(List<HistoryBucket> b) {
     final c = _Recording();

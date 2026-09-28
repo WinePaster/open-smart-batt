@@ -896,6 +896,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyChartTodayCurrentTitle => 'Today\'s Current Trend';
 
   @override
+  String get historyChartBothTitle => 'Voltage / Current Trend';
+
+  @override
+  String get historyChartTodayBothTitle => 'Today\'s Voltage / Current Trend';
+
+  @override
+  String get historyChartSeriesBothName => 'V + A';
+
+  @override
   String get historyRangeToday => 'Today';
 
   @override

@@ -351,7 +351,10 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
 
   /// design 0089 (FB-103) — lifted out of `HistoryTrendCard`; the heading is
   /// the switch now and has to read the same value the axis does.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  ///
+  /// 🔵 design 0096 (owner, 2026-09-29): opens on voltage＋current. The gate
+  /// still forces voltage for a capacitor or the all-devices scope.
+  HistoryChartSeries _series = HistoryChartSeries.both;
 
   /// The unit's FULL span — the calendar's bounds, and the reason the button
   /// can be disabled before it is tapped rather than after (design 0083
@@ -847,10 +850,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
             // the gate is closed, so the title stays inert rather than
             // becoming a control that does nothing (FB-64).
             onHeadingTap: framing.canSwitch
-                ? () => setState(() => _series =
-                    framing.series == HistoryChartSeries.current
-                        ? HistoryChartSeries.voltage
-                        : HistoryChartSeries.current)
+                ? () => setState(() => _series = nextHistoryChartSeries(framing.series))
                 : null,
             // 🔵 FB-107 (2026-08-30) — glyph plus the word 「切換」, from the
             // one builder the History tab's card also uses.

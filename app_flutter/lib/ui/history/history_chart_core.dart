@@ -170,7 +170,7 @@ class HistoryChartWindow {
 class HistoryChartGeometry {
   HistoryChartGeometry({
     required this.width,
-    required this.hasTemp,
+    required this.hasRight,
     required this.buckets,
     required this.bucketMs,
     DateTime? from,
@@ -178,20 +178,36 @@ class HistoryChartGeometry {
   })  : from = from ?? (buckets.isEmpty ? null : buckets.first.at),
         to = to ?? (buckets.isEmpty ? null : buckets.last.at);
 
-  /// Right padding is wider when a temperature axis has to be labelled there.
+  /// Right padding is wider when the right axis has something to label.
   static const double left = 40, top = 8, bottom = 18;
 
+  /// Does the RIGHT axis carry a series? 🔵 design 0096: this used to be
+  /// `hasTemp`, which was the same question only while temperature was the
+  /// sole tenant of the right axis. In [HistoryChartSeries.both] current lives
+  /// there, and a unit with no temperature must still get the 40 px its current
+  /// labels need. ⛔ Compute it with [hasRightAxis], never by hand: the painter
+  /// and the tap handlers each build a geometry, and two formulas are how a
+  /// touch lands on the wrong bucket (the reason this class exists).
+  final bool hasRight;
+
   final double width;
-  final bool hasTemp;
   final List<HistoryBucket> buckets;
   final int bucketMs;
+
+  /// Whether the right axis is in use for [series] — the ONE formula (see
+  /// [hasRight]).
+  static bool hasRightAxis({
+    required bool hasTemp,
+    required HistoryChartSeries series,
+  }) =>
+      series == HistoryChartSeries.both || hasTemp;
 
   /// The plotted window's ends. Null only when there is nothing to plot.
   final DateTime? from;
   final DateTime? to;
 
   int get n => buckets.length;
-  double get right => hasTemp ? 40 : 8;
+  double get right => hasRight ? 40 : 8;
   double get plotW => width - left - right;
 
   /// Milliseconds across the plot. Never zero: a window with no width would
@@ -311,7 +327,32 @@ class HistoryChartGeometry {
 /// a time means "what was the current doing while the voltage sagged" is NOT
 /// answerable from one picture. That was accepted knowingly; it is not a bug
 /// to be fixed by quietly drawing both.
-enum HistoryChartSeries { voltage, current }
+///
+/// 🔵 **design 0096 adds [both]** — voltage on the left, CURRENT ON THE RIGHT,
+/// temperature not drawn. It does not reopen the price above: it still uses
+/// only the two line colours `accent_theme.dart:28-60` verified as a pair, and
+/// it still has only two y axes — current borrows temperature's, it does not
+/// sit beside it. ⚠️ Two MEANS on one picture: it shows trends, not which
+/// second the sag and the surge shared (design 0096 §1).
+enum HistoryChartSeries {
+  voltage,
+  current,
+
+  /// 🔵 design 0096 — the default, and first in the cycle (owner, 2026-09-29).
+  both,
+}
+
+/// The switch's cycle — design 0096 Q1 (a), with the owner's amendment that
+/// [HistoryChartSeries.both] comes FIRST: both → voltage → current → both.
+///
+/// 🔑 One function, three call sites (the card's heading on two screens and
+/// the landscape bar). The order spelled out at each site is how the three
+/// would come to cycle differently.
+HistoryChartSeries nextHistoryChartSeries(HistoryChartSeries s) => switch (s) {
+      HistoryChartSeries.both => HistoryChartSeries.voltage,
+      HistoryChartSeries.voltage => HistoryChartSeries.current,
+      HistoryChartSeries.current => HistoryChartSeries.both,
+    };
 
 /// The chart's left-axis window, in amperes — design 0085 §3.1 案 B (FB-101).
 ///
@@ -616,7 +657,8 @@ class HistoryTrendPainter extends CustomPainter {
     final n = buckets.length;
     final g = HistoryChartGeometry(
         width: size.width,
-        hasTemp: hasTemp,
+        hasRight:
+            HistoryChartGeometry.hasRightAxis(hasTemp: hasTemp, series: series),
         buckets: buckets,
         bucketMs: bucketMs,
         from: from,
@@ -634,11 +676,21 @@ class HistoryTrendPainter extends CustomPainter {
     // 🔵 design 0085 S2: the LEFT window follows [series]; the right one does
     // not move, in either mode.
     final isCurrent = series == HistoryChartSeries.current;
+    // 🔵 design 0096: in [HistoryChartSeries.both] the RIGHT axis is current
+    // and temperature is not drawn at all. `showTemp` / `rightIsCurrent` are
+    // the only two facts below that know about it.
+    final rightIsCurrent = series == HistoryChartSeries.both;
+    final showTemp = hasTemp && !rightIsCurrent;
     final vr = isCurrent
         ? historyChartCurrentRange(buckets)
         : historyChartVoltageRange(buckets);
     final vlo = vr.lo, vhi = vr.hi;
-    final tr = historyChartTempRange(hasTemp ? buckets : const [], tempUnit);
+    // Right window: current's own rule (always straddles zero) when current is
+    // there, temperature's otherwise — ⛔ never a temperature window with
+    // amperes drawn against it.
+    final tr = rightIsCurrent
+        ? historyChartCurrentRange(buckets)
+        : historyChartTempRange(showTemp ? buckets : const [], tempUnit);
     final tlo = tr.lo, thi = tr.hi;
 
     double xAt(int i) => g.xAt(i);
@@ -721,7 +773,11 @@ class HistoryTrendPainter extends CustomPainter {
       canvas.drawLine(Offset(left, y), Offset(size.width - right, y), gridPaint);
       tp((vlo + (vhi - vlo) * f).toStringAsFixed(1), left - 4, y - 6,
           rightAlign: true, c: vColor);
-      if (hasTemp) {
+      if (rightIsCurrent) {
+        // One decimal, the precision the left axis gives current (design 0085).
+        tp((tlo + (thi - tlo) * f).toStringAsFixed(1), size.width - right + 4,
+            y - 6, c: tColor);
+      } else if (showTemp) {
         tp((tlo + (thi - tlo) * f).toStringAsFixed(0), size.width - right + 4,
             y - 6, c: tColor);
       }
@@ -736,13 +792,17 @@ class HistoryTrendPainter extends CustomPainter {
     // reader do the arithmetic. Drawn over the grid but under the series, in
     // the series' own colour at half strength, so it belongs to the left axis
     // rather than reading as a fourth trace (⛔ design 0085 §2: no new colours).
-    if (isCurrent) {
-      final zy = yV(0);
+    // 🔵 design 0096 Q5: in [HistoryChartSeries.both] the line sits at the
+    // RIGHT axis's zero and takes the right series' colour — ⛔ not `yV(0)`,
+    // which is 0 V and lies far below a voltage window.
+    if (isCurrent || rightIsCurrent) {
+      final zy = rightIsCurrent ? yT(0) : yV(0);
+      final zc = rightIsCurrent ? tColor : vColor;
       canvas.drawLine(
           Offset(left, zy),
           Offset(size.width - right, zy),
           Paint()
-            ..color = vColor.withValues(alpha: 0.55)
+            ..color = zc.withValues(alpha: 0.55)
             ..strokeWidth = 1);
       // The direction key sits immediately above the line it describes —
       // design 0056 asked for "which half is which", and a legend parked in a
@@ -750,7 +810,13 @@ class HistoryTrendPainter extends CustomPainter {
       // case where zero lands against the top edge.
       final dir = currentDirectionLabel;
       if (dir != null) {
-        tp(dir, left + 3, (zy - 11).clamp(top, top + plotH - 11));
+        final dy = (zy - 11).clamp(top, top + plotH - 11);
+        if (rightIsCurrent) {
+          // Beside the axis it describes (Q5), in that axis's colour.
+          tp(dir, size.width - right - 3, dy, rightAlign: true, c: zc);
+        } else {
+          tp(dir, left + 3, dy);
+        }
       }
     }
 
@@ -877,9 +943,14 @@ class HistoryTrendPainter extends CustomPainter {
       }
     }
 
-    if (hasTemp) {
+    if (showTemp) {
       double? t(double? c) => c == null ? null : historyDisplayTemp(c, tempUnit);
       drawBand((b) => t(b.minTemp), (b) => t(b.maxTemp), yT, tColor);
+    }
+    // 🔵 design 0096 Q4 (a): current's band too, under the same rule the left
+    // band follows — the band is what says the line is a mean.
+    if (rightIsCurrent) {
+      drawBand((b) => b.minAmpere, (b) => b.maxAmpere, yT, tColor);
     }
     // 🔴 **The band is not optional, and least of all here** — design 0085
     // §3.3. Q2① / Q3 ruled out the "these are averages" sentence, so once the
@@ -890,11 +961,12 @@ class HistoryTrendPainter extends CustomPainter {
     // setting, and do not drop it to unclutter the card.
     drawBand(leftMin, leftMax, yV, vColor);
 
-    if (hasTemp) {
+    if (showTemp) {
       drawLine((b) => b.avgTemp == null
           ? null
           : historyDisplayTemp(b.avgTemp!, tempUnit), yT, tColor);
     }
+    if (rightIsCurrent) drawLine((b) => b.avgAmpere, yT, tColor);
     drawLine(leftAvg, yV, vColor);
 
     // Emphasized markers at the selected bucket (over the series).
@@ -913,10 +985,14 @@ class HistoryTrendPainter extends CustomPainter {
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.5);
       }
-      if (hasTemp && b.avgTemp != null) {
+      if (showTemp && b.avgTemp != null) {
         canvas.drawCircle(
             Offset(sx, yT(historyDisplayTemp(b.avgTemp!, tempUnit))),
             4.5,
+            Paint()..color = tColor);
+      }
+      if (rightIsCurrent && b.avgAmpere != null) {
+        canvas.drawCircle(Offset(sx, yT(b.avgAmpere!)), 4.5,
             Paint()..color = tColor);
       }
     }

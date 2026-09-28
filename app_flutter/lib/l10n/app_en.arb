@@ -632,6 +632,18 @@
   "@historyChartTodayCurrentTitle": {
     "description": "design 0089 / FB-103 — the today variant. A separate string rather than a composed one: Chinese 今日電流趨勢 is not 今日 + 電流趨勢 glued together."
   },
+  "historyChartBothTitle": "Voltage / Current Trend",
+  "@historyChartBothTitle": {
+    "description": "design 0096: history chart heading when voltage (left axis) and current (right axis) are drawn together. Names both — a heading naming one quantity over a chart showing two is FB-103."
+  },
+  "historyChartTodayBothTitle": "Today's Voltage / Current Trend",
+  "@historyChartTodayBothTitle": {
+    "description": "design 0096: the Today-range variant of historyChartBothTitle."
+  },
+  "historyChartSeriesBothName": "V + A",
+  "@historyChartSeriesBothName": {
+    "description": "design 0096 Q7: the landscape chart bar names the drawn series; this is the combined view. Must fit the 96 px cap in history_chart_page.dart, hence the abbreviation."
+  },
   "historyRangeToday": "Today",
   "historyRangeWeek": "7d",
   "@historyRangeWeek": {
