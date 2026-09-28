@@ -222,7 +222,15 @@ void main() {
     await t.runAsync(seed);
     await open(t, ProductClass.supercapacitor);
 
-    expect(canSwitch(t), isFalse);
+    // 🔴 2026-09-29 field report: no control at all when the gate is closed —
+    // no ⇅, no tap target — only the series name, as on the embedded card.
+    expect(find.byIcon(Icons.swap_vert), findsNothing);
+    expect(
+        find.ancestor(
+            of: find.text(en.historyLegendVoltage),
+            matching: find.byType(InkWell)),
+        findsNothing);
+    expect(find.text(en.historyLegendVoltage), findsOneWidget);
     expect(find.text(en.capacitorChartNoCurrentNote), findsOneWidget);
     await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
@@ -236,7 +244,15 @@ void main() {
     await t.runAsync(seed);
     await open(t, null, deviceId: null);
 
-    expect(canSwitch(t), isFalse);
+    // 🔴 2026-09-29 field report: no control at all when the gate is closed —
+    // no ⇅, no tap target — only the series name, as on the embedded card.
+    expect(find.byIcon(Icons.swap_vert), findsNothing);
+    expect(
+        find.ancestor(
+            of: find.text(en.historyLegendVoltage),
+            matching: find.byType(InkWell)),
+        findsNothing);
+    expect(find.text(en.historyLegendVoltage), findsOneWidget);
     expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsOneWidget);
     expect(find.text(en.capacitorChartNoCurrentNote), findsNothing);
     await tapLabel(t, en.historyLegendVoltage);

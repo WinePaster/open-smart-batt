@@ -303,6 +303,28 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   /// the plot on both shells either way. See design 0089 §8.
   Widget _seriesSwitch(AppLocalizations l10n) {
     final on = _gate == HistoryChartCurrentGate.available;
+    // 🔴 2026-09-29 owner field report (a super-capacitor): 「電容產品 全螢幕的
+    // 情況下仍然會顯示 切換按鈕」 — the label greyed out, but the ⇅ stayed and
+    // the tap target stayed, so it still read as a button that does nothing.
+    // The embedded card already answers "gate closed" by REMOVING the control
+    // (`historySeriesSwitchAffordance` returns null, design 0089 §3.1); this
+    // shell now does the same. What stays is the series NAME, as plain text:
+    // this shell has no legend row, so the bar still has to say what the left
+    // axis counts. The reason is the gate note on the plot, unchanged.
+    if (!on) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 96),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            l10n.historyLegendVoltage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: context.colors.muted),
+          ),
+        ),
+      );
+    }
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
