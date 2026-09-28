@@ -350,9 +350,16 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
       ],
     );
     return ConstrainedBox(
-      // The bar is a fixed 44 px with four other things in it; 96 = the old
-      // 72 label cap plus the icon that now sits inside the same box.
-      constraints: const BoxConstraints(maxWidth: 96),
+      // ~~The bar is a fixed 44 px with four other things in it; 96 = the old
+      // 72 label cap plus the icon that now sits inside the same box.~~
+      // 🔴 2026-09-29 owner field report (battery, `v0.7.44`): 「電壓＋電流 …
+      // 還是顯示... 你前面的文字拿掉了 但是空間沒有還他啊」. The 96 px cap was
+      // sized for a bar that also carried the window's range; ruling 「Ａ」
+      // removed that, and the freed width went to the TITLE (Expanded) while
+      // this label stayed squeezed at its old cap. The switch is now sized by
+      // its label: the title is the one child that may give way. 200 is only
+      // a guard against a pathological text scale.
+      constraints: const BoxConstraints(maxWidth: 200),
       child: Tooltip(
         message: l10n.historyChartSeriesToggle,
         child: Semantics(
@@ -423,8 +430,10 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
           // that it is now the thing you press. Two shells sharing a painter
           // must not teach two different gestures for one action.
           _seriesSwitch(l10n),
+          // 🔵 2026-09-29: 66 ⇒ 28. The slot holds a 13 px spinner; the other
+          // 38 px were reserved for nothing and came out of the title.
           SizedBox(
-            width: 66,
+            width: 28,
             child: _busy
                 ? const Center(
                     child: SizedBox(
