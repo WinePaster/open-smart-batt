@@ -66,6 +66,37 @@ class AppConfig {
     projectUrl: 'https://github.com/WinePaster/open-smart-batt',
     updateRepo: 'WinePaster/open-smart-batt',
   );
+
+  /// The open build as shipped through Google Play: [open] with NO update
+  /// check. Play policy forbids an app from updating itself outside Play, and
+  /// the GitHub check offers exactly that (download the APK). Store installs
+  /// are updated by the store.
+  ///
+  /// iOS needs no such variant: the on-launch check and the Settings row are
+  /// both already Android-only (`main.dart`, `settings_screen.dart`).
+  static const AppConfig openPlay = AppConfig(
+    appName: 'OpenSmartBatt',
+    edition: AppEdition.community,
+    projectUrl: 'https://github.com/WinePaster/open-smart-batt',
+    updateRepo: null,
+  );
+
+  /// The open build for a distribution channel, chosen at build time with
+  /// `--dart-define=OSB_CHANNEL=<channel>`: empty (the default, GitHub APK /
+  /// TestFlight) → [open]; `play` → [openPlay].
+  ///
+  /// 🔴 Any other value THROWS. A typo must not silently fall back to [open],
+  /// because that is the one mistake that ships a Play build which tells users
+  /// to side-load an APK over it.
+  static AppConfig forChannel(String channel) => switch (channel) {
+    '' => open,
+    'play' => openPlay,
+    _ => throw ArgumentError.value(
+      channel,
+      'OSB_CHANNEL',
+      'unknown distribution channel (expected empty or "play")',
+    ),
+  };
 }
 
 /// Makes the [AppConfig] readable from anywhere under the app shell.

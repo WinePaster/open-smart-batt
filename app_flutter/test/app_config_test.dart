@@ -366,4 +366,32 @@ void main() {
       expect(src, contains("appName: '$brand'"));
     });
   });
+
+  group('T5 — the Play channel drops the GitHub update check, and only that', () {
+    test('an unset OSB_CHANNEL is the open build, unchanged', () {
+      expect(AppConfig.forChannel(''), same(AppConfig.open));
+    });
+
+    test('play has no release channel of its own', () {
+      // Play policy: no self-update outside Play. The GitHub check offers
+      // exactly that, so a Play build must not run it.
+      expect(AppConfig.forChannel('play').updateRepo, isNull);
+    });
+
+    test('play changes nothing else', () {
+      // The fields are written out twice (const constructors cannot read
+      // another const's fields), so pin them together here.
+      final play = AppConfig.forChannel('play');
+      expect(play.appName, AppConfig.open.appName);
+      expect(play.edition, AppConfig.open.edition);
+      expect(play.projectUrl, AppConfig.open.projectUrl);
+    });
+
+    test('an unknown channel fails loudly instead of falling back', () {
+      // Falling back to [AppConfig.open] would ship a Play build that tells
+      // users to side-load an APK over it.
+      expect(() => AppConfig.forChannel('Play'), throwsArgumentError);
+      expect(() => AppConfig.forChannel('google'), throwsArgumentError);
+    });
+  });
 }

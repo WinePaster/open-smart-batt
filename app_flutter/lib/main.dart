@@ -26,7 +26,11 @@ import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
-Future<void> main() => bootstrap();
+/// `OSB_CHANNEL` selects the distribution channel (see [AppConfig.forChannel]);
+/// unset, this is exactly the build it always was.
+Future<void> main() => bootstrap(
+  config: AppConfig.forChannel(const String.fromEnvironment('OSB_CHANNEL')),
+);
 
 /// Composition-root wrapper. The OPEN build calls this with defaults —
 /// [NoopMetadataParser] (decodes no closed selectors) and no device-info panel —
