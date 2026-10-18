@@ -378,7 +378,7 @@
     }
   },
   "cutOffDialogTitle": "Send Cut-off Command",
-  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
+  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
   "cutOffDialogConfirm": "I understand — send it",
   "cutOffFailedSnack": "Cut-off command failed: {error}",
   "@cutOffFailedSnack": {
@@ -406,7 +406,7 @@
   "releaseConfirmContinue": "Restore",
   "releaseDialogErrorAuthFormat": "Invalid auth value format (use decimal or 0x hexadecimal)",
   "releaseDialogErrorDealerLength": "Dealer code must be at least 8 digits",
-  "releaseDialogBody": "Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.",
+  "releaseDialogBody": "Sends the \"release cut-off\" command. Use the cut-off password, or enter your auth values directly.",
   "releaseDialogAuthModePassword": "Password",
   "releaseDialogAuthModeCode": "Advanced: My Code",
   "releaseDialogDealerCodeHint": "Dealer code (auto-filled when connected)",

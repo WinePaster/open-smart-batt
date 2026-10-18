@@ -881,7 +881,7 @@ abstract class AppLocalizations {
   /// No description provided for @cutOffDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
+  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
   String get cutOffDialogBody;
 
   /// No description provided for @cutOffDialogConfirm.
@@ -965,7 +965,7 @@ abstract class AppLocalizations {
   /// No description provided for @releaseDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.'**
+  /// **'Sends the \"release cut-off\" command. Use the cut-off password, or enter your auth values directly.'**
   String get releaseDialogBody;
 
   /// No description provided for @releaseDialogAuthModePassword.

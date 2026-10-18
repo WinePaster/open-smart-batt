@@ -491,7 +491,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffDialogBody =>
-      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n解除斷電這條路徑目前尚未被證實可用。我們手上沒有任何一次擷取顯示裝置對模式指令有回應，認證值的推導方式也還在查證中。如果解除失敗，本 App 無法讓這顆電池復電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
+      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功：目前仍有電池在多次復電後都解不開，原因還在查證。如果復電失敗，本 App 無法讓這顆電池恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
 
   @override
   String get cutOffDialogConfirm => '我了解，仍要送出';
@@ -538,7 +538,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get releaseDialogErrorDealerLength => '代理碼需至少 8 碼';
 
   @override
-  String get releaseDialogBody => '送出已知安全的「解除」指令(mode 0x06)。可用斷電密碼，或直接輸入你的驗證值。';
+  String get releaseDialogBody => '送出「解除斷電」指令。可用斷電密碼，或直接輸入你的驗證值。';
 
   @override
   String get releaseDialogAuthModePassword => '密碼';
