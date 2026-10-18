@@ -138,6 +138,12 @@ community self-help tool open for the community and preventing it from being
 re-closed or commercialized. The protocol docs (`docs/`) are functional facts, not
 subject to copyright.
 
+> **App Store / Google Play distribution:** plain GPLv3 conflicts with the usage rules /
+> DRM that app stores impose on end users, so the sole copyright holder grants an
+> **additional permission under GPLv3 §7** allowing binaries to be conveyed through the
+> Apple App Store, TestFlight, Google Play and equivalent platforms. The full source stays
+> public under GPLv3. See "App Store Distribution Exception" in [`COPYRIGHT.md`](./COPYRIGHT.md).
+
 ## Protocol documentation
 
 Full spec: [`docs/PROTOCOL.md`](./docs/PROTOCOL.md) (an index; the spec itself lives in

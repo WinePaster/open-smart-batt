@@ -90,7 +90,7 @@ open-smart-batt/
 
 本專案程式碼採 **GNU GPLv3**（見 [`LICENSE`](./LICENSE)）。散布衍生版或改裝 APK 時**必須一併以 GPLv3 開源**——確保這個社群自救工具永遠對社群開放、不會被閉源或商業化關起來。協定文件（`docs/`）為功能性事實、不受著作權限制。
 
-> **iOS / App Store 散佈：** 為讓 iOS 版（`OpenSmartBatt`）能合法透過 Apple App Store／TestFlight 散佈（純 GPLv3 與 Apple 的 Usage Rules／DRM 衝突），唯一著作權人已依 GPLv3 §7 授予 **App Store 附加許可**；原始碼仍完整以 GPLv3 公開。詳見 [`COPYRIGHT.md`](./COPYRIGHT.md) 的「App Store 散佈例外」。
+> **iOS / App Store 散佈：** 為讓 iOS 版（`OpenSmartBatt`）能合法透過 Apple App Store／TestFlight（以及 Google Play）散佈（純 GPLv3 與 Apple 的 Usage Rules／DRM 衝突），唯一著作權人已依 GPLv3 §7 授予 **App Store 附加許可**；原始碼仍完整以 GPLv3 公開。詳見 [`COPYRIGHT.md`](./COPYRIGHT.md) 的「App Store 散佈例外」。
 
 ## 協定文件
 
