@@ -103,14 +103,22 @@ class FrameReassembler {
       final frameBytes = _buf.sublist(0, total);
       final expectedXor = xorFold(frameBytes.sublist(0, total - 1));
       final actualXor = frameBytes[total - 1];
+      final ok = expectedXor == actualXor;
       out.add(InboundFrame(
         selector: frameBytes[1],
         flag: frameBytes[2],
         len: len,
         payload: Uint8List.fromList(frameBytes.sublist(4, 4 + len)),
-        checksumOk: expectedXor == actualXor,
+        checksumOk: ok,
       ));
-      _buf.removeRange(0, total);
+      // 🔴 FB-117. A bad XOR means LEN cannot be trusted to say where this
+      // frame ends: the usual cause is a lost notification fragment, and then
+      // the "frame" above was completed out of the NEXT frame's opening bytes.
+      // Consuming all `total` bytes used to throw that next frame away with it
+      // (field `2026.10.14/001`: PVLT survived 11 of 3,041 in a background
+      // stretch). Drop only the sync byte and resync — the same rule
+      // `tools/fbparse.py` uses, which kept all 3,041.
+      _buf.removeRange(0, ok ? total : 1);
     }
     return out;
   }
