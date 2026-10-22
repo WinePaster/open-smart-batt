@@ -395,7 +395,45 @@ class LogRepo {
   ///
   /// On return [_estimatedBytes] always holds a freshly queried total — this is
   /// where the running estimate is re-grounded.
-  Future<void> trimToBytes(int maxBytes) async {
+  ///
+  /// 🔴 **FB-116. At most one trim runs at a time.** [insertLog] is fired
+  /// without `await` on the hot path (`telemetry_controller.dart`), so a burst
+  /// of inserts that crosses the cap used to start one trim EACH. Every one of
+  /// them read the same not-yet-deleted total, computed "drop ~10 %", and
+  /// deleted it — the deletions stacked. At 20 in flight the table went to
+  /// **0 rows**, and the FB-110 fallback took the capture marks with it
+  /// (field: `2026.10.20/001`, `dropped=1503474`, ~10 MB left of ~100 MiB).
+  /// The existing tests awaited every insert, so no two trims ever overlapped.
+  ///
+  /// A call for the same cap as the trim already running JOINS it — that trim
+  /// re-reads the total, so it already covers the caller's row. A call for a
+  /// different cap (the user changed the setting) queues behind it and then
+  /// re-reads the total itself, so it never deletes on a stale figure.
+  Future<void> trimToBytes(int maxBytes) {
+    final running = _trimInFlight;
+    if (running != null && _trimInFlightCap == maxBytes) return running;
+    late final Future<void> tracked;
+    tracked = (running ?? Future<void>.value())
+        .catchError((Object _) {})
+        .then((_) => _trimToBytesNow(maxBytes))
+        .whenComplete(() {
+      if (identical(_trimInFlight, tracked)) {
+        _trimInFlight = null;
+        _trimInFlightCap = null;
+      }
+    });
+    _trimInFlight = tracked;
+    _trimInFlightCap = maxBytes;
+    return tracked;
+  }
+
+  /// The trim [trimToBytes] serialises (FB-116); `null` when none is running.
+  Future<void>? _trimInFlight;
+
+  /// The cap [_trimInFlight] is trimming to, so a same-cap caller can join it.
+  int? _trimInFlightCap;
+
+  Future<void> _trimToBytesNow(int maxBytes) async {
     if (maxBytes <= 0) {
       await clearLog();
       return;
