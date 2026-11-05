@@ -28,6 +28,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../ble/ble.dart';
 import '../config/app_config.dart';
 import '../data/data.dart';
+import '../demo/demo.dart';
 import '../models/models.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -1958,7 +1959,11 @@ class ConnectionController extends ChangeNotifier {
         'connect → ${shortDeviceHash(deviceId)}'
         '${autoTrigger == null ? '' : ' (auto: $autoTrigger)'}',
         deviceId: deviceId);
-    final ok = await _ble.ensurePermissions();
+    // design 0097: a demo unit needs no radio, so neither the Bluetooth
+    // permission nor the adapter state may stand in its way — a reviewer who
+    // declined the permission must still be able to see the app work.
+    final isDemo = isDemoDeviceId(deviceId);
+    final ok = isDemo || await _ble.ensurePermissions();
     if (!ok) {
       _setError('permission_denied',
           deviceId: deviceId, requestedId: _requestedDeviceId);
@@ -1975,7 +1980,7 @@ class ConnectionController extends ChangeNotifier {
     // have a capture for. Returning rather than throwing matches the
     // permission branch directly above; the device sheet already shows a
     // "Bluetooth is off" note driven by [isAdapterOn].
-    if (adapterBlocksConnect(_adapter)) {
+    if (!isDemo && adapterBlocksConnect(_adapter)) {
       // Non-null by construction — the guard above means the adapter is off or
       // unauthorized and the classifier answers both — but not asserted with
       // `!`: a crash would be a worse way to learn otherwise than a blank line.

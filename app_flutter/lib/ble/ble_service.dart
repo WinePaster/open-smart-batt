@@ -24,11 +24,13 @@ library;
 
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../demo/demo.dart';
 import '../models/log_entry.dart' show LogDirection;
 import '../models/telemetry_sample.dart';
 import '../protocol/protocol.dart';
@@ -165,6 +167,15 @@ class _LinkState {
   /// superseded, so a slow unit cannot bring the app online under an identity
   /// the user has already moved away from. See [ConnectEpoch].
   final ConnectEpoch epoch = ConnectEpoch();
+
+  /// design 0097: the simulated unit behind a DEMO link, or null for a real
+  /// one. A demo link has no plugin handle ([device] stays null) and touches no
+  /// platform API; the single-link getters read this alongside [device].
+  DemoPeripheral? demo;
+
+  /// Answers [demo] has scheduled and not yet delivered. Cancelled by teardown
+  /// so a torn-down demo link cannot speak after it has gone.
+  final Set<Timer> demoReplies = <Timer>{};
 }
 
 /// What one `connectionState` event means for the link it arrived on.
@@ -687,10 +698,15 @@ class BleService {
       _current?.decoder.deviceMetadata ?? const EmptyDeviceMetadata();
 
   /// Remote id of the connected/connecting device, or null.
-  String? get connectedDeviceId => _current?.device?.remoteId.str;
+  String? get connectedDeviceId =>
+      _current?.device?.remoteId.str ?? _current?.demo?.kind.id;
 
   /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
-  String get connectedDeviceName => _current?.device?.platformName ?? '';
+  String get connectedDeviceName =>
+      _current?.device?.platformName ?? _current?.demo?.kind.advertisedName ?? '';
+
+  /// True while the current link is a demo one (design 0097).
+  bool get isDemoLink => _current?.demo != null;
 
   /// True while a scan is in progress.
   bool get isScanning => FlutterBluePlus.isScanningNow;
@@ -863,6 +879,12 @@ class BleService {
     await disconnect();
     await stopScan();
 
+    // design 0097: a demo id never reaches the plugin. Branching here, after
+    // the shared teardown above, keeps "connecting replaces the previous link"
+    // one rule for both kinds.
+    final demoKind = DemoKind.fromId(deviceId);
+    if (demoKind != null) return _connectDemo(deviceId, demoKind);
+
     final device = BluetoothDevice.fromId(deviceId);
     final link = _LinkState(
         deviceId: deviceId, device: device, parser: _parser);
@@ -946,6 +968,55 @@ class BleService {
       throw lastErr;
     }
   }
+
+  /// design 0097: bring up a DEMO link. Same state sequence as a real one —
+  /// `connecting` → `connected` → keep-alive → `ready` — so the controllers
+  /// above cannot tell the difference, and no platform API is called.
+  Future<void> _connectDemo(String deviceId, DemoKind kind) async {
+    final link = _LinkState(deviceId: deviceId, device: null, parser: _parser)
+      ..demo = DemoPeripheral(kind);
+    _installLink(link);
+    _current = link;
+    _setState(BleLinkState.connecting);
+    final epoch = link.epoch.current;
+    // A real connect takes a moment; an instant one would skip the
+    // connecting state the UI is built to show.
+    await Future<void>.delayed(demoConnectDelay);
+    if (!link.epoch.isCurrent(epoch) || link.demo == null) return;
+    _setState(BleLinkState.connected);
+    _emitEvent('demo link up (${kind.id})', link: link);
+    _startKeepAlive(link);
+    _setState(BleLinkState.ready);
+  }
+
+  /// How long a demo connect sits in `connecting`.
+  @visibleForTesting
+  static Duration demoConnectDelay = const Duration(milliseconds: 600);
+
+  /// How long a demo unit takes to answer a write.
+  @visibleForTesting
+  static Duration demoReplyDelay = const Duration(milliseconds: 40);
+
+  /// Hand [frames] to [_onNotify] the way the radio would: after a short delay,
+  /// in notification-sized chunks, so the reassembler is exercised as on a
+  /// real link.
+  void _deliverDemo(_LinkState link, List<List<int>> frames) {
+    if (frames.isEmpty) return;
+    final bytes = <int>[for (final f in frames) ...f];
+    late final Timer t;
+    t = Timer(demoReplyDelay, () {
+      link.demoReplies.remove(t);
+      if (link.demo == null) return;
+      for (var i = 0; i < bytes.length; i += demoChunkBytes) {
+        final end = math.min(i + demoChunkBytes, bytes.length);
+        _onNotify(link, bytes.sublist(i, end));
+      }
+    });
+    link.demoReplies.add(t);
+  }
+
+  /// The ATT payload of one notification at the default MTU 23.
+  static const int demoChunkBytes = 20;
 
   /// Open a new epoch on every link that exists, invalidating any setup already
   /// mid-await. See [ConnectEpoch] and the note in [_links] on why an entry
@@ -1341,10 +1412,10 @@ class BleService {
     _invalidateAllLinks();
     final link = _current;
     final device = link?.device;
-    if (link == null || device == null) return;
+    if (link == null || (device == null && link.demo == null)) return;
     _setState(BleLinkState.disconnecting);
     try {
-      await device.disconnect();
+      await device?.disconnect();
     } catch (_) {
       // Ignore: teardown still proceeds via the connectionState callback.
     }
@@ -1444,6 +1515,11 @@ class BleService {
     // behind `currentSample` and the epoch behind `disconnect()` both have to
     // survive this, exactly as the service-level fields used to.
     link.device = null;
+    for (final t in link.demoReplies) {
+      t.cancel();
+    }
+    link.demoReplies.clear();
+    link.demo = null;
     link.settingUp = false;
     link.reassembler.reset();
     await notifyCancelled;
@@ -1474,7 +1550,7 @@ class BleService {
     // every early return, deliberately — a guarded tick still proves the
     // isolate ran.
     _execGap.tick(DateTime.now());
-    if (link.writeChar == null) return;
+    if (link.writeChar == null && link.demo == null) return;
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH
     // directions stall for minutes, then everything resumes at once. Without
@@ -1573,6 +1649,13 @@ class BleService {
   /// never be delivered to a unit other than the one it was scheduled for.
   Future<void> _writeTo(_LinkState? link, List<int> bytes,
       {Duration? timeout}) async {
+    final demo = link?.demo;
+    if (demo != null) {
+      _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
+          deviceId: link!.deviceId));
+      _deliverDemo(link, demo.answer(bytes));
+      return;
+    }
     final c = link?.writeChar;
     if (c == null) {
       throw StateError('writeCommand: not connected / write char unresolved');
