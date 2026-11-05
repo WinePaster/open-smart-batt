@@ -1598,7 +1598,11 @@ class HistoryRepo {
   }) async {
     final (clause, scopeArgs) =
         _scope(since: since, until: until, deviceId: deviceId);
-    final where = clause == null ? '' : 'WHERE $clause';
+    // design 0097 review: describes what an export CONTAINS, and an export
+    // never contains demo rows (see [_exportCsvStream]).
+    final where = clause == null
+        ? 'WHERE $kNotDemoRowSql'
+        : 'WHERE $clause AND $kNotDemoRowSql';
     final rows = await _db.rawQuery(
       'SELECT DISTINCT bucket_s AS b FROM ${Db.tableHistory} $where '
       'ORDER BY b ASC',
@@ -1663,10 +1667,19 @@ class HistoryRepo {
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
-  /// Delete every demo unit's rows (design 0097 §2.3 ②). Run at startup and
-  /// when a demo link ends. Returns the number of rows removed.
-  Future<int> purgeDemoRows() =>
-      _db.delete(Db.tableHistory, where: kDemoRowSql);
+  /// Delete demo rows (design 0097 §2.3 ②): every demo unit's at startup, or
+  /// just [deviceId]'s when that demo link ends — so ending demo A cannot wipe
+  /// the seed demo B has just written. Returns the number of rows removed.
+  Future<int> purgeDemoRows({String? deviceId}) {
+    if (deviceId == null) {
+      return _db.delete(Db.tableHistory, where: kDemoRowSql);
+    }
+    if (!isDemoDeviceId(deviceId)) {
+      throw ArgumentError.value(deviceId, 'deviceId', 'not a demo unit');
+    }
+    return _db.delete(Db.tableHistory,
+        where: 'device_id = ?', whereArgs: <Object?>[deviceId]);
+  }
 
   /// Rows in range belonging to some OTHER unit than [deviceId] — the other
   /// half of the same silent loss [countUnattributed] covers.

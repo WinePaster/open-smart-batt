@@ -1426,8 +1426,10 @@ class TelemetryController extends ChangeNotifier
   /// The most recent history write, so the demo purge can run after it.
   Future<void>? _lastHistoryWrite;
 
-  /// True from a demo link's `ready` until its rows are purged (design 0097).
-  bool _demoSession = false;
+  /// The demo unit whose link is up, from its `ready` until its rows are
+  /// purged (design 0097); null otherwise. Also what stops a second `ready`
+  /// on the same link from seeding the 24 h twice.
+  String? _demoSession;
 
   /// design 0097 §2.3: seed a demo link's past on `ready`; delete every demo
   /// row once it is gone. The purge is chained after the last write — the
@@ -1436,15 +1438,19 @@ class TelemetryController extends ChangeNotifier
   void _onDemoLinkState(BleLinkState s) {
     if (s == BleLinkState.ready) {
       final kind = DemoKind.fromId(_ble.connectedDeviceId);
-      if (kind == null) return;
-      _demoSession = true;
+      if (kind == null || _demoSession == kind.id) return;
+      _demoSession = kind.id;
       _pending.add(_lastHistoryWrite = _history.insertSamples(
           demoHistorySeed(kind, DateTime.now(), appBuild: _appBuild)));
     }
-    if (s == BleLinkState.disconnected && _demoSession) {
-      _demoSession = false;
-      final after = _lastHistoryWrite ?? Future<void>.value();
-      _pending.add(after.then((_) => _history.purgeDemoRows()));
+    final ended = _demoSession;
+    if (s == BleLinkState.disconnected && ended != null) {
+      _demoSession = null;
+      // After the last write whether or not it SUCCEEDED: a failed write must
+      // not leave demo rows behind until the next launch.
+      final after = (_lastHistoryWrite ?? Future<void>.value())
+          .then<void>((_) {}, onError: (Object _) {});
+      _pending.add(after.then((_) => _history.purgeDemoRows(deviceId: ended)));
     }
   }
 

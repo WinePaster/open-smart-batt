@@ -21,6 +21,7 @@ import '../dashboard/capture_mark_labels.dart';
 import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
 import '../../config/app_config.dart';
+import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -1252,6 +1253,15 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // accumulates across every connection to every unit the phone has seen.
     final target = await chooseExportScope(context, offerSession: true);
     if (target == null || !mounted) return;
+    // design 0097 review: a demo unit has no diagnostic log (LogRepo drops its
+    // rows), so a scoped export would be a header describing a unit that does
+    // not exist — exactly the kind of file the corpus must never receive.
+    if (isDemoDeviceId(target.deviceId)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(milliseconds: 1600),
+          content: Text(AppLocalizations.of(context).settingsLogEmpty)));
+      return;
+    }
     setState(() => _busy = true);
     final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);

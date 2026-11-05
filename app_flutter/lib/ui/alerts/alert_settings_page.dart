@@ -58,6 +58,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
@@ -116,6 +117,10 @@ class AlertSettingsEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // design 0097 review: alerts need a saved unit, and a demo unit can never
+    // be saved — the row would read "save this device first" and its tap
+    // would do nothing. A dead control is the thing App Review rejects.
+    if (isDemoDeviceId(deviceId)) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     final devices = context.watch<DeviceController>();
     final saved = devices.deviceFor(deviceId);

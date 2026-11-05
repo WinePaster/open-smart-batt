@@ -19,6 +19,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
+import 'package:open_smart_batt/ui/alerts/alert_settings_page.dart';
 import 'package:open_smart_batt/ui/demo/demo_ui.dart';
 import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/devices/devices_page.dart';
@@ -268,6 +269,21 @@ void main() {
       expect(tester.takeException(), isNull, reason: 'no overflow');
       await tester.runAsync(s.dispose);
     });
+  });
+
+  testWidgets('no alert-settings row for a demo unit', (tester) async {
+    final s = await makeServices(tester);
+    await tester.pumpWidget(app(
+        s,
+        Scaffold(
+            body: Column(children: [
+          AlertSettingsEntry(deviceId: DemoKind.battery.id),
+          const AlertSettingsEntry(deviceId: 'AA:BB:CC:DD:EE:01'),
+        ]))));
+    await tester.pump();
+    // The real unit's row still says "save first"; the demo's is gone.
+    expect(find.byType(InkWell), findsOneWidget);
+    await tester.runAsync(s.dispose);
   });
 
   group('names and saving', () {

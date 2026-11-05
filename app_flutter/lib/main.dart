@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'ble/ble.dart';
 import 'config/app_config.dart';
 import 'data/data.dart';
+import 'demo/demo.dart';
 import 'models/models.dart';
 import 'protocol/protocol.dart';
 import 'state/state.dart';
@@ -1253,7 +1254,13 @@ class _ConnectionPill extends StatelessWidget {
     // green as your theme and `CONNECTING` would be `CONNECTED`; the pill is
     // the app's most-read status and the two labels differ by one word.
     // `accent_classification_test.dart` drives exactly this case.
+    //
+    // design 0097 review: a demo link is never `CONNECTED` — that word under a
+    // banner saying no device is connected contradicts itself, and it was in
+    // every store screenshot. Amber, the banner's colour.
+    final demo = isDemoDeviceId(conn.connectedDeviceId);
     final (Color color, String label) = switch (conn.linkState) {
+      BleLinkState.ready when demo => (AppSemantics.warn, 'DEMO'),
       BleLinkState.ready => (AppSemantics.good, 'CONNECTED'),
       BleLinkState.connecting ||
       BleLinkState.connected => (AppSemantics.warn, 'CONNECTING'),
@@ -1273,7 +1280,8 @@ class _ConnectionPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bluetooth, size: 13, color: color),
+            Icon(demo ? Icons.science_outlined : Icons.bluetooth,
+                size: 13, color: color),
             const SizedBox(width: 6),
             Container(
               width: 6,
