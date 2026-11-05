@@ -6,6 +6,7 @@ library;
 
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 import 'app_database.dart';
 
@@ -37,7 +38,14 @@ class DeviceRepo {
   }
 
   /// Insert or replace a saved device (keyed by [SavedDevice.id]).
+  ///
+  /// 🔴 Refuses a demo unit (design 0097 §2.2): it can never be saved, and the
+  /// UI offers no way to. Throwing rather than ignoring, because reaching here
+  /// with one is a bug in a caller, not a state to tolerate.
   Future<void> upsertSavedDevice(SavedDevice device) {
+    if (isDemoDeviceId(device.id)) {
+      throw ArgumentError.value(device.id, 'device.id', 'a demo unit cannot be saved');
+    }
     return _db.insert(
       Db.tableSavedDevices,
       device.toMap(),

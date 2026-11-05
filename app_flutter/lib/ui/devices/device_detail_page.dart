@@ -22,12 +22,14 @@ import 'package:intl/intl.dart' show NumberFormat;
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../alerts/alert_event_banner.dart';
 import '../alerts/alert_settings_page.dart';
 import '../dashboard/dashboard_page.dart';
+import '../demo/demo_ui.dart';
 import '../history/device_history_tab.dart';
 import '../widgets/one_screen_report.dart';
 import 'connection_failure.dart';
@@ -569,7 +571,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // in a room that may hold six of them. Advertised name, else the id.
     final title = (saved?.alias.isNotEmpty ?? false)
         ? saved!.alias
-        : unsavedDeviceTitle(id: deviceId, advertisedName: widget.fallbackName);
+        : demoDisplayName(l10n, deviceId) ??
+            unsavedDeviceTitle(id: deviceId, advertisedName: widget.fallbackName);
 
     // "This unit's live page" is `online AND it is this unit`. Reading only
     // `isOnline` would draw another device's telemetry under this one's name —
@@ -588,7 +591,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // 🔴 `live` gates the MAC — it is the CONNECTED unit's address, and this
     // page can be open on a unit that is not the connected one.
     final wireMac = live ? conn.liveMac : null;
-    final subtitle = wireMac != null && wireMac.isNotEmpty
+    final subtitle = isDemoDeviceId(deviceId)
+        ? l10n.demoRowMeta
+        : wireMac != null && wireMac.isNotEmpty
         ? wireMac
         : (title == deviceId || title == shortDeviceId(deviceId)
               ? l10n.devicesNoAdvertisedName
@@ -783,7 +788,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                     ),
                   ),
                 ),
-                if (saved == null) _UnsavedNotice(deviceId: deviceId),
+                // A demo unit cannot be saved (design 0097), so no nudge to.
+                if (saved == null && !isDemoDeviceId(deviceId))
+                  _UnsavedNotice(deviceId: deviceId),
                 Expanded(
                   child: DashboardPage(
                     deviceId: deviceId,

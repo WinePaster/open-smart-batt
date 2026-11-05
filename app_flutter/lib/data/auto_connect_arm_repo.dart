@@ -15,6 +15,7 @@ library;
 
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 import 'app_database.dart';
 
@@ -94,6 +95,8 @@ class AutoConnectArmRepo {
   /// Record that a hand-off is in flight. Replaces any previous row — see the
   /// class comment for why there can only be one.
   Future<void> write(AutoConnectArm arm) async {
+    // design 0097 §2.2: a demo unit is never handed to the OS to reconnect.
+    if (isDemoDeviceId(arm.deviceId)) return;
     await _db.insert(
       Db.tableAutoConnectArm,
       {'id': Db.autoConnectArmRowId, ...arm.toMap()},

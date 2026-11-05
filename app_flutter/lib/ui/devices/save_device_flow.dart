@@ -21,6 +21,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import 'alias_dialog.dart';
@@ -37,6 +38,8 @@ import 'declared_model_dialog.dart';
 Future<bool> promptAndSaveDevice(BuildContext context, String deviceId) async {
   final devices = context.read<DeviceController>();
   if (devices.isSaved(deviceId)) return false;
+  // design 0097 §3.5: a demo unit is never saved, so it is never offered.
+  if (isDemoDeviceId(deviceId)) return false;
 
   final conn = context.read<ConnectionController>();
   final tele = context.read<TelemetryController>();

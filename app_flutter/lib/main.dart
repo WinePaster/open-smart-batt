@@ -16,6 +16,7 @@ import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
 import 'ui/alerts/alert_settings_page.dart';
+import 'ui/demo/demo_ui.dart';
 import 'ui/devices/device_detail_page.dart';
 import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
@@ -365,7 +366,9 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
                     mq.textScaler.scale(1) * AppTheme.baseTextScale,
                   ),
                 ),
-                child: child!,
+                // design 0097 §3.5 — above the navigator, so every route
+                // carries it while a demo unit is linked.
+                child: DemoBannerFrame(child: child!),
               );
             },
           ),

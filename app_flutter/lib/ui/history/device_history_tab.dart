@@ -886,6 +886,7 @@ class _DeviceHistoryTabState extends State<DeviceHistoryTab> {
                         context.read<DeviceController>(),
                         widget.deviceId,
                         facts: context.read<DeviceFactsController?>(),
+                        l10n: AppLocalizations.of(context),
                       ),
                       tempUnit: tempUnit,
                       dataFrom: data.stats.firstAt!,

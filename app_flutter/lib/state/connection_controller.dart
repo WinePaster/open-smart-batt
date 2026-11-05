@@ -28,6 +28,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../ble/ble.dart';
 import '../config/app_config.dart';
 import '../data/data.dart';
+import '../demo/demo.dart';
 import '../models/models.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -229,7 +230,10 @@ class ConnectionController extends ChangeNotifier {
   /// up throughout, so nothing reports a disconnect and the readings simply
   /// stop, then arrive as a backlog burst when the process thaws.
   void _updateMonitor() {
-    final shouldRun = isOnline && _settings.backgroundMonitoring;
+    // design 0097 §2.2: no "connected" notification for a unit that does not
+    // exist, and nothing to keep alive in the background.
+    final shouldRun =
+        isOnline && _settings.backgroundMonitoring && !_ble.isDemoLink;
     if (shouldRun == _monitorRunning) return;
     _monitorRunning = shouldRun;
     if (shouldRun) {
@@ -1276,7 +1280,13 @@ class ConnectionController extends ChangeNotifier {
     // Newest first, and that ordering is load-bearing: one unit can accumulate
     // `device_unreachable` and then `connect_failed`, and the screen has to
     // show what happened LAST, not what happened first.
+    // design 0097: a demo unit needs no radio, so "Bluetooth is off" is not an
+    // error OF it — without this, a reviewer with Bluetooth off would see the
+    // demo refuse to open (the scan sets the radio slot, and every unit reads
+    // it).
+    final demo = isDemoDeviceId(deviceId);
     for (final e in _errors.values.toList().reversed) {
+      if (demo && e.deviceId == null) continue;
       final code = e.codeFor(deviceId);
       if (code != null) return code;
     }
@@ -1958,7 +1968,11 @@ class ConnectionController extends ChangeNotifier {
         'connect → ${shortDeviceHash(deviceId)}'
         '${autoTrigger == null ? '' : ' (auto: $autoTrigger)'}',
         deviceId: deviceId);
-    final ok = await _ble.ensurePermissions();
+    // design 0097: a demo unit needs no radio, so neither the Bluetooth
+    // permission nor the adapter state may stand in its way — a reviewer who
+    // declined the permission must still be able to see the app work.
+    final isDemo = isDemoDeviceId(deviceId);
+    final ok = isDemo || await _ble.ensurePermissions();
     if (!ok) {
       _setError('permission_denied',
           deviceId: deviceId, requestedId: _requestedDeviceId);
@@ -1975,7 +1989,7 @@ class ConnectionController extends ChangeNotifier {
     // have a capture for. Returning rather than throwing matches the
     // permission branch directly above; the device sheet already shows a
     // "Bluetooth is off" note driven by [isAdapterOn].
-    if (adapterBlocksConnect(_adapter)) {
+    if (!isDemo && adapterBlocksConnect(_adapter)) {
       // Non-null by construction — the guard above means the adapter is off or
       // unauthorized and the classifier answers both — but not asserted with
       // `!`: a crash would be a worse way to learn otherwise than a blank line.
@@ -2630,6 +2644,7 @@ class ConnectionController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     final id = _desiredDeviceId;
     if (id == null) return;
+    if (isDemoDeviceId(id)) return; // design 0097 §2.2 — nothing for the OS to find
     _autoConnectGaveUp = false;
     _event('auto-reconnect: autoConnect armed (iOS)');
     // FB-53: and give it a deadline. See [autoConnectWatchdog] for why an

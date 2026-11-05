@@ -2619,4 +2619,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get liveChartRestarted => 'Reconnected · recording restarted';
+
+  @override
+  String get demoEntryTitle => 'No device? Try a demo unit';
+
+  @override
+  String get demoEntrySubtitle => 'See every screen with simulated data';
+
+  @override
+  String get demoPickTitle => 'Choose a demo unit';
+
+  @override
+  String get demoBatteryName => 'Demo battery';
+
+  @override
+  String get demoCapacitorName => 'Demo capacitor';
+
+  @override
+  String get demoBatteryDesc => '12 V smart battery · try cut-off and restore';
+
+  @override
+  String get demoCapacitorDesc => 'Super-capacitor · try the self-check';
+
+  @override
+  String get demoBanner => 'Demo mode · simulated data, no device connected';
+
+  @override
+  String get demoRowMeta => 'Simulated data · not a real device';
+
+  @override
+  String get demoBannerEnd => 'End demo';
 }

@@ -152,6 +152,10 @@ class AppServices {
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
     final autoConnectArmRepo = AutoConnectArmRepo(db.db);
+    // design 0097 §2.3 ②: whatever a demo left behind — a process killed
+    // mid-demo never reaches the purge on disconnect — goes before anything
+    // can read or export it.
+    await historyRepo.purgeDemoRows();
     // design 0060 §3.3: read BEFORE the controller exists, so the value handed
     // to it cannot have been written by it. Same shape as `lastSessionId()`
     // below — a single read the composition root already does at this point.
