@@ -285,8 +285,8 @@ void main() {
       expect(demoDisplayName(zh, DemoKind.capacitor.id), '示範電容');
       expect(demoDisplayName(zh, 'AA:BB:CC:DD:EE:01'), isNull);
       expect(deviceLabelFor(s.devices, DemoKind.battery.id, l10n: zh), '示範電池');
-      expect(deviceLabelFor(s.devices, DemoKind.battery.id), 'Demo Battery',
-          reason: 'no hash suffix: there is no unit to identify');
+      expect(deviceLabelFor(s.devices, DemoKind.battery.id), DemoKind.battery.id,
+          reason: 'exports name a demo unit by its DEMO- id (fbingest marker)');
       await tester.runAsync(s.dispose);
     });
 

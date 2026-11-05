@@ -303,6 +303,10 @@ class LogRepo {
       // predates per-device attribution.
       return 'device=unattributed';
     }
+    // design 0097: a demo id is not a MAC and is the corpus tooling's marker,
+    // so it is printed as is — see `kNotDemoRowSql` for why it should never
+    // get this far.
+    if (isDemoDeviceId(id)) return 'device=$id';
     final label = labelFor?.call(id) ?? '';
     // NEVER the raw id: on Android that is the MAC address, and this text ends
     // up in a file the user shares. Fall back to the non-reversible digest.

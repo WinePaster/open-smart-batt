@@ -1459,7 +1459,13 @@ class HistoryRepo {
               .toIso8601String(),
           for (final c in csvColumns.skip(1))
             if (c == 'device')
-              (id == null ? null : labelFor?.call(id))
+              // A demo id is printed raw for the reason `LogRepo._sectionLabel`
+              // gives (design 0097); a real one only ever through [labelFor].
+              (id == null
+                  ? null
+                  : isDemoDeviceId(id)
+                      ? id
+                      : labelFor?.call(id))
             else if (c == 'ampere' && isCapacitor)
               null // see [classFor]: the device cannot measure current
             else

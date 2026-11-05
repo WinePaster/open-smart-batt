@@ -397,10 +397,15 @@ enum _NameSource {
 /// they meant.
 /// design 0097: a demo unit is named by what it is, localised when the caller
 /// can say how, and never by an id hash — there is no unit to identify.
+///
+/// Without [l10n] — the export paths — it is the raw `DEMO-` id. That is the
+/// one id that is safe to print (it is not a MAC), and it is what
+/// `tools/fbingest.py` drops on sight: if a demo row ever got past the export
+/// filter, the file has to say so in a form the corpus tooling recognises.
 String? _demoName(String deviceId, AppLocalizations? l10n) {
   final kind = DemoKind.fromId(deviceId);
   if (kind == null) return null;
-  return l10n == null ? kind.advertisedName : demoDisplayName(l10n, deviceId);
+  return l10n == null ? kind.id : demoDisplayName(l10n, deviceId);
 }
 
 String deviceLabelFor(
