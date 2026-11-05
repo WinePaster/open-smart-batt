@@ -13,7 +13,8 @@
 //       xcrun simctl io booted screenshot "${l##*SHOT }.png";; esac; done
 //
 // Store screenshots come from here (design 0097 Q5: the banner stays in).
-// Set OSB_TOUR_LANG=en for the English set.
+// `--dart-define=OSB_TOUR_LANG=en` for the English set (a host environment
+// variable does not reach an app running on a simulator).
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -63,7 +64,7 @@ void main() {
           path: '${dir.path}/app.db', factory: databaseFactoryFfi);
       services = await AppServices.create(appDatabase: db, ble: BleService());
       await services.settings.setLang(
-          Platform.environment['OSB_TOUR_LANG'] == 'en'
+          const String.fromEnvironment('OSB_TOUR_LANG') == 'en'
               ? AppLang.en
               : AppLang.zhHant);
     });
