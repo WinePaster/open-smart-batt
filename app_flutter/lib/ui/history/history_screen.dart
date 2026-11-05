@@ -856,7 +856,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // then dereferences a null rank. Its label still shows that name; it is
       // ordered by recency instead, which is the honest order for a unit with
       // no saved record.
-      (deviceNameFor(devices, g.deviceId, l10n: l10n).isNotEmpty ? named : orphans)
+      // Bucketed by "is saved" (= has a rank), not by "has a name": a demo
+      // unit has a name and no saved record (design 0097), and the sort below
+      // indexes the rank.
+      (rank.containsKey(g.deviceId) &&
+                  deviceNameFor(devices, g.deviceId, l10n: l10n).isNotEmpty
+              ? named
+              : orphans)
           .add(g);
     }
     named.sort((a, b) => rank[a.deviceId]!.compareTo(rank[b.deviceId]!));

@@ -205,6 +205,30 @@ void main() {
     await s.dispose();
   });
 
+  test('ending demo A purges only A; bucket widths ignore demo rows', () async {
+    final db = await newDb();
+    final s = await open(db);
+    // A 1 s row, so it differs from the demo seed's 60 s.
+    await s.historyRepo.insertSamples([
+      HistoryWrite(
+          sample: TelemetrySample.empty()
+              .copyWith(timestamp: DateTime.now(), pvlt: 12.8),
+          deviceId: _realId),
+    ]);
+    await s.historyRepo.insertSamples(
+        demoHistorySeed(DemoKind.battery, DateTime.now()).take(3));
+    await s.historyRepo.insertSamples(
+        demoHistorySeed(DemoKind.capacitor, DateTime.now()).take(4));
+    expect(await s.historyRepo.distinctBucketWidths(), [1],
+        reason: 'the 60 s demo seed must not show up in an export header');
+    await s.historyRepo.purgeDemoRows(deviceId: DemoKind.battery.id);
+    expect(await _demoRows(s, Db.tableHistory), 4,
+        reason: 'demo B\'s rows survive the end of demo A');
+    expect(() => s.historyRepo.purgeDemoRows(deviceId: _realId),
+        throwsArgumentError);
+    await s.dispose();
+  });
+
   test('a demo unit cannot be saved', () async {
     final db = await newDb();
     final s = await open(db);
