@@ -7,6 +7,7 @@ library;
 
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 import 'app_database.dart';
 
@@ -68,6 +69,8 @@ class DeviceFactsRepo {
     String? serial,
     DateTime? at,
   }) async {
+    // design 0097 §2.2: a demo unit's "facts" are made up.
+    if (isDemoDeviceId(id)) return;
     final stamp = (at ?? DateTime.now()).millisecondsSinceEpoch;
     final observed = <String, Object?>{
       if (_has(name)) 'name': name,

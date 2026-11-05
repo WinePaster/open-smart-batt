@@ -21,6 +21,19 @@ const String kDemoIdPrefix = 'DEMO-';
 /// True when [id] names a demo unit.
 bool isDemoDeviceId(String? id) => id != null && id.startsWith(kDemoIdPrefix);
 
+/// SQL predicate over a `device_id` column: true for a demo unit's rows.
+///
+/// A RANGE rather than `LIKE`, for two reasons: `LIKE` is case-insensitive in
+/// SQLite, and a range is served by the `device_id` index the history and log
+/// tables already carry. `.` is the character after `-`, so the range holds
+/// exactly the strings that start with [kDemoIdPrefix].
+const String kDemoRowSql = "(device_id >= 'DEMO-' AND device_id < 'DEMO.')";
+
+/// The complement of [kDemoRowSql], keeping unattributed (NULL) rows — an
+/// export must not lose those (see `HistoryRepo._exportCsvStream`).
+const String kNotDemoRowSql =
+    "(device_id IS NULL OR device_id < 'DEMO-' OR device_id >= 'DEMO.')";
+
 /// The two demo units of the first release (design 0097, owner ruling
 /// 2026-11-05: battery + capacitor; flagship capacitor and power bank are out
 /// of scope).

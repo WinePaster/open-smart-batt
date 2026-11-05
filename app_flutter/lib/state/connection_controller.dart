@@ -230,7 +230,10 @@ class ConnectionController extends ChangeNotifier {
   /// up throughout, so nothing reports a disconnect and the readings simply
   /// stop, then arrive as a backlog burst when the process thaws.
   void _updateMonitor() {
-    final shouldRun = isOnline && _settings.backgroundMonitoring;
+    // design 0097 §2.2: no "connected" notification for a unit that does not
+    // exist, and nothing to keep alive in the background.
+    final shouldRun =
+        isOnline && _settings.backgroundMonitoring && !_ble.isDemoLink;
     if (shouldRun == _monitorRunning) return;
     _monitorRunning = shouldRun;
     if (shouldRun) {
@@ -2635,6 +2638,7 @@ class ConnectionController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     final id = _desiredDeviceId;
     if (id == null) return;
+    if (isDemoDeviceId(id)) return; // design 0097 §2.2 — nothing for the OS to find
     _autoConnectGaveUp = false;
     _event('auto-reconnect: autoConnect armed (iOS)');
     // FB-53: and give it a deadline. See [autoConnectWatchdog] for why an

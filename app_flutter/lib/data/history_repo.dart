@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 // FB-79. The one thing this layer knows about the MEANING of a stored byte:
 // which `mode` codes are the two pack events. It was already known here —
@@ -1371,8 +1372,10 @@ class HistoryRepo {
     final (scopeClause, scopeArgs) =
         _scope(since: since, until: until, deviceId: deviceId);
     final pin = await _maxRowId();
-    final where =
-        scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
+    // design 0097 §2.3 ①: a demo unit's rows never leave the phone in a file.
+    final where = scopeClause == null
+        ? 'id <= ? AND $kNotDemoRowSql'
+        : '$scopeClause AND id <= ? AND $kNotDemoRowSql';
     final args = <Object?>[...?scopeArgs, pin];
     final byMinute = granularity == HistoryGranularity.minute;
     // Aligned to the viewer's local minute, the same expression the list and
@@ -1654,6 +1657,11 @@ class HistoryRepo {
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
+  /// Delete every demo unit's rows (design 0097 §2.3 ②). Run at startup and
+  /// when a demo link ends. Returns the number of rows removed.
+  Future<int> purgeDemoRows() =>
+      _db.delete(Db.tableHistory, where: kDemoRowSql);
+
   /// Rows in range belonging to some OTHER unit than [deviceId] — the other
   /// half of the same silent loss [countUnattributed] covers.
   ///
@@ -1680,7 +1688,9 @@ class HistoryRepo {
   /// visibly so: every excluded row lands in exactly one of the two.
   Future<int> countOtherDevices(String deviceId,
       {DateTime? since, DateTime? until}) async {
-    final where = <String>['device_id IS NOT NULL', 'device_id != ?'];
+    // A demo unit's rows are not "from another device" — the export never
+    // carries them (design 0097), so they must not be reported as dropped.
+    final where = <String>['device_id IS NOT NULL', 'device_id != ?', kNotDemoRowSql];
     final args = <Object?>[deviceId];
     if (since != null) {
       where.add('timestamp >= ?');

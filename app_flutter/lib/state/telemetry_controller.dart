@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ble/ble.dart';
 import '../data/data.dart';
+import '../demo/demo.dart';
 import '../models/models.dart';
 import 'card_telemetry.dart';
 import 'live_trend_buffer.dart';
@@ -1018,7 +1019,7 @@ class TelemetryController extends ChangeNotifier
     _historyBatchTimer?.cancel();
     _historyBatchTimer = null;
     _historyCommitting = true;
-    _pending.add(_history.insertSamples(batch).whenComplete(() {
+    _pending.add(_lastHistoryWrite = _history.insertSamples(batch).whenComplete(() {
       _historyCommitting = false;
       if (_historyBuffer.length < _historyBatchRows) {
         _historyOverflowLogged = false;
@@ -1422,6 +1423,31 @@ class TelemetryController extends ChangeNotifier
     _pending.add(_logs.insertLog(entry, maxBytes: _settings.logTrimBudget));
   }
 
+  /// The most recent history write, so the demo purge can run after it.
+  Future<void>? _lastHistoryWrite;
+
+  /// True from a demo link's `ready` until its rows are purged (design 0097).
+  bool _demoSession = false;
+
+  /// design 0097 §2.3: seed a demo link's past on `ready`; delete every demo
+  /// row once it is gone. The purge is chained after the last write — the
+  /// disconnect flush in [_onLinkState] commits the demo's final seconds, and
+  /// deleting before they land would leave them behind.
+  void _onDemoLinkState(BleLinkState s) {
+    if (s == BleLinkState.ready) {
+      final kind = DemoKind.fromId(_ble.connectedDeviceId);
+      if (kind == null) return;
+      _demoSession = true;
+      _pending.add(_lastHistoryWrite = _history.insertSamples(
+          demoHistorySeed(kind, DateTime.now(), appBuild: _appBuild)));
+    }
+    if (s == BleLinkState.disconnected && _demoSession) {
+      _demoSession = false;
+      final after = _lastHistoryWrite ?? Future<void>.value();
+      _pending.add(after.then((_) => _history.purgeDemoRows()));
+    }
+  }
+
   void _onLinkState(BleLinkState s) {
     if (s == BleLinkState.ready) {
       // Grace period before the first frame, for the unit that just came up.
@@ -1462,6 +1488,8 @@ class TelemetryController extends ChangeNotifier
       // the next unit's axis.
       _alerts?.onLinkLost();
     }
+    // After the flush above, so the purge it schedules follows the last write.
+    _onDemoLinkState(s);
   }
 
   @override

@@ -15,6 +15,7 @@ library;
 
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 import 'app_database.dart';
 import 'device_id_aliases.dart';
@@ -83,7 +84,14 @@ class LogRepo {
   ///
   /// The budget check is O(1): the running total in [_estimatedBytes] is
   /// incremented locally and only crossing [maxBytes] touches the database.
+  ///
+  /// 🔴 design 0097 §2: a DEMO unit's rows are dropped here, and this is the
+  /// one place that does it — every writer of the diagnostic log goes through
+  /// this method, so no new writer can forget. Returns 0 for a dropped row.
+  /// The log is what reporters send us; a demo frame in it would be a
+  /// fabricated field observation in the real wire format.
   Future<int> insertLog(LogEntry entry, {int? maxBytes}) async {
+    if (isDemoDeviceId(entry.deviceId)) return 0;
     final map = Map<String, Object?>.from(entry.toMap())..remove('id');
     final id = await _db.insert(Db.tableDiagLog, map);
     if (maxBytes == null) {
@@ -202,7 +210,9 @@ class LogRepo {
     List<String> header = const [],
     String Function(String? deviceId)? labelFor,
   }) async {
-    final (where, args) = _scope(deviceId: deviceId, sessionId: sessionId);
+    final (scoped, args) = _scope(deviceId: deviceId, sessionId: sessionId);
+    // Belt and braces for [insertLog]'s gate (design 0097 §2.3 ①).
+    final where = scoped == null ? kNotDemoRowSql : '$scoped AND $kNotDemoRowSql';
     final rows = await _db.query(
       Db.tableDiagLog,
       where: where,
