@@ -1709,5 +1709,45 @@
   "liveChartRestarted": "Reconnected \u00b7 recording restarted",
   "@liveChartRestarted": {
     "description": "design 0093 \u00a74 Q5 (owner: \u300c\u63db\u65b0\u300d). Shown after the link comes back while the full-screen live chart is open. \u26a0\ufe0f NOT 'resumed': the ~3 minutes held before the disconnect are gone and are not stored anywhere, so the honest word is 'restarted'."
+  },
+  "demoEntryTitle": "No device? Try a demo unit",
+  "@demoEntryTitle": {
+    "description": "design 0097 \u00a73.1. Fixed row at the bottom of the scan list, shown whether or not real units are found. Its main audience is an App Store reviewer who has no hardware."
+  },
+  "demoEntrySubtitle": "See every screen with simulated data",
+  "@demoEntrySubtitle": {
+    "description": "design 0097. Second line of the demo entry row."
+  },
+  "demoPickTitle": "Choose a demo unit",
+  "@demoPickTitle": {
+    "description": "design 0097. Title of the sheet that picks which demo unit to connect."
+  },
+  "demoBatteryName": "Demo battery",
+  "@demoBatteryName": {
+    "description": "design 0097. Display name of the simulated smart battery, wherever a device name is shown."
+  },
+  "demoCapacitorName": "Demo capacitor",
+  "@demoCapacitorName": {
+    "description": "design 0097. Display name of the simulated super-capacitor, wherever a device name is shown."
+  },
+  "demoBatteryDesc": "12 V smart battery \u00b7 try cut-off and restore",
+  "@demoBatteryDesc": {
+    "description": "design 0097. Second line for the demo battery in the picker sheet."
+  },
+  "demoCapacitorDesc": "Super-capacitor \u00b7 try the self-check",
+  "@demoCapacitorDesc": {
+    "description": "design 0097. Second line for the demo capacitor in the picker sheet. A capacitor has no cut-off, so the self-check is what it offers instead."
+  },
+  "demoBanner": "Demo mode \u00b7 simulated data, no device connected",
+  "@demoBanner": {
+    "description": "design 0097 \u00a73.5. Fixed banner across every screen while a demo unit is connected. \ud83d\udd34 Must say the data is simulated: the screens are otherwise indistinguishable from a real unit's."
+  },
+  "demoRowMeta": "Simulated data \u00b7 not a real device",
+  "@demoRowMeta": {
+    "description": "design 0097. Second line of the demo unit's row in the device list, in place of the id and signal text a real unit shows."
+  },
+  "demoBannerEnd": "End demo",
+  "@demoBannerEnd": {
+    "description": "design 0097. Button on the demo banner; disconnects the demo unit."
   }
 }

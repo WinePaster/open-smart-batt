@@ -11,10 +11,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/history_repo.dart';
+import '../../demo/demo.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../dashboard/watchfaces.dart';
+import '../demo/demo_ui.dart';
 import 'export_header.dart';
 import 'export_naming.dart';
 
@@ -393,12 +395,23 @@ enum _NameSource {
 /// string twice would be asking the user to choose between two identical
 /// entries. A name the USER wrote needs no such suffix; they know which unit
 /// they meant.
+/// design 0097: a demo unit is named by what it is, localised when the caller
+/// can say how, and never by an id hash — there is no unit to identify.
+String? _demoName(String deviceId, AppLocalizations? l10n) {
+  final kind = DemoKind.fromId(deviceId);
+  if (kind == null) return null;
+  return l10n == null ? kind.advertisedName : demoDisplayName(l10n, deviceId);
+}
+
 String deviceLabelFor(
   DeviceController devices,
   String? deviceId, {
   DeviceFactsController? facts,
+  AppLocalizations? l10n,
 }) {
   if (deviceId == null) return '';
+  final demo = _demoName(deviceId, l10n);
+  if (demo != null) return demo;
   final resolved = _resolveName(devices, deviceId, facts);
   return switch (resolved.source) {
     _NameSource.user => resolved.name,
@@ -421,8 +434,11 @@ String deviceNameFor(
   DeviceController devices,
   String? deviceId, {
   DeviceFactsController? facts,
+  AppLocalizations? l10n,
 }) {
   if (deviceId == null) return '';
+  final demo = _demoName(deviceId, l10n);
+  if (demo != null) return demo;
   return _resolveName(devices, deviceId, facts).name;
 }
 

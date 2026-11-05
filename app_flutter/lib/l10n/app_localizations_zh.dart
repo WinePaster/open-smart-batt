@@ -2471,4 +2471,34 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get liveChartRestarted => '已重新連線 · 重新開始記錄';
+
+  @override
+  String get demoEntryTitle => '沒有裝置？試用示範裝置';
+
+  @override
+  String get demoEntrySubtitle => '用模擬資料看看 App 的所有畫面';
+
+  @override
+  String get demoPickTitle => '選擇示範裝置';
+
+  @override
+  String get demoBatteryName => '示範電池';
+
+  @override
+  String get demoCapacitorName => '示範電容';
+
+  @override
+  String get demoBatteryDesc => '12 V 智慧電池 · 可試斷電與復電';
+
+  @override
+  String get demoCapacitorDesc => '超級電容 · 可試自我檢查';
+
+  @override
+  String get demoBanner => '示範模式 · 資料為模擬，未連線任何裝置';
+
+  @override
+  String get demoRowMeta => '模擬資料 · 不是真的裝置';
+
+  @override
+  String get demoBannerEnd => '結束示範';
 }

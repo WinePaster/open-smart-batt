@@ -92,6 +92,8 @@ import '../../ble/ble.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../demo/demo_ui.dart';
+import '../../demo/demo.dart';
 import 'connection_failure.dart';
 import 'device_detail_page.dart';
 import 'save_device_flow.dart';
@@ -1136,14 +1138,17 @@ class _DevicesPageState extends State<DevicesPage>
         // nothing to put in it.
         if (pinnedId != null)
           _DeviceRow(
-            alias: unsavedDeviceTitle(
-                id: pinnedId, advertisedName: conn.connectedDeviceName),
+            alias: demoDisplayName(l10n, pinnedId) ??
+                unsavedDeviceTitle(
+                    id: pinnedId, advertisedName: conn.connectedDeviceName),
             aliasMuted: true,
             // 🔴 No RSSI, and no bars. There is no advertisement to measure
             // while the link is up, and inventing a number here would make the
             // one row on this page whose signal reading is a guess look exactly
             // like the ones that are measured.
-            meta: '${shortDeviceId(pinnedId)} · ${l10n.devicesLinkedNoAdvert}',
+            meta: isDemoDeviceId(pinnedId)
+                ? l10n.demoRowMeta
+                : '${shortDeviceId(pinnedId)} · ${l10n.devicesLinkedNoAdvert}',
             signalLevel: 0,
             isConnected: conn.isOnline,
             isConnecting:
@@ -1202,8 +1207,38 @@ class _DevicesPageState extends State<DevicesPage>
               onDisconnect: _disconnect,
               onConnect: () => _connectNew(r),
             ),
+        // design 0097 §3.1 — LAST, and whatever the scan found: a reviewer may
+        // be testing in a room full of other Bluetooth devices, and an entry
+        // that only appears when nothing is found would come and go.
+        if (!isDemoDeviceId(pinnedId)) DemoEntryRow(onTap: _pickDemo),
       ],
     );
+  }
+
+  /// design 0097: connect a demo unit. [_connectNew] without its save prompt —
+  /// a demo unit cannot be saved — and with the localised name.
+  Future<void> _pickDemo() async {
+    final kind = await showDemoPicker(context);
+    if (kind == null || !mounted) return;
+    final l10n = AppLocalizations.of(context);
+    final conn = context.read<ConnectionController>();
+    _abandonReadyWait();
+    setState(() => _connectingId = kind.id);
+    try {
+      await conn.connect(kind.id);
+      if (!mounted) return;
+      final outcome = await _awaitReady(kind.id);
+      if (!mounted || _connectingId != kind.id) return;
+      setState(() => _connectingId = null);
+      if (outcome != _ConnectOutcome.ready) return;
+      await _openDetail(kind.id, fallbackName: demoDisplayName(l10n, kind.id)!);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (_connectingId == kind.id) _connectingId = null;
+        });
+      }
+    }
   }
 }
 

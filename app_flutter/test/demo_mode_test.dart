@@ -85,13 +85,16 @@ void main() {
       }
     });
 
-    test('a charge stretch exists in every cycle (the charts need shape)', () {
+    test('a demo day has drives and rests (the charts need shape)', () {
+      final midnight = DateTime(2026, 11, 5);
       final charging = [
-        for (var s = 0; s < DemoPeripheral.cycleSeconds; s += 10)
+        for (var m = 0; m < 24 * 60; m += 5)
           DemoPeripheral.readingAt(
-                  DemoKind.battery, at.add(Duration(seconds: s)))
+                  DemoKind.battery, midnight.add(Duration(minutes: m)))
               .currentA,
       ];
+      // Mostly at rest: two drives, not a charge every few minutes.
+      expect(charging.where((a) => a > 0).length, lessThan(charging.length ~/ 8));
       expect(charging.any((a) => a > 0), isTrue);
       expect(charging.any((a) => a == 0), isTrue);
       // Never a discharge: the demo must not look like a load on the unit.

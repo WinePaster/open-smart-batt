@@ -1280,7 +1280,13 @@ class ConnectionController extends ChangeNotifier {
     // Newest first, and that ordering is load-bearing: one unit can accumulate
     // `device_unreachable` and then `connect_failed`, and the screen has to
     // show what happened LAST, not what happened first.
+    // design 0097: a demo unit needs no radio, so "Bluetooth is off" is not an
+    // error OF it — without this, a reviewer with Bluetooth off would see the
+    // demo refuse to open (the scan sets the radio slot, and every unit reads
+    // it).
+    final demo = isDemoDeviceId(deviceId);
     for (final e in _errors.values.toList().reversed) {
+      if (demo && e.deviceId == null) continue;
       final code = e.codeFor(deviceId);
       if (code != null) return code;
     }

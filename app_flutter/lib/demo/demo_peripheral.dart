@@ -81,43 +81,66 @@ class DemoPeripheral {
   /// VADJ 20.00, inside the measured 20.00–20.36 spread (PROTOCOL.md §8.2.1).
   static const int _vadjRaw = 2000;
 
-  /// The cycle every demo trace repeats: rest, then a charge stretch, so the
-  /// history and live charts have something to show.
-  static const int cycleSeconds = 600;
-  static const int chargeFromSecond = 480;
+  /// The two drives of a demo day, as local minute-of-day `[start, end)`: the
+  /// unit charges while the engine runs and rests in between, which is the
+  /// shape a real car's day has (one charge stretch every few minutes, the
+  /// first version, drew 24 hours of history as solid spikes).
+  static const List<(int, int)> drives = [
+    (7 * 60 + 30, 8 * 60 + 15),
+    (17 * 60 + 40, 18 * 60 + 35),
+  ];
+
+  /// Minutes since the end of the last drive, or null while driving; and the
+  /// 0 → 1 progress through the current drive.
+  static ({bool driving, double progress, int restMin}) _phase(DateTime at) {
+    final local = at.toLocal();
+    final m = local.hour * 60 + local.minute;
+    for (final (s, e) in drives) {
+      if (m >= s && m < e) {
+        final sec = (m - s) * 60 + local.second;
+        return (driving: true, progress: sec / ((e - s) * 60), restMin: 0);
+      }
+    }
+    var rest = 24 * 60;
+    for (final (_, e) in drives) {
+      final since = (m - e) % (24 * 60);
+      if (since < rest) rest = since;
+    }
+    return (driving: false, progress: 0, restMin: rest);
+  }
 
   /// The reading [kind] shows at [at]. Pure.
   static DemoReading readingAt(DemoKind kind, DateTime at) {
     final t = at.millisecondsSinceEpoch ~/ 1000;
-    final phase = t % cycleSeconds;
-    final charging = phase >= chargeFromSecond;
-    // 0 → 1 across the charge stretch, so the voltage climbs instead of jumping.
-    final ramp = charging
-        ? (phase - chargeFromSecond) / (cycleSeconds - chargeFromSecond)
-        : 0.0;
+    final p = _phase(at);
+    // A slow ripple, so a live chart watched for a minute is not a ruler.
     final wave = math.sin(2 * math.pi * (t % 300) / 300);
+    // Resting voltage settles over the hours after a drive.
+    final settle = math.min(p.restMin, 600) / 600;
     switch (kind) {
       case DemoKind.battery:
-        final pvlt = charging
-            ? 13.60 + 0.55 * ramp + 0.01 * _noise(t, 1)
-            : 13.18 + 0.03 * wave + 0.01 * _noise(t, 1);
+        final pvlt = p.driving
+            ? 13.95 + 0.25 * p.progress + 0.01 * _noise(t, 1)
+            : 13.32 - 0.14 * settle + 0.015 * wave + 0.01 * _noise(t, 1);
         const offsets = [0.004, -0.003, 0.001, -0.002];
         return DemoReading(
           pvlt: _round2(pvlt),
-          temperatureC: 26 + (charging ? 1 : 0),
-          currentA: charging ? (12 - (6 * ramp).round()) : 0,
+          temperatureC: p.driving ? 29 : 25 + (settle < 0.3 ? 2 : 0),
+          // Charge current tapers as the battery fills.
+          currentA: p.driving ? (14 - (10 * p.progress).round()) : 0,
           cellsV: [
             for (final o in offsets) _round3(pvlt / 4 + o + 0.001 * _noise(t, 2)),
           ],
         );
       case DemoKind.capacitor:
-        final pvlt = charging
-            ? 14.05 + 0.25 * ramp + 0.01 * _noise(t, 3)
-            : 13.62 + 0.05 * wave + 0.01 * _noise(t, 3);
+        final pvlt = p.driving
+            ? 14.20 + 0.10 * p.progress + 0.01 * _noise(t, 3)
+            : 13.70 - 0.12 * settle + 0.02 * wave + 0.01 * _noise(t, 3);
         return DemoReading(
           pvlt: _round2(pvlt),
-          svlt: _round2(12.64 + 0.02 * wave + 0.01 * _noise(t, 4)),
-          temperatureC: 31,
+          svlt: _round2((p.driving ? 14.05 : 12.70 - 0.06 * settle) +
+              0.01 * wave + 0.01 * _noise(t, 4)),
+          temperatureC: p.driving ? 34 : 30,
           // A capacitor streams 0x2E as a constant 0.0 A (product_class.dart).
           currentA: 0,
         );

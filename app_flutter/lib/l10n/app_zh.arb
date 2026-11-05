@@ -712,5 +712,15 @@
   "alertsBannerMore": "＋{count}",
   "liveChartExpand": "\u5168\u87a2\u5e55",
   "liveChartFrozen": "\u9023\u7dda\u4e2d\u65b7 \u00b7 \u756b\u9762\u505c\u5728 {time}",
-  "liveChartRestarted": "\u5df2\u91cd\u65b0\u9023\u7dda \u00b7 \u91cd\u65b0\u958b\u59cb\u8a18\u9304"
+  "liveChartRestarted": "\u5df2\u91cd\u65b0\u9023\u7dda \u00b7 \u91cd\u65b0\u958b\u59cb\u8a18\u9304",
+  "demoEntryTitle": "沒有裝置？試用示範裝置",
+  "demoEntrySubtitle": "用模擬資料看看 App 的所有畫面",
+  "demoPickTitle": "選擇示範裝置",
+  "demoBatteryName": "示範電池",
+  "demoCapacitorName": "示範電容",
+  "demoBatteryDesc": "12 V 智慧電池 · 可試斷電與復電",
+  "demoCapacitorDesc": "超級電容 · 可試自我檢查",
+  "demoBanner": "示範模式 · 資料為模擬，未連線任何裝置",
+  "demoRowMeta": "模擬資料 · 不是真的裝置",
+  "demoBannerEnd": "結束示範"
 }

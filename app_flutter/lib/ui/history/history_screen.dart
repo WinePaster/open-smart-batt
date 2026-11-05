@@ -148,7 +148,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // empty screen with no way back. Resolving both inside one load makes that
     // race impossible rather than unlikely.
     final groups = await tele.historyDeviceGroups();
-    final options = _optionsFor(groups, devices, facts);
+    // No l10n here: this can run from initState, where a localisations lookup
+    // is not allowed — and these options feed only the id set and the default,
+    // never a label on screen ([_deviceBar] builds its own).
+    final options = _optionsFor(groups, devices, facts, null);
     final known = {for (final o in options) o.id};
     var scoped = _deviceId;
     if (scoped == null || !known.contains(scoped)) {
@@ -504,6 +507,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   devices,
                                   _deviceId,
                                   facts: facts,
+                                  l10n: l10n,
                                 ),
                                 tempUnit: tempUnit,
                                 dataFrom: data.stats.firstAt!,
@@ -735,6 +739,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _groups,
       context.watch<DeviceController>(),
       context.watch<DeviceFactsController?>(),
+      AppLocalizations.of(context),
     );
     final selected = _deviceId;
     // Both empty only before the first load has resolved; `selected` is kept
@@ -832,6 +837,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<({String deviceId, int count, DateTime lastAt})> groups,
     DeviceController devices,
     DeviceFactsController? facts,
+    AppLocalizations? l10n,
   ) {
     // DeviceController hands its list back most-recently-seen first, so the
     // index IS the lastSeen order; deriving a second one here would be a second
@@ -850,7 +856,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // then dereferences a null rank. Its label still shows that name; it is
       // ordered by recency instead, which is the honest order for a unit with
       // no saved record.
-      (deviceNameFor(devices, g.deviceId).isNotEmpty ? named : orphans).add(g);
+      (deviceNameFor(devices, g.deviceId, l10n: l10n).isNotEmpty ? named : orphans)
+          .add(g);
     }
     named.sort((a, b) => rank[a.deviceId]!.compareTo(rank[b.deviceId]!));
     orphans.sort((a, b) => b.lastAt.compareTo(a.lastAt));
@@ -858,7 +865,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       for (final g in [...named, ...orphans])
         _DeviceOption(
           id: g.deviceId,
-          label: deviceLabelFor(devices, g.deviceId, facts: facts),
+          label: deviceLabelFor(devices, g.deviceId, facts: facts, l10n: l10n),
         ),
     ];
   }

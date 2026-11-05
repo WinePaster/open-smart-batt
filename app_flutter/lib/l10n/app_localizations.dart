@@ -4353,6 +4353,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reconnected · recording restarted'**
   String get liveChartRestarted;
+
+  /// design 0097 §3.1. Fixed row at the bottom of the scan list, shown whether or not real units are found. Its main audience is an App Store reviewer who has no hardware.
+  ///
+  /// In en, this message translates to:
+  /// **'No device? Try a demo unit'**
+  String get demoEntryTitle;
+
+  /// design 0097. Second line of the demo entry row.
+  ///
+  /// In en, this message translates to:
+  /// **'See every screen with simulated data'**
+  String get demoEntrySubtitle;
+
+  /// design 0097. Title of the sheet that picks which demo unit to connect.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a demo unit'**
+  String get demoPickTitle;
+
+  /// design 0097. Display name of the simulated smart battery, wherever a device name is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo battery'**
+  String get demoBatteryName;
+
+  /// design 0097. Display name of the simulated super-capacitor, wherever a device name is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo capacitor'**
+  String get demoCapacitorName;
+
+  /// design 0097. Second line for the demo battery in the picker sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'12 V smart battery · try cut-off and restore'**
+  String get demoBatteryDesc;
+
+  /// design 0097. Second line for the demo capacitor in the picker sheet. A capacitor has no cut-off, so the self-check is what it offers instead.
+  ///
+  /// In en, this message translates to:
+  /// **'Super-capacitor · try the self-check'**
+  String get demoCapacitorDesc;
+
+  /// design 0097 §3.5. Fixed banner across every screen while a demo unit is connected. 🔴 Must say the data is simulated: the screens are otherwise indistinguishable from a real unit's.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo mode · simulated data, no device connected'**
+  String get demoBanner;
+
+  /// design 0097. Second line of the demo unit's row in the device list, in place of the id and signal text a real unit shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Simulated data · not a real device'**
+  String get demoRowMeta;
+
+  /// design 0097. Button on the demo banner; disconnects the demo unit.
+  ///
+  /// In en, this message translates to:
+  /// **'End demo'**
+  String get demoBannerEnd;
 }
 
 class _AppLocalizationsDelegate
