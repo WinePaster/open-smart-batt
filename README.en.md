@@ -113,12 +113,14 @@ are written **only** from `docs/`, never touching the original app.
   - **TestFlight**: requires the maintainer's **paid Apple Developer account**, passing
     Beta App Review; each build expires after 90 days; external testing is capped at
     10000 testers.
-  - **App Store**: requires full review + the $99/year account.
+  - **App Store**: ✅ **live (Taiwan only for now)**: [https://apps.apple.com/tw/app/opensmartbatt/id6785719483](https://apps.apple.com/tw/app/opensmartbatt/id6785719483). Requires full
+    review + the $99/year account (borne by the maintainer).
+  - TestFlight public link (for trying new builds): [https://testflight.apple.com/join/jt4dWjgn](https://testflight.apple.com/join/jt4dWjgn).
   - A free Apple ID local sideload lasts only 7 days and requires **the user** to own a
     Mac + Xcode to re-sign.
-- In short: **an owner with only an iPhone and no Mac/Apple account has no directly
-  installable path on iOS.** Set expectations accordingly — do not assume parity with the
-  Android APK flow. See [`docs/VERSIONING.md`](./docs/VERSIONING.md) for the iOS version /
+- In short: **iPhone owners in Taiwan can install straight from the App Store**; elsewhere,
+  use the TestFlight public link above for now. Only building from source needs a
+  Mac + Xcode. See [`docs/VERSIONING.md`](./docs/VERSIONING.md) for the iOS version /
   IPA notes.
 
 ## Safety note
