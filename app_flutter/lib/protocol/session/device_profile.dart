@@ -105,7 +105,7 @@ abstract interface class DeviceProfile {
   ProtocolSession openSession();
 }
 
-/// Lower-case 128-bit form, so `fff0`, `FFF0` and the full Bluetooth-base
+/// Lower-case 128-bit form, so `180f`, `180F` and the full Bluetooth-base
 /// spelling compare equal. Anything that is not a 16- or 32-bit short form is
 /// only lower-cased.
 String normaliseUuid(String uuid) {

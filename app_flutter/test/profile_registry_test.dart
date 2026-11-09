@@ -186,8 +186,8 @@ void main() {
   });
 
   test('normaliseUuid', () {
-    expect(normaliseUuid('FFF0'), '0000fff0-0000-1000-8000-00805f9b34fb');
-    expect(normaliseUuid('0000FFF0'), '0000fff0-0000-1000-8000-00805f9b34fb');
+    expect(normaliseUuid('180F'), '0000180f-0000-1000-8000-00805f9b34fb');
+    expect(normaliseUuid('0000180F'), '0000180f-0000-1000-8000-00805f9b34fb');
     expect(normaliseUuid(Gatt.serviceUuid.toUpperCase()), Gatt.serviceUuid);
   });
 }

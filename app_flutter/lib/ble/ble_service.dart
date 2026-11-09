@@ -1635,7 +1635,11 @@ class BleService {
     // Tick immediately so telemetry starts without waiting a full second. The
     // first tick sends `!#`, which every device answers with device-type/SOC.
     unawaited(_sendKeepAlive(link));
-    link.keepAlive = Timer.periodic(keepAliveInterval, (_) {
+    // design 0099 P5: the session sets the cadence (RCE: 1 s, the same as
+    // [keepAliveInterval], so the RCE wire is unchanged — the seam golden
+    // pins it).
+    link.keepAlive =
+        Timer.periodic(link.session?.tickInterval ?? keepAliveInterval, (_) {
       unawaited(_sendKeepAlive(link));
     });
   }
