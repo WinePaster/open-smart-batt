@@ -9,6 +9,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../data/data.dart';
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 
 /// ChangeNotifier over the `device_facts` table.
@@ -72,6 +73,7 @@ class DeviceFactsController extends ChangeNotifier {
     String? serial,
     DateTime? at,
   }) async {
+    if (isDemoDeviceId(id)) return; // design 0097 §2.2
     final now = at ?? DateTime.now();
     final existing = _byId[id];
     if (existing != null &&

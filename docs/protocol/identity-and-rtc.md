@@ -64,6 +64,33 @@ timestamp; it is useful for ordering and for detecting a device reset.
   under 1-based; under 0-based **zero frames** fall outside a legal month/day.
 * Power banks with an unset clock emit `MM = DD = 0x00`, which under 0-based is
   the boot origin **2000-01-01** — self-consistent with the same rule.
+* **A year rollover caught on the wire** (✅ verified, added 2026-09-01 — listed
+  here in date order, not ranked into the weighting above). On a car battery
+  (device-type `0x02`) the register stepped, inside a single capture,
+  `07e8 0b 1e 17 39 04` → `07e9 00 00 00 26 1f`. Read 0-based that is
+  **2024-12-31 23:57:04 → 2025-01-01 00:38:31**: 2,487 device-seconds against
+  **2,486.2 s** of host wall clock between the two frames, so the step is a
+  clock advancing smoothly across the boundary and not a reset or a rewind.
+  Read 1-based the second frame is "2025-**00**-**00**", a date that does not
+  exist; and the first frame would be 2024-11-30 23:57:04, from which
+  41 m 26 s reaches 2024-12-01 00:38:31 — fields `07e8 0c 01 …`, which is not
+  what arrived. (The `hh`/`mm`/`ss` halves are plain binary and agree under
+  either reading, so only `MM`/`DD` are under test here.)
+  🔑 **Why this is worth a separate line: it does not share the failure modes of
+  the evidence above it.** It is not a statistic, so it does not rest on our own
+  model of which months and days are legal; and the capture carries **no write
+  command at all** — its entire TX side is the `#`, `@` and `!#` keep-alives —
+  so the value cannot be something this project wrote and read back. What is
+  being observed is the device doing its own calendar arithmetic, unprompted, on
+  one continuous timeline.
+  ⚠️ **Scope:** one unit, and it settles the *field encoding* only. It says
+  nothing about where that 2024 date came from — see the checkpoint discussion
+  below.
+  *Reproduce:* take two `0x3B` frames from one connection, decode both 0-based,
+  and check the difference against the host clock recorded between them; the
+  decisive case is a frame reading `MM DD = 00 00` that directly follows one
+  reading `0b 1e`, since under 1-based no legal date precedes "month 0, day 0".
+  Source: `feedback-analysis/2026.09.01-002.md` §2 (capture 2026-08-31).
 
 > 🔴 **Superseded 2026-08-01 (was: 1-based).** The example row above previously
 > read `07d0 07 10 10 04 35` as "2000-07-16 16:04:53". Only the month and day

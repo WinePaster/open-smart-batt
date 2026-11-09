@@ -75,9 +75,10 @@ open-smart-batt/
 - iOS 需在 **macOS + Xcode** 上自原始碼建置：`cd app_flutter && flutter build ios`（貢獻者本機驗證可用 `--no-codesign`，無需 Apple 帳號）。
 - **iOS 沒有 Android 的免帳號安裝路徑。** Apple 平台不允許任意裝置免帳號側載：
   - **TestFlight**：需維護者的**付費 Apple Developer 帳號**、通過 Beta App Review，每個 build 90 天到期，外部測試上限 10000 人。
-  - **App Store**：需完整審查 + 每年 99 美元帳號。
+  - **App Store**：✅ **已上架（目前僅台灣）**：[https://apps.apple.com/tw/app/opensmartbatt/id6785719483](https://apps.apple.com/tw/app/opensmartbatt/id6785719483)。需完整審查 + 每年 99 美元帳號（由維護者負擔）。
+  - TestFlight 公開連結（試新版用）：[https://testflight.apple.com/join/jt4dWjgn](https://testflight.apple.com/join/jt4dWjgn)。
   - 免費 Apple ID 本機側載僅 7 天有效，且要求**使用者自己**擁有 Mac + Xcode 重新簽章。
-- 簡言之：**只有一支 iPhone、沒有 Mac/Apple 帳號的車主，iOS 上沒有可直接安裝的路徑**；請據此設定期待，勿假設與 Android 的 APK 流程對等。詳見 [`docs/VERSIONING.md`](./docs/VERSIONING.md) 的 iOS 版號／IPA 說明。
+- 簡言之：**台灣的 iPhone 使用者直接從 App Store 安裝即可**；其他地區目前請用上面的 TestFlight 公開連結。只有自行編譯才需要 Mac + Xcode。詳見 [`docs/VERSIONING.md`](./docs/VERSIONING.md) 的 iOS 版號／IPA 說明。
 
 ## 安全須知
 
@@ -90,7 +91,7 @@ open-smart-batt/
 
 本專案程式碼採 **GNU GPLv3**（見 [`LICENSE`](./LICENSE)）。散布衍生版或改裝 APK 時**必須一併以 GPLv3 開源**——確保這個社群自救工具永遠對社群開放、不會被閉源或商業化關起來。協定文件（`docs/`）為功能性事實、不受著作權限制。
 
-> **iOS / App Store 散佈：** 為讓 iOS 版（`OpenSmartBatt`）能合法透過 Apple App Store／TestFlight 散佈（純 GPLv3 與 Apple 的 Usage Rules／DRM 衝突），唯一著作權人已依 GPLv3 §7 授予 **App Store 附加許可**；原始碼仍完整以 GPLv3 公開。詳見 [`COPYRIGHT.md`](./COPYRIGHT.md) 的「App Store 散佈例外」。
+> **iOS / App Store 散佈：** 為讓 iOS 版（`OpenSmartBatt`）能合法透過 Apple App Store／TestFlight（以及 Google Play）散佈（純 GPLv3 與 Apple 的 Usage Rules／DRM 衝突），唯一著作權人已依 GPLv3 §7 授予 **App Store 附加許可**；原始碼仍完整以 GPLv3 公開。詳見 [`COPYRIGHT.md`](./COPYRIGHT.md) 的「App Store 散佈例外」。
 
 ## 協定文件
 

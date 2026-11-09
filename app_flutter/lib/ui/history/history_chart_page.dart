@@ -143,16 +143,23 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   /// two shells share a PAINTER, not a preference. Opening on voltage also
   /// keeps this page's first frame identical to the card the user expanded
   /// from, which is the whole promise of the expand button.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  ///
+  /// 🔵 design 0096: opens on voltage＋current, the cards' default too — so the
+  /// first frame still matches a card the user has not switched.
+  HistoryChartSeries _series = HistoryChartSeries.both;
 
   /// 🔵 Resolved from the class, never read straight out of [_series] — see the
   /// embedded card for why the gate and the drawn series are one fact.
   HistoryChartCurrentGate get _gate =>
       historyChartCurrentGate(widget.deviceClass);
 
-  bool get _isCurrent =>
-      _gate == HistoryChartCurrentGate.available &&
-      _series == HistoryChartSeries.current;
+  /// The gate-resolved series: [_series], or voltage when current is refused.
+  HistoryChartSeries get _eff => _gate == HistoryChartCurrentGate.available
+      ? _series
+      : HistoryChartSeries.voltage;
+
+  bool get _isCurrent => _eff == HistoryChartSeries.current;
+  bool get _isBoth => _eff == HistoryChartSeries.both;
 
   @override
   void initState() {
@@ -215,7 +222,8 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
 
   HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
         width: width,
-        hasTemp: _hasTemp,
+        hasRight:
+            HistoryChartGeometry.hasRightAxis(hasTemp: _hasTemp, series: _eff),
         buckets: _buckets,
         bucketMs: _bucketMs,
         from: _win.from,
@@ -295,12 +303,38 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   /// the plot on both shells either way. See design 0089 §8.
   Widget _seriesSwitch(AppLocalizations l10n) {
     final on = _gate == HistoryChartCurrentGate.available;
+    // 🔴 2026-09-29 owner field report (a super-capacitor): 「電容產品 全螢幕的
+    // 情況下仍然會顯示 切換按鈕」 — the label greyed out, but the ⇅ stayed and
+    // the tap target stayed, so it still read as a button that does nothing.
+    // The embedded card already answers "gate closed" by REMOVING the control
+    // (`historySeriesSwitchAffordance` returns null, design 0089 §3.1); this
+    // shell now does the same. What stays is the series NAME, as plain text:
+    // this shell has no legend row, so the bar still has to say what the left
+    // axis counts. The reason is the gate note on the plot, unchanged.
+    if (!on) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 96),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            l10n.historyLegendVoltage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: context.colors.muted),
+          ),
+        ),
+      );
+    }
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
           child: Text(
-            _isCurrent ? l10n.historyLegendCurrent : l10n.historyLegendVoltage,
+            _isBoth
+                ? l10n.historyChartSeriesBothName
+                : _isCurrent
+                ? l10n.historyLegendCurrent
+                : l10n.historyLegendVoltage,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
@@ -316,9 +350,16 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
       ],
     );
     return ConstrainedBox(
-      // The bar is a fixed 44 px with four other things in it; 96 = the old
-      // 72 label cap plus the icon that now sits inside the same box.
-      constraints: const BoxConstraints(maxWidth: 96),
+      // ~~The bar is a fixed 44 px with four other things in it; 96 = the old
+      // 72 label cap plus the icon that now sits inside the same box.~~
+      // 🔴 2026-09-29 owner field report (battery, `v0.7.44`): 「電壓＋電流 …
+      // 還是顯示... 你前面的文字拿掉了 但是空間沒有還他啊」. The 96 px cap was
+      // sized for a bar that also carried the window's range; ruling 「Ａ」
+      // removed that, and the freed width went to the TITLE (Expanded) while
+      // this label stayed squeezed at its old cap. The switch is now sized by
+      // its label: the title is the one child that may give way. 200 is only
+      // a guard against a pathological text scale.
+      constraints: const BoxConstraints(maxWidth: 200),
       child: Tooltip(
         message: l10n.historyChartSeriesToggle,
         child: Semantics(
@@ -327,9 +368,7 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
           label: l10n.historyChartSeriesToggle,
           child: InkWell(
             onTap: on
-                ? () => setState(() => _series = _isCurrent
-                    ? HistoryChartSeries.voltage
-                    : HistoryChartSeries.current)
+                ? () => setState(() => _series = nextHistoryChartSeries(_eff))
                 : null,
             borderRadius: BorderRadius.circular(6),
             child: Padding(
@@ -345,8 +384,6 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   }
 
   Widget _topBar(AppLocalizations l10n) {
-    final multiDay = _win.spanMs > 24 * 3600000;
-    final fmt = DateFormat(multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     return SizedBox(
       height: _topBarH,
       child: Row(
@@ -364,18 +401,25 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           ),
           // design 0061 T10, landscape edition. 🔴 A bigger screen is not a
-          // reason to drop the one line that says how much time a point is.
-          Flexible(
-            flex: 2,
+          // reason to drop the one line that says how much time a point is —
+          // least of all HERE, where zooming changes it.
+          //
+          // 🔵 2026-09-29 owner ruling 「Ａ」: the bar truncated both the device
+          // name and this line on a 667 px landscape phone. The window's
+          // ends (`09:00 – 09:30`) are GONE from the bar — the x axis already
+          // prints exactly those two times — and the sentence is shortened.
+          // Not flexible: the title takes whatever is left, which is the point.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 140),
             child: Text(
-              '${fmt.format(_win.from)} – ${fmt.format(_win.to)}'
-              '  ·  ${historyBucketWidthNote(l10n, _bucketMs)}',
-              textAlign: TextAlign.center,
+              historyBucketWidthShort(l10n, _bucketMs),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono(context)
                   .copyWith(fontSize: 11, color: context.colors.muted),
             ),
           ),
+          const SizedBox(width: 6),
           // 🔵 design 0089 S6 — the NAME of the drawn series and the control
           // that changes it are one widget, as on the embedded card.
           //
@@ -386,8 +430,10 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
           // that it is now the thing you press. Two shells sharing a painter
           // must not teach two different gestures for one action.
           _seriesSwitch(l10n),
+          // 🔵 2026-09-29: 66 ⇒ 28. The slot holds a 13 px spinner; the other
+          // 38 px were reserved for nothing and came out of the title.
           SizedBox(
-            width: 66,
+            width: 28,
             child: _busy
                 ? const Center(
                     child: SizedBox(
@@ -439,10 +485,8 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                               multiDay: _win.spanMs > 24 * 3600000,
                               bucketMs: _bucketMs,
                               selected: _selected,
-                              series: _isCurrent
-                                  ? HistoryChartSeries.current
-                                  : HistoryChartSeries.voltage,
-                              currentDirectionLabel: _isCurrent
+                              series: _eff,
+                              currentDirectionLabel: _isCurrent || _isBoth
                                   ? historyChartCurrentDirectionLabel(
                                       l10n,
                                       widget.deviceClass,
@@ -536,7 +580,11 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
                 style: AppTextStyles.mono(context).copyWith(
                     fontSize: 12, fontWeight: FontWeight.w700)),
             Text(
-              _isCurrent
+              // 🔵 design 0096 Q3 (a): both numbers, and temperature kept.
+              _isBoth
+                  ? '${v(b.avgPvlt)} V  ·  ${a(b.avgAmpere)} A '
+                      '(${a(b.minAmpere)}–${a(b.maxAmpere)})$t'
+                  : _isCurrent
                   ? '${a(b.avgAmpere)} A '
                       '(${a(b.minAmpere)}–${a(b.maxAmpere)})$t'
                   : '${v(b.avgPvlt)} V (${v(b.minPvlt)}–${v(b.maxPvlt)})$t',

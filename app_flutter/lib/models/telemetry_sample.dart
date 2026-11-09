@@ -81,15 +81,23 @@ class TelemetrySample {
   /// Warning under-voltage threshold (V) — selector 0x2B.
   final double? warnUv;
 
-  /// Warning over-temperature threshold (°C) — selector 0x2B.
+  /// Warning over-temperature threshold (°C) — selector 0x2B b6.
+  ///
+  /// 🔴 **Class-dependent, so it is derived, never decoded alone** — see
+  /// `TelemetryDecoder.warnOtFor`. Null until both [warnOtByte] and
+  /// [deviceType] are known, and null for a byte whose meaning has never been
+  /// observed. Re-derived whenever either input arrives, in either order.
   final double? warnOt;
 
-  /// Raw 4th byte (b7) of the 0x2B threshold frame. A 4th field is observed and
-  /// labelled **UT (under-temp)**; its scaling is not byte-verified, so we keep
-  /// the raw byte only (read-back). It is preserved on the write path instead of
-  /// being forced to 0x00, so setting OV/UV/OT does not clobber the device's UT.
-  /// PROTOCOL.md §10.2.
-  final int? warnUtByte;
+  /// Raw b6 of the 0x2B threshold frame — the input [warnOt] is derived from.
+  /// Kept because the same byte reads differently per class (a capacitor's
+  /// `0x28` is 80 °C on the vendor engineering app's own screen, not the
+  /// 100 °C the old class-blind `b6 + 60` produced).
+  final int? warnOtByte;
+
+  // 🔵 **`warnUtByte` removed 2026-11-09 (design 0098 Q2).** Its only job was
+  // to preserve the unit's UT byte on the `0x2B` WRITE path, and that path is
+  // deleted — this app never writes the unit's protection parameters.
 
   /// Discharge info v1 / v2 — selector 0x4A.
   ///
@@ -146,7 +154,8 @@ class TelemetrySample {
   /// Stored raw (never shown to a user — clean-room string discipline, no raw
   /// bytes on screen) so the decoded getters below and the design 0035 §4.8
   /// feedback hook read from ONE source. Bit map: bit1 = Type-C cable/CC,
-  /// bit2 = output active, bit3 = PD input, bit5 = PD output. **bit0 and bit4
+  /// bit2 = output active, bit3 = PD input, bit5 = a **non-5 V output
+  /// contract** (narrowed from "PD output" — see [isPdOut]). **bit0 and bit4
   /// are decoded to NOTHING** — bit0 was refuted as a Type-A indicator in four
   /// field readings (§3.2), bit4 is a suspected firmware variant, and neither
   /// may influence any display decision.
@@ -225,6 +234,20 @@ class TelemetrySample {
   /// 0x49 / 0x4A current fields.
   final int? twfRaw;
 
+  /// Raw function-flag register (b4..b5 as a big-endian u16) — selector `0x3A`.
+  ///
+  /// 🔴 **Recorded raw, interpreted only per product class.** Every class emits
+  /// it and the bits mean different things in each; the ONE reading this app
+  /// makes is [CapacitorFunctionFlags.group], and only for a unit positively
+  /// read as a super-capacitor. Do not add a second interpretation without a
+  /// class gate —
+  /// that is FB-22's shape.
+  ///
+  /// NOT persisted: [toMap] has no column for it, so no schema change. It is a
+  /// live-link fact (which of the two observed groups this capacitor is
+  /// reporting right now), which nothing reads back out of history.
+  final int? funcFlagsRaw;
+
   const TelemetrySample({
     required this.timestamp,
     this.pvlt,
@@ -238,7 +261,7 @@ class TelemetrySample {
     this.warnOv,
     this.warnUv,
     this.warnOt,
-    this.warnUtByte,
+    this.warnOtByte,
     this.dischargeV1,
     this.dischargeV2,
     this.chargeCurrent,
@@ -254,6 +277,7 @@ class TelemetrySample {
     this.deviceId,
     this.mode,
     this.twfRaw,
+    this.funcFlagsRaw,
   });
 
   /// An empty sample stamped [at] (defaults to now).
@@ -306,7 +330,30 @@ class TelemetrySample {
     return b7 == null ? null : (b7 & 0x08) != 0;
   }
 
-  /// b7 bit5 — PD **output**. Null until b7 is seen.
+  /// b7 bit5 — a **non-5 V output contract**: the contract the port is running
+  /// under is above the USB-default 5 V.
+  ///
+  /// 🔵 **Narrowed 2026-09-04 from "PD output"**, in step with
+  /// `docs/protocol/power-bank-port-flags.md`. The bit itself is as solid as
+  /// anything in this file — 2,872/2,872 bursts with no counter-example, the
+  /// set and clear
+  /// populations do not overlap by a single sample (8,192–10,232 mV vs
+  /// 3,144–5,348 mV), it flips inside an unbroken connection when the port
+  /// voltage moves between the 9 V and 5 V families, and it is set at two
+  /// different contract voltages (≈9.2 V and ≈12.2 V) ⇒ it tracks the CONTRACT,
+  /// not one rail.
+  ///
+  /// 🔴 What was never evidenced is the word **PD**: no capture in the corpus
+  /// records which protocol the far end negotiated — every observation is a
+  /// voltage observation, so "PD" was inferred from the voltage and then
+  /// written down as if it had been seen. QC and PPS remain untested
+  /// possibilities.
+  ///
+  /// ⚠️ The name [isPdOut] and the on-screen "PD" badge still say PD; renaming
+  /// either is a separate decision, not part of the wording sync. Read this
+  /// getter as "a contract above 5 V", not as "PD".
+  ///
+  /// Null until b7 is seen.
   bool? get isPdOut {
     final b7 = portFlagsRaw;
     return b7 == null ? null : (b7 & 0x20) != 0;
@@ -354,7 +401,7 @@ class TelemetrySample {
     double? warnOv,
     double? warnUv,
     double? warnOt,
-    int? warnUtByte,
+    int? warnOtByte,
     double? dischargeV1,
     double? dischargeV2,
     double? chargeCurrent,
@@ -370,6 +417,10 @@ class TelemetrySample {
     String? deviceId,
     int? mode,
     int? twfRaw,
+    int? funcFlagsRaw,
+    // `copyWith` cannot null a field through `??`. The OT derivation needs to:
+    // a byte with no known meaning must CLEAR a stale value, not keep it.
+    bool clearWarnOt = false,
   }) {
     return TelemetrySample(
       timestamp: timestamp ?? this.timestamp,
@@ -383,8 +434,8 @@ class TelemetrySample {
       current: current ?? this.current,
       warnOv: warnOv ?? this.warnOv,
       warnUv: warnUv ?? this.warnUv,
-      warnOt: warnOt ?? this.warnOt,
-      warnUtByte: warnUtByte ?? this.warnUtByte,
+      warnOt: clearWarnOt ? null : (warnOt ?? this.warnOt),
+      warnOtByte: warnOtByte ?? this.warnOtByte,
       dischargeV1: dischargeV1 ?? this.dischargeV1,
       dischargeV2: dischargeV2 ?? this.dischargeV2,
       chargeCurrent: chargeCurrent ?? this.chargeCurrent,
@@ -400,6 +451,7 @@ class TelemetrySample {
       deviceId: deviceId ?? this.deviceId,
       mode: mode ?? this.mode,
       twfRaw: twfRaw ?? this.twfRaw,
+      funcFlagsRaw: funcFlagsRaw ?? this.funcFlagsRaw,
     );
   }
 

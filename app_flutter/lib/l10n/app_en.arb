@@ -229,8 +229,8 @@
       }
     }
   },
-  "disconnectedStalledTitle": "Connected, but the device is not answering",
-  "disconnectedStalledBody": "Bluetooth linked up, but no data came back. Tried {attempts} times.",
+  "disconnectedStalledTitle": "Connected, but no data",
+  "disconnectedStalledBody": "Tried {attempts} times.",
   "@disconnectedStalledBody": {
     "placeholders": {
       "attempts": {
@@ -238,7 +238,7 @@
       }
     }
   },
-  "disconnectedStalledHint": "Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.",
+  "disconnectedStalledHint": "Leaving and coming back retries automatically. If that fails, close the app and reopen.",
   "disconnectedStalledRetry": "Try again",
   "disconnectedGaveUpTitle": "Could not connect to this device",
   "disconnectedGaveUpBody": "Several attempts went by without a connection, so it has stopped trying.",
@@ -271,7 +271,7 @@
   "statusBadgeCutOffOff": "Off",
   "controlDetectCapacitor": "Check Capacitor",
   "statusAdvisoryCapacitorUnknown": "This unit is reporting a status this app does not recognise. It may be normal. Please export the diagnostic log (Settings) and send it to us — the log carries the detail we need.",
-  "statusAdvisoryThresholdBreach": "A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.",
+  "statusAdvisoryThresholdBreach": "A live reading is outside the warning range (over-voltage / under-voltage / over-temperature). This is computed by the app, not a fault reported by the device.",
   "statusAdvisoryCapacitorSelfCheck": "A self-check is running. While it runs the unit's voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.",
   "capacitorSelfCheckDialogTitle": "Start capacitor self-check",
   "capacitorSelfCheckDialogBody": "This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor's voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nDo not do this while the vehicle is depending on this unit to start.",
@@ -279,6 +279,7 @@
   "capacitorSelfCheckNotReady": "This unit has not sent the details needed to authorise the command yet. Please wait a moment and try again.",
   "capacitorSelfCheckDoneSnack": "Self-check finished — the unit reports normal again.",
   "capacitorSelfCheckStillRunningSnack": "The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.",
+  "capacitorSelfCheckFlagNotBackSnack": "The unit reports normal mode again, but one of its other status flags has not gone back to the value it had before the check started. That usually clears within a few seconds. Wait for it to come back before relying on this unit — the app has not sent anything to change it.",
   "capacitorSelfCheckNoResponseSnack": "The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.",
   "capacitorSelfCheckFailedSnack": "Could not send the self-check command: {error}",
   "@capacitorSelfCheckFailedSnack": {
@@ -324,6 +325,14 @@
   "modeChangedSnack": "{action} done — the device now reports: {status}.",
   "modeUnchangedSnack": "{action} command sent, but the device state did not change (still: {status}).",
   "modeUnchangedNoAuthSnack": "{action} sent without auth (experimental); the device state did not change (still: {status}).",
+  "modeLinkLostSnack": "Couldn't confirm {action} — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.",
+  "@modeLinkLostSnack": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
   "modeUnchangedRetriedSnack": "{action} sent {count}×, but the device still reports: {status}. It can take a few tries or a reconnect — please try again shortly.",
   "@modeUnchangedRetriedSnack": {
     "placeholders": {
@@ -369,7 +378,7 @@
     }
   },
   "cutOffDialogTitle": "Send Cut-off Command",
-  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
+  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.",
   "cutOffDialogConfirm": "I understand — send it",
   "cutOffFailedSnack": "Cut-off command failed: {error}",
   "@cutOffFailedSnack": {
@@ -397,7 +406,7 @@
   "releaseConfirmContinue": "Restore",
   "releaseDialogErrorAuthFormat": "Invalid auth value format (use decimal or 0x hexadecimal)",
   "releaseDialogErrorDealerLength": "Dealer code must be at least 8 digits",
-  "releaseDialogBody": "Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.",
+  "releaseDialogBody": "Sends the \"release cut-off\" command. Use the cut-off password, or enter your auth values directly.",
   "releaseDialogAuthModePassword": "Password",
   "releaseDialogAuthModeCode": "Advanced: My Code",
   "releaseDialogDealerCodeHint": "Dealer code (auto-filled when connected)",
@@ -623,6 +632,18 @@
   "@historyChartTodayCurrentTitle": {
     "description": "design 0089 / FB-103 — the today variant. A separate string rather than a composed one: Chinese 今日電流趨勢 is not 今日 + 電流趨勢 glued together."
   },
+  "historyChartBothTitle": "Voltage / Current Trend",
+  "@historyChartBothTitle": {
+    "description": "design 0096: history chart heading when voltage (left axis) and current (right axis) are drawn together. Names both — a heading naming one quantity over a chart showing two is FB-103."
+  },
+  "historyChartTodayBothTitle": "Today's Voltage / Current Trend",
+  "@historyChartTodayBothTitle": {
+    "description": "design 0096: the Today-range variant of historyChartBothTitle."
+  },
+  "historyChartSeriesBothName": "V + A",
+  "@historyChartSeriesBothName": {
+    "description": "design 0096 Q7: the landscape chart bar names the drawn series; this is the combined view. Must fit the 96 px cap in history_chart_page.dart, hence the abbreviation."
+  },
   "historyRangeToday": "Today",
   "historyRangeWeek": "7d",
   "@historyRangeWeek": {
@@ -799,11 +820,11 @@
   "@historySecondsEmpty": {
     "description": "Reachable only if the rows went away between the list query and the tap — a retention purge, or a cleared history."
   },
-  "historyChartExpand": "Expand chart",
+  "historyChartExpand": "Full screen",
   "historyChartGapMinutes": "{count, plural, =1{Not connected for 1 minute} other{Not connected for {count} minutes}}",
   "historyChartGapHours": "{count, plural, =1{Not connected for 1 hour} other{Not connected for {count} hours}}",
   "@historyChartExpand": {
-    "description": "Tooltip/label for the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share."
+    "description": "VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share. \ud83d\udd35 FB-108 (2026-09-02) changed the wording from 'Expand chart' to 'Full screen': the reporter called it \u300c\u5168\u87a2\u5e55\u300d, and that is already this app's word for the same idea on the home tab (fullscreenEnter). \u26a0\ufe0f Two keys deliberately keep the same string \u2014 they are two different actions (immersive home grid vs. landscape chart page) that happen to share a name; do not merge them."
   },
   "@historyChartGapMinutes": {
     "description": "Drawn inside a hatched gap on the LANDSCAPE chart only (design 0081 Q6 = C). Says a stretch of time holds no rows at all — the app was not connected. The embedded card uses the hatch alone (Q6 = B) because 244 px cannot hold this sentence.",
@@ -825,6 +846,24 @@
   "historyChartBucketHours": "{count, plural, =1{Each point on the chart averages 1 hour} other{Each point on the chart averages {count} hours}}",
   "@historyChartBucketHours": {
     "description": "Hours form of historyChartBucketMinutes; 'averages 1440 minutes' is a number nobody converts.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyChartBucketShortMinutes": "{count} min / point",
+  "@historyChartBucketShortMinutes": {
+    "description": "Short form of historyChartBucketMinutes for the landscape chart bar (owner ruling A, 2026-09-29).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyChartBucketShortHours": "{count} h / point",
+  "@historyChartBucketShortHours": {
+    "description": "Hours form of historyChartBucketShortMinutes.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -871,7 +910,7 @@
       }
     }
   },
-  "historyRowThresholdWarning": "Protection threshold warning",
+  "historyRowThresholdWarning": "Warning threshold",
   "historyStatusEvent": "Event",
   "historyChartInsufficientData": "Too short a span to chart yet",
   "settingsConnectionHeading": "Connection",
@@ -1421,7 +1460,7 @@
   "@devicesAutoConnectSkippedLastError": {
     "description": "FB-82 Q4, the `last error not cleared` gate. The error code is deliberately not repeated here — it is already in the card above, turned into an instruction."
   },
-  "devicesAutoConnectSkippedStalled": "The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.",
+  "devicesAutoConnectSkippedStalled": "The previous connection stalled part-way through setup. Use the button below to connect now.",
   "@devicesAutoConnectSkippedStalled": {
     "description": "FB-82 Q4, the `setup stalled` gate (FB-50: linked but never ready)."
   },
@@ -1521,24 +1560,16 @@
   "alertsRowOverTemperature": "Over-temperature",
   "alertsRowAboveWarns": "Warn above",
   "alertsRowBelowWarns": "Warn below",
-  "alertsSourceDevice": "Device",
-  "@alertsSourceDevice": {"description": "Layer ② badge — the unit's own 0x2B."},
-  "alertsSourceApp": "App default",
-  "@alertsSourceApp": {"description": "design 0080 §3.2.2 — the power bank's 50 °C is the one number nobody measured, and the screen is REQUIRED to say so."},
-  "alertsSourceNone": "No basis",
-  "alertsSourceOffline": "Known once connected",
   "alertsValueUnset": "Not set",
   "alertsVoltsValue": "{v} V",
   "@alertsVoltsValue": {"placeholders": {"v": {"type": "String"}}},
   "alertsCelsiusValue": "{v} °C",
   "@alertsCelsiusValue": {"placeholders": {"v": {"type": "String"}}},
-  "alertsOfflineNote": "Not connected — this device's own factory limits are only readable while connected.",
-  "alertsReadOnlyNote": "These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.",
   "alertsPendingTitle": "Still identifying this device",
   "@alertsPendingTitle": {"description": "design 0080 §7.5.6 C-3 / §7.5.7 — the TRANSIENT state. It must never borrow the words of alertsUnrecognisedTitle: every connect passes through here."},
   "alertsPendingBody": "Which warnings this device can offer is known once it has said what it is. Nothing is switched off — there is simply nothing to show yet.",
   "alertsPowerBankNoteTitle": "Why is there no voltage warning?",
-  "alertsPowerBankNoteBody": "A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery's or a capacitor's pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.",
+  "alertsPowerBankNoteBody": "A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery's or a capacitor's pack voltage — so we have nothing to judge it against.",
   "alertsPowerBankOtNote": "This device reports no warning limits, so 50 °C is the app’s own default.",
   "alertsPowerBankOtEvidence": "Highest observed across 49 captures: 40 °C",
   "alertsUnrecognisedTitle": "This device type is not recognised, so no warnings are offered.",
@@ -1657,5 +1688,58 @@
   "@alertsBannerMore": {
     "description": "design 0086 — appended to the collapsed banner when more than one warning is raised; count is the number NOT shown on the line.",
     "placeholders": {"count": {"type": "String"}}
+  },
+  "liveChartExpand": "Full screen",
+  "@liveChartExpand": {
+    "description": "VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape LIVE chart (design 0093). \ud83d\udd11 Deliberately the same string as historyChartExpand and fullscreenEnter, and deliberately a THIRD key: they are three different actions (immersive home grid, landscape history chart, landscape live chart) that share a name. FB-108 (2026-09-02) is why the wording is 'Full screen' and not 'Expand' \u2014 do not reword one of the three alone."
+  },
+  "liveChartFrozen": "Disconnected \u00b7 frozen at {time}",
+  "@liveChartFrozen": {
+    "description": "design 0093 \u00a73.3 (owner ruling 2026-09-02: freeze the picture and say so). Shown under the full-screen live chart once the link drops. \ud83d\udd34 The buffer is cleared unconditionally on a disconnect, so what is on screen is a local snapshot that will never advance again \u2014 this line is what stops it reading as a chart that is still updating.",
+    "placeholders": {"time": {"type": "String"}}
+  },
+  "liveChartRestarted": "Reconnected \u00b7 recording restarted",
+  "@liveChartRestarted": {
+    "description": "design 0093 \u00a74 Q5 (owner: \u300c\u63db\u65b0\u300d). Shown after the link comes back while the full-screen live chart is open. \u26a0\ufe0f NOT 'resumed': the ~3 minutes held before the disconnect are gone and are not stored anywhere, so the honest word is 'restarted'."
+  },
+  "demoEntryTitle": "No device? Try a demo unit",
+  "@demoEntryTitle": {
+    "description": "design 0097 \u00a73.1. Fixed row at the bottom of the scan list, shown whether or not real units are found. Its main audience is an App Store reviewer who has no hardware."
+  },
+  "demoEntrySubtitle": "See every screen with simulated data",
+  "@demoEntrySubtitle": {
+    "description": "design 0097. Second line of the demo entry row."
+  },
+  "demoPickTitle": "Choose a demo unit",
+  "@demoPickTitle": {
+    "description": "design 0097. Title of the sheet that picks which demo unit to connect."
+  },
+  "demoBatteryName": "Demo battery",
+  "@demoBatteryName": {
+    "description": "design 0097. Display name of the simulated smart battery, wherever a device name is shown."
+  },
+  "demoCapacitorName": "Demo capacitor",
+  "@demoCapacitorName": {
+    "description": "design 0097. Display name of the simulated super-capacitor, wherever a device name is shown."
+  },
+  "demoBatteryDesc": "12 V smart battery \u00b7 try cut-off and restore",
+  "@demoBatteryDesc": {
+    "description": "design 0097. Second line for the demo battery in the picker sheet."
+  },
+  "demoCapacitorDesc": "Super-capacitor \u00b7 try the self-check",
+  "@demoCapacitorDesc": {
+    "description": "design 0097. Second line for the demo capacitor in the picker sheet. A capacitor has no cut-off, so the self-check is what it offers instead."
+  },
+  "demoBanner": "Demo mode \u00b7 simulated data, no device connected",
+  "@demoBanner": {
+    "description": "design 0097 \u00a73.5. Fixed banner across every screen while a demo unit is connected. \ud83d\udd34 Must say the data is simulated: the screens are otherwise indistinguishable from a real unit's."
+  },
+  "demoRowMeta": "Simulated data \u00b7 not a real device",
+  "@demoRowMeta": {
+    "description": "design 0097. Second line of the demo unit's row in the device list, in place of the id and signal text a real unit shows."
+  },
+  "demoBannerEnd": "End demo",
+  "@demoBannerEnd": {
+    "description": "design 0097. Button on the demo banner; disconnects the demo unit."
   }
 }

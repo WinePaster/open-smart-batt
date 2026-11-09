@@ -17,6 +17,18 @@ import 'selectors.dart';
 /// and is only ever sent to move a pack toward normal (release has no lock path).
 const int kDefaultCutoffPwSum = 0x01E4;
 
+/// `cb` the 復電 (release) path tries FIRST, before the value derived from the
+/// device's own dealer code (FB 2026.09.27/003, owner's ruling 2026-09-29).
+///
+/// 0x00A8 is the only `cb` ever seen on a release that moved `0x23` in this
+/// project's corpus (every such pack was a `0168…` dealer code, where the
+/// 4-char rule also yields 0x00A8). The derived value is NOT safe to lead with:
+/// on a `01690102` pack the derived 0x00A9 was written 32 times while the pack
+/// sat in cut-off, and `0x23` never moved. Own evidence cannot say whether cb
+/// or pwSum was the wrong half, so the derived value is kept as a fallback
+/// rather than dropped (see [releaseAuthPlan] in status_controls_shared.dart).
+const int kReleaseCbFirst = 0x00A8;
+
 /// Battery-specific auth credentials (live HCI capture).
 ///
 /// `cb`    — 16-bit echo derived from the device's dealer code (selector 0x27),
@@ -148,37 +160,9 @@ class CommandBuilder {
   /// Read-back frame for the mode selector (`0x23`).
   Uint8List modeReadBack() => readBack(Commands.modeSet);
 
-  /// Threshold-set frame from raw bytes:
-  /// `[B8, 2B, flag, 04, ovByte, uvByte, otByte, trailing, XOR]`.
-  Uint8List thresholdsRaw(
-    int ovByte,
-    int uvByte,
-    int otByte, {
-    int trailing = 0x00,
-    int flag = 0x00,
-  }) =>
-      buildFrame(
-        Commands.thresholds,
-        [ovByte & 0xFF, uvByte & 0xFF, otByte & 0xFF, trailing & 0xFF],
-        flag: flag,
-      );
-
-  /// Threshold-set frame from physical units (PROTOCOL.md §8.3 write inverse):
-  ///   OV_byte = round((ovVolts - 14.4) / 0.025)
-  ///   UV_byte = round((uvVolts - 10.4) / 0.025)
-  ///   OT_byte = round(otCelsius - 60)
-  Uint8List thresholds({
-    required double ovVolts,
-    required double uvVolts,
-    required double otCelsius,
-    int trailing = 0x00,
-    int flag = 0x00,
-  }) {
-    final ov = ((ovVolts - 14.4) / 0.025).round();
-    final uv = ((uvVolts - 10.4) / 0.025).round();
-    final ot = (otCelsius - 60).round();
-    return thresholdsRaw(ov, uv, ot, trailing: trailing, flag: flag);
-  }
+  // ⛔ `thresholdsRaw` / `thresholds` (the `0x2B` write frame) deleted
+  // 2026-11-09 (design 0098 Q2): this app never writes the unit's protection
+  // parameters.
 
   /// changeCutOffPassword (PROTOCOL.md §6.3): same 0x2A channel, but pwSum is the
   /// checksum of the NEW password. Identical frame shape to [auth].

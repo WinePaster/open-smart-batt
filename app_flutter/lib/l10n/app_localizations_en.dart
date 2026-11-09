@@ -345,17 +345,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get disconnectedStalledTitle =>
-      'Connected, but the device is not answering';
+  String get disconnectedStalledTitle => 'Connected, but no data';
 
   @override
   String disconnectedStalledBody(int attempts) {
-    return 'Bluetooth linked up, but no data came back. Tried $attempts times.';
+    return 'Tried $attempts times.';
   }
 
   @override
   String get disconnectedStalledHint =>
-      'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.';
+      'Leaving and coming back retries automatically. If that fails, close the app and reopen.';
 
   @override
   String get disconnectedStalledRetry => 'Try again';
@@ -415,7 +414,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusAdvisoryThresholdBreach =>
-      'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.';
+      'A live reading is outside the warning range (over-voltage / under-voltage / over-temperature). This is computed by the app, not a fault reported by the device.';
 
   @override
   String get statusAdvisoryCapacitorSelfCheck =>
@@ -442,6 +441,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get capacitorSelfCheckStillRunningSnack =>
       'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.';
+
+  @override
+  String get capacitorSelfCheckFlagNotBackSnack =>
+      'The unit reports normal mode again, but one of its other status flags has not gone back to the value it had before the check started. That usually clears within a few seconds. Wait for it to come back before relying on this unit — the app has not sent anything to change it.';
 
   @override
   String get capacitorSelfCheckNoResponseSnack =>
@@ -493,6 +496,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String modeLinkLostSnack(String action) {
+    return 'Couldn\'t confirm $action — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.';
+  }
+
+  @override
   String modeUnchangedRetriedSnack(String action, int count, String status) {
     return '$action sent $count×, but the device still reports: $status. It can take a few tries or a reconnect — please try again shortly.';
   }
@@ -502,7 +510,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cutOffDialogBody =>
-      'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.';
+      'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.';
 
   @override
   String get cutOffDialogConfirm => 'I understand — send it';
@@ -555,7 +563,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get releaseDialogBody =>
-      'Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.';
+      'Sends the \"release cut-off\" command. Use the cut-off password, or enter your auth values directly.';
 
   @override
   String get releaseDialogAuthModePassword => 'Password';
@@ -888,6 +896,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historyChartTodayCurrentTitle => 'Today\'s Current Trend';
 
   @override
+  String get historyChartBothTitle => 'Voltage / Current Trend';
+
+  @override
+  String get historyChartTodayBothTitle => 'Today\'s Voltage / Current Trend';
+
+  @override
+  String get historyChartSeriesBothName => 'V + A';
+
+  @override
   String get historyRangeToday => 'Today';
 
   @override
@@ -1079,7 +1096,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get historySecondsEmpty => 'No readings stored for this minute.';
 
   @override
-  String get historyChartExpand => 'Expand chart';
+  String get historyChartExpand => 'Full screen';
 
   @override
   String historyChartGapMinutes(num count) {
@@ -1136,6 +1153,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String historyChartBucketShortMinutes(int count) {
+    return '$count min / point';
+  }
+
+  @override
+  String historyChartBucketShortHours(int count) {
+    return '$count h / point';
+  }
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);
@@ -1176,7 +1203,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get historyRowThresholdWarning => 'Protection threshold warning';
+  String get historyRowThresholdWarning => 'Warning threshold';
 
   @override
   String get historyStatusEvent => 'Event';
@@ -2002,7 +2029,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get devicesAutoConnectSkippedStalled =>
-      'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.';
+      'The previous connection stalled part-way through setup. Use the button below to connect now.';
 
   @override
   String get devicesSave => 'Save';
@@ -2255,18 +2282,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsRowBelowWarns => 'Warn below';
 
   @override
-  String get alertsSourceDevice => 'Device';
-
-  @override
-  String get alertsSourceApp => 'App default';
-
-  @override
-  String get alertsSourceNone => 'No basis';
-
-  @override
-  String get alertsSourceOffline => 'Known once connected';
-
-  @override
   String get alertsValueUnset => 'Not set';
 
   @override
@@ -2280,14 +2295,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get alertsOfflineNote =>
-      'Not connected — this device\'s own factory limits are only readable while connected.';
-
-  @override
-  String get alertsReadOnlyNote =>
-      'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.';
-
-  @override
   String get alertsPendingTitle => 'Still identifying this device';
 
   @override
@@ -2299,7 +2306,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsPowerBankNoteBody =>
-      'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.';
+      'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — so we have nothing to judge it against.';
 
   @override
   String get alertsPowerBankOtNote =>
@@ -2581,4 +2588,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String alertsBannerMore(String count) {
     return '+$count';
   }
+
+  @override
+  String get liveChartExpand => 'Full screen';
+
+  @override
+  String liveChartFrozen(String time) {
+    return 'Disconnected · frozen at $time';
+  }
+
+  @override
+  String get liveChartRestarted => 'Reconnected · recording restarted';
+
+  @override
+  String get demoEntryTitle => 'No device? Try a demo unit';
+
+  @override
+  String get demoEntrySubtitle => 'See every screen with simulated data';
+
+  @override
+  String get demoPickTitle => 'Choose a demo unit';
+
+  @override
+  String get demoBatteryName => 'Demo battery';
+
+  @override
+  String get demoCapacitorName => 'Demo capacitor';
+
+  @override
+  String get demoBatteryDesc => '12 V smart battery · try cut-off and restore';
+
+  @override
+  String get demoCapacitorDesc => 'Super-capacitor · try the self-check';
+
+  @override
+  String get demoBanner => 'Demo mode · simulated data, no device connected';
+
+  @override
+  String get demoRowMeta => 'Simulated data · not a real device';
+
+  @override
+  String get demoBannerEnd => 'End demo';
 }

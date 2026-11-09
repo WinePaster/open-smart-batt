@@ -332,16 +332,15 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get disconnectedStalledTitle => '已連上，但這台裝置沒有回應';
+  String get disconnectedStalledTitle => '已連上，但讀不到資料';
 
   @override
   String disconnectedStalledBody(int attempts) {
-    return '藍牙確實連上了，但讀不到資料。已經試過 $attempts 次。';
+    return '已試過 $attempts 次。';
   }
 
   @override
-  String get disconnectedStalledHint =>
-      '請把 App 完全關掉再重新打開 —— 目前唯一實測有效的做法就是這個。乾等沒有用：同樣的狀況曾經持續 40 分鐘都沒自己好。';
+  String get disconnectedStalledHint => '切出去再回來會自動再試。仍然不行就把 App 關掉重開。';
 
   @override
   String get disconnectedStalledRetry => '重新連線';
@@ -399,7 +398,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statusAdvisoryThresholdBreach =>
-      '目前讀數已超出裝置回報的警戒範圍（過壓／低壓／過溫）。此為 App 依裝置回報的門檻自行計算，並非裝置回報的故障。';
+      '目前讀數已超出警示範圍（過壓／低壓／過溫）。此為 App 自行計算，並非裝置回報的故障。';
 
   @override
   String get statusAdvisoryCapacitorSelfCheck =>
@@ -424,6 +423,10 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get capacitorSelfCheckStillRunningSnack =>
       '裝置還沒有回報恢復正常，可能仍在檢測模式；App 沒有送出任何把它拉回正常模式的指令。請繼續看上方的狀態。';
+
+  @override
+  String get capacitorSelfCheckFlagNotBackSnack =>
+      '裝置已回報正常模式，但它另一個狀態旗標還沒回到檢測開始前的值。這通常會在數秒內自行恢復。請等它回來再依賴這顆電容 —— App 沒有送出任何改變它的指令。';
 
   @override
   String get capacitorSelfCheckNoResponseSnack =>
@@ -474,6 +477,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String modeLinkLostSnack(String action) {
+    return '$action結果無法確認 —— 等待裝置回報時藍牙連線中斷了。請重新連線後查看裝置狀態。';
+  }
+
+  @override
   String modeUnchangedRetriedSnack(String action, int count, String status) {
     return '已送出$action共 $count 次，裝置仍回報：$status。有時需多試幾次或重新連線後才生效，請稍後再試。';
   }
@@ -483,7 +491,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffDialogBody =>
-      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n解除斷電這條路徑目前尚未被證實可用。我們手上沒有任何一次擷取顯示裝置對模式指令有回應，認證值的推導方式也還在查證中。如果解除失敗，本 App 無法讓這顆電池復電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
+      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功：目前仍有電池在多次復電後都解不開，原因還在查證。如果復電失敗，本 App 無法讓這顆電池恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
 
   @override
   String get cutOffDialogConfirm => '我了解，仍要送出';
@@ -530,7 +538,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get releaseDialogErrorDealerLength => '代理碼需至少 8 碼';
 
   @override
-  String get releaseDialogBody => '送出已知安全的「解除」指令(mode 0x06)。可用斷電密碼，或直接輸入你的驗證值。';
+  String get releaseDialogBody => '送出「解除斷電」指令。可用斷電密碼，或直接輸入你的驗證值。';
 
   @override
   String get releaseDialogAuthModePassword => '密碼';
@@ -844,6 +852,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historyChartTodayCurrentTitle => '今日電流趨勢';
 
   @override
+  String get historyChartBothTitle => '電壓／電流趨勢';
+
+  @override
+  String get historyChartTodayBothTitle => '今日電壓／電流趨勢';
+
+  @override
+  String get historyChartSeriesBothName => '電壓＋電流';
+
+  @override
   String get historyRangeToday => '今天';
 
   @override
@@ -1023,7 +1040,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get historySecondsEmpty => '這一分鐘沒有任何紀錄。';
 
   @override
-  String get historyChartExpand => '放大檢視';
+  String get historyChartExpand => '全螢幕';
 
   @override
   String historyChartGapMinutes(num count) {
@@ -1066,6 +1083,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String historyChartBucketShortMinutes(int count) {
+    return '每點 $count 分鐘';
+  }
+
+  @override
+  String historyChartBucketShortHours(int count) {
+    return '每點 $count 小時';
+  }
+
+  @override
   String historyFooter(int count) {
     final intl.NumberFormat countNumberFormat =
         intl.NumberFormat.decimalPattern(localeName);
@@ -1104,7 +1131,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get historyRowThresholdWarning => '保護門檻警告';
+  String get historyRowThresholdWarning => '警示門檻';
 
   @override
   String get historyStatusEvent => '事件';
@@ -1885,8 +1912,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '上一次的連線問題還沒有清除，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
 
   @override
-  String get devicesAutoConnectSkippedStalled =>
-      '上一次的連線還卡在設定階段沒有完成，所以這次進來並沒有自己嘗試連線。可以按下面的按鈕現在連。';
+  String get devicesAutoConnectSkippedStalled => '上一次連線卡在設定階段。可以按下面的按鈕現在連。';
 
   @override
   String get devicesSave => '儲存';
@@ -2128,18 +2154,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alertsRowBelowWarns => '低於就警告';
 
   @override
-  String get alertsSourceDevice => '裝置回報';
-
-  @override
-  String get alertsSourceApp => 'App 預設';
-
-  @override
-  String get alertsSourceNone => '無依據';
-
-  @override
-  String get alertsSourceOffline => '連線後才知道';
-
-  @override
   String get alertsValueUnset => '未設定';
 
   @override
@@ -2153,12 +2167,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get alertsOfflineNote => '目前未連線，這台裝置自己回報的出廠門檻要連線後才讀得到。';
-
-  @override
-  String get alertsReadOnlyNote => '這些門檻是裝置出廠設定的，App 只負責讀出來提醒你，不會修改裝置。';
-
-  @override
   String get alertsPendingTitle => '正在辨識這台裝置';
 
   @override
@@ -2170,7 +2178,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alertsPowerBankNoteBody =>
-      '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事，而且它不回報出廠警戒門檻 —— 我們沒有依據可以判斷多少算異常。';
+      '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事 —— 我們沒有依據可以判斷多少算異常。';
 
   @override
   String get alertsPowerBankOtNote => '這台裝置沒有回報警戒門檻，50 °C 是 App 的預設值。';
@@ -2434,4 +2442,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String alertsBannerMore(String count) {
     return '＋$count';
   }
+
+  @override
+  String get liveChartExpand => '全螢幕';
+
+  @override
+  String liveChartFrozen(String time) {
+    return '連線中斷 · 畫面停在 $time';
+  }
+
+  @override
+  String get liveChartRestarted => '已重新連線 · 重新開始記錄';
+
+  @override
+  String get demoEntryTitle => '沒有裝置？試用示範裝置';
+
+  @override
+  String get demoEntrySubtitle => '用模擬資料看看 App 的所有畫面';
+
+  @override
+  String get demoPickTitle => '選擇示範裝置';
+
+  @override
+  String get demoBatteryName => '示範電池';
+
+  @override
+  String get demoCapacitorName => '示範電容';
+
+  @override
+  String get demoBatteryDesc => '12 V 智慧電池 · 可試斷電與復電';
+
+  @override
+  String get demoCapacitorDesc => '超級電容 · 可試自我檢查';
+
+  @override
+  String get demoBanner => '示範模式 · 資料為模擬，未連線任何裝置';
+
+  @override
+  String get demoRowMeta => '模擬資料 · 不是真的裝置';
+
+  @override
+  String get demoBannerEnd => '結束示範';
 }

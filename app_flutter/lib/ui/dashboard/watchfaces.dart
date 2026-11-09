@@ -108,6 +108,7 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
+import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import 'display_modules.dart';
@@ -577,7 +578,11 @@ String exportLayoutValue({
 /// the same handlers.
 String currentExportLayoutValue(BuildContext context) {
   final conn = context.read<ConnectionController>();
-  if (!conn.isOnline) return exportLayoutValue(cls: null, layout: null);
+  // design 0097 review: a demo link's dashboard is not a layout any real unit
+  // was shown in, so an export taken during a demo says "nothing connected".
+  if (!conn.isOnline || isDemoDeviceId(conn.connectedDeviceId)) {
+    return exportLayoutValue(cls: null, layout: null);
+  }
   return exportLayoutValue(cls: conn.displayClass, layout: conn.displayLayout);
 }
 

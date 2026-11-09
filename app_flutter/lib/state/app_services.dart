@@ -11,6 +11,7 @@ library;
 import 'dart:async';
 
 import '../ble/ble.dart';
+import '../config/app_config.dart';
 import '../data/data.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -121,10 +122,17 @@ class AppServices {
   /// - [parser]: device-metadata parser forwarded to
   ///   the default [BleService]. The open build passes [NoopMetadataParser];
   ///   a closed composition root injects its own. Ignored when [ble] is provided.
+  /// - [profiles]: the protocols the default [BleService] may speak (design
+  ///   0099). Null = RCE only, which is what the open build passes. A closed
+  ///   composition root may add its own. Ignored when [ble] is provided.
   /// - [monitor]: inject a fake background-monitor handle in tests; defaults to
   ///   the platform's implementation (Android foreground service, else no-op).
   /// - [alertNotifier]: inject a fake local-notification handle in tests;
   ///   defaults to the platform's ([NoopAlertNotifier] off Android/iOS).
+  /// - [config]: this edition's branding (design 0092). Only two controllers
+  ///   need it, and only for the PRE-l10n seeds they hold — the notification
+  ///   titles and the Android alert channel's name. Everything else reads it
+  ///   from [AppConfigScope], which does not exist yet at this point.
   static Future<AppServices> create({
     String? dbPath,
     AppDatabase? appDatabase,
@@ -132,9 +140,11 @@ class AppServices {
     MonitorService? monitor,
     AlertNotifier? alertNotifier,
     MetadataParser parser = const NoopMetadataParser(),
+    List<DeviceProfile>? profiles,
+    AppConfig config = AppConfig.open,
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
-    final bleService = ble ?? BleService(parser: parser);
+    final bleService = ble ?? BleService(parser: parser, profiles: profiles);
     // Resolved before any controller exists, so the very first recorded row
     // already carries it.
     final env = await resolveBuildInfo();
@@ -146,6 +156,10 @@ class AppServices {
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
     final autoConnectArmRepo = AutoConnectArmRepo(db.db);
+    // design 0097 §2.3 ②: whatever a demo left behind — a process killed
+    // mid-demo never reaches the purge on disconnect — goes before anything
+    // can read or export it.
+    await historyRepo.purgeDemoRows();
     // design 0060 §3.3: read BEFORE the controller exists, so the value handed
     // to it cannot have been written by it. Same shape as `lastSessionId()`
     // below — a single read the composition root already does at this point.
@@ -187,6 +201,7 @@ class AppServices {
       monitor: monitorService,
       pending: pending,
       autoConnectArm: autoConnectArmRepo,
+      config: config,
     );
     // design 0060 §3.3 — immediately after construction, so no link event can
     // reach the controller before it knows there is an episode to close. A null
@@ -215,6 +230,7 @@ class AppServices {
     final alerts = AlertController(
       devices: devices,
       settings: settings,
+      config: config,
       notifier: alertNotifier ?? AlertNotifier.forPlatform(),
       resolve: (deviceId, sample) => alertThresholdsFor(
         devices,

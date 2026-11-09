@@ -343,7 +343,8 @@ void main() {
   group('T3 PD never crossed', () {
     testWidgets('charging + bit5 set + bit3 clear → no PD (reads bit3 only)',
         (tester) async {
-      // 0x22 = bit1 + bit5 (output PD). While charging we look at bit3 (clear).
+      // 0x22 = bit1 + bit5 (a non-5 V output contract). While charging we look
+      // at bit3 (clear).
       await mount(tester, portFlagsRaw: 0x22, current: -0.42, svlt: 9.0);
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('PD'), findsNothing);

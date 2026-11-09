@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ble/ble.dart';
 import '../data/data.dart';
+import '../demo/demo.dart';
 import '../models/models.dart';
 import 'card_telemetry.dart';
 import 'live_trend_buffer.dart';
@@ -307,7 +308,9 @@ class TelemetryController extends ChangeNotifier
   @override
   bool? get isPdIn => _sample.isPdIn;
 
-  /// PD output (b7 bit5). Null until b7 is seen.
+  /// A **non-5 V output contract** (b7 bit5) — narrowed from "PD output" on
+  /// 2026-09-04; the protocol itself was never observed, only the voltage. See
+  /// [TelemetrySample.isPdOut]. Null until b7 is seen.
   @override
   bool? get isPdOut => _sample.isPdOut;
 
@@ -318,6 +321,13 @@ class TelemetryController extends ChangeNotifier
 
   /// Reported mode/status code (selector 0x23).
   int? get mode => _sample.mode;
+
+  /// Raw function-flag register (selector 0x3A), or null until one arrives.
+  ///
+  /// 🔴 Class-specific. Read it only through [CapacitorFunctionFlags] and only
+  /// for a unit positively read as a super-capacitor — see
+  /// [TelemetrySample.funcFlagsRaw].
+  int? get funcFlagsRaw => _sample.funcFlagsRaw;
 
 
 
@@ -335,10 +345,10 @@ class TelemetryController extends ChangeNotifier
   /// as-is, only as its [shortDeviceHash].
   String? get mac => _sample.mac;
 
-  /// Warning thresholds (selector 0x2B), in physical units.
-  double? get warnOv => _sample.warnOv;
-  double? get warnUv => _sample.warnUv;
-  double? get warnOt => _sample.warnOt;
+  // 🔵 **`warnOv` / `warnUv` / `warnOt` getters removed 2026-11-09 (design
+  // 0098).** `0x2B` is the unit's protection setting and must not reach any
+  // screen; without these getters no widget can read it by accident. The
+  // decoded values still live on `TelemetrySample` for the protocol tests.
 
   /// Raw temperature (°C).
   int? get temperatureC => _sample.temperatureC;
@@ -1009,7 +1019,7 @@ class TelemetryController extends ChangeNotifier
     _historyBatchTimer?.cancel();
     _historyBatchTimer = null;
     _historyCommitting = true;
-    _pending.add(_history.insertSamples(batch).whenComplete(() {
+    _pending.add(_lastHistoryWrite = _history.insertSamples(batch).whenComplete(() {
       _historyCommitting = false;
       if (_historyBuffer.length < _historyBatchRows) {
         _historyOverflowLogged = false;
@@ -1413,6 +1423,37 @@ class TelemetryController extends ChangeNotifier
     _pending.add(_logs.insertLog(entry, maxBytes: _settings.logTrimBudget));
   }
 
+  /// The most recent history write, so the demo purge can run after it.
+  Future<void>? _lastHistoryWrite;
+
+  /// The demo unit whose link is up, from its `ready` until its rows are
+  /// purged (design 0097); null otherwise. Also what stops a second `ready`
+  /// on the same link from seeding the 24 h twice.
+  String? _demoSession;
+
+  /// design 0097 §2.3: seed a demo link's past on `ready`; delete every demo
+  /// row once it is gone. The purge is chained after the last write — the
+  /// disconnect flush in [_onLinkState] commits the demo's final seconds, and
+  /// deleting before they land would leave them behind.
+  void _onDemoLinkState(BleLinkState s) {
+    if (s == BleLinkState.ready) {
+      final kind = DemoKind.fromId(_ble.connectedDeviceId);
+      if (kind == null || _demoSession == kind.id) return;
+      _demoSession = kind.id;
+      _pending.add(_lastHistoryWrite = _history.insertSamples(
+          demoHistorySeed(kind, DateTime.now(), appBuild: _appBuild)));
+    }
+    final ended = _demoSession;
+    if (s == BleLinkState.disconnected && ended != null) {
+      _demoSession = null;
+      // After the last write whether or not it SUCCEEDED: a failed write must
+      // not leave demo rows behind until the next launch.
+      final after = (_lastHistoryWrite ?? Future<void>.value())
+          .then<void>((_) {}, onError: (Object _) {});
+      _pending.add(after.then((_) => _history.purgeDemoRows(deviceId: ended)));
+    }
+  }
+
   void _onLinkState(BleLinkState s) {
     if (s == BleLinkState.ready) {
       // Grace period before the first frame, for the unit that just came up.
@@ -1453,6 +1494,8 @@ class TelemetryController extends ChangeNotifier
       // the next unit's axis.
       _alerts?.onLinkLost();
     }
+    // After the flush above, so the purge it schedules follows the last write.
+    _onDemoLinkState(s);
   }
 
   @override

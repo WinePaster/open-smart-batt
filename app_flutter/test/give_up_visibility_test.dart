@@ -438,7 +438,7 @@ void main() {
       conn.setError('device_unreachable');
       await tester.pump();
 
-      expect(find.text('Connected, but the device is not answering'),
+      expect(find.text('Connected, but no data'),
           findsOneWidget,
           reason: 'the latch is still set — the stalled card must win');
       expect(

@@ -11,11 +11,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'ble/ble.dart';
 import 'config/app_config.dart';
 import 'data/data.dart';
+import 'demo/demo.dart';
 import 'models/models.dart';
 import 'protocol/protocol.dart';
 import 'state/state.dart';
 import 'theme/app_theme.dart';
 import 'ui/alerts/alert_settings_page.dart';
+import 'ui/demo/demo_ui.dart';
 import 'ui/devices/device_detail_page.dart';
 import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
@@ -26,7 +28,11 @@ import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
-Future<void> main() => bootstrap();
+/// `OSB_CHANNEL` selects the distribution channel (see [AppConfig.forChannel]);
+/// unset, this is exactly the build it always was.
+Future<void> main() => bootstrap(
+  config: AppConfig.forChannel(const String.fromEnvironment('OSB_CHANNEL')),
+);
 
 /// Composition-root wrapper. The OPEN build calls this with defaults —
 /// [NoopMetadataParser] (decodes no closed selectors) and no device-info panel —
@@ -36,6 +42,8 @@ Future<void> main() => bootstrap();
 ///
 /// - [parser]: device-metadata parser threaded to [BleService] via
 ///   [AppServices.create]. Open default = [NoopMetadataParser].
+/// - [profiles]: the protocols [BleService] may speak (design 0099), threaded
+///   the same way. Open default = null = RCE only.
 /// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
 ///   open build (no panel; the open app never reads [DeviceMetadata] content).
 /// - [config]: per-edition branding (design 0092). Open default =
@@ -46,6 +54,7 @@ Future<void> bootstrap({
   MetadataParser parser = const NoopMetadataParser(),
   WidgetBuilder? deviceInfoPanelBuilder,
   AppConfig config = AppConfig.open,
+  List<DeviceProfile>? profiles,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
@@ -72,7 +81,8 @@ Future<void> bootstrap({
   // open. Fall back to a screen that says what happened instead.
   final AppServices services;
   try {
-    services = await AppServices.create(parser: parser);
+    services = await AppServices.create(
+        parser: parser, config: config, profiles: profiles);
   } catch (e) {
     runApp(
       StartupFailureApp(
@@ -361,7 +371,9 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
                     mq.textScaler.scale(1) * AppTheme.baseTextScale,
                   ),
                 ),
-                child: child!,
+                // design 0097 §3.5 — above the navigator, so every route
+                // carries it while a demo unit is linked.
+                child: DemoBannerFrame(child: child!),
               );
             },
           ),
@@ -1155,31 +1167,73 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
             child: Icon(Icons.bolt, size: 18, color: context.accent.accent),
           ),
           const SizedBox(width: 10),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'OPENSMARTBATT',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
-                  color: context.colors.text,
-                ),
+          // 🔵 FB-108 — `Flexible`, and this is a fix in its own right. The
+          // brand text was unbounded in a `Row` inside the bar, so on a 320 dp
+          // phone at a large text scale the bar OVERFLOWED rather than
+          // shortening anything (measured 2026-09-02: 191 px past the right
+          // edge in the fixed-advance test font). Adding a word to the action
+          // beside it would have made that worse; ellipsising the brand name
+          // is the one thing in this bar that can be lost without losing
+          // information the user needs.
+          Flexible(
+            child: Text(
+              'OPENSMARTBATT',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: context.colors.text,
               ),
-            ],
+            ),
           ),
         ],
       ),
       actions: [
+        // 🔵 **FB-108 (2026-09-02) — the glyph travels with the word**, the
+        // same correction the history chart's own full-screen entry took in
+        // the same batch (`history_screen.dart`).
+        //
+        // 🔴 This button has been reported once already: 2026-08-15, from the
+        // field, verbatim 「但看不到」 — and the answer then was to make it
+        // bigger (22 px) and drop `muted` for the body colour, while leaving it
+        // wordless. It is still the only way in (design 0062 Q1 rules out a
+        // gesture), and this project has now been told four times that a
+        // wordless entry is one nobody finds (FB-70 / FB-103 / FB-107 / FB-108).
         if (onEnterFullscreen != null)
-          IconButton(
-            onPressed: onEnterFullscreen,
-            iconSize: 22,
-            icon: const Icon(Icons.fullscreen),
-            color: context.colors.text,
-            tooltip: AppLocalizations.of(context).fullscreenEnter,
+          Semantics(
+            button: true,
+            label: AppLocalizations.of(context).fullscreenEnter,
+            child: InkWell(
+              onTap: onEnterFullscreen,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                // 40 px floor on both axes (FB-70) — the height is this
+                // padding plus the 22 px glyph.
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Word first, glyph second — the bar reads left-to-right
+                    // into this control, so a leading glyph would put the
+                    // unlabelled thing back in the reported position.
+                    Text(
+                      AppLocalizations.of(context).fullscreenEnter,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.text,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(Icons.fullscreen,
+                        size: 22, color: context.colors.text),
+                  ],
+                ),
+              ),
+            ),
           ),
         Padding(
           padding: const EdgeInsets.only(right: 14),
@@ -1204,7 +1258,13 @@ class _ConnectionPill extends StatelessWidget {
     // green as your theme and `CONNECTING` would be `CONNECTED`; the pill is
     // the app's most-read status and the two labels differ by one word.
     // `accent_classification_test.dart` drives exactly this case.
+    //
+    // design 0097 review: a demo link is never `CONNECTED` — that word under a
+    // banner saying no device is connected contradicts itself, and it was in
+    // every store screenshot. Amber, the banner's colour.
+    final demo = isDemoDeviceId(conn.connectedDeviceId);
     final (Color color, String label) = switch (conn.linkState) {
+      BleLinkState.ready when demo => (AppSemantics.warn, 'DEMO'),
       BleLinkState.ready => (AppSemantics.good, 'CONNECTED'),
       BleLinkState.connecting ||
       BleLinkState.connected => (AppSemantics.warn, 'CONNECTING'),
@@ -1224,7 +1284,8 @@ class _ConnectionPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bluetooth, size: 13, color: color),
+            Icon(demo ? Icons.science_outlined : Icons.bluetooth,
+                size: 13, color: color),
             const SizedBox(width: 6),
             Container(
               width: 6,

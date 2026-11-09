@@ -2,16 +2,36 @@
 
 > Part of the **RCE iBatt BLE protocol specification**. Split out of
 > [`../PROTOCOL.md`](../PROTOCOL.md) on 2026-08-01 — text is verbatim, and the
-> original `§` numbering is preserved so every cross-reference in this document
-> set (and in the app source) still resolves. The index maps `§` to file.
+> original `§` numbering is preserved ~~so every cross-reference in this document
+> set (and in the app source) still resolves~~ 🔵 **2026-09-07: that is still
+> true of `§9.1` — it is still this file and still names what it always named —
+> but it is no longer the whole story, because one section has since left this
+> file under a number of its own.** The index maps `§` to file.
 >
 > **Covers:** §9.1 Power-bank register map
+>
+> ⛔ **`0x4B` `b7` — the port and protocol flags — is NOT covered here any
+> more.** It became **§9.2** on 2026-09-07 and lives in
+> [`power-bank-port-flags.md`](power-bank-port-flags.md). A reference meaning
+> *the port-flag byte specifically* should say **§9.2**; a reference meaning
+> *the power-bank register map* stays **§9.1** and needs no change.
 
-> ⚠️ Despite the numbering, **§9.1 is not a subsection of §9**. §9 is the
-> corrections table, in
+> ⚠️ Despite the numbering, **§9.1 is not a subsection of §9** — and neither is
+> §9.2. §9 is the corrections table, in
 > [`corrections-and-glossary.md`](corrections-and-glossary.md); §9.1 is this
-> register map. The numbering is inherited from the original document and is
-> kept so existing `§9.1` references (including in the app source) resolve.
+> register map; §9.2 is the port-flag byte, in
+> [`power-bank-port-flags.md`](power-bank-port-flags.md). §9.1's number is
+> inherited from the original document and is kept so existing `§9.1` references
+> (including in the app source) resolve; **§9.2 was allocated on 2026-09-07**,
+> on the same one-file-one-`§` pattern the rest of this document set uses.
+
+> 📏 **Size self-report (`wc -l -c`, 2026-09-07 — after the §9.2 split *and*
+> after the Type-A section followed it later the same day):** this file is
+> **~~320 lines / 23,061 B~~ 306 lines / 22,819 B**. The struck figure was
+> correct between the two moves. It was **857 lines / 58,491 B** immediately
+> before the first split. Thresholds are **1,000 lines / 100,000 B**, and **no
+> exemption covers this file**. Re-measure rather than quoting this line — it is
+> a snapshot, not a current value.
 
 ---
 
@@ -117,471 +137,65 @@ ruling of its own.
   33 and `b8` read 47/48. Correlation with |current| is only r ≈ 0.5–0.7, one unit
   ran 33→73→67, and a single sample moved 29 → 65 → 28 within 8.9 s. **Not
   decoded.**
+  * ⚠️ **Read that r ≈ 0.5–0.7 as an *un-lagged* figure, not as weak coupling.**
+    On a 2026-08-13 capture (one unit, 186 same-burst `0x4B`+`0x4A`+`0x49`
+    samples, median 4.96 s apart, driven through no-load → 5 V load → 12 V load →
+    unload) the correlation between `b8` and the instantaneous cell-side power is
+    **r = 0.695** — inside the band recorded above. (⚠️ Not the identical
+    quantity: the r ≈ 0.5–0.7 above is against |current|, this one against
+    cell-side power. They land in the same range; they are not the same fit.)
+    Pass the power through a one-pole low-pass first and it climbs to
+    **r = 0.980** at α = 0.05,
+    i.e. **τ ≈ 99 s**; it falls away on either side (α = 0.1 → 0.952,
+    α = 0.02 → 0.747), so the time constant is pinned rather than fitted.
+    ⇒ Whatever `b8` is, it is a **slow variable, not an instantaneous reading**,
+    and the low correlation above is what an instantaneous fit to a lagged signal
+    looks like.
+  * ⛔ **This changes how a number is read; it decodes nothing.** `b8` stays
+    **undecoded**, and "NOT a temperature" above is untouched — that verdict rests
+    on the vendor-app comparison and the 33→73→67 unit, neither of which this
+    capture touches. One unit, one capture: **not a multi-unit result.**
 
 ### `0x4B` `b7` — port and protocol flags
 
-Observed values: `0x00`, `0x01`, **`0x02`**, `0x03`, `0x05`, `0x06`, `0x07`,
-`0x0a`, `0x12`, `0x26` — over 703 de-duplicated `0x4B` frames. (An earlier note
-listed "38" — that was decimal for `0x26`, listed twice under two radices.
-**`0x38` has never occurred.**)
-
-> **`0x02` added 2026-07-31.** It comes from a capture that had not been walked
-> when this list was written: a 2026-07-30 power-bank capture, session 9,
-> **7 frames**, 11:31:23 → 11:31:53. The
-> value is **bit 1 alone**, and the unit is taking a charge — `0x49` reads
-> 5,180–5,188 mV / **328 mA** with the `0x4A` current at 0, port voltage (`0x37`)
-> 5.18 V, SOC (`b6`) 96 %, `0x21` 29 °C, `b8` = `0x30` throughout. ✅ own
-> capture, XOR-clean. It shows bit 1 occurring **without** bit 0 and **without**
-> bit 2, on a plain 5 V (non-PD) input. That is consistent with the bit-1 = Type-C
-> reading below, but with n = 7 on one unit it **adds a value to the list rather
-> than settling anything.**
-
-> **Revised 2026-08-04 by a controlled capture.** One unit was run through a
-> ten-step script in which **cables and loads were operated separately** — plug
-> the cable with nothing on the far end, then add the load, then remove only the
-> load, then remove the cable — with every step marked in the log as it
-> happened. That is the first capture in the corpus where "a port is occupied"
-> and "a port is delivering current" are independent variables. It settled
-> bit 1, **refuted** the surviving reading of bit 0, and turned bit 2 from
-> 689/691 into an exact equivalence. A **second** capture the same evening added
-> the charging direction and refuted a replacement model for bit 0 that had been
-> published a few hours earlier. The rows below are the post-revision state; all
-> superseded text is kept, struck through, in the sections that follow.
-
-> 🔴 **Superseded by the paragraph above (2026-08-04).** Kept because its
-> measurements are still good evidence — only its conclusion ("adds an instance
-> rather than settling anything") has been overtaken by the controlled captures.
->
-> **Ground-truth-labelled observation added 2026-08-04 — no new values.** ✅ own
-> capture, **Android 0.6.16**, raw log enabled, XOR-clean, on the corpus's
-> long-serving power-bank unit. It is the **first observation in this section
-> whose port and protocol come from the owner's own statement of what was plugged
-> in**, rather than being read off the numbers afterwards.
->
-> * **Charge segment — owner-stated Type-C PD charge.** `b7` = **`0x0a`**
->   (bit 1 + bit 3) on **21 of 21** frames, with `0x49` reading
->   **9.144–9.168 V × 418–438 mA**, `0x37` reading **9.14–9.16 V** over the same
->   frames, and SOC (`b6`) at 98 %. Both bits match the table below — bit 1 =
->   Type-C, bit 3 = PD input — with **zero counterexamples** in the segment.
-> * **A second segment in the same batch — recorded, not interpreted.** SOC
->   100 %, input **5.096–5.152 V** at **0–35 mA**, and `0x4A` carrying an
->   **11–26 mA** discharge. `b7` = `0x05` ×18, `0x03` ×3, `0x02` ×1, `0x00` ×5.
->   **The accompanying note does not say which port this segment used**, so the
->   counts are recorded and nothing is concluded from them. `0x05` (bit 0 +
->   bit 2) is *compatible* with the bit 0 = "probably Type-A" and bit 2 = "output
->   active" readings below, but an unlabelled port makes it no test of either.
->
-> This is the **same physical unit** that produced most of this table's evidence,
-> so it **adds a ground-truth-labelled instance rather than settling anything.**
-> The values list above is unchanged: `0x0a`, `0x05`, `0x03`, `0x02` and `0x00`
-> were all already on it.
-
-| Bit | Meaning | Evidence | Caveat |
-|---|---|---|---|
-| **bit 5** | **PD output** | 184/184, no counterexample. Set across **two different contract voltages** — ≈9.2 V and ≈12.2 V — ⇒ it tracks the protocol, not one voltage rail; and a **matched-power A/B within a single capture** (2026-08-13) rules out a power threshold. 🔴 **Revised 2026-08-13** — the former wording, ~~"same bit at port voltages from 9.05 V to **13.30 V**"~~, overstated the span at both ends: **13.30 V is a discrete misread, not a contract voltage**. See "On bit 5: the 13.30 V upper bound was a misread" below | — |
-| **bit 3** | **PD input** | 221/221, plus a **matched-power A/B on one unit** (2026-08-04): PD in at 9.02–9.08 V / 662–678 mA ⇒ set **7/7**; non-PD in at 4.88–4.90 V / 1,177–1,185 mA ⇒ clear **6/6**. **Input power 6.07 W vs 5.77 W — 5 % apart**, so the bit is not tracking power | ⚠️ **One-way only** still stands. 🔑 **But the counterexamples are now accounted for (2026-08-05): all 62 of them set bit 4 instead.** No ≥8 V charge in the corpus leaves both bits clear (0 of 2,042). See the bit-4 section |
-| **bit 2** | **boost rail is outputting** | **Exact equivalence, 52/52** in the controlled capture: set in all 41 samples with the rail up, clear in all 11 with it down. Corpus-wide, ~~every~~ **128 of 133** `b7 = 0x00` frames have the port voltage at cell potential (count and exceptions revised 2026-08-05 — see the `b7 = 0x00` section below) | The two former "689/691" counterexamples (15–31 mA next to a direction change) are **explained**: those are rail transitions, not exceptions |
-| **bit 1** | **Type-C cable present (CC detect)** | **Not** "Type-C is delivering". A cable in the C port with **nothing on the far end**, drawing 19 mA, set the bit **9/9**; removing only the load and leaving the cable set it **6/6**. A Type-A-only session is 134/134 clear | The earlier "79/84" caveat: those five frames precede a rail restart, so they are a stale value rather than an error |
-| **bit 4** | **unknown**, but **structurally paired with bit 3** | Appears only as `0x12` (bit1+bit4), **62** frames (was "16" — corpus has grown), on **one** unit. ⚠️ **The "firmware variant" reading is dead** — see below | 🚫 Not decoded. But bit 3 and bit 4 are **mutually exclusive** (0 co-occurrences in 42,142 paired bursts), and **every** ≥8 V charge sets exactly one of them |
-| **bit 0** | 🚫 **unknown — and specifically NOT "Type-A active"** | Set with **both ports physically empty**, 7/7, 19–22 mA, in a capture where the operator had pulled the Type-A cable 34 s earlier | ⚠️ See the refutation below. Do **not** drive a "Type-A device attached" indicator from it |
-
-**On bit 5: the "13.30 V" upper bound was a misread — the reading survives it**
-(2026-08-13).
-
-The row above used to rest on *"the same bit at port voltages from 9.05 V to
-13.30 V"*. A corpus-wide rescan of **every burst with bit 5 set**, pairing each
-one with its own `0x49` mV field (1 mV/LSB), shows that 13.30 V is not a contract
-voltage at all. The 2,845 readings fall into six clusters with **hard gaps
-between them — not one sample lands in any gap**:
-
-| cluster | n | empty gap before it |
-|---|---|---|
-| 8,192 – 8,296 mV | 44 | — |
-| **9,108 – 9,408 mV** | **1,101** | 812 mV |
-| 10,200 – 10,232 mV | 39 | 792 mV |
-| 11,264 – 11,384 mV | 37 | 1,032 mV |
-| **12,064 – 12,452 mV** | **1,555** | 680 mV |
-| 13,192 – **13,300 mV** | 69 | 740 mV |
-
-Two clusters hold **93 %** of the population and are the real contracts (≈9.2 V
-and ≈12.2 V). **Each of the other four sits ±1,024 mV (2¹⁰) from one of them** —
-8.2 = 9.2 − 1.024, 10.2 = 9.2 + 1.024, 11.3 = 12.3 − 1.024,
-13.30 = 12.276 + 1.024. A continuous ripple cannot produce gaps; one flipped bit
-in a millivolt register produces exactly this pattern. The same structure appears
-independently in `0x37` (10 mV/LSB, 2,630 paired bursts: 8.19–8.41 /
-**9.07–9.36** / 10.17–10.23 / 11.26–11.33 / **12.02–12.42** / 13.19–**13.30** V),
-so the fault is upstream of both registers rather than in either one's transport.
-
-⇒ 🔲 **13.30 V is the top of a satellite: a ≈12.28 V contract read 1.024 V high.**
-The span that survives is **≈9.1 V to ≈12.4 V**. ⚠️ The bottom end has the same
-problem in reverse: the lowest bit-5 reading in the corpus, **8,244 mV**, is
-9,268 − 1,024 — another satellite, not a contract.
-
-**The conclusion does not change**, for two reasons that do not depend on the
-discarded value. First, ≈9.2 V and ≈12.2 V are still two clearly different
-contract voltages, so the bit is not naming one rail level. Second, a
-**matched-power A/B inside a single capture** (2026-08-13) removes "bit 5 tracks
-power" outright: the same unit, same port, same cable and same load, run first on
-USB-default 5 V and then on a 12 V PD contract. bit 5 was clear on all **4**
-non-PD bursts and set on all **166** PD bursts, while their cell-side power
-ranges **overlap completely and share the same maximum** — 2.28 – **6.76 W**
-non-PD against 1.47 – **6.76 W** on PD. A burst at the same power with the bit
-clear is what kills a power threshold, and there are four of them.
-
-**Practical note for clients.** The misread runs at roughly **6 %** of samples, so
-a port voltage rendered straight from `0x37` flickers to ≈11.3 V or ≈13.3 V about
-every 14th update during a 12 V PD output. A median or rate limit on that readout
-is worth having; the flag byte itself is unaffected.
-
-**On bit 3: the A/B that removes "power" and "voltage" as explanations**
-(2026-08-04).
-
-Until now bit 3 rested on 221/221 co-occurrence with PD charging, which cannot
-separate *the protocol* from *the voltage* or *the power* — all three move
-together on a normal charger. A capture on one unit ran both inputs back to
-back through the **same port with the same cable**, and matched the power:
-
-| | PD input | non-PD 5 V input |
-|---|---|---|
-| `b7` | **`0x0a`** (bit 1 + **bit 3**), 7/7 | **`0x02`** (bit 1 only), 6/6 |
-| `0x49` port voltage | 9,024 – 9,084 mV | 4,884 – 4,896 mV |
-| `0x49` charge current | 662 – 678 mA | 1,177 – 1,185 mA |
-| **input power** | **6.07 W** | **5.77 W** |
-| `0x20` (TWF) | `0x20` | `0x20` |
-| bit 2 | clear | clear |
-
-Power differs by 5 %, so **bit 3 is not a power threshold.**
-
-🔲 **And this makes the "one-way only" caveat look like a charger-type
-artefact rather than a protocol quirk.** The recorded counterexample is a unit
-charging at **9.05 V** with bit 3 clear. If bit 3 tracked *voltage*, 9.05 V
-would set it and those 16 bursts would be unexplainable. If it tracks the
-*protocol*, they are exactly what a **non-PD 9 V fast charge** (QuickCharge and
-similar) looks like. That is a hypothesis, not a finding — the charger type in
-those captures was never recorded.
-
-**The capture that would settle it:** a **QuickCharge 9 V (non-PD)** charger
-into the same unit for 90 s. bit 3 clear with `0x49` reading ≈9 V ⇒ the caveat
-can be lifted and bit 3 becomes two-way.
-
-**On bit 4: the "firmware variant" reading is refuted, and bit 3 / bit 4 turn out
-to be one field** (2026-08-05).
-
-> 🔴 **Superseded — the 2026-07-31 text below is kept struck through.** Its
-> measurements are still correct; its central factual premise is not.
-
-> ~~What the table shows is that **no measured quantity separates the two
-> states, while the device does**: every `0x12` frame in the corpus comes from one
-> physical power bank, and **that unit has never emitted `0x0a`**. That is what a
-> firmware variant would look like.~~
->
-> ~~`0x0a` | 247 frames | 8.75 – 9.09 V | 508 – 1,791 mA | two device names,
-> **neither** the `0x12` unit~~
-
-**The premise is false, and a whole-corpus re-walk was all it took.** The unit
-that produces `0x12` — a single power bank, identified by the MAC it reports in
-`0x38` — **also produces `0x0a`**:
-
-| Capture | `0x0a` | `0x12` |
-|---|---|---|
-| 2026-07-29 | — | 16 |
-| 2026-08-01 | — | 46 |
-| **2026-08-04** (three separate controlled captures) | **21 + 7 + 7 = 35** | — |
-
-Every one of those captures carries **its own** `0x38` frames reading that same
-MAC — the identity is read off the wire in each capture, not inherited from a
-nickname (which for power banks is explicitly unreliable: this unit is labelled
-under two different names across the two periods, and the vendor app's own device
-hash differs between them too).
-
-A firmware variant cannot emit both encodings of the same field, so whatever
-separates them is a **state**, not a build.
-
-⚠️ **The claim was true when it was written and went stale.** Through
-2026-08-01 the unit really had never emitted `0x0a`; the 2026-08-04 controlled
-captures — the same ones this document leans on for bits 1 and 2 — falsified it,
-and nobody re-ran the check. That is the failure mode to watch: a "never
-observed" claim is a statement about a corpus, and the corpus keeps growing.
-
-**What the re-walk does establish** — pairing every `0x4B` with the `0x49` from
-its own burst, 42,142 paired bursts, charge bursts split by port voltage:
-
-| Port voltage while charging | bit 3 set | **bit 4 set** | **neither** | Units |
-|---|---|---|---|---|
-| **≥ 8 V** | 1,980 | **62** | **0** | 3 |
-| 6 – 8 V | 0 | 0 | 1 | 1 |
-| < 6 V | 0 | 0 | 9,638 | 6 |
-
-Two facts fall out, and neither needs a new capture:
-
-* **bit 3 and bit 4 never co-occur** — 0 of 42,142 paired bursts.
-* **Every ≥ 8 V charge sets exactly one of them** — 2,042 of 2,042, across three
-  physical units, with **zero** leaving both clear. Below 6 V, both are always
-  clear (9,638 bursts, six units).
-
-⇒ 🔑 **The "16 counterexamples to the reverse direction of bit 3" and "the 16
-unexplained bit-4 frames" were never two open questions. They are the same
-frames** — 62 of them now. bit 3's one-way caveat is not an anomaly to be
-explained away; it is bit 4 doing the job in those bursts.
-
-⇒ 🔲 **Still not decoded.** This is a structural result, not a semantic one. That
-the register always names *some* protocol above 8 V does not tell us *which*
-protocol bit 4 is, and bit 4 remains **one unit**. The natural hypothesis is that
-bit 3 / bit 4 are a PD / non-PD pair, but that is a hypothesis — see the pending
-table.
-
-**The capture that would settle it:** a charger of a known, stated type
-(QuickCharge 9 V, non-PD) into a **second** unit, labelled as such.
-
-**`b7 = 0x00` means the boost rail is off** (2026-08-04; counts revised
-2026-08-05).
-
-> ~~All 73 `0x00` frames in the corpus have the port voltage (`0x37`) sitting at
-> **3.62–4.05 V** — cell potential, i.e. the boost stage has stopped switching —
-> with the `0x4A` discharge current at 0.~~
->
-> **Superseded 2026-08-05 — arithmetic, not meaning.** That sentence was a
-> statement *about the corpus*, and the corpus grew. Kept struck through because
-> it was published and because the numbers in it are still correct for the
-> frames it was written over.
-
-The corpus now holds **133 `0x00` frames**, and **128 of them** have the port
-voltage (`0x37`) at **3.34–4.05 V** — cell potential, i.e. the boost stage has
-stopped switching — with the `0x4A` discharge current at 0. That remains the
-meaning of the value: **`b7 = 0x00` is the boost rail off.** **The BLE link does
-not drop**: `0x37` keeps arriving at 1 Hz throughout. So what a user experiences
-as "the power bank turned itself off" is only the 5 V output shutting down; the
-radio stays up.
-
-🔲 **The 5 exceptions: a single-poll spurious `0x00`.** One unit, polled at 1 Hz
-for 10.5 h — 36,152 complete `0x10`+`0x49`+`0x4A`+`0x4B` bursts, the largest and
-cleanest capture in the corpus — produced **5 frames (5 / 36,152 = 0.014 %)**
-where `b7` read `0x00` while the unit was demonstrably not idle:
-
-| `0x37` at the frame | `0x49` | `0x4A` |
-|---|---|---|
-| **5.22 V** | 3 mA | **2,718 mA** (the capture's highest discharge) |
-| 5.18 V | 3 mA | 68 mA |
-| **4.92 V** | **2,712 mA** | 0 |
-| 3.55 V | 667 mA | 0 |
-| 4.71 V | 0 | 251 mA |
-
-The hardest of them is the first. `0x37` free-runs at ~0.21 s, and over the
-±2 s around that frame its eight samples read 5.23 / 5.23 / 5.23 / 5.23 / 5.23 /
-5.24 / 5.24 / 5.22 / 5.18 / 5.17 / 5.18 / 5.22 V — **never below 5.17 V**. The
-rail was up. In the same burst the `0x49` mV field also collapsed to 3,436 mV
-from a ~5,180 mV baseline, so the corruption is not confined to the flag byte.
-
-⇒ 🔲 **Hypothesis: `0x4B`'s `b7` can misread as `0x00` on a single poll**, taking
-the same burst's `0x49` with it. One unit; the reason no earlier capture shows it
-is sampling rate — every other power-bank capture polls 5× slower and is orders
-of magnitude shorter (the other four units contribute 123 `0x00` frames in
-total, none of them exceptional). **The rail-off meaning of `0x00` is not in
-question**; what is refuted is treating a lone `0x00` as proof of it.
-
-**Consequence for an implementation.** At 1 Hz this surfaces roughly **once every
-two hours** as a one-frame flicker. A client that renders "standby / output off"
-from `b7 == 0x00` alone will flicker with it. The fix that does not cost latency
-is **same-burst corroboration**: require the burst's own current to be idle as
-well.
-
-> 🔴 **Superseded 2026-08-13 — the corroboration holds, the threshold in it does
-> not.** Kept struck through: the measurements are still correct for the one unit
-> they were taken on, and the sentence was published. What is refuted is treating
-> that unit's residual as the class's residual, and a ±0.05 A noise band as
-> sufficient on its own. The app's own source has said so since 2026-08-07
-> (`app_flutter/lib/ui/dashboard/power_flow.dart`, the `kPowerFlowDeadbandA`
-> comment); this paragraph is the doc catching up with the code.
->
-> ~~A genuine rail-off always is: with the rail down and both ports empty a unit
-> reports `0x49` at **36–39 mA** and `0x4A` at 0, so a signed
-> `discharge − charge` lands at **≈ −0.039 A** — inside any sane dead-band. All
-> five exceptions above are **68 mA or more**, two orders of magnitude out.~~
-
-A genuine rail-off is idle, but its reported current is **not** reliably inside a
-noise dead-band. With the rail down and both ports empty a unit still reports a
-charge-side `0x49` residual with `0x4A` at 0, and that residual varies **by unit
-and, on the same unit, by session**: **26–69 mA** across the units measured, and
-on one unit **42 / 46 / 57 / 60 mA** on four separate days, tracking neither its
-state of charge nor its cell voltage. A ±0.05 A band therefore covers *some*
-units on *some* days and not others, and it cannot simply be widened to cover
-them all — genuine charge and discharge onsets begin not far above it, so a wider
-band would trade a per-unit standby bug for misreading real low-rate flow as idle
-on every unit.
-
-The corroboration that does hold is **sign-aware and much wider than the noise
-band**: a *charging*-signed current below **0.3 A** in a burst whose own `b7`
-reads `0x00` is read as idle, and nothing else is vetoed. That line clears both
-populations it has to separate — it is above every rail-off residual observed so
-far (highest: 69 mA), and well below the two **charge-side** entries in the exception
-table above (667 mA and 2,712 mA); the other three exceptions carry the
-*discharge* sign, which this rule never touches. The veto is one-way: it can only
-downgrade a charging verdict to idle, never invent a direction. In this app the
-two constants are `kPowerFlowDeadbandA = 0.05` and `kRailOffChargeVetoA = 0.3`
-in `app_flutter/lib/ui/dashboard/power_flow.dart`.
-
-The app applies exactly this rule, and deliberately claims *neither* standby *nor*
-a port when the two disagree: at `b7 = 0x00` bit 1 is clear, so the
-Type-A-by-elimination rule below would otherwise print a confident "Type-A" for
-a frame that was in fact marked Type-C by the operator.
-
-On the unit measured, that shutdown happens **32–37 s after the last load is
-removed** (four measurements: 32, 35, 36, 37 s). This is a property of that
-model, not of the protocol, but it bounds every port experiment: an unloaded
-state can only be observed for about half a minute before `b7` collapses
-to `0x00`.
-
-Two short rail interruptions in the same capture — 2 s each, at the moment a
-load was plugged and unplugged — did **not** clear `b7`. A 41 s interruption
-did. The threshold is somewhere between.
-
-**On bit 0: four readings tested, all four refuted. It is not decoded.**
-
-*Refuted — "bit 0 = 5 V / non-fast-charge":* one capture holds `0x07` and `0x06`
-**in the same session, 59 seconds apart, at an identical 5.16 V port voltage**
-(15:49:34 → 15:50:33). The two values differ only in bit 0. A 5 V rail cannot
-both set and clear the same bit.
-
-*Refuted — "bit 0 = load below some threshold":* the current ranges overlap.
-`0x07` bursts reach 268 mA while `0x06` bursts go down to 129 mA.
-
-*Refuted — "bit 0 is a start-of-session settling artefact":* a Type-A-only
-session held bit 0 for **136 consecutive bursts over 13 min 10 s, across two
-separate connections**.
-
-*Refuted 2026-08-04 — "bit 0 = Type-A port active":* the experiment this
-document asked for was run. Three separate rail work-cycles began with the
-Type-A port in three different physical states, and `b7` read `0x05` in all
-three:
-
-| Rail restart | Type-A port | Type-C port | `b7` | Samples |
-|---|---|---|---|---|
-| start of capture | **empty** | empty | `0x05` | 6/6 |
-| mid-capture | **cable + earbud case attached** | empty | `0x05` | 6/6 |
-| after a 19 s rail-off | **empty** — cable pulled 34 s earlier | empty | `0x05` | **7/7**, 19–22 mA |
-
-Whether anything is attached to the A port, and whether it draws current, does
-not change the bit. The third row is the controlled one: the operator removed
-the Type-A cable, the rail shut down, it came back, and bit 0 was set again with
-nothing plugged into the unit at all.
-
-> ~~*Surviving — "bit 0 = Type-A port active":* no counterexample, and it makes
-> the observed sequences physically coherent. One session runs `0x05` (A only,
-> 16–22 mA idle) → `0x07` (A + C, load ramping 20 → 2100 mA at 5 V) → `0x26`
-> (C only, PD negotiated to 12.2 V, bit 0 now clear — consistent with a unit
-> that drops the A port when C takes the full power budget). A vendor-app
-> screenshot taken during `0x26` shows the Type-A icon dark.~~
->
-> **Superseded text, kept deliberately.** The observations in it are still
-> correct — it is the *reading* that failed. The `0x05 → 0x07 → 0x26` sequence
-> is real; what was wrong was inferring "A, then A and C, then C" from it. The
-> vendor-app screenshot showing a dark Type-A icon during `0x26` remains
-> unexplained under any current reading and is **not** evidence for the
-> refuted one.
-
-> ~~🔲 **Speculative — a work-cycle model.** bit 0 and bit 1 describe the port
-> enablement decided when the boost rail starts a work cycle … They are **not
-> re-evaluated while the rail stays up**. Supporting evidence: pulling the
-> Type-A cable did not change `b7` (2 samples over 9 s); the value only changed
-> when the rail cycled 11 s later.~~
->
-> 🔴 **Retracted the same day it was written (2026-08-04), by the next capture
-> from the same operator.** Kept here struck through, because it was published
-> and someone may have read it.
->
-> The refutation: across **55 s in which the rail never went down** (87 `0x37`
-> samples, 5.12–5.14 V, **none below 4.6 V**), `b7` changed twice —
-> `0x05` → `0x07` when a Type-C cable was inserted, then `0x07` → `0x06` about
-> 20 s later. "Not re-evaluated while the rail stays up" is simply false.
->
-> Why the earlier capture supported it: **it contained no cable insertion while
-> the rail was already up** — every plug and unplug in it fell inside a rail-off
-> window or a 2 s rail blink. The "pulling the A cable changed nothing"
-> observation is *expected* under the replacement reading below, so it was never
-> evidence for a latch. A sampling blind spot, not bad data.
-
-🔲 **Speculative — bit 0 as a live "Type-A output path enabled" flag.** One
-unit; recorded as a hypothesis, not a decode.
-
-> **bit 1** = a Type-C cable is present (this part is evidenced, see the table).
-> **bit 0** = the **Type-A output path is currently enabled** — a live state,
-> not a latch. Observed rule: enabled by default when **no Type-C cable is
-> present**; dropped ~~roughly **15–20 s** after~~ **when** the Type-C port
-> takes over delivery — the delay between takeover and the drop is **not
-> fixed** (withdrawn 2026-08-11, see note below); dropped while the unit is
-> **charging**.
-
-Checked against every capture in the corpus:
-
-| Situation | bit 0 predicted | observed |
-|---|---|---|
-| both ports empty | 1 | **1** (6/6, 7/7, 3/3) |
-| Type-A cable only, no load | 1 | **1** |
-| Type-A cable + load | 1 | **1** (6/6, 7/7) |
-| A cable pulled, still no C cable | 1 | **1** |
-| C cable just inserted (C not yet delivering) | 1 | **1** (4/4) |
-| C cable delivering (steady state) | 0 | **0** (4/4, 9/9) |
-| both cables present, C idle | 1 | **1** (`0x07` held 9 min) |
-| charging over Type-C | 0 | **0** (7/7 PD, 6/6 non-PD) |
-| rail down | — (`b7` = `0x00`) | **`0x00`** |
-
-~~The one soft spot is the ~20 s window in which the C port is already delivering
-and bit 0 is still set. Reading that as "the A path takes a while to be switched
-out" is fitted after the fact, from a single occurrence.~~
-
-🔴 **2026-08-11 — the fixed-delay figure is withdrawn.** A corpus-wide rescan of
-Type-C handover transitions (eight `07→06` handovers across three units) found
-**no fixed delay**: bit 0 has been observed to drop both *before* the C port
-starts delivering and *long after* it already has, and two gap-free captures
-individually contradict any single window. What remains evidenced is only
-**that** bit 0 drops around the C port taking over — not **when**. Do not build
-any timing assumption (UI transition delays, "wait N seconds then refresh") on
-this flag. The single occurrence the 15–20 s figure was fitted to is one of the
-eight; the others do not agree.
-
-**What does not depend on any of this:** bit 0 is **not** "a Type-A device is
-attached" and **not** "the Type-A port is drawing current". That refutation
-stands on its own evidence (table above) and is unaffected by which replacement
-reading turns out to be right.
-
-**Until then: an implementation must not drive a "Type-A device attached"
-indicator from bit 0.** With nothing plugged into either port the bit reads set.
-bit 1 may be used, but it means *a Type-C cable is present*, not *the Type-C
-port is delivering power*.
-
-### Naming the Type-A path without a Type-A bit ✅
-
-*Added 2026-08-05.* There is no Type-A bit and, after the four refutations
-above, no prospect of one. The path can still be named — by **elimination**
-rather than by reading a flag:
-
-> **bit 1 clear** (no Type-C cable) **and the unit is discharging**
-> ⇒ the energy is leaving through **Type-A**.
-
-Checked against every port-marked power-bank capture in the corpus, pairing each
-`0x4B` with the `0x4A` from its own burst, and excluding the `b7 == 0x00` frames
-that the standby test decides before any port test ever runs:
-
-| | Samples |
-|---|---|
-| Derivation agrees with the operator's port label | **29,114** |
-| Derivation disagrees | **0** |
-
-Contributed by **three physically distinct units** — so unlike bit 0, this
-clears the multi-unit bar. The 46 frames that look like counterexamples are all
-one batch marked "Type-A only" in which the operator later confirmed the Type-C
-cable had never been unplugged: bit 1 was right and the label was wrong.
-
-Two limits, both load-bearing:
-
-* **Discharge only.** The check paired `0x4A`, and no capture in the corpus
-  shows charging with bit 1 clear at all. Charging with no Type-C cable stays
-  *undetermined* — if a unit ever produces it, that is new information.
-* 🔲 **The Type-C branch is now the weaker one.** bit 1 is *cable present*, so a
-  C cable sitting idle while the load is on Type-A reads as Type-C. That is the
-  same 46 frames from the other side, and nothing in the register set separates
-  the two. An implementation should not present Type-C as more certain than it
-  is.
+🔵 **Moved 2026-09-07 — this section is now `§9.2`, in
+[`power-bank-port-flags.md`](power-bank-port-flags.md).** It was **586 of this
+file's 857 lines** (69 %), and the file was 143 lines from this project's
+1,000-line ceiling with no exemption covering it. ⚠️ **The move was a size
+split, not a revision — not a word of the section changed**, and it kept its
+heading, so a title-anchored reference such as 〈`0x4B` `b7` — port and protocol
+flags〉 still lands on it.
+
+What is over there: the observed-value list, the bit table (bits 0–5), the two
+2026-09-04 notes on bit 5 (why the label is no longer "PD", and the ±1,024 mV
+misread), the bit-3 A/B and the 2026-09-03 pre-negotiation window, the bit-3 /
+bit-4 pairing, `b7 = 0x00` as the boost rail off together with its five spurious
+single-poll frames, and the four refuted readings of bit 0.
+
+🔵 **A second section followed it the same day.** *Naming the Type-A path
+without a Type-A bit* ✅ — the bit-1-clear-plus-discharging elimination rule,
+29,114 / 0 across three units — was **left behind in the first pass and moved to
+`§9.2` later on 2026-09-07**, again a size split with not a word of its body
+changed. It belongs with the port flags: its opening sentence is *"after the
+four refutations above"*, and those refutations are in `§9.2`. Keeping the two
+apart cost **two cross-file pointers whose only job was to undo the split**, and
+both are now gone. ⚠️ A title-anchored reference such as
+`power-bank.md`〈Naming the Type-A path without a Type-A bit〉 **no longer
+resolves** — it is now
+[`power-bank-port-flags.md`](power-bank-port-flags.md)〈Naming the Type-A path
+without a Type-A bit〉. The heading itself is unchanged.
+
+📌 **The elimination rule is what names the Type-A path**, so the pending-items
+rows below that mention "the elimination rule" now point across to `§9.2` for
+its evidence — the rows themselves stayed here, see the note above that table.
+
+⚠️ **`§9.1` did not change meaning.** It is still this file, so every existing
+`§9.1` reference — including the ones in the app source — still resolves to
+exactly what it always named. `§9.2` is **new**: use it when you mean the
+port-flag byte *specifically*.
+
+📌 **The pending-items table stayed here** (below), and it still collects the
+open questions of both sections.
 
 ### Class-dependent layouts that catch people out
 
@@ -648,10 +262,19 @@ got none at all.
 Everything above is either evidenced or marked. This is the marked part —
 collected here so an implementer does not have to reconstruct it from prose.
 
+📌 **2026-09-07: "this section" now means §9.1 *and* §9.2.** The table was
+deliberately **not** split when the port-flag section moved to
+[`power-bank-port-flags.md`](power-bank-port-flags.md) — several rows below pair
+a `b7` bit with a `0x49` / `0x4A` / `b8` observation, and cutting it in two would
+put one open question in two files. The `b7` rows' evidence is in §9.2 —
+🔵 **and so, since later the same day, is the elimination rule three of these
+rows refer to** (〈Naming the Type-A path without a Type-A bit〉, moved to
+[`power-bank-port-flags.md`](power-bank-port-flags.md)).
+
 | Item | Status | The capture that would settle it |
 |---|---|---|
 | `0x4B` b7 **bit 0** | 🚫 **Unknown.** Four readings tested, **all four refuted** — including "Type-A active", killed 2026-08-04 by a capture where the bit was set 7/7 with both ports empty | Separate "A cable present" from "A load present" the way bit 1 was: both ports empty → let the rail time out → plug a Type-A cable with **nothing** on the far end → let the rail restart → record 25 s |
-| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**~~, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one~~ (🔴 2026-08-11: the fixed-delay window is withdrawn — see the bit 0 note above; the on/off predictions themselves remain unbroken) | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
+| `0x4B` b7 bit 0 = live "Type-A output path enabled" | 🔲 **Speculative**, one unit. Replaces the per-work-cycle model **retracted 2026-08-04** (`b7` changed twice inside 55 s with the rail continuously up). Re-checked 2026-08-05 on a fresh capture from the same unit: **119/119, no counterexample**~~, and the ~20 s window now has two clean measurements (**10.9 s** and **19.8 s**) rather than one~~ (🔴 2026-08-11: the fixed-delay window is withdrawn — see the bit 0 note in **§9.2**, [`power-bank-port-flags.md`](power-bank-port-flags.md) (~~above~~ until 2026-09-07); the on/off predictions themselves remain unbroken) | A second unit run through the same cable-vs-load script. ⚠️ Note this is no longer on the critical path for naming the Type-A output — that is done by elimination from bit 1 + direction, which needs no bit 0 reading at all |
 | Which port carries the flow when **bit 1 is SET** | 🔲 bit 1 is *cable present*, so an idle C cable with the load on Type-A reads as Type-C — 46 frames in one batch are exactly that. The elimination rule only settles the bit-1-**clear** half | A capture with a C cable inserted and untouched while the load is moved between A and C, marked at each move |
 | Charging with **bit 1 clear** | 🚫 **Never observed.** The elimination rule therefore says nothing about it, and the row keeps its feedback hook there | Any capture that produces it |
 | Boost-rail auto-off delay | **32–37 s** after the last load is removed, four measurements, **one unit**. Model behaviour, not protocol | Same measurement on a second unit |
@@ -661,7 +284,8 @@ collected here so an implementer does not have to reconstruct it from prose.
 | `0x21` **b5** on power banks | **Not decoded.** 6,118 frames, constant `0xe2` | Same |
 | Where the power-bank current is measured (cell side or port side) | **Unknown** | A capture at a known port load with a simultaneous cell-current reference |
 | `0x49` mV field | ~~**Not published.** Tracks PVLT, so decoding it again would just rename an existing number~~ 🔴 **Corrected 2026-08-05: it tracks the PORT voltage (`0x37`), not PVLT (`0x19`)** — five units, median +4 mV, against a mis-paired control at +1,634 mV (see the mV-fields section above). Still **not decoded by this app** | — (identified). 🔲 What is open is whether to *use* it: it is same-burst with `0x4B` where `0x37` free-runs, so it could close design 0035 §4.5's accepted deviation. Needs a ruling, not a capture |
-| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 62 counterexamples (was "16"; corpus grew). Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver. 🔑 **2026-08-05: the counterexamples are exactly the bit-4 frames** — this row and the bit-4 row are one question, not two | 🔲 A **labelled** non-PD 9 V (QuickCharge) charge. If bit 4 is what a non-PD fast charge looks like, both rows close together |
+| `0x4B` b7 **bit 5** — is the contract actually **PD**? | 🔲 **Open, and never tested.** The bit itself is evidenced **2,872/2,872** as *"output contract above 5 V"* (including 10 switches inside 8 unbroken connections in that batch's increment segment — **15 across 11** over the whole log), but **no capture in the corpus records the protocol the far end negotiated** — every observation is a voltage observation. ~~"PD output"~~ was narrowed on 2026-09-04 for that reason. 🔲 PPS stays possible and untested. ⚠️ The "10.2 V is not a PD step" argument is **withdrawn** — 140 of those 143 bursts are (9 V cluster value) + 1,024 mV, 128 of them isolated single samples | A **QC-only (non-PD)** load on the output port for **90 s**, with port and load written down. bit 5 set ⇒ the narrowed wording is right; bit 5 clear with `0x49` at ≈9 V ⇒ "PD" can go back. ⛔ Separate capture from the bit-3 row below — do not close both with one run |
+| bit 3 reverse direction (PD charging ⇒ bit 3) | **Refuted**, 62 counterexamples (was "16"; corpus grew). Forward direction holds 221/221, and a 2026-08-04 matched-power A/B rules out power and voltage as the driver — 🔺 **strengthened 2026-09-04 to two units and ≈10×** (a 2026-09-03 capture of a second unit charging at **10.33 W with bit 3 clear**, 14 s before PD negotiation; non-PD ceiling ~~6.14 W~~ ⇒ **10.33 W**). ⛔ **Unrelated to the bit-5 narrowing of the same date** — bit 3 has a ground-truth-labelled instance, bit 5 has none. 🔑 **2026-08-05: the counterexamples are exactly the bit-4 frames** — this row and the bit-4 row are one question, not two | 🔲 A **labelled** non-PD 9 V (QuickCharge) charge. If bit 4 is what a non-PD fast charge looks like, both rows close together |
 | Spurious single-poll `b7 = 0x00` | 🔲 **Hypothesis, one unit.** 5 frames in 36,152 bursts (0.014 %) read `0x00` with the rail demonstrably up and the same burst's `0x49` mV corrupted too. Does not affect the meaning of `0x00`; it means a lone `0x00` is not proof of it | The same 1 Hz, ≥2 A, 30-minute run on a second unit — then check `0x37`'s free-running series either side of every `0x00` |
 | bit 1 = Type-C | **Holds, and now mechanistic (2026-08-04).** It follows the **cable/CC**, not the power: a C cable with nothing on the far end, at 19 mA, set it 9/9; removing only the load left it set 6/6. The earlier "79/84" figure was a mis-reading — the 5 outliers are a different, correctly-reported port state | — |
 

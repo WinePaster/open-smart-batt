@@ -175,7 +175,9 @@ void main() {
       expect(n.title, '阿福的機車 · voltage too low');
       // Both numbers, so severity is readable without opening the app.
       expect(n.body, contains('10.82'));
-      expect(n.body, contains('11.00'));
+      // 🔵 2026-11-09 (design 0098): the limit is the app's 11.50 (~~11.00
+      // from the unit's 0x2B~~).
+      expect(n.body, contains('11.50'));
       // …and the time it was decided, in a form that needs no locale.
       expect(n.body, contains('14:32'));
       // The tap has to reach THIS unit's settings, so the payload is its id.
@@ -541,7 +543,8 @@ void main() {
       expect(find.text('Warning raised'), findsOneWidget);
       // Reading AND limit — two of the three are useless on their own.
       expect(find.textContaining('10.82'), findsOneWidget);
-      expect(find.textContaining('11.00'), findsOneWidget);
+      expect(find.textContaining('11.50'), findsOneWidget,
+          reason: 'the app limit (design 0098), not the 0x2B 11.00');
       // …and it says WHY the phone stayed quiet, rather than leaving the user
       // to notice an absence.
       //

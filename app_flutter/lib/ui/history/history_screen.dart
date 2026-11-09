@@ -11,6 +11,8 @@
 /// warning compared against the device's live OV/UV/OT thresholds when known).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -80,7 +82,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// design 0089 (FB-103) — lifted out of `HistoryTrendCard` so the heading,
   /// which is now the switch, reads the same value the axis does.
-  HistoryChartSeries _series = HistoryChartSeries.voltage;
+  ///
+  /// 🔵 design 0096 (owner, 2026-09-29): opens on voltage＋current. The gate
+  /// still forces voltage for a capacitor or the all-devices scope.
+  HistoryChartSeries _series = HistoryChartSeries.both;
 
   /// The SCOPED unit's full span — the calendar's bounds and the button's
   /// enabled state (design 0083 §3.3.4). See the device page's twin; loaded
@@ -143,7 +148,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // empty screen with no way back. Resolving both inside one load makes that
     // race impossible rather than unlikely.
     final groups = await tele.historyDeviceGroups();
-    final options = _optionsFor(groups, devices, facts);
+    // No l10n here: this can run from initState, where a localisations lookup
+    // is not allowed — and these options feed only the id set and the default,
+    // never a label on screen ([_deviceBar] builds its own).
+    final options = _optionsFor(groups, devices, facts, null);
     final known = {for (final o in options) o.id};
     var scoped = _deviceId;
     if (scoped == null || !known.contains(scoped)) {
@@ -444,10 +452,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       // Null when the gate is closed: an inert-looking title
                       // rather than a control that does nothing (FB-64).
                       onHeadingTap: framing.canSwitch
-                          ? () => setState(() => _series =
-                              framing.series == HistoryChartSeries.current
-                                  ? HistoryChartSeries.voltage
-                                  : HistoryChartSeries.current)
+                          ? () => setState(() => _series = nextHistoryChartSeries(framing.series))
                           : null,
                       // 🔵 FB-107 (2026-08-30) — the glyph now travels with
                       // the word 「切換」. One builder for both card surfaces;
@@ -502,6 +507,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   devices,
                                   _deviceId,
                                   facts: facts,
+                                  l10n: l10n,
                                 ),
                                 tempUnit: tempUnit,
                                 dataFrom: data.stats.firstAt!,
@@ -733,6 +739,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _groups,
       context.watch<DeviceController>(),
       context.watch<DeviceFactsController?>(),
+      AppLocalizations.of(context),
     );
     final selected = _deviceId;
     // Both empty only before the first load has resolved; `selected` is kept
@@ -830,6 +837,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<({String deviceId, int count, DateTime lastAt})> groups,
     DeviceController devices,
     DeviceFactsController? facts,
+    AppLocalizations? l10n,
   ) {
     // DeviceController hands its list back most-recently-seen first, so the
     // index IS the lastSeen order; deriving a second one here would be a second
@@ -848,7 +856,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
       // then dereferences a null rank. Its label still shows that name; it is
       // ordered by recency instead, which is the honest order for a unit with
       // no saved record.
-      (deviceNameFor(devices, g.deviceId).isNotEmpty ? named : orphans).add(g);
+      // Bucketed by "is saved" (= has a rank), not by "has a name": a demo
+      // unit has a name and no saved record (design 0097), and the sort below
+      // indexes the rank.
+      (rank.containsKey(g.deviceId) &&
+                  deviceNameFor(devices, g.deviceId, l10n: l10n).isNotEmpty
+              ? named
+              : orphans)
+          .add(g);
     }
     named.sort((a, b) => rank[a.deviceId]!.compareTo(rank[b.deviceId]!));
     orphans.sort((a, b) => b.lastAt.compareTo(a.lastAt));
@@ -856,7 +871,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       for (final g in [...named, ...orphans])
         _DeviceOption(
           id: g.deviceId,
-          label: deviceLabelFor(devices, g.deviceId, facts: facts),
+          label: deviceLabelFor(devices, g.deviceId, facts: facts, l10n: l10n),
         ),
     ];
   }
@@ -1323,7 +1338,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
   /// when it was recorded.
   HistoryChartGeometry _geometry(double width) => HistoryChartGeometry(
     width: width,
-    hasTemp: _hasTemp,
+    // 🔵 design 0096: the SAME formula the painter uses, from the same
+    // gate-resolved series — or a tap lands on the wrong bucket.
+    hasRight: HistoryChartGeometry.hasRightAxis(
+      hasTemp: _hasTemp,
+      series: historyChartCurrentGate(widget.deviceClass) ==
+              HistoryChartCurrentGate.available
+          ? widget.series
+          : HistoryChartSeries.voltage,
+    ),
     buckets: widget.buckets,
     bucketMs: widget.bucketMs,
   );
@@ -1401,6 +1424,8 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     final canSwitch = gate == HistoryChartCurrentGate.available;
     final series = canSwitch ? widget.series : HistoryChartSeries.voltage;
     final isCurrent = series == HistoryChartSeries.current;
+    // 🔵 design 0096: voltage left, current right, temperature not drawn.
+    final isBoth = series == HistoryChartSeries.both;
     final gateNote = historyChartCurrentGateNote(l10n, gate);
     if (buckets.length < 2) {
       // 🔴 FB-85. The strip used to be skipped with the chart, and the two are
@@ -1468,7 +1493,16 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                   ? l10n.historyLegendCurrent
                   : l10n.historyLegendVoltage,
             ),
-            if (hasTemp) ...[
+            // 🔴 design 0096 §3.3: in the combined view the second colour is
+            // CURRENT. Leaving the temperature entry here would label the cyan
+            // line as the one quantity that is NOT on the chart.
+            if (isBoth) ...[
+              const SizedBox(width: 16),
+              _LegendDot(
+                color: context.accent.accentSecondary,
+                label: l10n.historyLegendCurrent,
+              ),
+            ] else if (hasTemp) ...[
               const SizedBox(width: 16),
               _LegendDot(
                 color: context.accent.accentSecondary,
@@ -1527,7 +1561,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                     // Per family, and null for a unit with no family — see
                     // [historyChartCurrentDirectionLabel] for why the pack
                     // wording is not a fallback.
-                    currentDirectionLabel: isCurrent
+                    currentDirectionLabel: isCurrent || isBoth
                         ? historyChartCurrentDirectionLabel(
                             l10n,
                             widget.deviceClass,
@@ -1545,7 +1579,7 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         ),
         if (_selected != null && _selected! < buckets.length)
           _detail(context, l10n, buckets[_selected!], hasTemp,
-              isCurrent: isCurrent),
+              isCurrent: isCurrent, isBoth: isBoth),
         // design 0061 T10. `historyDetailSamples` says how MANY readings a
         // point folded; nothing said how much TIME it covered, and the width
         // moves between 1 minute and 24 hours with the range. At second
@@ -1567,54 +1601,75 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
         // when its middle `Text` could not wrap — see the comment inside it.
         // Appending the dates there would be re-running that.
         if (widget.sel != null) HistoryCustomRangeLine(sel: widget.sel!),
-        Row(
-          children: [
-            // 🔴 A fixed 40 on the left, matching the button's box on the
-            // right, so the note stays centred ON THE CARD whether or not the
-            // button is there. The first attempt used `Spacer` + `Expanded`
-            // and overflowed by 20 px the moment the English string ("Each
-            // point on the chart averages 1 minute") could not wrap — a Row
-            // does not give a `Text` the width to break in.
-            //
-            // 🔵 design 0085 S3 puts the voltage/current toggle INTO that
-            // reserved box rather than adding a row for it. The card is 160 px
-            // of chart inside a scroll view and the brief was explicitly "the
-            // existing toolbar, no new chrome"; the box was already there,
-            // already 40x40 (FB-70's floor), and already mirrored by the
-            // expand button on the right, so the note stays centred either way.
-            // 🔵 design 0089 Q3 (FB-103) — the 16 px `swap_vert` that used to
-            // live here is GONE. It was the only way to reach current, it
-            // carried no label, and its explanation was a tooltip nobody
-            // long-presses on a phone. The card's HEADING is the switch now.
-            // ⛔ Do not put a second one back: two controls doing one thing is
-            // how the next reader stops knowing which is authoritative.
-            const SizedBox(width: 40),
-            Expanded(
-              child: Text(
-                historyBucketWidthNote(l10n, widget.bucketMs),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 10, color: context.colors.muted),
-              ),
-            ),
-            SizedBox(
-              width: 40,
-              child: widget.onExpand == null
-                  ? null
-                  : IconButton(
+        // 🔵 FB-108 — the two ends of this row are ONE number, measured once
+        // per layout: the button's natural width, capped so the row can never
+        // run out of space no matter how long the label gets. 40 % each side
+        // still leaves a fifth of the card for the sentence between them, and
+        // the cap only ever bites at an accessibility text scale — at which
+        // point an ellipsised 「全螢幕」 is a better outcome than a row that
+        // overflows (this exact row overflowed by 20 px once already, design
+        // 0081 §3.3.5).
+        LayoutBuilder(
+          builder: (context, c) {
+            final box = math.min(
+              _expandButtonWidth(context, l10n),
+              c.maxWidth * 0.4,
+            );
+            return Row(
+              children: [
+                // 🔴 A fixed 40 on the left, matching the button's box on the
+                // right, so the note stays centred ON THE CARD whether or not the
+                // button is there. The first attempt used `Spacer` + `Expanded`
+                // and overflowed by 20 px the moment the English string ("Each
+                // point on the chart averages 1 minute") could not wrap — a Row
+                // does not give a `Text` the width to break in.
+                //
+                // 🔵 design 0085 S3 puts the voltage/current toggle INTO that
+                // reserved box rather than adding a row for it. The card is 160 px
+                // of chart inside a scroll view and the brief was explicitly "the
+                // existing toolbar, no new chrome"; the box was already there,
+                // already 40x40 (FB-70's floor), and already mirrored by the
+                // expand button on the right, so the note stays centred either way.
+                // 🔵 design 0089 Q3 (FB-103) — the 16 px `swap_vert` that used to
+                // live here is GONE. It was the only way to reach current, it
+                // carried no label, and its explanation was a tooltip nobody
+                // long-presses on a phone. The card's HEADING is the switch now.
+                // ⛔ Do not put a second one back: two controls doing one thing is
+                // how the next reader stops knowing which is authoritative.
+                //
+                // 🔵 **FB-108 (2026-09-02) — the left box now MEASURES the button**
+                // instead of hard-coding 40. The button grew a word, so its width
+                // is whatever the label comes to in this locale at this text
+                // scale: 40 was right for a bare glyph and is wrong for 「全螢幕」,
+                // and wrong by a different amount again for "Full screen".
+                //
+                // ⛔ Not a `Visibility(maintainSize:)` copy of the button, which
+                // was the first attempt: it reserves the right box, but it also
+                // puts a second copy of the label and the glyph in the widget
+                // tree, so `find.byIcon(Icons.fullscreen)` starts finding two of
+                // a thing the user can only see one of.
+                SizedBox(width: box),
+                Expanded(
+                  child: Text(
+                    historyBucketWidthNote(l10n, widget.bucketMs),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: context.colors.muted),
+                  ),
+                ),
+                if (widget.onExpand == null)
+                  SizedBox(width: box)
+                else
+                  SizedBox(
+                    width: box,
+                    child: _expandButton(
+                      context,
+                      l10n,
                       onPressed: widget.onExpand,
-                      icon: const Icon(Icons.open_in_full, size: 16),
-                      tooltip: l10n.historyChartExpand,
-                      // 40x40 floor — FB-70 is the entry that cost this
-                      // project a user who could not hit a 14x14 control.
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
-                      padding: EdgeInsets.zero,
-                      color: context.colors.muted,
                     ),
-            ),
-          ],
+                  ),
+              ],
+            );
+          },
         ),
         // 🔴 **Q4 ③ / §1.5 — the refusal says WHY, in words, always visible.**
         //
@@ -1652,12 +1707,115 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
     );
   }
 
+  /// The way into the landscape chart — 🔵 **FB-108 (2026-09-02, 經銷商何先生)**.
+  ///
+  /// 🔴 It used to be a bare 16 px `open_in_full` in `muted`, explained only by
+  /// a tooltip. Verbatim report: 「曲線圖的全螢幕icon的辨識度有點低 user不好理解
+  /// 那是全螢幕」 — the FOURTH time this project has shipped an entry nobody
+  /// could see (FB-70 → FB-103 → FB-107 → this). Three things were wrong at
+  /// once, and each is fixed here:
+  ///
+  ///  1. **No word.** A tooltip needs a long-press on a glyph the user has not
+  ///     noticed — design 0089 Q3 retired the neighbouring ⇅ for exactly that.
+  ///  2. **The wrong glyph.** `open_in_full` is a diagonal "expand / open
+  ///     elsewhere" arrow; full screen is the four-corner one, and this app's
+  ///     OWN home-tab button already uses `Icons.fullscreen` (`main.dart`).
+  ///     One concept must not have two symbols inside one app.
+  ///  3. **The weakest thing on the card.** 16 px of `muted` beside a 10 px
+  ///     `muted` footnote, while it is the ONLY route to the landscape page
+  ///     (design 0081 Q1 = E2, and Q3's ruling left no second door).
+  ///
+  /// 🔑 Drawn in `colors.text`, deliberately not `muted` — the same correction
+  /// the owner's 2026-08-15 field report (「但看不到」) forced on the home-tab
+  /// button, which was made bigger and moved off `muted` for this same reason.
+  ///
+  /// ⚠️ Word FIRST, glyph second, as in `history_series_switch.dart`: the row
+  /// reads left-to-right and ends here, so a glyph ahead of its own label puts
+  /// the unlabelled thing back in the position that was reported about.
+  ///
+  /// 🔑 [_expandButtonWidth] mirrors this on the other side of the row, and the
+  /// four constants below are the whole contract between them. Change one and
+  /// the footnote drifts off centre — `fullscreen_entry_label_test.dart` pins
+  /// it in both languages for exactly that reason.
+  static const double _expandFont = 11.5;
+  static const double _expandGlyph = 18;
+  static const double _expandGap = 3;
+  static const double _expandPadH = 7;
+
+  TextStyle _expandLabelStyle(BuildContext context) =>
+      DefaultTextStyle.of(context).style.copyWith(
+        fontSize: _expandFont,
+        fontWeight: FontWeight.w600,
+        color: context.colors.text,
+      );
+
+  /// What the button will measure, without building a second one.
+  ///
+  /// 🔴 Laid out with the SAME style and the ambient [TextScaler], because the
+  /// number this returns is the left half of the row's symmetry. A constant
+  /// would be right in one locale and at one text scale and wrong everywhere
+  /// else. Floored at 40 so a card with nothing to expand keeps the box the
+  /// old fixed spacer reserved (FB-70's target size is also the row's rhythm).
+  double _expandButtonWidth(BuildContext context, AppLocalizations l10n) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: l10n.historyChartExpand,
+        style: _expandLabelStyle(context),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    return math.max(40, tp.width + _expandGap + _expandGlyph + _expandPadH * 2);
+  }
+
+  Widget _expandButton(
+    BuildContext context,
+    AppLocalizations l10n, {
+    required VoidCallback? onPressed,
+  }) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        // 40 px floor on BOTH axes — FB-70 is the entry that cost this project
+        // a user who could not hit a 14x14 control. The height comes from this
+        // padding plus the 18 px glyph; the width from the label plus this
+        // padding, and the label alone already clears 40.
+        padding: const EdgeInsets.symmetric(
+          horizontal: _expandPadH,
+          vertical: 11,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                l10n.historyChartExpand,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _expandLabelStyle(context),
+              ),
+            ),
+            const SizedBox(width: _expandGap),
+            Icon(
+              Icons.fullscreen,
+              size: _expandGlyph,
+              color: context.colors.text,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _detail(
     BuildContext context,
     AppLocalizations l10n,
     HistoryBucket b,
     bool hasTemp, {
     required bool isCurrent,
+    bool isBoth = false,
   }) {
     final fmt = DateFormat(widget.multiDay ? 'MM/dd HH:mm' : 'HH:mm');
     String v(double? x) => x == null ? '--' : x.toStringAsFixed(2);
@@ -1703,7 +1861,15 @@ class _HistoryTrendCardState extends State<HistoryTrendCard> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  isCurrent
+                  // 🔵 design 0096 Q3 (a): in the combined view temperature is
+                  // off the PICTURE, not off the page — it stays in this line.
+                  isBoth
+                      ? '${l10n.historyLegendVoltage} ${v(b.avgPvlt)}V '
+                            '(${v(b.minPvlt)}–${v(b.maxPvlt)})'
+                            '  ·  ${l10n.historyLegendCurrent} ${a(b.avgAmpere)}A '
+                            '(${a(b.minAmpere)}–${a(b.maxAmpere)})'
+                            '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}'
+                      : isCurrent
                       ? '${l10n.historyLegendCurrent} ${a(b.avgAmpere)}A '
                             '(${a(b.minAmpere)}–${a(b.maxAmpere)})'
                             '${tempStr != null ? '  ·  ${l10n.historyLegendTemperature} $tempStr' : ''}'
@@ -1836,6 +2002,7 @@ class _StatsStrip extends StatelessWidget {
     String t(double? x) => x == null
         ? '--'
         : '${historyDisplayTemp(x, tempUnit).toStringAsFixed(0)}${historyTempUnitLabel(tempUnit)}';
+    final isBoth = series == HistoryChartSeries.both;
     return Column(
       children: [
         _statRow(
@@ -1850,11 +2017,28 @@ class _StatsStrip extends StatelessWidget {
           max: isCurrent ? a(stats.maxAmpere) : v(stats.maxPvlt),
           l10n: l10n,
         ),
-        if (hasTemp) ...[
+        // 🔵 design 0096 Q3 (a): the combined view adds the current row, in
+        // the colour its line is drawn in.
+        if (isBoth) ...[
           const SizedBox(height: 6),
           _statRow(
             context,
             context.accent.accentSecondary,
+            l10n.historyLegendCurrent,
+            min: a(stats.minAmpere),
+            avg: a(stats.avgAmpere),
+            max: a(stats.maxAmpere),
+            l10n: l10n,
+          ),
+        ],
+        if (hasTemp) ...[
+          const SizedBox(height: 6),
+          _statRow(
+            context,
+            // ⚠️ design 0096: in the combined view cyan is CURRENT, so the
+            // temperature row — which is no longer on the chart — must not
+            // wear it. Muted says "a number, not a line above".
+            isBoth ? context.colors.muted : context.accent.accentSecondary,
             l10n.historyLegendTemperature,
             min: t(stats.minTemp),
             avg: t(stats.avgTemp),

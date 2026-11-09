@@ -128,11 +128,12 @@ values identify the device class in field reports: `01680102` on batteries and
 | `0x47` | battery | Per-cell voltages, **already scaled to mV** | §9.1 |
 | `0x49` | power bank | Charge-side (voltage, current) pair | §9.1 |
 | `0x4A` | power bank | Discharge-side `[u16 mV][u16 mA]` | §9.1. ⚠️ **A different layout from the pack "discharge info" formula in §8.2** |
-| `0x4B` | power bank | `[u16 design mAh][u8 SOC %][u8 port flags][u8 ?]` | §9.1 |
+| `0x4B` | power bank | `[u16 design mAh][u8 SOC %][u8 port flags][u8 ?]` | §9.1 — but the **port-flag byte** (`b7`) is ~~§9.1~~ **§9.2** since 2026-09-07, in [`power-bank-port-flags.md`](power-bank-port-flags.md) |
 | `0x4C` | power bank | Constant, undecoded | §10.1 |
 | `0x96` | — | Capacity / SOH info | ⚠️ **Never observed on the wire** (0 / 206,516 frames) — see §9 |
 | `0x34` | all | **System counters** — standby / connected minutes, sleep / power-on / cut-off counts | see `telemetry-decoding.md` |
-| `0x2C` / `0x3A` / `0x3C` / `0x40` / `0x42` / `0x4D` | see §10.1 | Streamed but undecoded | §10.1 |
+| `0x3A` | **all** | **Function flags** — 🟡 partially decoded, **super-capacitors only** | ~~Streamed but undecoded~~ 🔵 **2026-09-04:** see [`telemetry-decoding.md`](telemetry-decoding.md) §8.5. LEN 2, big-endian u16. ⚠️ **Gate on `0x10` first** — no payload value is shared between classes, and the battery / power-bank halves are still undecoded (§10.1) |
+| `0x2C` / `0x3C` / `0x40` / `0x42` / `0x4D` | see §10.1 | Streamed but undecoded | §10.1 |
 
 ### 5.3 Observed dealer-code label strings
 

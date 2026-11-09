@@ -15,6 +15,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
@@ -121,18 +122,20 @@ void main() {
   }
 
   Future<void> open(WidgetTester t, ProductClass? cls,
-      {String? deviceId = 'AA'}) async {
+      {String? deviceId = 'AA',
+      String title = 'Unit',
+      Locale locale = const Locale('en')}) async {
     await t.pumpWidget(ChangeNotifierProvider<TelemetryController>.value(
       value: tele,
       child: MaterialApp(
         theme: AppTheme.light(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
+        locale: locale,
         home: HistoryChartPage(
           deviceId: deviceId,
           deviceClass: cls,
-          title: 'Unit',
+          title: title,
           tempUnit: TempUnit.celsius,
           dataFrom: from,
           dataTo: to,
@@ -168,21 +171,31 @@ void main() {
     await open(t, ProductClass.smartBattery);
 
     expect(canSwitch(t), isTrue);
+    // 🔵 design 0096: the page opens on voltage＋current, named as such.
     // 🔴 The label is INSIDE the tap target. Without this, a refactor that put
     // the words beside the button instead of within it would still pass every
     // assertion below — and that arrangement is precisely FB-103.
     expect(
-        find.descendant(of: toggle, matching: find.text(en.historyLegendVoltage)),
+        find.descendant(
+            of: toggle, matching: find.text(en.historyChartSeriesBothName)),
         findsOneWidget);
+    expect(painterOf(t).series, HistoryChartSeries.both);
+    // Current is on the right axis, so its direction key is already needed.
+    expect(painterOf(t).currentDirectionLabel,
+        en.dashboardTrackCurrentDirectionKey);
+
+    // 🔴 The LABEL, not the icon. Cycle (design 0096 Q1): both → voltage →
+    // current → both.
+    await tapLabel(t, en.historyChartSeriesBothName);
+    await settle(t);
     expect(painterOf(t).series, HistoryChartSeries.voltage);
     // 🔴 The shell has no legend row, so the bar has to name the quantity —
     // current reuses voltage's colour and the axis numbers do not say which.
     expect(find.text(en.historyLegendVoltage), findsOneWidget);
+    expect(painterOf(t).currentDirectionLabel, isNull);
 
-    // 🔴 The LABEL, not the icon. Before 0089 this tap did nothing.
     await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
-
     expect(painterOf(t).series, HistoryChartSeries.current);
     expect(find.text(en.historyLegendCurrent), findsOneWidget);
     // 🔑 …and the label that is now showing is itself pressable, so the way
@@ -190,13 +203,16 @@ void main() {
     expect(canSwitch(t), isTrue);
     expect(painterOf(t).currentDirectionLabel,
         en.dashboardTrackCurrentDirectionKey);
+
+    await tapLabel(t, en.historyLegendCurrent);
+    await settle(t);
+    expect(painterOf(t).series, HistoryChartSeries.both);
   });
 
   testWidgets('a power bank is labelled with its own, opposite key', (t) async {
     await t.runAsync(seed);
     await open(t, ProductClass.powerBank);
-    await tapLabel(t, en.historyLegendVoltage);
-    await settle(t);
+    // Opens on voltage＋current (design 0096): current is already drawn.
 
     expect(painterOf(t).currentDirectionLabel,
         en.powerBankTrackCurrentDirectionKey);
@@ -209,7 +225,15 @@ void main() {
     await t.runAsync(seed);
     await open(t, ProductClass.supercapacitor);
 
-    expect(canSwitch(t), isFalse);
+    // 🔴 2026-09-29 field report: no control at all when the gate is closed —
+    // no ⇅, no tap target — only the series name, as on the embedded card.
+    expect(find.byIcon(Icons.swap_vert), findsNothing);
+    expect(
+        find.ancestor(
+            of: find.text(en.historyLegendVoltage),
+            matching: find.byType(InkWell)),
+        findsNothing);
+    expect(find.text(en.historyLegendVoltage), findsOneWidget);
     expect(find.text(en.capacitorChartNoCurrentNote), findsOneWidget);
     await tapLabel(t, en.historyLegendVoltage);
     await settle(t);
@@ -223,7 +247,15 @@ void main() {
     await t.runAsync(seed);
     await open(t, null, deviceId: null);
 
-    expect(canSwitch(t), isFalse);
+    // 🔴 2026-09-29 field report: no control at all when the gate is closed —
+    // no ⇅, no tap target — only the series name, as on the embedded card.
+    expect(find.byIcon(Icons.swap_vert), findsNothing);
+    expect(
+        find.ancestor(
+            of: find.text(en.historyLegendVoltage),
+            matching: find.byType(InkWell)),
+        findsNothing);
+    expect(find.text(en.historyLegendVoltage), findsOneWidget);
     expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsOneWidget);
     expect(find.text(en.capacitorChartNoCurrentNote), findsNothing);
     await tapLabel(t, en.historyLegendVoltage);
@@ -237,4 +269,48 @@ void main() {
     expect(find.text(en.capacitorChartNoCurrentNote), findsNothing);
     expect(find.text(en.historyChartAllDevicesNoCurrentNote), findsNothing);
   });
+
+  // 🔵 2026-09-29 owner ruling 「Ａ」 — the bar truncated the device name on a
+  // 667 px landscape phone. The window's ends left the bar (the x axis prints
+  // them), and the bucket width stayed, shortened.
+  testWidgets('the bar: short bucket width, no range, the name fits', (t) async {
+    t.view.physicalSize = const Size(667, 375);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.runAsync(seed);
+    const name = 'RCE-SCAP_II · 0f7a1599';
+    await open(t, ProductClass.smartBattery, title: name);
+
+    expect(find.text(historyBucketWidthShort(en, 60000)), findsOneWidget);
+    expect(find.text(historyBucketWidthNote(en, 60000)), findsNothing);
+    expect(find.textContaining(' – '), findsNothing,
+        reason: 'the range duplicated the x axis labels');
+    final p = t.renderObject<RenderParagraph>(find.text(name));
+    expect(p.size.width,
+        greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5),
+        reason: 'the device name is drawn whole, not ellipsised');
+  });
+
+  // 🔴 2026-09-29 field report on `v0.7.44`: the battery's 「電壓＋電流」 label
+  // was ellipsised in the landscape bar — the 96 px cap outlived the text it
+  // was sized against. Checked at the default and two enlarged text scales,
+  // because a user who has raised the system font is exactly who hits a cap.
+  for (final scale in [1.0, 1.3, 1.5]) {
+    testWidgets('the switch label is drawn whole at text scale $scale',
+        (t) async {
+      t.view.physicalSize = const Size(667, 375);
+      t.view.devicePixelRatio = 1;
+      t.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(t.view.reset);
+      addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+      await t.runAsync(seed);
+      await open(t, ProductClass.smartBattery,
+          title: 'RCE-BikeBatt · 3cd72450', locale: const Locale('zh'));
+      // zh — the label on the report: 「電壓＋電流」.
+      final p = t.renderObject<RenderParagraph>(
+          find.text(lookupAppLocalizations(const Locale('zh')).historyChartSeriesBothName));
+      expect(p.size.width,
+          greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5));
+    });
+  }
 }

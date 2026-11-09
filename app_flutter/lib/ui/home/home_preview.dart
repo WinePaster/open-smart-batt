@@ -178,7 +178,8 @@ TelemetrySample previewPackSample(DateTime now) => TelemetrySample(
 ///  * `socPercent` 100 — three digits, the widest the ring can show;
 ///  * `current` +2.72 → DISCHARGING (positive is discharge, `power_flow.dart`),
 ///    which is also the longer of the two direction words;
-///  * `portFlagsRaw` 0x22 = bit1 (Type-C cable) + bit5 (PD **output**), so the
+///  * `portFlagsRaw` 0x22 = bit1 (Type-C cable) + bit5 (a **non-5 V output
+///    contract**, narrowed 2026-09-04 — see [TelemetrySample.isPdOut]), so the
 ///    energy-path row draws its widest branch: a filled Type-C badge, a PD
 ///    badge, the direction and both readings.
 ///

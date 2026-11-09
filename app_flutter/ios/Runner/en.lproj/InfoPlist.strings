@@ -1,0 +1,6 @@
+/* Permission purpose strings (English). Keep in sync with zh-Hant.lproj and
+   the fallback values in Info.plist. */
+"NSBluetoothAlwaysUsageDescription" = "OpenSmartBatt uses Bluetooth to connect to, monitor and control your smart battery or capacitor module.";
+"NSLocationWhenInUseUsageDescription" = "Your location is used only to show riding speed while that display is turned on. Coordinates are never stored or uploaded.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Your location is used only to show riding speed, and only while the app is in the foreground. Coordinates are never stored or uploaded.";
+"NSMotionUsageDescription" = "The accelerometer is read only to show riding G-force while the dashboard is on screen.";

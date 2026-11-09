@@ -139,7 +139,7 @@ Future<void> exportHistoryCsv(
       labelFor: labelFor,
       classFor: classFor,
       header: exportHeaderLines(
-        title: 'OpenSmartBatt history export',
+        title: '$appName history export',
         exportedAt: DateTime.now(),
         appBuild: services.appBuild,
         platform: services.platform,

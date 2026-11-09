@@ -27,7 +27,22 @@ bytes as `%04d`):
 | `0x27` payload | Label | `cb` |
 |---|---|---|
 | `00a801020000` | `01680102` | `0x00A8` (168) — ✅ observed on the wire |
-| `00a901020000` | `01690102` | `0x00A9` (169) — predicted, **not yet confirmed** |
+| `00a901020000` | `01690102` | ~~`0x00A9` (169) — predicted, **not yet confirmed**~~ 🔴 **sent 32×, never released** (2026-09-26, see below) |
+
+> 🔴 **2026-09-29: the 4-character rule is confirmed for `0168…` only.** On
+> 2026-09-26 this project's client wrote mode `0x00` with the derived
+> `cb = 0x00A9` and the default `pwSum = 0x01E4` to a `01690102` battery **32
+> times over three minutes, while that battery was reporting `0x23` = `0x02`
+> (cut-off) in all 302 `0x23` frames of the session** — so, unlike the
+> 2026-07-30 case below, this is not a no-op on a pack already in normal mode.
+> `0x23` never moved. ⚠️ This project's own logs **cannot tell which half was
+> wrong** — `cb` or `pwSum` — because both were the client's defaults.
+>
+> ⇒ **Client behaviour since then:** a release sends `cb = 0x00A8` first (the
+> only `cb` with any successful release in this corpus), three attempts, and
+> falls back to the derived `cb` for three more only if it differs and `0x23`
+> still has not moved. On a `0168…` pack the two are the same value, so
+> nothing changes there.
 
 > 🔴 **This corrects a rule that earlier revisions stated as "the first 8
 > characters", and that contradicted the one wire observation printed directly

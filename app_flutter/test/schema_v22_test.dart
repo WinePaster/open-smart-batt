@@ -304,7 +304,7 @@ void main() {
     test('🔴 no threshold was seeded from product_class or the declaration',
         () async {
       // The temptation this migration had to refuse. The battery below declares
-      // `motorcycle-battery`, for which `kCategoryDefaults` has a full row —
+      // `motorcycle-battery`, for which ~~`kCategoryDefaults`~~ (now `kAppAlertThresholds`) has a full row —
       // writing it in would have looked helpful on every screen and would have
       // made the unit's own 0x2B unreachable forever.
       final db = await upgradeFromV21('v22_noseed');
@@ -315,7 +315,9 @@ void main() {
       expect(row['alert_uv'], isNull);
       expect(row['alert_ot'], isNull);
 
-      // …and read back through the model, the resolution still reaches layer ②.
+      // …and read back through the model. 🔵 2026-11-09 (design 0098):
+      // ~~the resolution still reaches layer ②~~ — there is no layer ② any more;
+      // what this still proves is that the dormant columns are not consulted.
       final saved = (await DeviceRepo(db.db).getDevice(_batteryId))!;
       expect(saved.alertOv, isNull);
       // 🔵 2026-08-25 (FB-100) — ~~userOv: saved.alertOv,~~ and its two
@@ -326,19 +328,15 @@ void main() {
         reported: TelemetrySample(
           timestamp: DateTime.utc(2026, 8, 22),
           deviceType: 0x02,
-          warnOv: 15.0,
-          warnUv: 11.0,
-          warnOt: 80,
+          warnUv: 11.0, // the unit's 0x2B — present, and ignored
         ),
-        category: saved.declared.category,
         wireClass: saved.productClass,
       );
-      expect(t.ov.source, ThresholdSource.device,
-          reason: 'a seeded default would have made this the app default, '
-              'permanently, on every phone in the field (🔵 before 2026-08-25 '
-              'it would have been ThresholdSource.user — same defect, one '
-              'layer up)');
+      expect(t.ov.source, ThresholdSource.appDefault);
       expect(t.ov.value, 15.0);
+      expect(t.uv.value, 11.5,
+          reason: 'the design-0098 row — not the old bike 11.0, and not a '
+              'seeded column');
     });
 
     test('the power bank row is untouched too', () async {
@@ -450,19 +448,28 @@ void main() {
           await _columnsOf(fresh.db, 'settings'));
     });
 
-    test('both report schema version 23', () async {
+    test('both report schema version 25', () async {
       final upgraded = await upgradeFromV22Ver();
       final fresh = await freshDatabase('v22_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
         final v = (await db.db.rawQuery('PRAGMA user_version')).single;
         expect(v['user_version'], Db.schemaVersion);
-        // The current EXACT pin, inherited from `schema_v21_test.dart` and
-        // moved on 2026-08-28 when v23 landed (design 0077 / FB-93 —
-        // `saved_devices.former_ids`), exactly as the previous note said to.
-        // Move it again when v24 lands; the registry in `Db.schemaVersion`'s
-        // doc comment is the arbiter, and this line is what makes two branches
-        // claiming one number collide here rather than on a user's phone.
-        expect(Db.schemaVersion, 23);
+        // The current EXACT pin, inherited from `schema_v21_test.dart`, moved
+        // on 2026-08-28 when v23 landed (design 0077 / FB-93 —
+        // `saved_devices.former_ids`), on 2026-09-05 when v24 landed (FB-110 —
+        // realigning `diag_log`'s AUTOINCREMENT high-water mark), and on
+        // 2026-09-06 when v25 landed (FB-110 second attempt — the `log_stats`
+        // table, after the adversarial review found v24 was a no-op on the
+        // common path). Move it again when v26 lands; the registry in
+        // `Db.schemaVersion`'s doc comment is the arbiter, and this line is what
+        // makes two branches claiming one number collide here rather than on a
+        // user's phone.
+        //
+        // ⚠️ v24 adds no column, so the parity cases above it stay green
+        // whatever it does — this pin and `schema_v24_test.dart` are the only
+        // two places that would notice it going missing. v25 DOES add a table,
+        // so the parity cases cover it.
+        expect(Db.schemaVersion, 25);
       }
     });
   });

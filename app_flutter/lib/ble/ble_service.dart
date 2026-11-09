@@ -24,11 +24,13 @@ library;
 
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../demo/demo.dart';
 import '../models/log_entry.dart' show LogDirection;
 import '../models/telemetry_sample.dart';
 import '../protocol/protocol.dart';
@@ -83,8 +85,8 @@ class _LinkState {
   _LinkState({
     required this.deviceId,
     required this.device,
-    required MetadataParser parser,
-  }) : decoder = TelemetryDecoder(parser: parser);
+    this.session,
+  });
 
   /// BLE remote id — the map key, and the attribution stamped on this link's
   /// packet events. Survives [device] being cleared by teardown, because a
@@ -158,13 +160,38 @@ class _LinkState {
   /// timestamps by whoever reads it.
   DateTime connSubAt = DateTime.now();
 
-  final FrameReassembler reassembler = FrameReassembler();
-  final TelemetryDecoder decoder;
+  /// design 0099 P1: this link's protocol — reassembly, decode and the poll
+  /// schedule — which used to be the [reassembler] / [decoder] fields the
+  /// paragraphs above describe. The per-link rule they state is unchanged:
+  /// one session per link, never shared.
+  ///
+  /// design 0099 P2: null until the GATT table has chosen a protocol (a demo
+  /// link gets one at once). No session means nothing to poll and nothing to
+  /// write — which is exactly what an unrecognised peripheral must get.
+  ProtocolSession? session;
 
   /// FB-39: invalidates a connection setup that a newer connect/disconnect has
   /// superseded, so a slow unit cannot bring the app online under an identity
   /// the user has already moved away from. See [ConnectEpoch].
   final ConnectEpoch epoch = ConnectEpoch();
+
+  /// design 0097: the simulated unit behind a DEMO link, or null for a real
+  /// one. A demo link has no plugin handle ([device] stays null) and touches no
+  /// platform API; the single-link getters read this alongside [device].
+  ///
+  /// design 0099 P3: generalised to any [SimulatedPeer], so a test can put a
+  /// protocol other than RCE behind the same link machinery. [demo] is this
+  /// field when it holds the demo unit.
+  SimulatedPeer? peer;
+
+  DemoPeripheral? get demo {
+    final p = peer;
+    return p is DemoPeripheral ? p : null;
+  }
+
+  /// Answers [demo] has scheduled and not yet delivered. Cancelled by teardown
+  /// so a torn-down demo link cannot speak after it has gone.
+  final Set<Timer> demoReplies = <Timer>{};
 }
 
 /// What one `connectionState` event means for the link it arrived on.
@@ -238,9 +265,15 @@ class BleService {
   BleService({
     CommandBuilder commands = const CommandBuilder(),
     MetadataParser parser = const NoopMetadataParser(),
+    List<DeviceProfile>? profiles,
   }) {
     _commands = commands;
     _parser = parser;
+    // design 0099 P2: the protocols a link may turn out to speak. RCE is the
+    // default so every existing construction — including the test doubles
+    // that `extends BleService` — keeps behaving exactly as before.
+    _profiles = List<DeviceProfile>.unmodifiable(
+        profiles ?? [RceProfile(parser: parser, commands: commands)]);
     // One persistent listener turns plugin scan results into [DiscoveredDevice].
     _scanSub = FlutterBluePlus.scanResults.listen(_onScanResults);
   }
@@ -251,6 +284,14 @@ class BleService {
   /// build's is a no-op). Held rather than pre-applied because a decoder is now
   /// built per link instead of once per service.
   late final MetadataParser _parser;
+
+  /// Every protocol this service can speak, in priority order (design 0099).
+  late final List<DeviceProfile> _profiles;
+
+  /// The session a DEMO link speaks. A demo unit is an RCE unit by
+  /// construction, so it skips the GATT match (design 0099 §3.4, last line).
+  ProtocolSession _demoSession() =>
+      RceSession(parser: _parser, commands: _commands);
 
   /// Live links by device id. **0 or 1 entry today** (see the class doc).
   ///
@@ -331,11 +372,6 @@ class BleService {
   @visibleForTesting
   bool get notifyDrivenKeepAlive => _pacer.active;
 
-  // Cached guids (cheap, but build once).
-  static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
-  static final Guid _writeGuid = Guid(Gatt.writeCharUuid);
-  static final Guid _notifyGuid = Guid(Gatt.notifyCharUuid);
-
   /// Keep-alive cadence (~1 Hz). The battery streams telemetry as long as it
   /// keeps receiving a poll token; exact cadence is not protocol-critical.
   static const Duration keepAliveInterval = Duration(seconds: 1);
@@ -380,16 +416,16 @@ class BleService {
   ///   * %25 == 0            -> `@`  (0x40) — slow metadata (all devices).
   ///   * power bank & %5==0  -> `!#` — continuous SOC / port refresh.
   ///   * otherwise           -> `#`  (0x23).
+  ///
+  /// design 0099 P1: the schedule itself now lives in [rceTokenFor], which is
+  /// what [RceSession.nextPoll] calls. This static stays so the tests that pin
+  /// the schedule through it keep doing so unchanged.
   static List<int> keepAliveTokenFor(
     CommandBuilder commands, {
     required int tick,
     required bool isPowerBank,
-  }) {
-    if (tick <= 1) return commands.extendedPoll();
-    if (tick % 25 == 0) return commands.slowMetadataPoll();
-    if (isPowerBank && tick % 5 == 0) return commands.extendedPoll();
-    return commands.keepAlive();
-  }
+  }) =>
+      rceTokenFor(commands, tick: tick, isPowerBank: isPowerBank);
 
   /// Per-platform connect tuning (D.4). Android's `connectGatt` fails fast on a
   /// stale handle and frequently bounces on the FIRST attempt, so a few retries
@@ -680,17 +716,24 @@ class BleService {
   BleLinkState get currentState => _state;
 
   /// Latest accumulated telemetry snapshot (folds prior frames).
-  TelemetrySample get currentSample => _current?.decoder.sample ?? _noTelemetry;
+  TelemetrySample get currentSample =>
+      _current?.session?.sample ?? _noTelemetry;
 
   /// Latest accumulated engineering metadata (opaque; empty on the open build).
   DeviceMetadata get currentDeviceInfo =>
-      _current?.decoder.deviceMetadata ?? const EmptyDeviceMetadata();
+      _current?.session?.metadata ?? const EmptyDeviceMetadata();
 
   /// Remote id of the connected/connecting device, or null.
-  String? get connectedDeviceId => _current?.device?.remoteId.str;
+  String? get connectedDeviceId =>
+      _current?.device?.remoteId.str ??
+      (_current?.peer != null ? _current?.deviceId : null);
 
   /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
-  String get connectedDeviceName => _current?.device?.platformName ?? '';
+  String get connectedDeviceName =>
+      _current?.device?.platformName ?? _current?.demo?.kind.advertisedName ?? '';
+
+  /// True while the current link is a demo one (design 0097).
+  bool get isDemoLink => _current?.demo != null;
 
   /// True while a scan is in progress.
   bool get isScanning => FlutterBluePlus.isScanningNow;
@@ -809,12 +852,15 @@ class BleService {
       final name = r.device.platformName.isNotEmpty
           ? r.device.platformName
           : r.advertisementData.advName;
-      // Vendor if it advertises our service UUID (most precise) OR its name
-      // carries a vendor token. See [looksLikeVendorName] for why this is a
-      // token-prefix match rather than `startsWith` or `contains`.
-      final isVendor =
-          r.advertisementData.serviceUuids.contains(_serviceGuid) ||
-              looksLikeVendorName(name);
+      // Vendor if any protocol we speak recognises it — for RCE, the vendor
+      // service UUID (most precise) OR a vendor name token; see
+      // [looksLikeVendorName] for why that is a token-prefix match. Soft
+      // evidence only: it orders the list, it never picks the protocol
+      // (design 0099 §3.4).
+      final ad = AdvertisementEvidence(name: name, serviceUuids: [
+        for (final g in r.advertisementData.serviceUuids) normaliseUuid(g.str128)
+      ]);
+      final isVendor = _profiles.any((p) => p.looksLikeThisDevice(ad));
       final existing = _scanSeen[id];
       if (existing == null ||
           existing.rssi != r.rssi ||
@@ -863,9 +909,14 @@ class BleService {
     await disconnect();
     await stopScan();
 
+    // design 0097: a demo id never reaches the plugin. Branching here, after
+    // the shared teardown above, keeps "connecting replaces the previous link"
+    // one rule for both kinds.
+    final demoKind = DemoKind.fromId(deviceId);
+    if (demoKind != null) return _connectDemo(deviceId, demoKind);
+
     final device = BluetoothDevice.fromId(deviceId);
-    final link = _LinkState(
-        deviceId: deviceId, device: device, parser: _parser);
+    final link = _LinkState(deviceId: deviceId, device: device);
 
     // A fresh connect starts from a clean slate. Dropping the entries is what
     // the old `_reassembler.reset(); _decoder.reset(); _settingUp = false;`
@@ -946,6 +997,80 @@ class BleService {
       throw lastErr;
     }
   }
+
+  /// design 0097: bring up a DEMO link. Same state sequence as a real one —
+  /// `connecting` → `connected` → keep-alive → `ready` — so the controllers
+  /// above cannot tell the difference, and no platform API is called.
+  Future<void> _connectDemo(String deviceId, DemoKind kind) async {
+    final link =
+        _LinkState(deviceId: deviceId, device: null, session: _demoSession())
+          ..peer = DemoPeripheral(kind);
+    _installLink(link);
+    _current = link;
+    _setState(BleLinkState.connecting);
+    final epoch = link.epoch.current;
+    // A real connect takes a moment; an instant one would skip the
+    // connecting state the UI is built to show.
+    await Future<void>.delayed(demoConnectDelay);
+    if (!link.epoch.isCurrent(epoch) || link.peer == null) return;
+    _setState(BleLinkState.connected);
+    _emitEvent('demo link up (${kind.id})', link: link);
+    _startKeepAlive(link);
+    _setState(BleLinkState.ready);
+  }
+
+  /// Bring up a link to a [SimulatedPeer] speaking [session] — the demo
+  /// path (design 0097) with the protocol supplied by the caller instead of
+  /// fixed to RCE, for exercising the seam without a radio (design 0099).
+  ///
+  /// Same lifecycle as a demo link: the previous link is torn down first, the
+  /// state runs `connecting` → `connected` → `ready`, the keep-alive drives
+  /// [ProtocolSession.nextPoll], and every write passes the gate in
+  /// [_writeTo]. No GATT match: the caller has already chosen the protocol.
+  @visibleForTesting
+  Future<void> connectSimulated(String deviceId,
+      {required ProtocolSession session, required SimulatedPeer peer}) async {
+    _invalidateAllLinks();
+    await disconnect();
+    await stopScan();
+    final link = _LinkState(deviceId: deviceId, device: null, session: session)
+      ..peer = peer;
+    _installLink(link);
+    _current = link;
+    _setState(BleLinkState.connecting);
+    _setState(BleLinkState.connected);
+    _startKeepAlive(link);
+    _setState(BleLinkState.ready);
+  }
+
+  /// How long a demo connect sits in `connecting`.
+  @visibleForTesting
+  static Duration demoConnectDelay = const Duration(milliseconds: 600);
+
+  /// How long a demo unit takes to answer a write.
+  @visibleForTesting
+  static Duration demoReplyDelay = const Duration(milliseconds: 40);
+
+  /// Hand [frames] to [_onNotify] the way the radio would: after a short delay,
+  /// in notification-sized chunks, so the reassembler is exercised as on a
+  /// real link.
+  void _deliverDemo(_LinkState link, List<List<int>> frames) {
+    if (frames.isEmpty) return;
+    final bytes = <int>[for (final f in frames) ...f];
+    late final Timer t;
+    t = Timer(demoReplyDelay, () {
+      link.demoReplies.remove(t);
+      if (link.peer == null) return;
+      for (var i = 0; i < bytes.length; i += demoChunkBytes) {
+        final end = math.min(i + demoChunkBytes, bytes.length);
+        _onNotify(link, bytes.sublist(i, end));
+      }
+    });
+    link.demoReplies.add(t);
+  }
+
+  /// The ATT payload of one notification at the default MTU 23.
+  static const int demoChunkBytes = 20;
 
   /// Open a new epoch on every link that exists, invalidating any setup already
   /// mid-await. See [ConnectEpoch] and the note in [_links] on why an entry
@@ -1143,18 +1268,22 @@ class BleService {
       link.writeChar = null;
       link.notifyChar = null;
 
-      // Prefer characteristics under the vendor service, but fall back to a
-      // full sweep — the service linkage is inferred, not byte-fixed.
-      for (final svc in services) {
-        final preferred = svc.uuid == _serviceGuid;
-        for (final c in svc.characteristics) {
-          if (c.uuid == _writeGuid && (link.writeChar == null || preferred)) {
-            link.writeChar = c;
-          }
-          if (c.uuid == _notifyGuid && (link.notifyChar == null || preferred)) {
-            link.notifyChar = c;
-          }
-        }
+      // design 0099 P2: the GATT table chooses the protocol. A session opens
+      // only for EXACTLY ONE confirmed profile; candidates alone, or several
+      // confirmed, open nothing and so write nothing (§3.4). Within the chosen
+      // profile the characteristic rule is the one this method always used —
+      // prefer the expected service, fall back to a full sweep — now in
+      // [pickEndpoints].
+      final snapshot = gattSnapshotOf(services);
+      final choice = resolveProfile(_profiles, snapshot);
+      final chosen = choice.profile;
+      final pick =
+          chosen == null ? null : pickEndpoints(snapshot, chosen.endpoints);
+      if (pick != null) {
+        link.writeChar =
+            services[pick.writeService].characteristics[pick.writeChar];
+        link.notifyChar =
+            services[pick.notifyService].characteristics[pick.notifyChar];
       }
 
       // Diagnostic: dump the full GATT table (svc/char UUID + properties) to the
@@ -1164,11 +1293,14 @@ class BleService {
       _dumpGatt(link, services);
 
       final notify = link.notifyChar;
-      if (link.writeChar == null || notify == null) {
-        throw StateError(
-            'GATT characteristics not found (write=${link.writeChar != null}, '
-            'notify=${notify != null})');
+      if (chosen == null || link.writeChar == null || notify == null) {
+        throw _noProfileError(choice, snapshot);
       }
+      // `??=`: a link keeps its session for life, as it kept its decoder
+      // before design 0099 — a second setup on the same link (not reachable
+      // today; stated so it stays harmless) must not blank the accumulated
+      // sample.
+      link.session ??= chosen.openSession();
 
       // Subscribe BEFORE the first write (PROTOCOL.md §2). setNotifyValue(true)
       // writes the CCCD enable value [0x01, 0x00].
@@ -1202,6 +1334,53 @@ class BleService {
       link.settingUp = false;
     }
   }
+
+  /// The error a GATT setup throws when no single profile owns the table.
+  ///
+  /// The no-match wording is kept byte-for-byte from before design 0099
+  /// (`GATT characteristics not found (write=…, notify=…)`): field captures
+  /// are grepped for it, and [gattSetupFailureReason] keys on it. For an
+  /// RCE-only build the two flags mean exactly what they meant — whether the
+  /// write / notify characteristic was found anywhere in the table.
+  StateError _noProfileError(ProfileChoice choice, GattSnapshot snapshot) {
+    switch (choice.resolution) {
+      case ProfileResolution.candidatesOnly:
+        return StateError(
+            'no confirmed profile (candidates: ${choice.candidates.join(',')})');
+      case ProfileResolution.ambiguous:
+        return StateError(
+            'ambiguous profiles (confirmed: ${choice.confirmed.join(',')})');
+      case ProfileResolution.noMatch:
+      case ProfileResolution.resolved:
+        final uuids = {
+          for (final svc in snapshot.services)
+            for (final c in svc.characteristics) c.uuid
+        };
+        bool any(String Function(GattEndpoints e) f) => _profiles
+            .any((p) => uuids.contains(normaliseUuid(f(p.endpoints))));
+        return StateError('GATT characteristics not found '
+            '(write=${any((e) => e.writeCharUuid)}, '
+            'notify=${any((e) => e.notifyCharUuid)})');
+    }
+  }
+
+  /// A plugin GATT table as plain values for the profiles (design 0099 P2).
+  @visibleForTesting
+  static GattSnapshot gattSnapshotOf(List<BluetoothService> services) =>
+      GattSnapshot([
+        for (final svc in services)
+          GattServiceInfo(normaliseUuid(svc.uuid.str128), [
+            for (final c in svc.characteristics)
+              GattCharacteristicInfo(
+                normaliseUuid(c.uuid.str128),
+                read: c.properties.read,
+                write: c.properties.write,
+                writeWithoutResponse: c.properties.writeWithoutResponse,
+                notify: c.properties.notify,
+                indicate: c.properties.indicate,
+              ),
+          ]),
+      ]);
 
   /// Actually drop the link after a failed GATT setup — FB-51 (e), design 0031.
   ///
@@ -1267,18 +1446,10 @@ class BleService {
     }
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
-    final frames = link.reassembler.addBytes(chunk);
-    final now = DateTime.now();
-    final infoBefore = link.decoder.deviceMetadata;
-    var emitted = false;
-    for (final f in frames) {
-      if (!f.checksumOk) continue;
-      final before = link.decoder.sample;
-      final after = link.decoder.ingest(f, at: now);
-      if (!identical(before, after)) {
-        emitted = true;
-      }
-    }
+    final session = link.session;
+    if (session == null) return;
+    final infoBefore = session.metadata;
+    final emitted = session.ingest(chunk, DateTime.now());
     if (emitted) {
       // 🔴 FB-88 / design 0078 (M1-b): stamp WHOSE frame this is on the way
       // out. This is the ONE place a telemetry sample leaves this service, and
@@ -1296,12 +1467,12 @@ class BleService {
       // out — mutating identity into it would put a transport fact inside the
       // decode. `copyWith` leaves the accumulation untouched and gives the
       // stream its own stamped view.
-      _telemetry.add(link.decoder.sample.copyWith(deviceId: link.deviceId));
+      _telemetry.add(session.sample.copyWith(deviceId: link.deviceId));
     }
     // Device-metadata side-channel. On the open build
     // the Noop parser never changes it, so this never fires.
-    if (!identical(infoBefore, link.decoder.deviceMetadata)) {
-      _deviceMetadata.add(link.decoder.deviceMetadata);
+    if (!identical(infoBefore, session.metadata)) {
+      _deviceMetadata.add(session.metadata);
     }
   }
 
@@ -1341,10 +1512,10 @@ class BleService {
     _invalidateAllLinks();
     final link = _current;
     final device = link?.device;
-    if (link == null || device == null) return;
+    if (link == null || (device == null && link.peer == null)) return;
     _setState(BleLinkState.disconnecting);
     try {
-      await device.disconnect();
+      await device?.disconnect();
     } catch (_) {
       // Ignore: teardown still proceeds via the connectionState callback.
     }
@@ -1444,8 +1615,13 @@ class BleService {
     // behind `currentSample` and the epoch behind `disconnect()` both have to
     // survive this, exactly as the service-level fields used to.
     link.device = null;
+    for (final t in link.demoReplies) {
+      t.cancel();
+    }
+    link.demoReplies.clear();
+    link.peer = null;
     link.settingUp = false;
-    link.reassembler.reset();
+    link.session?.discardPartial();
     await notifyCancelled;
     await connCancelled;
     if (emitDisconnected) {
@@ -1463,7 +1639,11 @@ class BleService {
     // Tick immediately so telemetry starts without waiting a full second. The
     // first tick sends `!#`, which every device answers with device-type/SOC.
     unawaited(_sendKeepAlive(link));
-    link.keepAlive = Timer.periodic(keepAliveInterval, (_) {
+    // design 0099 P5: the session sets the cadence (RCE: 1 s, the same as
+    // [keepAliveInterval], so the RCE wire is unchanged — the seam golden
+    // pins it).
+    link.keepAlive =
+        Timer.periodic(link.session?.tickInterval ?? keepAliveInterval, (_) {
       unawaited(_sendKeepAlive(link));
     });
   }
@@ -1474,7 +1654,7 @@ class BleService {
     // every early return, deliberately — a guarded tick still proves the
     // isolate ran.
     _execGap.tick(DateTime.now());
-    if (link.writeChar == null) return;
+    if (link.writeChar == null && link.peer == null) return;
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH
     // directions stall for minutes, then everything resumes at once. Without
@@ -1487,16 +1667,16 @@ class BleService {
     if (link.keepAliveInFlight) return;
     link.keepAliveInFlight = true;
     link.keepAliveTick++;
-    // Whether the connected unit is a power bank is read from the LATEST decoded
-    // telemetry (device-type 0x22); it flips true once the tick-1 `!#` elicits
-    // the 0x10 frame, after which the every-5th `!#` schedule kicks in — so both
-    // inputs to the schedule have to come from THIS link, not from whichever
-    // unit answered most recently.
-    final token = keepAliveTokenFor(
-      _commands,
-      tick: link.keepAliveTick,
-      isPowerBank: link.decoder.sample.isPowerBank,
-    );
+    // design 0099 P1: what this tick says is the session's call; that it is
+    // THIS link's session is what keeps the schedule per link (for RCE, the
+    // power-bank input is this link's own latest 0x10 — see [RceSession]).
+    // The transport still owns the tick count, the guard above and everything
+    // below.
+    final token = link.session?.nextPoll(link.keepAliveTick);
+    if (token == null) {
+      link.keepAliveInFlight = false;
+      return;
+    }
     final sw = Stopwatch()..start();
     try {
       await _writeTo(link, token, timeout: keepAliveWriteTimeout);
@@ -1573,6 +1753,31 @@ class BleService {
   /// never be delivered to a unit other than the one it was scheduled for.
   Future<void> _writeTo(_LinkState? link, List<int> bytes,
       {Duration? timeout}) async {
+    // design 0099 §3.5 — THE write gate. Every write this service makes, the
+    // keep-alive included, passes this point and nothing else reaches the
+    // radio ([BluetoothCharacteristic.write] is called below and nowhere
+    // else in this file). A read-only protocol is therefore read-only by
+    // construction: its session says no here, and no caller can route around
+    // it. The refusal line carries no payload, on purpose.
+    final session = link?.session;
+    if (session == null) {
+      if (link?.writeChar != null) {
+        // Unreachable by construction (characteristics are only resolved
+        // together with a session); stated so it stays that way.
+        throw StateError('writeCommand: link has no protocol session');
+      }
+    } else if (!session.allowsWrite(bytes)) {
+      _emitEvent('write refused by profile (${bytes.length} bytes)',
+          link: link);
+      throw const ProfileWriteRefused();
+    }
+    final peer = link?.peer;
+    if (peer != null) {
+      _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
+          deviceId: link!.deviceId));
+      _deliverDemo(link, peer.answer(bytes));
+      return;
+    }
     final c = link?.writeChar;
     if (c == null) {
       throw StateError('writeCommand: not connected / write char unresolved');
@@ -1606,6 +1811,15 @@ class BleService {
     await writeCommand(_commands.switchMode(mode, creds));
   }
 
+  /// Write the mode sub-frame alone, without auth (design 0099 P3: moved from
+  /// `ConnectionController.switchModeOnly`, which built the bytes itself and
+  /// wrote them raw). EXPERIMENTAL as it always was — see that method.
+  Future<void> modeSet(int mode) => writeCommand(_commands.modeSet(mode));
+
+  /// Write the `0x23` read-back poll (design 0099 P3: moved from
+  /// `ConnectionController.pollMode`).
+  Future<void> modeReadBack() => writeCommand(_commands.modeReadBack());
+
   /// Verify-auth standalone (live HCI capture): the 9-byte auth frame
   /// the reference app sends ~2 s before a bundled mode+auth.
   Future<void> sendAuth({required int cb, required int pwSum}) async {
@@ -1613,33 +1827,10 @@ class BleService {
     await writeCommand(_commands.auth(creds));
   }
 
-  /// Set warning thresholds in physical units (PROTOCOL.md §8.3 write inverse).
-  ///
-  /// [trailing] is the frame's 4th byte (observed UT / under-temp). When
-  /// null (the default) we **preserve the last-read UT byte** from telemetry
-  /// (selector 0x2B, §10.2) instead of forcing 0x00 — so a user editing OV/UV/OT
-  /// does not silently clobber the device's under-temp setting.
-  Future<void> setThresholds({
-    required double ovVolts,
-    required double uvVolts,
-    required double otCelsius,
-    int? trailing,
-  }) async {
-    await writeCommand(_commands.thresholds(
-      ovVolts: ovVolts,
-      uvVolts: uvVolts,
-      otCelsius: otCelsius,
-      trailing: trailing ?? currentSample.warnUtByte ?? 0x00,
-    ));
-  }
-
-  /// Set warning thresholds from raw register bytes. [trailing] null preserves
-  /// the last-read UT byte (see [setThresholds]).
-  Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-      {int? trailing}) async {
-    await writeCommand(_commands.thresholdsRaw(ovByte, uvByte, otByte,
-        trailing: trailing ?? currentSample.warnUtByte ?? 0x00));
-  }
+  // ⛔ **`setThresholds` / `setThresholdsRaw` deleted 2026-11-09 (design 0098
+  // Q2).** `0x2B` is the unit's internal protection setting, and this app never
+  // writes it (owner: 「2B本身的數值那個就是電池內的保護參數 這個不異動」).
+  // Nothing had called them since FB-100; deleting them makes that structural.
 
   /// Send one scheduled keep-alive token on demand (advances the tick counter).
   /// No-op when nothing is connected, as it always was — the old body returned

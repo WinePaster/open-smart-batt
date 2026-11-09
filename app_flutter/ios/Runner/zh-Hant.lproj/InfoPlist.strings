@@ -1,0 +1,6 @@
+/* 權限用途說明（繁體中文）。逐字複製 Info.plist 的值 —— 定位那兩句是裁示過的文字
+   （design 0042，speed_platform_config_test 逐字釘住），改這裡要連 Info.plist 一起改。 */
+"NSBluetoothAlwaysUsageDescription" = "本 App 需要使用藍牙以連線並控制您的 智慧電池或電容模組（BLE）。";
+"NSLocationWhenInUseUsageDescription" = "顯示騎乘速度時需要取得定位（位置座標不會被儲存或上傳）。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "顯示騎乘速度時需要取得定位，且僅在 App 前景使用期間（位置座標不會被儲存或上傳）。";
+"NSMotionUsageDescription" = "顯示騎乘 G 值時需要讀取加速度計（僅在儀表板顯示期間讀取）。";

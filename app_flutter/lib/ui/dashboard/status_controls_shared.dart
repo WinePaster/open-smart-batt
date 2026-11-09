@@ -158,22 +158,25 @@ CapacitorHealth? capacitorHealthOf(int? mode) => switch (mode) {
 ///     know why — the SCREEN is the thing that must tell the two "empty"s apart
 ///     (`AlertsDisabledReason`), not this comparison.
 ///
-/// The comparison itself is unchanged, strictly greater / strictly less, and is
-/// deliberately the same shape as `AlertEvaluator`'s: two comparators disagreeing
-/// on the boundary would put the advisory line and the notification one hundredth
-/// of a volt apart.
+/// 🔵 **2026-11-09 (design 0098): the comparison is INCLUSIVE** — `pvlt >= ov`,
+/// `pvlt <= uv`, `temp >= ot` — by ruling (「>=15V警示 或小於等於11.5V」, and
+/// 「大於等於」 for 80 °C). ~~strictly greater / strictly less~~. It is
+/// deliberately the same shape as `AlertEvaluator._isBreaching`: two
+/// comparators disagreeing on the boundary would put the advisory line and the
+/// notification one hundredth of a volt apart.
 bool readingBreachesThreshold(
   TelemetryController tele,
   AlertThresholds thresholds,
 ) {
-  final pvlt = tele.pvlt;
-  final temp = tele.temperatureC;
-  final ov = thresholds.ov.value;
-  final uv = thresholds.uv.value;
-  final ot = thresholds.ot.value;
-  if (pvlt != null && ov != null && pvlt > ov) return true;
-  if (pvlt != null && uv != null && pvlt < uv) return true;
-  if (temp != null && ot != null && temp > ot) return true;
+  // One comparison for the screen and the notification: [AlertKind.breaches].
+  for (final kind in AlertKind.values) {
+    final reading =
+        kind.isVoltage ? tele.pvlt : tele.temperatureC?.toDouble();
+    final limit = thresholds[kind].value;
+    if (reading != null && limit != null && kind.breaches(reading, limit)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -218,6 +221,19 @@ enum CapacitorSelfCheckOutcome {
   ///
   /// 🔴 NOT a failure and NOT a cancellation — see [capacitorSelfCheck].
   stillRunning,
+
+  /// 🔵 FB-111. `0x23` came back to [CapacitorStatus.healthy], but `0x3A` was
+  /// still in a DIFFERENT group from the one it was in before the check
+  /// started, when the watch ran out.
+  ///
+  /// A distinct outcome rather than a flavour of [finished], because the two
+  /// differ in something the user is about to act on: whether every register we
+  /// can see has come back to where the check found it.
+  ///
+  /// ⛔ Deliberately says nothing about what that group means physically — see
+  /// [CapacitorFunctionFlags], whose polarity is not established by our own
+  /// captures.
+  flagNotBack,
 }
 
 /// 檢測電容 — start a real self-check on a super-capacitor (design 0082 Q1).
@@ -241,9 +257,28 @@ enum CapacitorSelfCheckOutcome {
 ///    An `AlertDialog`, the same shape as the cut-off confirmation: two writes
 ///    that both change how a device behaves must not be presented differently.
 /// 2. **Unlock on what the DEVICE says, never on a stopwatch.** We wait for
-///    `0x23` to come back to [CapacitorStatus.healthy]. [_selfCheckWatchLimit]
-///    exists so the button cannot be locked forever, and its expiry is a fact
-///    about this app, not about the device.
+///    `0x23` to come back to [CapacitorStatus.healthy] **and** for `0x3A` to
+///    come back to the group it was in before we sent anything
+///    ([CapacitorFunctionFlags.group]). [_selfCheckWatchLimit] exists so the
+///    button cannot be locked forever, and its expiry is a fact about this
+///    app, not about the device.
+///
+///    🔵 **Both registers, since FB-111.** `0x23` alone was believed sufficient
+///    on a 166/166 pairing with no counter-example. Capture 2026.09.03/002 is
+///    the counter-example: `0x23` returned to `0x05` **5.61 seconds before**
+///    `0x3A` came back, and for those seconds this function said 「檢測結束」
+///    about a unit that was still reporting a state it had not been in when the
+///    check started. Two independent registers describing the same physical
+///    event will not move together.
+///
+///    🔑 **The gate is "back where it started", not "in the good group" —
+///    and that is deliberate.** ~~`0x3A` bit 0 means the output is live, bit 3
+///    means it is cut~~ was removed: the polarity was never supported by our
+///    own captures (see [CapacitorFunctionFlags]). Comparing against the
+///    pre-check reading needs no polarity at all — whatever the two groups
+///    mean, a unit
+///    that left one and came back to it has finished doing whatever it did —
+///    and it is strictly more honest than naming a group "good".
 /// 3. 🔴 **We never write the unit back out of self-check. Not on give-up, not
 ///    on any path.** (Owner's ruling, 2026-08-28, over an explicitly considered
 ///    alternative.) The known cost is accepted and is stated to the user rather
@@ -259,6 +294,23 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
+  // 🔑 Read BEFORE the dialog, not after it. This is the reference the unlock
+  // compares against, so it has to be the register's resting value — and the
+  // confirmation dialog can sit open for as long as the owner takes to read it,
+  // by which time `0x3A` may already have moved for reasons of its own.
+  //
+  // `null` (never answered, or a byte outside the two observed groups) means
+  // there is nothing to compare against, and the unlock then does not gate on
+  // `0x3A` at all — a gate keyed on a register the device does not answer is a
+  // state with no exit (FB-50 / FB-52's shape).
+  final baseline = CapacitorFunctionFlags.group(tele.funcFlagsRaw);
+  bool backToBaseline() {
+    if (baseline == null) return true;
+    final now = CapacitorFunctionFlags.group(tele.funcFlagsRaw);
+    // Unknown now = do not hold the user: same reason as a null baseline.
+    return now == null || now == baseline;
+  }
+
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -323,23 +375,42 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     return CapacitorSelfCheckOutcome.noResponse;
   }
 
+  // 🔵 FB-111: BOTH registers, inside the one existing window. The measured
+  // lag between them is 5.61 s against a 30 s limit, so a unit behaving like
+  // the captured one clears this comfortably; the limit did not need changing
+  // and deliberately was not, because it is a statement about how long this app
+  // holds its own button and nothing about it changed.
   final returned = await _waitFor(
-      tele, (m) => m == CapacitorStatus.healthy, _selfCheckWatchLimit);
+      tele,
+      (m) => m == CapacitorStatus.healthy && backToBaseline(),
+      _selfCheckWatchLimit);
+  // Which of the two halves is still outstanding decides what we say. Read
+  // AFTER the wait, so it describes the state we actually gave up in.
+  final modeBack = tele.mode == CapacitorStatus.healthy;
+  final flagMoved = !backToBaseline();
+  final outcome = returned
+      ? CapacitorSelfCheckOutcome.finished
+      : modeBack && flagMoved
+          ? CapacitorSelfCheckOutcome.flagNotBack
+          : CapacitorSelfCheckOutcome.stillRunning;
   messenger.showSnackBar(SnackBar(
     duration: const Duration(milliseconds: 4200),
-    content: Text(returned
-        ? l10n.capacitorSelfCheckDoneSnack
-        : l10n.capacitorSelfCheckStillRunningSnack),
+    content: Text(switch (outcome) {
+      CapacitorSelfCheckOutcome.finished => l10n.capacitorSelfCheckDoneSnack,
+      // ⛔ Never silent, and never "finished": the timeout that matters most is
+      // the one where the app would otherwise have claimed success.
+      CapacitorSelfCheckOutcome.flagNotBack =>
+        l10n.capacitorSelfCheckFlagNotBackSnack,
+      _ => l10n.capacitorSelfCheckStillRunningSnack,
+    }),
   ));
-  // 🔴 Nothing is written here on either branch. See rule 3 above.
-  return returned
-      ? CapacitorSelfCheckOutcome.finished
-      : CapacitorSelfCheckOutcome.stillRunning;
+  // 🔴 Nothing is written here on any branch. See rule 3 above.
+  return outcome;
 }
 
 /// Poll `0x23` until [test] accepts it or [window] runs out.
 ///
-/// The read-only sibling of [_modeChangedWithin]: that one asks "did it move
+/// The read-only sibling of [watchModeAfterWrite]: that one asks "did it move
 /// off the value it had", which cannot express "did it come back to 0x05" —
 /// and the self-check needs the second question, because the value it started
 /// from is the value it has to return to.
@@ -383,13 +454,13 @@ Future<String> _modeWriteOutcome(
   required bool skipAuth,
 }) async {
   const window = Duration(seconds: 6);
-  const step = Duration(milliseconds: 500);
-  final deadline = DateTime.now().add(window);
-  while (DateTime.now().isBefore(deadline)) {
-    await Future<void>.delayed(step);
-    if (tele.mode != before) {
+  switch (await watchModeAfterWrite(() => tele.mode, before, window)) {
+    case ModeWatch.changed:
       return l10n.modeChangedSnack(action, runStatusOf(l10n, tele.mode).label);
-    }
+    case ModeWatch.linkLost:
+      return l10n.modeLinkLostSnack(action);
+    case ModeWatch.unchanged:
+      break;
   }
   final status = runStatusOf(l10n, tele.mode).label;
   return skipAuth
@@ -397,24 +468,57 @@ Future<String> _modeWriteOutcome(
       : l10n.modeUnchangedSnack(action, status);
 }
 
-/// Polls `0x23` for up to [window] and returns whether it moved off [before].
-/// The bool form the release retry loop needs — [_modeWriteOutcome] is the
-/// message form used by the single-shot cut-off / anti-theft actions.
-Future<bool> _modeChangedWithin(
-    TelemetryController tele, int? before, Duration window) async {
+/// What watching `0x23` after a mode write found.
+@visibleForTesting
+enum ModeWatch {
+  /// The device reported a mode other than [before].
+  changed,
+
+  /// The window ran out with the device still reporting [before].
+  unchanged,
+
+  /// The live mode went from a value to nothing: the link dropped and the
+  /// telemetry controller cleared its sample. We stopped observing — that is
+  /// not an answer from the device, in either direction.
+  linkLost,
+}
+
+/// Polls `0x23` (via [read]) for up to [window] after a mode write.
+///
+/// 🔴 FB 2026.09.27/003: this used to be `mode != before`, and a disconnect
+/// clears the live sample to null — so a link dropped mid-watch (common on a
+/// reason-6 timeout ~0.7 s after the write) compared `null != 2`, returned
+/// "changed", and the app announced 「復電完成 —— 裝置現在回報：--」 for a pack
+/// that was still cut off. A null reading is never a change; it ends the watch
+/// as [ModeWatch.linkLost] when there was a value before, and is just "no
+/// reading yet" when there was not.
+///
+/// Shared by the release retry loop and [_modeWriteOutcome], so none of the
+/// three mode writes can report a disconnect as success.
+@visibleForTesting
+Future<ModeWatch> watchModeAfterWrite(
+    int? Function() read, int? before, Duration window) async {
   const step = Duration(milliseconds: 500);
-  final deadline = DateTime.now().add(window);
-  while (DateTime.now().isBefore(deadline)) {
+  final deadline = clock.now().add(window);
+  while (clock.now().isBefore(deadline)) {
     await Future<void>.delayed(step);
-    if (tele.mode != before) return true;
+    final now = read();
+    if (now == null) {
+      if (before != null) return ModeWatch.linkLost;
+      continue;
+    }
+    if (now != before) return ModeWatch.changed;
   }
-  return false;
+  return ModeWatch.unchanged;
 }
 
 /// Resolve release auth WITHOUT asking the user (design 0036 §4.2):
 ///   * `cb`    — from the device's own dealer code (selector 0x27), via
-///     [CommandBuilder.cbFromFieldCb] (the wire-confirmed 4-char rule:
-///     `01680102` → `0168` → 168 = 0x00A8).
+///     [CommandBuilder.cbFromFieldCb] (the 4-char rule: `01680102` → `0168` →
+///     168 = 0x00A8). ⚠️ Confirmed on `0168…` packs only; on a `0169…` pack the
+///     derived 0x00A9 never released (FB 2026.09.27/003). 復電 therefore leads
+///     with [kReleaseCbFirst] and uses this value only as the fallback — see
+///     [releaseAuthPlan].
 ///   * `pwSum` — the built-in [kDefaultCutoffPwSum]; the cut-off password is
 ///     assumed a dealer-wide constant (design 0036 §2, working assumption).
 /// Returns null when the dealer code has not arrived on the wire yet, so the
@@ -437,10 +541,57 @@ AuthCredentials? releaseAuthFromDealerCode(String? dealerCode) {
   }
 }
 
-/// Release retries the mode+auth ++ read-back pair this many times, watching
-/// `0x23` for [_releaseWindow] after each, before it reports (design 0036 §10).
+/// The credentials 復電 tries, in order (FB 2026.09.27/003, owner's ruling
+/// 2026-09-29): [kReleaseCbFirst] first, then — only if it differs — the `cb`
+/// derived from the device's own dealer code. Both carry [kDefaultCutoffPwSum].
+///
+/// For a `0168…` pack the two are the same value, so the plan has one entry and
+/// behaves exactly as before. Returns null when the dealer code has not arrived
+/// on the wire yet (same contract as [releaseAuthFromDealerCode]), so the caller
+/// still falls back to the manual auth dialog.
+@visibleForTesting
+List<AuthCredentials>? releaseAuthPlan(String? dealerCode) {
+  final derived = releaseAuthFromDealerCode(dealerCode);
+  if (derived == null) return null;
+  const first =
+      AuthCredentials(cb: kReleaseCbFirst, pwSum: kDefaultCutoffPwSum);
+  return [first, if (derived.cb != first.cb) derived];
+}
+
+/// Release retries the mode+auth ++ read-back pair this many times PER
+/// credential in the plan, watching `0x23` for [_releaseWindow] after each,
+/// before it moves on or reports (design 0036 §10).
 const int _releaseAttempts = 3;
 const Duration _releaseWindow = Duration(seconds: 3);
+
+/// Walks [plan] in order, sending each credential up to [perCredential] times
+/// and moving to the next one only after that many writes left `0x23`
+/// unchanged. Stops at the first [ModeWatch.changed], and on
+/// [ModeWatch.linkLost] (the next write would only throw on a dead link).
+///
+/// Returns the final watch result and how many writes actually went out, so
+/// the snack can report the real count (3 on a `0168…` pack, up to 6 otherwise).
+@visibleForTesting
+Future<({ModeWatch result, int writes})> runReleasePlan(
+  List<AuthCredentials> plan, {
+  required Future<void> Function(AuthCredentials creds) attempt,
+  required Future<ModeWatch> Function() watch,
+  int perCredential = _releaseAttempts,
+}) async {
+  var result = ModeWatch.unchanged;
+  var writes = 0;
+  for (final creds in plan) {
+    for (var i = 0; i < perCredential; i++) {
+      await attempt(creds);
+      writes++;
+      result = await watch();
+      if (result != ModeWatch.unchanged) {
+        return (result: result, writes: writes);
+      }
+    }
+  }
+  return (result: result, writes: writes);
+}
 
 /// 復電 — write "normal" (mode 0x00) bundled with the auth frame.
 ///
@@ -458,8 +609,14 @@ const Duration _releaseWindow = Duration(seconds: 3);
 /// and watches `0x23`. A single write was observed to be intermittent (an
 /// identical frame failed at 15:58 and succeeded at 16:17 on the same pack,
 /// FB 2026.08.04/003), so we retry the pair up to [_releaseAttempts] times
-/// before reporting. `0x23` back-reads make a wrong assumption (e.g. a different
-/// dealer's password) surface as "unchanged" rather than a false success.
+/// per credential before moving on or reporting. `0x23` back-reads make a wrong
+/// assumption (e.g. a different dealer's password) surface as "unchanged"
+/// rather than a false success.
+///
+/// Credentials come from [releaseAuthPlan]: [kReleaseCbFirst] three times,
+/// then — only on a pack whose dealer code derives a different `cb` — the
+/// derived value three times (FB 2026.09.27/003, owner's ruling 2026-09-29).
+/// ⚠️ Worst case is therefore six writes, about 20 s before the snack.
 ///
 /// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
 /// hence the control is no longer named after cut-off alone.
@@ -493,8 +650,8 @@ Future<void> releaseCutOff(
     ),
   );
   if (ok != true) return;
-  var creds = releaseAuthFromDealerCode(tele.dealerCode);
-  if (creds == null) {
+  var plan = releaseAuthPlan(tele.dealerCode);
+  if (plan == null) {
     // Dealer code not on the wire yet — let the owner supply auth manually.
     if (!context.mounted) return;
     final req = await showReleaseCutOffDialog(
@@ -502,21 +659,26 @@ Future<void> releaseCutOff(
       initialDealerCode: tele.dealerCode,
     );
     if (req == null || req.creds == null) return; // release requires auth (Q3)
-    creds = req.creds!;
+    plan = [req.creds!];
   }
   try {
-    var changed = false;
-    for (var i = 0; i < _releaseAttempts && !changed; i++) {
-      await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
-      await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
-      changed = await _modeChangedWithin(tele, before, _releaseWindow);
-    }
+    final run = await runReleasePlan(
+      plan,
+      attempt: (creds) async {
+        await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
+        await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
+      },
+      watch: () => watchModeAfterWrite(() => tele.mode, before, _releaseWindow),
+    );
     final status = runStatusOf(l10n, tele.mode).label;
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 4200),
-      content: Text(changed
-          ? l10n.modeChangedSnack(action, status)
-          : l10n.modeUnchangedRetriedSnack(action, _releaseAttempts, status)),
+      content: Text(switch (run.result) {
+        ModeWatch.changed => l10n.modeChangedSnack(action, status),
+        ModeWatch.linkLost => l10n.modeLinkLostSnack(action),
+        ModeWatch.unchanged =>
+          l10n.modeUnchangedRetriedSnack(action, run.writes, status),
+      }),
     ));
   } catch (e) {
     messenger.showSnackBar(

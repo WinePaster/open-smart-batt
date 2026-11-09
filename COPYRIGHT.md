@@ -113,7 +113,7 @@ copyrightable and are not restricted by the GPLv3.
 
 作為本專案唯一著作權人，**WinePaster** 依 GNU GPLv3 第 7 條，對本專案程式碼授予下列**附加許可（additional permission）**：
 
-> 允許將本程式（及其改作版本）透過**受管應用程式散佈平台**（包含但不限於 Apple App Store 與 Apple TestFlight，及功能相當之平台）散佈（convey），並得在該等平台對終端使用者施加之使用條款、Usage Rules 或數位版權管理（DRM）下散佈，**即使**該等條款在 GPL 第 6 條／第 10 條下原屬被禁止之「進一步限制（further restrictions）」。
+> 允許將本程式（及其改作版本）透過**受管應用程式散佈平台**（包含但不限於 Apple App Store、Apple TestFlight 與 Google Play，及功能相當之平台）散佈（convey），並得在該等平台對終端使用者施加之使用條款、Usage Rules 或數位版權管理（DRM）下散佈，**即使**該等條款在 GPL 第 6 條／第 10 條下原屬被禁止之「進一步限制（further restrictions）」。
 
 適用範圍與限制：
 
@@ -125,13 +125,14 @@ copyrightable and are not restricted by the GPLv3.
 **對未來貢獻者的提醒：** 為維持本例外之有效性，凡併入本專案之具著作權貢獻，均視為以「GPLv3＋本附加許可」相同條款提供；不同意者請勿提交（見 [`CONTRIBUTING.md`](./CONTRIBUTING.md)）。
 
 簽署 / Granted by：**WinePaster** · 2026-06-30
+（2026-10-18 增訂：平台列舉明文加入 Google Play。歷來 commit 作者 `Mitsusen_1`／`WinePaster`／`Paster` 皆為同一著作權人；`dependabot[bot]`／`github-actions[bot]` 的自動 commit 僅為相依版號與版號回寫，不構成具著作權之貢獻。）
 （授權相關問題請至 GitHub Issues 提出：<https://github.com/WinePaster/open-smart-batt/issues>）
 
 ### English
 
 As the sole copyright holder of this project, **WinePaster** grants the following **additional permission** to the project's code under section 7 of the GNU GPLv3:
 
-> You are permitted to convey the Program (and modified versions of it) through **managed application-distribution platforms** — including but not limited to the Apple App Store and Apple TestFlight, and equivalent platforms — and to do so under the terms of use, Usage Rules, or digital rights management (DRM) that such platforms impose on end users, **even though** those terms would otherwise be "further restrictions" prohibited by section 6 / section 10 of the GPL.
+> You are permitted to convey the Program (and modified versions of it) through **managed application-distribution platforms** — including but not limited to the Apple App Store, Apple TestFlight and Google Play, and equivalent platforms — and to do so under the terms of use, Usage Rules, or digital rights management (DRM) that such platforms impose on end users, **even though** those terms would otherwise be "further restrictions" prohibited by section 6 / section 10 of the GPL.
 
 Scope and limits:
 
@@ -143,6 +144,7 @@ Scope and limits:
 **Note to future contributors:** To keep this exception valid, any copyrightable contribution merged into this project is taken to be offered under the same "GPLv3 + this additional permission" terms; if you do not agree, please do not submit (see [`CONTRIBUTING.md`](./CONTRIBUTING.md)).
 
 Signed: **WinePaster** · 2026-06-30
+(Amended 2026-10-18: Google Play is now named explicitly. The commit authors `Mitsusen_1` / `WinePaster` / `Paster` are all the same copyright holder; the automated `dependabot[bot]` / `github-actions[bot]` commits only bump dependency or version numbers and are not copyrightable contributions.)
 (For licensing questions, please open a GitHub issue: <https://github.com/WinePaster/open-smart-batt/issues>)
 
 ---

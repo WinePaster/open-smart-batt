@@ -313,6 +313,13 @@ void main() {
             // real version-N file had, not merely the ones the assertions read.
             await db.execute('CREATE TABLE ${Db.tableSavedDevices} ('
                 "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
+            // …and from v24 it reaches `diag_log` (FB-110 realigns its
+            // AUTOINCREMENT high-water mark). Fourth growth, fourth reason,
+            // same pattern as the paragraph above. AUTOINCREMENT is load
+            // bearing here: without it SQLite keeps no `sqlite_sequence` row
+            // for the table and the migration would have nothing to align.
+            await db.execute('CREATE TABLE ${Db.tableDiagLog} ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT)');
           },
         ),
       );

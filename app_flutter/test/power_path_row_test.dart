@@ -317,7 +317,8 @@ void main() {
 
     testWidgets('charging reads bit3 only — bit5 set must NOT cross to PD',
         (tester) async {
-      // 0x22 = bit1 + bit5 (output-PD). While CHARGING we look at bit3 (clear).
+      // 0x22 = bit1 + bit5 (a non-5 V output contract). While CHARGING we look
+      // at bit3 (clear).
       await pumpRow(tester, portFlagsRaw: 0x22, current: -0.42, svlt: 9.0);
 
       expect(find.text('CHARGING'), findsOneWidget);

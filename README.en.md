@@ -113,12 +113,14 @@ are written **only** from `docs/`, never touching the original app.
   - **TestFlight**: requires the maintainer's **paid Apple Developer account**, passing
     Beta App Review; each build expires after 90 days; external testing is capped at
     10000 testers.
-  - **App Store**: requires full review + the $99/year account.
+  - **App Store**: ✅ **live (Taiwan only for now)**: [https://apps.apple.com/tw/app/opensmartbatt/id6785719483](https://apps.apple.com/tw/app/opensmartbatt/id6785719483). Requires full
+    review + the $99/year account (borne by the maintainer).
+  - TestFlight public link (for trying new builds): [https://testflight.apple.com/join/jt4dWjgn](https://testflight.apple.com/join/jt4dWjgn).
   - A free Apple ID local sideload lasts only 7 days and requires **the user** to own a
     Mac + Xcode to re-sign.
-- In short: **an owner with only an iPhone and no Mac/Apple account has no directly
-  installable path on iOS.** Set expectations accordingly — do not assume parity with the
-  Android APK flow. See [`docs/VERSIONING.md`](./docs/VERSIONING.md) for the iOS version /
+- In short: **iPhone owners in Taiwan can install straight from the App Store**; elsewhere,
+  use the TestFlight public link above for now. Only building from source needs a
+  Mac + Xcode. See [`docs/VERSIONING.md`](./docs/VERSIONING.md) for the iOS version /
   IPA notes.
 
 ## Safety note
@@ -137,6 +139,12 @@ derivative or a modified APK requires releasing it under GPLv3 too — keeping t
 community self-help tool open for the community and preventing it from being
 re-closed or commercialized. The protocol docs (`docs/`) are functional facts, not
 subject to copyright.
+
+> **App Store / Google Play distribution:** plain GPLv3 conflicts with the usage rules /
+> DRM that app stores impose on end users, so the sole copyright holder grants an
+> **additional permission under GPLv3 §7** allowing binaries to be conveyed through the
+> Apple App Store, TestFlight, Google Play and equivalent platforms. The full source stays
+> public under GPLv3. See "App Store Distribution Exception" in [`COPYRIGHT.md`](./COPYRIGHT.md).
 
 ## Protocol documentation
 

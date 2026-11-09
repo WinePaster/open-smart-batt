@@ -223,10 +223,13 @@ void main() {
       });
     }
 
-    testWidgets('🔴 B\'s live 0x2B is NOT applied to A\'s page', (tester) async {
-      // The whole of design 0079 §0.3 in one assertion. Before P2 the history
-      // list read `tele.warnOv` — whoever is on the link — so A's stored rows
-      // were judged against B's limits.
+    // 🔵 2026-11-09 (design 0098) — ~~'B\'s live 0x2B is NOT applied to A\'s
+    // page'~~: `0x2B` is no longer read at all, so the design-0079 §0.3 gate is
+    // now asserted on the one thing a live sample still contributes — its
+    // device-type byte. B is a power bank on the link; A's page must not lose
+    // its voltage rows because of it.
+    testWidgets('🔴 B\'s live device type is NOT applied to A\'s page',
+        (tester) async {
       await boot(tester, const [
         SavedDevice(id: _unitA, alias: 'A', productClass: ProductClass.smartBattery),
         SavedDevice(id: _unitB, alias: 'B', productClass: ProductClass.smartBattery),
@@ -234,12 +237,12 @@ void main() {
       final t = alertThresholdsFor(
         devices,
         _unitA,
-        liveSample: _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 12.0, warnOt: 80),
+        liveSample: _sample(deviceType: 0x22),
         liveDeviceId: _unitB,
       );
-      expect(t.ov.isSet, isFalse,
-          reason: 'that 15.0 belongs to unit B and to nothing else');
-      expect(t.uv.isSet, isFalse);
+      expect(t.ov.value, 15.0,
+          reason: 'that 0x22 belongs to unit B; A is still a battery');
+      expect(t.uv.value, 11.5);
     });
 
     testWidgets('…and IS applied to B\'s own page', (tester) async {
@@ -249,14 +252,14 @@ void main() {
       final t = alertThresholdsFor(
         devices,
         _unitB,
-        liveSample: _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 12.0, warnOt: 80),
+        liveSample: _sample(deviceType: 0x22),
         liveDeviceId: _unitB,
       );
-      expect(t.ov.value, 15.0);
-      expect(t.ov.source, ThresholdSource.device);
+      expect(t.ov.isSet, isFalse, reason: 'the live 0x22 mutes voltage');
+      expect(t.ot.value, 50);
     });
 
-    testWidgets('🔴 a stored alert_uv is IGNORED — the wire wins (FB-100)',
+    testWidgets('🔴 a stored alert_uv AND a live 0x2B are both IGNORED',
         (tester) async {
       // 🔵 **2026-08-25 — this test was inverted, not deleted.** ~~'the user\'s
       // value outranks the wire, per FIELD'~~ asserted `t.uv.value == 12.4`.
@@ -278,10 +281,12 @@ void main() {
         liveSample: _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 11.0, warnOt: 80),
         liveDeviceId: _unitB,
       );
-      expect(t.uv.value, 11.0, reason: 'the unit\'s own 0x2B, not the 12.4');
-      expect(t.uv.source, ThresholdSource.device);
-      expect(t.ov.source, ThresholdSource.device);
-      expect(t.ot.source, ThresholdSource.device);
+      // 🔵 2026-11-09 (design 0098): ~~the unit's own 0x2B (11.0) wins~~ — the
+      // app row wins over both the dormant column and the wire.
+      expect(t.uv.value, 11.5, reason: 'not the stored 12.4, not the 0x2B 11.0');
+      for (final f in [t.ov, t.uv, t.ot]) {
+        expect(f.source, ThresholdSource.appDefault);
+      }
     });
 
     testWidgets('an OFFLINE saved unit still resolves from ~~① and~~ ③',
@@ -303,7 +308,7 @@ void main() {
       final t = alertThresholdsFor(devices, _unitA);
       expect(t.uv.value, 11.5, reason: 'the capacitor row, not the stored 11.8');
       expect(t.uv.source, ThresholdSource.appDefault);
-      expect(t.ov.value, 14.8);
+      expect(t.ov.value, 15.0, reason: 'design 0098 (was 14.8)');
       expect(t.ov.source, ThresholdSource.appDefault);
     });
 
@@ -413,7 +418,8 @@ void main() {
 
     tearDown(() async => services.dispose());
 
-    testWidgets('state A — every row comes from the device', (tester) async {
+    testWidgets('state A — the app\'s three rows, no badges (design 0098)',
+        (tester) async {
       await boot(tester, const [
         SavedDevice(
             id: _unitA, alias: '阿福的機車', productClass: ProductClass.smartBattery),
@@ -429,10 +435,14 @@ void main() {
               warnUv: 11.0,
               warnOt: 80));
 
-      expect(find.text('Device'), findsNWidgets(3),
-          reason: 'a unit that reported 0x2B answers all three fields itself');
+      // 🔵 2026-11-09 — ~~three 「Device」 badges~~: the per-row badge is gone
+      // (Q3) and the reported 0x2B (UV 11.0) is not shown anywhere.
+      expect(find.text('Device'), findsNothing);
+      expect(find.text('App default'), findsNothing);
       expect(find.text('15.00 V'), findsOneWidget);
-      expect(find.text('11.00 V'), findsOneWidget);
+      expect(find.text('11.50 V'), findsOneWidget);
+      expect(find.text('11.00 V'), findsNothing,
+          reason: 'the unit\'s own 0x2B UV is a protection parameter');
       expect(find.text('80 °C'), findsOneWidget);
       expect(find.text('Custom'), findsNothing);
       // …and none of the two "no warnings" screens.
@@ -470,12 +480,12 @@ void main() {
               warnOt: 80));
 
       expect(find.text('Custom'), findsNothing);
-      expect(find.text('Device'), findsNWidgets(3),
-          reason: 'all three rows come from the wire now');
+      expect(find.text('Device'), findsNothing);
       expect(find.text('12.40 V'), findsNothing, reason: 'the stored value');
-      expect(find.text('11.00 V'), findsOneWidget, reason: 'the device\'s own');
+      expect(find.text('11.00 V'), findsNothing, reason: 'the unit\'s 0x2B');
+      expect(find.text('11.50 V'), findsOneWidget, reason: 'the app\'s row');
       expect(find.text('15.00 V'), findsOneWidget,
-          reason: 'the OV row shows the wire\'s 15.0, not the stored 15.5');
+          reason: 'the app\'s 15.0, not the stored 15.5');
       expect(find.byTooltip('Restore'), findsNothing);
       // §6.2's 「離目前讀數過近」 notice went with the values that could be too
       // near — 12.62 against a device-reported 11.0 is hardware, not a mistake.
@@ -485,13 +495,17 @@ void main() {
       // nothing. Asserted by tapping rather than by counting `InkWell`s, since
       // the page has other legitimate ones (the switch rows) and a count would
       // pass for the wrong reason the moment one of those moved.
-      await tester.tap(find.text('11.00 V'));
+      await tester.tap(find.text('11.50 V'));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('11.00 V'), findsOneWidget, reason: 'still on the page');
+      expect(find.text('11.50 V'), findsOneWidget, reason: 'still on the page');
     });
 
-    testWidgets('the read-only note says the device is never changed',
+    // 🔵 2026-11-09 (design 0098 Q3) — ~~'the read-only note says the device is
+    // never changed'~~. The note claimed the limits were the device's factory
+    // settings, which stopped being true; the owner ruled it removed with
+    // nothing in its place (「不用補寫說明」). Asserted as an absence.
+    testWidgets('no read-only note and no source badge (design 0098 Q3)',
         (tester) async {
       // 🔑 The half of FB-100 that is not a deletion. The dealer read the
       // editable rows as the app writing the hardware's protection points, and
@@ -508,7 +522,10 @@ void main() {
       await feed(tester,
           _sample(deviceType: 0x02, warnOv: 15.0, warnUv: 11.0, warnOt: 80));
 
-      expect(find.textContaining('never changes the device'), findsOneWidget);
+      expect(find.textContaining('never changes the device'), findsNothing);
+      expect(find.textContaining('factory'), findsNothing);
+      expect(find.text('Device'), findsNothing);
+      expect(find.text('App default'), findsNothing);
     });
 
     testWidgets('🔴 state C — an unrecognised device type disables the page',
@@ -587,29 +604,29 @@ void main() {
       expect(find.text('Over-temperature'), findsOneWidget);
       expect(find.text('Over-voltage'), findsNothing);
       expect(find.text('Under-voltage'), findsNothing);
-      // 50 °C is the one number in the table nobody measured — the badge is
-      // required to say so (§3.2.2).
-      expect(find.text('App default'), findsOneWidget);
+      // 🔵 2026-11-09 (design 0098 Q3) — ~~the 「App default」 badge~~ is gone.
+      expect(find.text('App default'), findsNothing);
       expect(find.text('50 °C'), findsOneWidget);
       expect(find.textContaining('Why is there no voltage warning'),
           findsOneWidget);
     });
 
-    testWidgets('an offline unit says "known once connected", not "no basis"',
+    // 🔵 2026-11-09 (design 0098) — ~~'an offline unit says "known once
+    // connected"'~~. §7.5.2's gap closed by construction: the thresholds are
+    // the app's, so an offline saved unit has all of them.
+    testWidgets('an offline unit shows the app\'s numbers, nothing to wait for',
         (tester) async {
-      // §7.5.2's known gap. `0x2B` is persisted nowhere, so an offline unit's
-      // factory limits are UNKNOWN — and the alternative (caching the last
-      // triple against the id) is what the design refused, because a stale
-      // factory limit is indistinguishable from a live one on screen.
       await boot(tester, const [
         SavedDevice(id: _unitA, alias: 'A', productClass: ProductClass.smartBattery),
       ]);
       await pump(tester, const AlertSettingsPage(deviceId: _unitA));
 
       expect(find.textContaining('only readable while connected'),
-          findsOneWidget);
-      expect(find.text('No basis'), findsNothing);
-      expect(find.text('Known once connected'), findsWidgets);
+          findsNothing);
+      expect(find.text('Known once connected'), findsNothing);
+      expect(find.text('15.00 V'), findsOneWidget);
+      expect(find.text('11.50 V'), findsOneWidget);
+      expect(find.text('80 °C'), findsOneWidget);
     });
 
     testWidgets('muting for an hour writes an INSTANT, and it persists',

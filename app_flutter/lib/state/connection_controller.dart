@@ -26,7 +26,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/ble.dart';
+import '../config/app_config.dart';
 import '../data/data.dart';
+import '../demo/demo.dart';
 import '../models/models.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -174,7 +176,12 @@ class ConnectionController extends ChangeNotifier {
     MonitorService? monitor,
     PendingWrites? pending,
     AutoConnectArmRepo? autoConnectArm,
+    AppConfig config = AppConfig.open,
   }) {
+    // Before any subscription below, so no link event can read an unset seed.
+    _notifyTitle = config.appName;
+    _notifyTitleConnecting = config.appName;
+    _notifyTitleStalled = config.appName;
     _settings = settings;
     _devices = devices;
     _facts = facts;
@@ -223,7 +230,10 @@ class ConnectionController extends ChangeNotifier {
   /// up throughout, so nothing reports a disconnect and the readings simply
   /// stop, then arrive as a backlog burst when the process thaws.
   void _updateMonitor() {
-    final shouldRun = isOnline && _settings.backgroundMonitoring;
+    // design 0097 §2.2: no "connected" notification for a unit that does not
+    // exist, and nothing to keep alive in the background.
+    final shouldRun =
+        isOnline && _settings.backgroundMonitoring && !_ble.isDemoLink;
     if (shouldRun == _monitorRunning) return;
     _monitorRunning = shouldRun;
     if (shouldRun) {
@@ -408,9 +418,13 @@ class ConnectionController extends ChangeNotifier {
   late final MonitorService _monitor;
   bool _monitorRunning = false;
   DateTime? _lastNotifyAt;
-  String _notifyTitle = 'OpenSmartBatt';
-  String _notifyTitleConnecting = 'OpenSmartBatt';
-  String _notifyTitleStalled = 'OpenSmartBatt';
+  /// Pre-l10n seeds for the three ongoing-notification titles, replaced by
+  /// [setNotificationStrings] on the first frame. Seeded from the injected
+  /// [AppConfig] rather than written here (FB-109, extended): a pro build must
+  /// not name itself after the open one, not even for one frame.
+  late String _notifyTitle;
+  late String _notifyTitleConnecting;
+  late String _notifyTitleStalled;
   String _notifyBody = '';
   String _notifyStopLabel = '';
   String _notifyChannelName = '';
@@ -1004,6 +1018,76 @@ class ConnectionController extends ChangeNotifier {
       (_setupFailuresRequestedId != null &&
           _setupFailuresRequestedId == deviceId);
 
+  /// FB-113 — a ONE-SHOT permission to try the stalled unit once more.
+  ///
+  /// 🔴 **This is deliberately not a reset of [_setupFailuresSinceReady].**
+  /// `connect()` at the `_setupFailuresDeviceId != deviceId` guard explains why
+  /// the run's memory survives a manual retry: `2026.08.03/003` ran fourteen
+  /// minutes with thirteen connections, zero `ready`, and `auto-reconnect gave
+  /// up` **zero times**, because twelve taps kept the count from ever reaching
+  /// three. A gate that zeroed the count would reopen exactly that hole, only
+  /// with us holding the reset button instead of the user.
+  ///
+  /// So the two facts are kept apart: the run remembers (cleared only by
+  /// `ready` / `forgetDevice` / switching unit), and this says whether we may
+  /// spend one more attempt right now. Spending it clears the flag; if that
+  /// attempt also comes up silent, `:2445` increments as usual and the stall
+  /// stands.
+  /// 🔴 **Spent, not "armed".** The first shape of this was a bool set by the
+  /// trigger and cleared by the attempt — which deduped nothing, because arming
+  /// and spending happen in the same instant. Coming back to the devices page
+  /// raises `resumed` AND a scan back to back, so that version fired twice for
+  /// one user action. The test `one-shot:` is that bug.
+  ///
+  /// So the flag records that this stall run has already had its automatic
+  /// attempt. It is cleared by:
+  ///   - the app going to the background — the next foreground visit is a new
+  ///     user moment, and "切出去再回來會自動再試" is what the card now promises;
+  ///   - `ready` / `forgetDevice` / switching unit, i.e. wherever the run's own
+  ///     memory is cleared, because then there is no run left to have spent.
+  ///
+  /// ⛔ It is deliberately NOT cleared by a new failure: that would let a
+  /// streaming scan (results arrive repeatedly while the page is open) fire an
+  /// attempt, count the failure, and immediately qualify for another.
+  bool _stallRetrySpent = false;
+
+  /// FB-113 — the app came back to the foreground, or a scan saw the unit.
+  ///
+  /// ⚠️ **Both triggers are foreground-only, and that is the honest limit of
+  /// this feature.** `startScan()` is called by the devices page and by the
+  /// disconnected card's button — nothing else — and `setDetailVisible(true)`
+  /// actively stops scanning. `UIBackgroundModes = bluetooth-central` in
+  /// Info.plist keeps an EXISTING link alive (design 0047); it does not scan.
+  /// So this fixes "the app never tries again on its own", NOT "the history has
+  /// a hole while the app is in the background". In `2026.09.04/003` the app
+  /// was backgrounded for the whole 22-minute gap: this would have saved the
+  /// user one tap, not the gap. ⛔ Do not describe FB-113 as reducing data loss.
+  void _armStallRetry(String reason) {
+    if (!_stalledRun) return;
+    if (_stallRetrySpent) return;
+    final id = _setupFailuresDeviceId;
+    if (id == null) return;
+    if (!_settings.autoReconnect) return;
+    // The user's own disconnect outranks any evidence we have.
+    if (_manualDisconnect) return;
+    if (_link != BleLinkState.disconnected) return;
+    _stallRetrySpent = true;
+    unawaited(_fireStallRetry(id, reason));
+  }
+
+  /// Spend the one-shot permission opened by [_armStallRetry].
+  ///
+  /// The `failures stay` half of the log line is not decoration: it is what
+  /// makes the doc-level promise ("the run's memory is untouched") checkable
+  /// from a capture, by the reader who was not here when it was written.
+  Future<void> _fireStallRetry(String id, String reason) async {
+    _event(
+        'stall retry armed: reason=$reason '
+        '(failures stay $_setupFailuresSinceReady)',
+        deviceId: id);
+    await connect(id, autoTrigger: 'stall-rearm/$reason');
+  }
+
   /// How many consecutive setups have failed FOR [deviceId] — shown to the user,
   /// so that "we really did try" is a number and not a claim.
   ///
@@ -1196,7 +1280,13 @@ class ConnectionController extends ChangeNotifier {
     // Newest first, and that ordering is load-bearing: one unit can accumulate
     // `device_unreachable` and then `connect_failed`, and the screen has to
     // show what happened LAST, not what happened first.
+    // design 0097: a demo unit needs no radio, so "Bluetooth is off" is not an
+    // error OF it — without this, a reviewer with Bluetooth off would see the
+    // demo refuse to open (the scan sets the radio slot, and every unit reads
+    // it).
+    final demo = isDemoDeviceId(deviceId);
     for (final e in _errors.values.toList().reversed) {
+      if (demo && e.deviceId == null) continue;
       final code = e.codeFor(deviceId);
       if (code != null) return code;
     }
@@ -1321,6 +1411,7 @@ class ConnectionController extends ChangeNotifier {
     if (_ownsStallRun(deviceId)) {
       _setupFailuresSinceReady = 0;
       _reachFailuresSinceReady = 0; // design 0087 — same run, same clearing point
+      _stallRetrySpent = false; // FB-113 — no run left to have spent
       _setupFailuresDeviceId = null;
       _setupFailuresRequestedId = null;
       changed = true;
@@ -1493,6 +1584,15 @@ class ConnectionController extends ChangeNotifier {
   /// query and cannot change behaviour.
   void logAppLifecycle(String state) {
     _event('app $state');
+    // FB-113 (A). After the note, so the log reads in the order things
+    // happened; before the keep-alive re-pacing, which is about a LIVE link and
+    // has nothing to say about a stalled one.
+    if (state == 'resumed') {
+      _armStallRetry('resumed');
+    } else {
+      // Going away is what makes the next return a new moment.
+      _stallRetrySpent = false;
+    }
     final line = _bgWindow.onLifecycle(state,
         link: BackgroundWindowTracker.linkToken(_link), now: DateTime.now());
     if (line != null) _event(line);
@@ -1782,8 +1882,26 @@ class ConnectionController extends ChangeNotifier {
   /// the identity yardstick ([_expectedMac]) is read from the record the USER
   /// asked for rather than from the id we happened to dial, and a failure is
   /// filed under that id as well ([ConnectionError.requestedId], FB-87).
+  /// [autoTrigger] marks a connect the APP decided to make, not the user.
+  ///
+  /// FB-113. Two things hang off it and both are about not lying:
+  ///
+  /// 1. `connect → X` is read corpus-wide as "the user pressed connect" —
+  ///    `docs/todo-p1.md:84` reads whole batches that way, and the 2026.09.04/003
+  ///    analysis identified the end of a 22-minute gap by exactly that line. An
+  ///    automatic connect that wrote the same line would delete that signal from
+  ///    every future log. So the trigger is appended to the note rather than the
+  ///    line being reused as-is: the `connect → <hash>` prefix every existing
+  ///    reader parses is untouched, and what follows says who decided.
+  /// 2. [_manualDisconnect] is NOT cleared. A user who unplugged by hand has
+  ///    said what they want; the stall gate refuses to fire while that flag is
+  ///    set (see [_fireStallRetry]), and clearing it here would let a later
+  ///    automatic path undo the user's own decision.
   Future<void> connect(String deviceId,
-      {Duration? timeout, ProductClass? seedClass, String? requestedId}) async {
+      {Duration? timeout,
+      ProductClass? seedClass,
+      String? requestedId,
+      String? autoTrigger}) async {
     _reconnectTimer?.cancel();
     // FB-53: a manual connect supersedes an armed autoConnect and its deadline
     // — the user has just restated, by hand, what they want to be connected to.
@@ -1803,6 +1921,7 @@ class ConnectionController extends ChangeNotifier {
     if (_setupFailuresDeviceId != deviceId) {
       _setupFailuresSinceReady = 0;
       _reachFailuresSinceReady = 0; // design 0087 — switching device clears both
+      _stallRetrySpent = false; // FB-113 — no run left to have spent
       _setupFailuresDeviceId = deviceId;
     }
     // FB-87 ①: in the same breath, always — including when the id did not
@@ -1810,7 +1929,11 @@ class ConnectionController extends ChangeNotifier {
     // and a leftover requested id would attribute this run to a page the user
     // is no longer on.
     _setupFailuresRequestedId = requestedId == deviceId ? null : requestedId;
-    _manualDisconnect = false;
+    // FB-113: an automatic connect must not overwrite the user's own decision
+    // to stay disconnected. The gate already refuses to fire when this is set,
+    // so this guard is the second of the two — cheap, and it means a future
+    // caller that forgets the gate cannot silently undo a manual disconnect.
+    if (autoTrigger == null) _manualDisconnect = false;
     _desiredDeviceId = deviceId;
     // design 0068 (C): who we were ASKED for, and what that record says this
     // unit's address is. Read from the requested record and not from
@@ -1841,8 +1964,15 @@ class ConnectionController extends ChangeNotifier {
     // The id is hashed in the TEXT but kept raw in the `deviceId` column: the
     // column is the scoping key and is hashed on its way out (`_sectionLabel`),
     // whereas the note is rendered verbatim. On Android the raw id is a MAC.
-    _event('connect → ${shortDeviceHash(deviceId)}', deviceId: deviceId);
-    final ok = await _ble.ensurePermissions();
+    _event(
+        'connect → ${shortDeviceHash(deviceId)}'
+        '${autoTrigger == null ? '' : ' (auto: $autoTrigger)'}',
+        deviceId: deviceId);
+    // design 0097: a demo unit needs no radio, so neither the Bluetooth
+    // permission nor the adapter state may stand in its way — a reviewer who
+    // declined the permission must still be able to see the app work.
+    final isDemo = isDemoDeviceId(deviceId);
+    final ok = isDemo || await _ble.ensurePermissions();
     if (!ok) {
       _setError('permission_denied',
           deviceId: deviceId, requestedId: _requestedDeviceId);
@@ -1859,7 +1989,7 @@ class ConnectionController extends ChangeNotifier {
     // have a capture for. Returning rather than throwing matches the
     // permission branch directly above; the device sheet already shows a
     // "Bluetooth is off" note driven by [isAdapterOn].
-    if (adapterBlocksConnect(_adapter)) {
+    if (!isDemo && adapterBlocksConnect(_adapter)) {
       // Non-null by construction — the guard above means the adapter is off or
       // unauthorized and the classifier answers both — but not asserted with
       // `!`: a crash would be a worse way to learn otherwise than a blank line.
@@ -2151,8 +2281,7 @@ class ConnectionController extends ChangeNotifier {
   /// EXPERIMENTAL — send ONLY the mode sub-frame, skipping the auth frame.
   /// Unproven: the device MAY ignore commands without auth. Provided as a
   /// car-side fallback to test whether auth is actually required.
-  Future<void> switchModeOnly(int mode) =>
-      writeCommand(const CommandBuilder().modeSet(mode));
+  Future<void> switchModeOnly(int mode) => _ble.modeSet(mode);
 
   /// EXPERIMENTAL release with no auth (mode 0x00 only). See [switchModeOnly].
   Future<void> releaseCutOffModeOnly() => switchModeOnly(ModeArg.unlock);
@@ -2163,32 +2292,14 @@ class ConnectionController extends ChangeNotifier {
   /// capture); a lone mode+auth write was observed to be intermittent
   /// (FB 2026.08.04/003), so [releaseCutOff] now pairs each write with this poll
   /// to match the known-good sequence (design 0036 §10).
-  Future<void> pollMode() =>
-      writeCommand(const CommandBuilder().modeReadBack());
+  Future<void> pollMode() => _ble.modeReadBack();
 
   /// Standalone verify-auth (9-byte auth frame).
   Future<void> sendAuth({required int cb, required int pwSum}) =>
       _ble.sendAuth(cb: cb, pwSum: pwSum);
 
-  /// Set warning thresholds in physical units. [trailing] null preserves the
-  /// device's last-read UT byte (see [BleService.setThresholds]).
-  Future<void> setThresholds({
-    required double ovVolts,
-    required double uvVolts,
-    required double otCelsius,
-    int? trailing,
-  }) =>
-      _ble.setThresholds(
-        ovVolts: ovVolts,
-        uvVolts: uvVolts,
-        otCelsius: otCelsius,
-        trailing: trailing,
-      );
-
-  /// Set warning thresholds from raw register bytes.
-  Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-          {int? trailing}) =>
-      _ble.setThresholdsRaw(ovByte, uvByte, otByte, trailing: trailing);
+  // ⛔ `setThresholds` / `setThresholdsRaw` deleted 2026-11-09 (design 0098
+  // Q2) — this app never writes `0x2B`. See `BleService`.
 
   /// Send one keep-alive byte on demand.
   Future<void> pokeKeepAlive() => _ble.pokeKeepAlive();
@@ -2354,6 +2465,7 @@ class ConnectionController extends ChangeNotifier {
       // connect, not a new attempt — coming up is the only evidence that the
       // run of failures has actually ended.
       _setupFailuresSinceReady = 0;
+      _stallRetrySpent = false; // FB-113 — the run is over, so is its attempt
       // design 0087: `ready` is the only evidence the run of unreachable
       // attempts has actually ended, exactly as for the setup run above.
       _reachFailuresSinceReady = 0;
@@ -2513,6 +2625,7 @@ class ConnectionController extends ChangeNotifier {
     _reconnectTimer?.cancel();
     final id = _desiredDeviceId;
     if (id == null) return;
+    if (isDemoDeviceId(id)) return; // design 0097 §2.2 — nothing for the OS to find
     _autoConnectGaveUp = false;
     _event('auto-reconnect: autoConnect armed (iOS)');
     // FB-53: and give it a deadline. See [autoConnectWatchdog] for why an
@@ -3434,6 +3547,13 @@ class ConnectionController extends ChangeNotifier {
 
   void _onScanResults(List<DiscoveredDevice> results) {
     _scanResults = results;
+    // FB-113 (B). Compared with [_ownsStallRun] rather than against
+    // `_setupFailuresDeviceId` directly: after an iOS rebind the same unit is
+    // advertising under the id the run was REQUESTED for, not the one it was
+    // counted under — the asymmetry FB-87 ① cost us once already.
+    if (_stalledRun && results.any((r) => _ownsStallRun(r.id))) {
+      _armStallRetry('scan');
+    }
     notifyListeners();
   }
 

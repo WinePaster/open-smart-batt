@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../demo/demo_device.dart';
 import '../models/models.dart';
 // FB-79. The one thing this layer knows about the MEANING of a stored byte:
 // which `mode` codes are the two pack events. It was already known here —
@@ -1371,8 +1372,10 @@ class HistoryRepo {
     final (scopeClause, scopeArgs) =
         _scope(since: since, until: until, deviceId: deviceId);
     final pin = await _maxRowId();
-    final where =
-        scopeClause == null ? 'id <= ?' : '$scopeClause AND id <= ?';
+    // design 0097 §2.3 ①: a demo unit's rows never leave the phone in a file.
+    final where = scopeClause == null
+        ? 'id <= ? AND $kNotDemoRowSql'
+        : '$scopeClause AND id <= ? AND $kNotDemoRowSql';
     final args = <Object?>[...?scopeArgs, pin];
     final byMinute = granularity == HistoryGranularity.minute;
     // Aligned to the viewer's local minute, the same expression the list and
@@ -1456,7 +1459,13 @@ class HistoryRepo {
               .toIso8601String(),
           for (final c in csvColumns.skip(1))
             if (c == 'device')
-              (id == null ? null : labelFor?.call(id))
+              // A demo id is printed raw for the reason `LogRepo._sectionLabel`
+              // gives (design 0097); a real one only ever through [labelFor].
+              (id == null
+                  ? null
+                  : isDemoDeviceId(id)
+                      ? id
+                      : labelFor?.call(id))
             else if (c == 'ampere' && isCapacitor)
               null // see [classFor]: the device cannot measure current
             else
@@ -1589,7 +1598,11 @@ class HistoryRepo {
   }) async {
     final (clause, scopeArgs) =
         _scope(since: since, until: until, deviceId: deviceId);
-    final where = clause == null ? '' : 'WHERE $clause';
+    // design 0097 review: describes what an export CONTAINS, and an export
+    // never contains demo rows (see [_exportCsvStream]).
+    final where = clause == null
+        ? 'WHERE $kNotDemoRowSql'
+        : 'WHERE $clause AND $kNotDemoRowSql';
     final rows = await _db.rawQuery(
       'SELECT DISTINCT bucket_s AS b FROM ${Db.tableHistory} $where '
       'ORDER BY b ASC',
@@ -1654,6 +1667,20 @@ class HistoryRepo {
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
+  /// Delete demo rows (design 0097 §2.3 ②): every demo unit's at startup, or
+  /// just [deviceId]'s when that demo link ends — so ending demo A cannot wipe
+  /// the seed demo B has just written. Returns the number of rows removed.
+  Future<int> purgeDemoRows({String? deviceId}) {
+    if (deviceId == null) {
+      return _db.delete(Db.tableHistory, where: kDemoRowSql);
+    }
+    if (!isDemoDeviceId(deviceId)) {
+      throw ArgumentError.value(deviceId, 'deviceId', 'not a demo unit');
+    }
+    return _db.delete(Db.tableHistory,
+        where: 'device_id = ?', whereArgs: <Object?>[deviceId]);
+  }
+
   /// Rows in range belonging to some OTHER unit than [deviceId] — the other
   /// half of the same silent loss [countUnattributed] covers.
   ///
@@ -1680,7 +1707,9 @@ class HistoryRepo {
   /// visibly so: every excluded row lands in exactly one of the two.
   Future<int> countOtherDevices(String deviceId,
       {DateTime? since, DateTime? until}) async {
-    final where = <String>['device_id IS NOT NULL', 'device_id != ?'];
+    // A demo unit's rows are not "from another device" — the export never
+    // carries them (design 0097), so they must not be reported as dropped.
+    final where = <String>['device_id IS NOT NULL', 'device_id != ?', kNotDemoRowSql];
     final args = <Object?>[deviceId];
     if (since != null) {
       where.add('timestamp >= ?');

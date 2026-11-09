@@ -175,6 +175,16 @@ void main() {
             // shape nothing guarantees.
             await db.execute("CREATE TABLE saved_devices ("
                 "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
+            // …and a stub `diag_log`, because from v24 the chain reaches that
+            // one too (FB-110 realigns its AUTOINCREMENT high-water mark).
+            // FOURTH time this stub list has grown, for the fourth reason, and
+            // the pattern the v16 file already wrote down holds again: a
+            // fixture claiming to be version N must carry every table a real
+            // version-N file had, not merely the ones the assertions read. The
+            // `id` column has to be AUTOINCREMENT or there is no high-water
+            // mark for the migration to find.
+            await db.execute('CREATE TABLE diag_log ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT)');
           },
         ),
       );
@@ -238,6 +248,16 @@ void main() {
             // shape nothing guarantees.
             await db.execute("CREATE TABLE saved_devices ("
                 "id TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '')");
+            // …and a stub `diag_log`, because from v24 the chain reaches that
+            // one too (FB-110 realigns its AUTOINCREMENT high-water mark).
+            // FOURTH time this stub list has grown, for the fourth reason, and
+            // the pattern the v16 file already wrote down holds again: a
+            // fixture claiming to be version N must carry every table a real
+            // version-N file had, not merely the ones the assertions read. The
+            // `id` column has to be AUTOINCREMENT or there is no high-water
+            // mark for the migration to find.
+            await db.execute('CREATE TABLE diag_log ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT)');
           },
         ),
       );

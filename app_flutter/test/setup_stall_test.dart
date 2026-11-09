@@ -480,15 +480,25 @@ void main() {
     testWidgets('the instruction is the one with field evidence behind it',
         (tester) async {
       // design 0031 Q4, ruled 2026-08-03. Killing the app is what the reporter
-      // did unprompted and it worked; waiting is what had already been tried
-      // for forty minutes. Telling someone to wait would be worse than silence.
+      // did unprompted and it worked, so that instruction stays.
+      //
+      // Rewritten for FB-113 / design 0094: the old copy also said waiting is
+      // useless, citing a forty-minute run. That became false the moment we
+      // added the one-shot re-arm — coming back to the foreground now DOES
+      // retry. Asserting on '40 minutes' would pin copy that lies.
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       expect(l10n.disconnectedStalledHint.toLowerCase(), contains('close'));
-      expect(l10n.disconnectedStalledHint, contains('40 minutes'));
+      expect(l10n.disconnectedStalledHint.toLowerCase(), contains('back'),
+          reason: 'the re-arm must be stated, or the user still kills the app '
+              'when they no longer have to');
+      expect(l10n.disconnectedStalledHint, isNot(contains('40 minutes')),
+          reason: 'FB-113 made that claim false');
 
       final zh = await AppLocalizations.delegate.load(const Locale('zh'));
-      expect(zh.disconnectedStalledHint, contains('完全關掉'));
-      expect(zh.disconnectedStalledHint, contains('40 分鐘'));
+      expect(zh.disconnectedStalledHint, contains('關掉'));
+      expect(zh.disconnectedStalledHint, contains('自動再試'));
+      expect(zh.disconnectedStalledHint, isNot(contains('乾等沒有用')));
+      expect(zh.disconnectedStalledHint, isNot(contains('40 分鐘')));
     });
   });
 

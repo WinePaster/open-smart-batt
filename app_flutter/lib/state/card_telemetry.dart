@@ -83,7 +83,9 @@ abstract class CardTelemetry {
   /// PD input negotiated (b7 bit3, one-way).
   bool? get isPdIn;
 
-  /// PD output (b7 bit5).
+  /// A **non-5 V output contract** (b7 bit5) — narrowed from "PD output" on
+  /// 2026-09-04, because the protocol was never observed. See
+  /// [TelemetrySample.isPdOut].
   bool? get isPdOut;
 
   /// The raw flag byte, for the design 0035 §4.8 hook. Never shown.

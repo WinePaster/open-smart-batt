@@ -69,7 +69,7 @@ Signed-off-by: Your Name <you@example.com>
 
 ## 行為與授權 / Conduct and license
 
-- 貢獻即表示你同意你的貢獻以本專案的 [`LICENSE`](./LICENSE)（GPLv3）授權。
+- 貢獻即表示你同意你的貢獻以本專案的 [`LICENSE`](./LICENSE)（GPLv3）**加上** [`COPYRIGHT.md`](./COPYRIGHT.md)〈App Store／受管散佈例外〉所載之 GPLv3 §7 附加許可授權（允許經 App Store／TestFlight／Google Play 等平台散佈二進位檔）。不同意此附加許可者請勿提交。
 - 請閱讀 [`COPYRIGHT.md`](./COPYRIGHT.md) 以了解專案的法律立場。
 
-> By contributing you agree your contribution is licensed under the project's [`LICENSE`](./LICENSE) (GPLv3). Please read [`COPYRIGHT.md`](./COPYRIGHT.md) for the project's legal position.
+> By contributing you agree your contribution is licensed under the project's [`LICENSE`](./LICENSE) (GPLv3) **plus** the additional permission under GPLv3 §7 set out in [`COPYRIGHT.md`](./COPYRIGHT.md) (App Store Distribution Exception — conveying binaries through the App Store / TestFlight / Google Play and equivalent platforms). If you do not agree to that permission, please do not submit. Please read [`COPYRIGHT.md`](./COPYRIGHT.md) for the project's legal position.

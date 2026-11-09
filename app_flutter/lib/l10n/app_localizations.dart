@@ -629,19 +629,19 @@ abstract class AppLocalizations {
   /// No description provided for @disconnectedStalledTitle.
   ///
   /// In en, this message translates to:
-  /// **'Connected, but the device is not answering'**
+  /// **'Connected, but no data'**
   String get disconnectedStalledTitle;
 
   /// No description provided for @disconnectedStalledBody.
   ///
   /// In en, this message translates to:
-  /// **'Bluetooth linked up, but no data came back. Tried {attempts} times.'**
+  /// **'Tried {attempts} times.'**
   String disconnectedStalledBody(int attempts);
 
   /// No description provided for @disconnectedStalledHint.
   ///
   /// In en, this message translates to:
-  /// **'Close the app completely and open it again — in the one case we have measured, that is what cleared it. Waiting does not: the same fault ran for 40 minutes.'**
+  /// **'Leaving and coming back retries automatically. If that fails, close the app and reopen.'**
   String get disconnectedStalledHint;
 
   /// No description provided for @disconnectedStalledRetry.
@@ -743,7 +743,7 @@ abstract class AppLocalizations {
   /// No description provided for @statusAdvisoryThresholdBreach.
   ///
   /// In en, this message translates to:
-  /// **'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.'**
+  /// **'A live reading is outside the warning range (over-voltage / under-voltage / over-temperature). This is computed by the app, not a fault reported by the device.'**
   String get statusAdvisoryThresholdBreach;
 
   /// No description provided for @statusAdvisoryCapacitorSelfCheck.
@@ -787,6 +787,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.'**
   String get capacitorSelfCheckStillRunningSnack;
+
+  /// No description provided for @capacitorSelfCheckFlagNotBackSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The unit reports normal mode again, but one of its other status flags has not gone back to the value it had before the check started. That usually clears within a few seconds. Wait for it to come back before relying on this unit — the app has not sent anything to change it.'**
+  String get capacitorSelfCheckFlagNotBackSnack;
 
   /// No description provided for @capacitorSelfCheckNoResponseSnack.
   ///
@@ -854,6 +860,12 @@ abstract class AppLocalizations {
   /// **'{action} sent without auth (experimental); the device state did not change (still: {status}).'**
   String modeUnchangedNoAuthSnack(String action, String status);
 
+  /// No description provided for @modeLinkLostSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t confirm {action} — the Bluetooth link dropped while waiting for the device to report. Reconnect and check the device status.'**
+  String modeLinkLostSnack(String action);
+
   /// No description provided for @modeUnchangedRetriedSnack.
   ///
   /// In en, this message translates to:
@@ -869,7 +881,7 @@ abstract class AppLocalizations {
   /// No description provided for @cutOffDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nReleasing the cut-off is NOT yet proven to work. No capture we hold shows a device responding to a mode command, and the way the auth value is derived is still being verified. If the release fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
+  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
   String get cutOffDialogBody;
 
   /// No description provided for @cutOffDialogConfirm.
@@ -953,7 +965,7 @@ abstract class AppLocalizations {
   /// No description provided for @releaseDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Sends the known-safe \"release\" command (mode 0x06). Use the cut-off password, or enter your auth values directly.'**
+  /// **'Sends the \"release cut-off\" command. Use the cut-off password, or enter your auth values directly.'**
   String get releaseDialogBody;
 
   /// No description provided for @releaseDialogAuthModePassword.
@@ -1520,6 +1532,24 @@ abstract class AppLocalizations {
   /// **'Today\'s Current Trend'**
   String get historyChartTodayCurrentTitle;
 
+  /// design 0096: history chart heading when voltage (left axis) and current (right axis) are drawn together. Names both — a heading naming one quantity over a chart showing two is FB-103.
+  ///
+  /// In en, this message translates to:
+  /// **'Voltage / Current Trend'**
+  String get historyChartBothTitle;
+
+  /// design 0096: the Today-range variant of historyChartBothTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s Voltage / Current Trend'**
+  String get historyChartTodayBothTitle;
+
+  /// design 0096 Q7: the landscape chart bar names the drawn series; this is the combined view. Must fit the 96 px cap in history_chart_page.dart, hence the abbreviation.
+  ///
+  /// In en, this message translates to:
+  /// **'V + A'**
+  String get historyChartSeriesBothName;
+
   /// No description provided for @historyRangeToday.
   ///
   /// In en, this message translates to:
@@ -1784,10 +1814,10 @@ abstract class AppLocalizations {
   /// **'No readings stored for this minute.'**
   String get historySecondsEmpty;
 
-  /// Tooltip/label for the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share.
+  /// VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape chart (design 0081 Q1 = E2). It sits at the right end of the bucket-width footnote row, inside the trend card, so it is in the one place both landing sites share. 🔵 FB-108 (2026-09-02) changed the wording from 'Expand chart' to 'Full screen': the reporter called it 「全螢幕」, and that is already this app's word for the same idea on the home tab (fullscreenEnter). ⚠️ Two keys deliberately keep the same string — they are two different actions (immersive home grid vs. landscape chart page) that happen to share a name; do not merge them.
   ///
   /// In en, this message translates to:
-  /// **'Expand chart'**
+  /// **'Full screen'**
   String get historyChartExpand;
 
   /// Drawn inside a hatched gap on the LANDSCAPE chart only (design 0081 Q6 = C). Says a stretch of time holds no rows at all — the app was not connected. The embedded card uses the hatch alone (Q6 = B) because 244 px cannot hold this sentence.
@@ -1813,6 +1843,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{Each point on the chart averages 1 hour} other{Each point on the chart averages {count} hours}}'**
   String historyChartBucketHours(int count);
+
+  /// Short form of historyChartBucketMinutes for the landscape chart bar (owner ruling A, 2026-09-29).
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min / point'**
+  String historyChartBucketShortMinutes(int count);
+
+  /// Hours form of historyChartBucketShortMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} h / point'**
+  String historyChartBucketShortHours(int count);
 
   /// No description provided for @historyFooter.
   ///
@@ -1859,7 +1901,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyRowThresholdWarning.
   ///
   /// In en, this message translates to:
-  /// **'Protection threshold warning'**
+  /// **'Warning threshold'**
   String get historyRowThresholdWarning;
 
   /// No description provided for @historyStatusEvent.
@@ -3305,7 +3347,7 @@ abstract class AppLocalizations {
   /// FB-82 Q4, the `setup stalled` gate (FB-50: linked but never ready).
   ///
   /// In en, this message translates to:
-  /// **'The previous connection is still stuck part-way through setup, so opening this page made no attempt of its own. Use the button below to connect now.'**
+  /// **'The previous connection stalled part-way through setup. Use the button below to connect now.'**
   String get devicesAutoConnectSkippedStalled;
 
   /// No description provided for @devicesSave.
@@ -3770,30 +3812,6 @@ abstract class AppLocalizations {
   /// **'Warn below'**
   String get alertsRowBelowWarns;
 
-  /// Layer ② badge — the unit's own 0x2B.
-  ///
-  /// In en, this message translates to:
-  /// **'Device'**
-  String get alertsSourceDevice;
-
-  /// design 0080 §3.2.2 — the power bank's 50 °C is the one number nobody measured, and the screen is REQUIRED to say so.
-  ///
-  /// In en, this message translates to:
-  /// **'App default'**
-  String get alertsSourceApp;
-
-  /// No description provided for @alertsSourceNone.
-  ///
-  /// In en, this message translates to:
-  /// **'No basis'**
-  String get alertsSourceNone;
-
-  /// No description provided for @alertsSourceOffline.
-  ///
-  /// In en, this message translates to:
-  /// **'Known once connected'**
-  String get alertsSourceOffline;
-
   /// No description provided for @alertsValueUnset.
   ///
   /// In en, this message translates to:
@@ -3811,18 +3829,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{v} °C'**
   String alertsCelsiusValue(String v);
-
-  /// No description provided for @alertsOfflineNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Not connected — this device\'s own factory limits are only readable while connected.'**
-  String get alertsOfflineNote;
-
-  /// No description provided for @alertsReadOnlyNote.
-  ///
-  /// In en, this message translates to:
-  /// **'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.'**
-  String get alertsReadOnlyNote;
 
   /// design 0080 §7.5.6 C-3 / §7.5.7 — the TRANSIENT state. It must never borrow the words of alertsUnrecognisedTitle: every connect passes through here.
   ///
@@ -3845,7 +3851,7 @@ abstract class AppLocalizations {
   /// No description provided for @alertsPowerBankNoteBody.
   ///
   /// In en, this message translates to:
-  /// **'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.'**
+  /// **'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — so we have nothing to judge it against.'**
   String get alertsPowerBankNoteBody;
 
   /// No description provided for @alertsPowerBankOtNote.
@@ -4293,6 +4299,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count}'**
   String alertsBannerMore(String count);
+
+  /// VISIBLE label (not just a tooltip) on the button that opens the full-screen landscape LIVE chart (design 0093). 🔑 Deliberately the same string as historyChartExpand and fullscreenEnter, and deliberately a THIRD key: they are three different actions (immersive home grid, landscape history chart, landscape live chart) that share a name. FB-108 (2026-09-02) is why the wording is 'Full screen' and not 'Expand' — do not reword one of the three alone.
+  ///
+  /// In en, this message translates to:
+  /// **'Full screen'**
+  String get liveChartExpand;
+
+  /// design 0093 §3.3 (owner ruling 2026-09-02: freeze the picture and say so). Shown under the full-screen live chart once the link drops. 🔴 The buffer is cleared unconditionally on a disconnect, so what is on screen is a local snapshot that will never advance again — this line is what stops it reading as a chart that is still updating.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnected · frozen at {time}'**
+  String liveChartFrozen(String time);
+
+  /// design 0093 §4 Q5 (owner: 「換新」). Shown after the link comes back while the full-screen live chart is open. ⚠️ NOT 'resumed': the ~3 minutes held before the disconnect are gone and are not stored anywhere, so the honest word is 'restarted'.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnected · recording restarted'**
+  String get liveChartRestarted;
+
+  /// design 0097 §3.1. Fixed row at the bottom of the scan list, shown whether or not real units are found. Its main audience is an App Store reviewer who has no hardware.
+  ///
+  /// In en, this message translates to:
+  /// **'No device? Try a demo unit'**
+  String get demoEntryTitle;
+
+  /// design 0097. Second line of the demo entry row.
+  ///
+  /// In en, this message translates to:
+  /// **'See every screen with simulated data'**
+  String get demoEntrySubtitle;
+
+  /// design 0097. Title of the sheet that picks which demo unit to connect.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a demo unit'**
+  String get demoPickTitle;
+
+  /// design 0097. Display name of the simulated smart battery, wherever a device name is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo battery'**
+  String get demoBatteryName;
+
+  /// design 0097. Display name of the simulated super-capacitor, wherever a device name is shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo capacitor'**
+  String get demoCapacitorName;
+
+  /// design 0097. Second line for the demo battery in the picker sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'12 V smart battery · try cut-off and restore'**
+  String get demoBatteryDesc;
+
+  /// design 0097. Second line for the demo capacitor in the picker sheet. A capacitor has no cut-off, so the self-check is what it offers instead.
+  ///
+  /// In en, this message translates to:
+  /// **'Super-capacitor · try the self-check'**
+  String get demoCapacitorDesc;
+
+  /// design 0097 §3.5. Fixed banner across every screen while a demo unit is connected. 🔴 Must say the data is simulated: the screens are otherwise indistinguishable from a real unit's.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo mode · simulated data, no device connected'**
+  String get demoBanner;
+
+  /// design 0097. Second line of the demo unit's row in the device list, in place of the id and signal text a real unit shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Simulated data · not a real device'**
+  String get demoRowMeta;
+
+  /// design 0097. Button on the demo banner; disconnects the demo unit.
+  ///
+  /// In en, this message translates to:
+  /// **'End demo'**
+  String get demoBannerEnd;
 }
 
 class _AppLocalizationsDelegate

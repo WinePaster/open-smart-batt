@@ -1,5 +1,26 @@
-/// OpenSmartBatt — where an alert threshold comes from, and which one wins
-/// (design 0080 §3.1 / §3.2).
+/// OpenSmartBatt — where an alert threshold comes from (design 0080 §3.1 /
+/// §3.2, superseded in part by design 0098).
+///
+/// 🔵 **2026-11-09 ruling (design 0098): the thresholds are the APP's, fixed,
+/// and `0x2B` is out.** Owner, verbatim: 「0x2B 我們定義為保護參數/保護數據…
+/// 也不放app內, 而我們現在app內的警示 應該是 >=15V警示 或小於等於11.5V,
+/// 過溫80度」 and 「app顯示照我們現在設定的, 至於2B本身的數值那個就是電池內的
+/// 保護參數 這個不異動」. So:
+///
+///   * `0x2B` is the unit's internal PROTECTION setting. It is not a warning
+///     threshold, it is not shown, and nothing here reads it (layer ② below is
+///     gone). The app never writes it either — the write path was deleted.
+///   * batteries and capacitors share ONE row, [kAppAlertThresholds]: OV
+///     **≥ 15.0 V**, UV **≤ 11.5 V**, OT **≥ 80 °C** (inclusive on all three —
+///     see `AlertEvaluator._isBreaching`). The power bank keeps OT 50 °C only.
+///   * the row is picked by the WIRE's class alone; the declaration is no
+///     longer consulted for anything (bike and car batteries now have the same
+///     numbers, so the one tie it used to break is gone).
+///   * a threshold no longer needs a link: an OFFLINE saved unit resolves from
+///     its persisted class.
+///
+/// The design-0080 text below is kept as history, struck where it no longer
+/// holds, per this repo's convention.
 ///
 /// PURE Dart (no Flutter imports), like every other file in `models/`, because
 /// the whole of design 0080's logic content lives in this file and its
@@ -14,9 +35,10 @@
 /// of those four answerers is the entire design:
 ///
 ///   ~~① what the USER set for THIS unit          (most specific, always wins)~~
-///   ② what THIS unit reported in its `0x2B`    (per-unit factory setting)
-///   ③ our default table, keyed on the WIRE's class  (§3.2.1, a fallback)
-///        — the declaration only breaks the bike-vs-car tie (§7.5.6 C-1)
+///   ~~② what THIS unit reported in its `0x2B`    (per-unit factory setting)~~
+///        🔵 gone 2026-11-09 (design 0098) — `0x2B` is a protection parameter
+///   ③ our table, keyed on the WIRE's class     (design 0098: THE source)
+///        — ~~the declaration only breaks the bike-vs-car tie (§7.5.6 C-1)~~
 ///   ④ nobody knows                             ⇒ do not evaluate, do not guess
 ///
 /// 🔵 **2026-08-25 ruling (FB-100, design 0080 §0.3): the thresholds are
@@ -55,9 +77,14 @@
 /// line than it did an hour earlier: a declared value gates nothing, and now
 /// barely numbers anything either. See [kPowerBankWatchesTemperatureOnly] for
 /// the incident that forced the first half of that split and
-/// [categoryDefaultsFor] for the second.
+/// ~~[categoryDefaultsFor]~~ (now [appThresholdsFor]) for the second.
 ///
-/// 🔴 **Why ② outranks ③, stated once because it is the load-bearing claim.**
+/// 🔵 **2026-11-09: the paragraph below argued for a layer that no longer
+/// exists.** It is kept because its facts are still true — `0x2B` really is
+/// per unit — and design 0098 did not dispute them: it decided that a per-unit
+/// PROTECTION point is not what the app should warn on.
+///
+/// ~~🔴 **Why ② outranks ③, stated once because it is the load-bearing claim.**~~
 /// `0x2B` is per-UNIT, not per-category: `tools/fb.py counter 0x2B` (2026-08-22)
 /// reports 194 batch×device rows, every one of them `uniq=1` — a unit always
 /// reports the same triple — while the SAME category spreads over several
@@ -65,7 +92,7 @@
 /// values over 26 pieces of hardware. So the unit's own answer is evidence and
 /// our table is an inference, and the gap between them is not small: the third
 /// generation capacitor (`0x10`=`0x18`) leaves the factory with OV = 16.0 V,
-/// **1.2 V above** what [kCategoryDefaults] would say for a capacitor. Rank the
+/// **1.2 V above** what ~~`kCategoryDefaults`~~ would say for a capacitor. Rank the
 /// table first and every one of those units gets warned about on a good day.
 ///
 /// ## Per FIELD, not per unit (§3.1)
@@ -126,6 +153,19 @@ enum AlertKind {
         AlertKind.overVoltage || AlertKind.underVoltage => s.pvlt,
         AlertKind.overTemperature => s.temperatureC?.toDouble(),
       };
+
+  /// Is [reading] past [limit] in the direction this kind cares about?
+  ///
+  /// 🔵 **INCLUSIVE — design 0098, owner ruling 2026-11-09** (「>=15V警示 或
+  /// 小於等於11.5V」, and 「大於等於」 for 80 °C): OV `reading >= limit`, UV
+  /// `reading <= limit`, OT `reading >= limit`. ~~Strict `>` / `<`~~ before.
+  ///
+  /// 🔑 **The ONE comparison.** `AlertEvaluator` (the notification) and
+  /// `readingBreachesThreshold` (the dashboard's advisory line) both call this,
+  /// so design 0080 §3.8's "the screen and the notification must agree at the
+  /// boundary" is structural rather than two hand-kept copies.
+  bool breaches(double reading, double limit) =>
+      this == AlertKind.underVoltage ? reading <= limit : reading >= limit;
 }
 
 /// The notification id for one (unit, kind) — design 0080 §3.5.2.
@@ -167,10 +207,12 @@ enum ThresholdSource {
   // that could produce it; the `saved_devices.alert_ov/uv/ot` columns survive
   // the removal DORMANT (see [SavedDevice.alertOv]) and nothing reads them.
 
-  /// Layer ② — the unit itself reported it in `0x2B`.
-  device,
+  // 🔵 **`device` removed 2026-11-09 (design 0098).** ~~Layer ② — the unit
+  // itself reported it in `0x2B`.~~ `0x2B` is the unit's protection setting,
+  // not a warning threshold, and nothing reads it any more.
 
-  /// Layer ③ — our per-category fallback table, [kCategoryDefaults].
+  /// Layer ③ — the app's own table, [kAppAlertThresholds]. Since design 0098
+  /// the only source a value can have.
   appDefault,
 
   /// Layer ④ — no answer from anywhere. [ResolvedThreshold.value] is null and
@@ -365,7 +407,7 @@ class AlertThresholds {
       : 'AlertThresholds(ov: $ov, uv: $uv, ot: $ot)';
 }
 
-/// One row of the per-category fallback table (§3.2.1).
+/// One row of [kAppAlertThresholds] (design 0098).
 class CategoryAlertDefaults {
   const CategoryAlertDefaults({this.ov, this.uv, this.ot});
 
@@ -379,66 +421,37 @@ class CategoryAlertDefaults {
   final double? ot;
 }
 
-/// 🔴 **A FALLBACK, never a truth** (design 0080 §3.2.1). Layer ③ only.
+/// The app's warning thresholds — design 0098, owner ruling 2026-11-09.
 ///
-/// 🔵 **A table of NUMBERS — no longer the layer's index** (design 0080
-/// §7.5.6 C-1). ~~Still keyed on [DeclaredCategory] after the 2026-08-22
-/// ruling, and that is deliberate (§7.5.1.1 D): a map from what the owner
-/// tapped to three numbers does not violate design 0066, because a number is
-/// not a gate.~~ 🔴 The second ruling of the same day took the LOOKUP away from
-/// the declaration entirely: [categoryDefaultsFor] picks the row from the
-/// wire's [ProductClass] and asks the declaration only to break the one tie the
-/// wire cannot — a bike battery's UV 11.0 against a car battery's 12.0, a
-/// distinction `0x02` does not carry (see `declared_device_model.dart` on why
-/// the field exists at all).
+/// 🔑 **The app's numbers, by ruling — not measurements, not the unit's.**
+/// Until 2026-11-09 this was design 0080's FALLBACK table (layer ③), filled
+/// with the most common `0x2B` per category and outranked by the unit's own
+/// `0x2B`. Design 0098 inverted that: `0x2B` is the unit's internal protection
+/// setting and is not read here at all, and these rows are what the app warns
+/// on, for every unit of the class.
 ///
-/// The rows keep their [DeclaredCategory] keys anyway, and that is not
-/// leftovers: this is the vocabulary the numbers were tabulated in (§3.2.1),
-/// two of the five rows have no wire class of their own to be keyed on, and a
-/// map is not a policy. The policy moved out; the measurements stayed.
+/// | class          | OV        | UV        | OT        |
+/// |----------------|-----------|-----------|-----------|
+/// | smartBattery   | ≥ 15.0 V  | ≤ 11.5 V  | ≥ 80 °C   |
+/// | supercapacitor | ≥ 15.0 V  | ≤ 11.5 V  | ≥ 80 °C   |
+/// | powerBank      | —         | —         | ≥ 50 °C   |
 ///
-/// Every voltage row below is one real `0x2B` payload observed in the corpus,
-/// decoded with the shipping arithmetic (`telemetry_decoder.dart:103-109`:
-/// `ov = b4*0.025 + 14.4`, `uv = b5*0.025 + 10.4`, `ot = b6 + 60`) — a
-/// representative unit's factory setting, chosen because it is the most common
-/// one for that category, NOT a computed safe limit:
+/// ~~The previous table, keyed on [DeclaredCategory]: car battery 15.0 / 12.0 /
+/// 80, motorcycle battery 15.0 / 11.0 / 80, capacitor 14.8 / 11.5 / 100.~~ The
+/// capacitor's 100 °C was the class-blind `b6 + 60` decode that the vendor
+/// engineering app's own screen refutes (`TelemetryDecoder.warnOtFor`).
 ///
-/// | category              | payload    | OV     | UV     | OT     |
-/// |-----------------------|------------|--------|--------|--------|
-/// | carBattery            | `18401414` | 15.0 V | 12.0 V | 80 °C  |
-/// | motorcycleBattery     | `18181414` | 15.0 V | 11.0 V | 80 °C  |
-/// | car / bike capacitor  | `102c2814` | 14.8 V | 11.5 V | 100 °C |
-/// | powerBank             | —          | —      | —      | 50 °C  |
-///
-/// ⚠️ **The bike battery row is why this table is dangerous.**
-/// `docs/devices/motorcycle-battery.md:51` decoded `18181414` as
-/// "OV 15.0 / UV 12.0 / OT 20 / UT 20" — two of the three fields wrong — and
-/// that line sat unchallenged from 2026-07-30 to 2026-08-22 (it was even used
-/// as an input to one analysis, `2026.08.08-004.md:130`) for one reason:
-/// **it was only ever read, never computed with.** Design 0080 §2.5 corrected
-/// it as a prerequisite of this file. The moral is the whole point of the
-/// ranking above — the moment a documentation row becomes a program constant it
-/// stops being a note and starts being something that warns users, so every
-/// cell here has to point at wire evidence and any cell that cannot must be
-/// left out rather than filled in.
-///
-/// ⚠️ The two capacitor rows are IDENTICAL and that is not a copy-paste slip:
-/// the wire cannot separate a bike capacitor from a car one (both `0x17`/`0x18`,
-/// same `0x10` payload), so there is no second observation to put in the second
-/// row. Writing a different number in one of them would be inventing the
-/// distinction the hardware refuses to make.
-const Map<DeclaredCategory, CategoryAlertDefaults> kCategoryDefaults =
-    <DeclaredCategory, CategoryAlertDefaults>{
-  DeclaredCategory.carBattery: CategoryAlertDefaults(ov: 15.0, uv: 12.0, ot: 80),
-  DeclaredCategory.motorcycleBattery:
-      CategoryAlertDefaults(ov: 15.0, uv: 11.0, ot: 80),
-  DeclaredCategory.carCapacitor:
-      CategoryAlertDefaults(ov: 14.8, uv: 11.5, ot: 100),
-  DeclaredCategory.motorcycleCapacitor:
-      CategoryAlertDefaults(ov: 14.8, uv: 11.5, ot: 100),
-  // 🔴 No `ov` / `uv` — see [kPowerBankWatchesTemperatureOnly]. `ot` is the one
-  // number in this map that was never measured off any wire; it is ours.
-  DeclaredCategory.powerBank: CategoryAlertDefaults(ot: kPowerBankOtDefaultC),
+/// Keyed on the WIRE's [ProductClass]: the bike/car split was the only reason
+/// the declaration was ever consulted, and with one battery row it has no
+/// question left to answer. [ProductClass.unknown] has no row by design — see
+/// [AlertsDisabledReason].
+const Map<ProductClass, CategoryAlertDefaults> kAppAlertThresholds =
+    <ProductClass, CategoryAlertDefaults>{
+  ProductClass.smartBattery: CategoryAlertDefaults(ov: 15.0, uv: 11.5, ot: 80),
+  ProductClass.supercapacitor:
+      CategoryAlertDefaults(ov: 15.0, uv: 11.5, ot: 80),
+  // 🔴 No `ov` / `uv` — see [kPowerBankWatchesTemperatureOnly].
+  ProductClass.powerBank: CategoryAlertDefaults(ot: kPowerBankOtDefaultC),
 };
 
 /// The power bank's over-temperature default, in °C — **an app-chosen reminder
@@ -454,10 +467,10 @@ const Map<DeclaredCategory, CategoryAlertDefaults> kCategoryDefaults =
 /// 🔴 What is NOT known: what temperature is actually unsafe for this hardware.
 /// Nobody has measured that and nothing in the corpus implies it. 50 leaves
 /// 10 °C of headroom over the observed ceiling, which is a false-alarm budget
-/// and nothing more. This is why it resolves as [ThresholdSource.appDefault]
-/// and never as [ThresholdSource.device], and why §3.2.2 requires the screen to
-/// say "App 預設" beside it — the user has to be able to see that this number
-/// is our opinion.
+/// and nothing more. ~~This is why it resolves as [ThresholdSource.appDefault]
+/// and never as `ThresholdSource.device`, and why §3.2.2 requires the screen to
+/// say "App 預設" beside it~~ — 🔵 since design 0098 every threshold is the
+/// app's, and the per-row source badge was removed by ruling (Q3, 2026-11-09).
 const double kPowerBankOtDefaultC = 50;
 
 /// Power banks are watched for heat and **never for voltage** (§3.2.2, ruling
@@ -517,78 +530,16 @@ const double kPowerBankOtDefaultC = 50;
 /// and the ruling's answer is none of them. See [AlertsDisabledReason].
 const bool kPowerBankWatchesTemperatureOnly = true;
 
-/// Layer ③, indexed by the WIRE (design 0080 §7.5.6 C-1). Null ⇒ layer ③ says
-/// nothing and each field falls through to layer ④.
+/// The app's row for [wireClass] (design 0098). Null for
+/// [ProductClass.unknown], which [resolveThresholds] never asks about — it
+/// returns at the device-level gate first (§7.5.6 C-2).
 ///
-/// 🔑 **The class is the key; the declaration is a tie-breaker for one class.**
-/// The first cut of this layer keyed the whole table on [DeclaredCategory] and
-/// then, after §7.5.1.1 B, refused it whenever the wire contradicted it. Both
-/// halves of that failed together on the device they were meant to protect: a
-/// power bank whose owner had declared nothing got no OT (no declaration ⇒ no
-/// row), and one whose owner had declared it a car battery got no OT either
-/// (contradicted ⇒ no row) — so the class the ruling had just decided to watch
-/// for heat was, for every user who had not filled in an optional form,
-/// watched for nothing. Keying on the wire fixes both at once, and the
-/// contradiction check disappears rather than being fixed: a declaration that
-/// does not select rows cannot select a wrong one.
-///
-/// Per class:
-///
-///   * [ProductClass.powerBank] — one row, OT only. The declaration is not
-///     read, so a mis-tap cannot cost this unit its only alarm.
-///   * [ProductClass.supercapacitor] — one row, because the bike and car
-///     capacitor rows are **identical** (§3.2.1). The wire cannot separate the
-///     two (both `0x17`/`0x18`) and here it does not need to: there is nothing
-///     to separate.
-///   * [ProductClass.smartBattery] — the wire is **not enough**. Bike UV 11.0
-///     against car UV 12.0 is a real 1 V difference, so an absent declaration
-///     (or one naming a non-battery, which is the same thing as contradicting
-///     `0x02`) leaves layer ③ silent. ~~Layers ① and ② are untouched by this —
-///     the unit's own `0x2B` and the user's own number still answer.~~
-///     🔵 **2026-08-25 (FB-100, ruling Q1 = "leave it"): only layer ② is left
-///     to answer, and when it has not answered yet, nothing does.** The gap is
-///     real and was ruled acceptable on evidence rather than waved through:
-///     `tools/fb.py` over the whole corpus finds NO inline-verified
-///     non-power-bank device that fails to report `0x2B` — the ones with none
-///     are power banks (which never had voltage rows) and header-attributed
-///     noise. So this branch is reachable only in the first frames of a link or
-///     with no link at all, and neither is a moment anything is evaluated in.
-///     Filling it with a guessed row was refused for the usual reason: car UV
-///     12.0 on a bike battery is a permanent false alarm, bike UV 11.0 on a car
-///     is a real one arriving late.
-///   * [ProductClass.unknown] — unreachable from [resolveThresholds], which
-///     returns at the device-level gate first (§7.5.6 C-2). Handled anyway so
-///     the switch is exhaustive and so a direct caller gets the safe answer.
-///
-/// 📌 **The one gap left — the battery with no declaration — is nearly empty in
-/// practice.** `tools/fb.py counter 0x2B` (2026-08-22) has 194 batch×device
-/// rows covering batteries AND capacitors; the only class that never reports a
-/// `0x2B` is the power bank, which is precisely the class that needs no
-/// declaration here. A battery therefore almost always answers on layer ②, long
-/// before layer ③ is asked.
-CategoryAlertDefaults? categoryDefaultsFor({
-  required ProductClass wireClass,
-  DeclaredCategory? category,
-}) {
-  switch (wireClass) {
-    case ProductClass.powerBank:
-      return kCategoryDefaults[DeclaredCategory.powerBank];
-    case ProductClass.supercapacitor:
-      // Either capacitor row would do — they are equal by construction, and
-      // `alert_thresholds_test.dart` asserts that they stay equal. Picking one
-      // arbitrarily is honest here; inventing a difference to justify reading
-      // the declaration would not be.
-      return kCategoryDefaults[DeclaredCategory.carCapacitor];
-    case ProductClass.smartBattery:
-      if (category == DeclaredCategory.carBattery ||
-          category == DeclaredCategory.motorcycleBattery) {
-        return kCategoryDefaults[category];
-      }
-      return null;
-    case ProductClass.unknown:
-      return null;
-  }
-}
+/// ~~`categoryDefaultsFor({wireClass, category})`~~ — renamed and narrowed
+/// 2026-11-09. Its `category` parameter existed only to pick the bike row
+/// (UV 11.0) over the car row (UV 12.0); design 0098 gives both the same UV, so
+/// the declaration has nothing left to decide.
+CategoryAlertDefaults? appThresholdsFor(ProductClass wireClass) =>
+    kAppAlertThresholds[wireClass];
 
 /// Resolve all three thresholds for ONE unit, per field, per design 0080 §3.1.
 ///
@@ -598,23 +549,14 @@ CategoryAlertDefaults? categoryDefaultsFor({
 /// read-only; the columns are still in schema v22 and are simply never read
 /// (see [SavedDevice.alertOv] for why they were left rather than dropped).
 ///
-/// [reported] is layer ②: the unit's own `0x2B`, carried on the live sample.
-/// Passed as a whole [TelemetrySample] rather than as three loose doubles
-/// deliberately — three same-typed positional-ish arguments in the caller's
-/// hand is how OV ends up wired to UV, and the corrections in §2.5 are what
-/// that class of mistake costs. Null when nothing is on the link. Its
-/// `deviceType` is also the freshest source of [wireClass], below.
+/// [reported] is the live sample, read for ONE thing: its `deviceType`, the
+/// freshest evidence of the class (below). 🔵 **2026-11-09 (design 0098):**
+/// ~~it was layer ②, the unit's own `0x2B`~~ — its `warnOv` / `warnUv` /
+/// `warnOt` are never read here; `0x2B` is a protection parameter.
 ///
-/// [category] is what the owner declared (design 0066). After §7.5.6 C-1 it is
-/// a **tie-breaker, not an index**: it is read only when the wire says `0x02`,
-/// and only to pick the bike row (UV 11.0) over the car row (UV 12.0). A power
-/// bank or a capacitor does not consult it at all — one row each. Null is the
-/// common case (the declaration is optional) and costs those two classes
-/// nothing.
-/// 🔑 It still supplies **numbers only**, and now fewer of them: which fields
-/// exist, and whether anything is evaluated at all, are [wireClass]'s. That is
-/// why design 0066 stands unamended (§7.5.1.1 D) and stands further from the
-/// line than it did an hour earlier.
+/// ~~[category] is what the owner declared (design 0066)… a tie-breaker…~~ 🔵
+/// Removed 2026-11-09: with one battery row there is no tie to break, so the
+/// declaration plays no part in alerts at all.
 ///
 /// [wireClass] is what the WIRE says this unit is, defaulting to
 /// [ProductClass.unknown] so an unclassified unit needs no special call site.
@@ -626,26 +568,24 @@ CategoryAlertDefaults? categoryDefaultsFor({
 /// arrived and was not recognised overrules it outright — see the gate in the
 /// body and [AlertsDisabledReason.deviceTypeUnrecognised].
 ///
-/// It decides three things, and none of them is a number:
+/// It decides everything (design 0098), in this order:
 ///
 ///   1. **whether the unit is watched at all** — [ProductClass.unknown] returns
 ///      [AlertThresholds.unwatched] before any layer is even looked at
 ///      (§7.5.6 C-2, no exceptions — see [AlertsDisabledReason]);
 ///   2. **whether voltage is watched** — see
 ///      [kPowerBankWatchesTemperatureOnly] (§7.5.1.1 A);
-///   3. **which row layer ③ reads** — [categoryDefaultsFor] (§7.5.6 C-1).
+///   3. **which row applies** — [appThresholdsFor].
 ///      ~~and whether layer ③ may speak at all: a declaration the wire
 ///      CONTRADICTS supplies nothing (§7.5.1.1 B)~~ 🔴 that check is gone, not
 ///      relaxed. It was a guard against the declaration selecting a wrong row,
-///      and the declaration no longer selects rows. Its intent survives inside
-///      [categoryDefaultsFor]: a category that disagrees with `0x02` is simply
-///      not one of the two rows a battery may take.
+///      and the declaration no longer selects rows — since design 0098 it is
+///      not read here at all.
 ///
 /// Returns [ThresholdSource.none] with a null value for any field none of the
 /// layers could answer. That field is then not evaluated at all (layer ④).
 AlertThresholds resolveThresholds({
   TelemetrySample? reported,
-  DeclaredCategory? category,
   ProductClass wireClass = ProductClass.unknown,
 }) {
   // 🔵 §7.5.7 (third ruling of 2026-08-22) — the raw byte is kept, not just the
@@ -701,28 +641,20 @@ AlertThresholds resolveThresholds({
   final voltageMuted =
       kPowerBankWatchesTemperatureOnly && wire == ProductClass.powerBank;
 
-  // §7.5.6 C-1 — layer ③ is indexed by the wire; `category` only breaks the
-  // battery's bike/car tie. The former `declaredWireMismatch` guard here is
-  // gone: it existed to stop a contradicted declaration selecting a row, and
-  // the declaration no longer selects rows.
-  final defaults = categoryDefaultsFor(wireClass: wire, category: category);
+  // Design 0098 — the app's row for the wire's class, and nothing else.
+  // 🔴 `reported?.warnOv` / `warnUv` / `warnOt` are deliberately NOT read: `0x2B`
+  // is the unit's protection setting (ruling 2026-11-09). A test pins this —
+  // a unit reporting `402c2814` (OV 16.0) still resolves OV 15.0.
+  final row = appThresholdsFor(wire);
 
-  ResolvedThreshold pick(double? device, double? fallback) {
-    if (device != null) return ResolvedThreshold(device, ThresholdSource.device);
-    if (fallback != null) {
-      return ResolvedThreshold(fallback, ThresholdSource.appDefault);
-    }
-    return ResolvedThreshold.unavailable;
-  }
+  ResolvedThreshold pick(double? value) => value == null
+      ? ResolvedThreshold.unavailable
+      : ResolvedThreshold(value, ThresholdSource.appDefault);
 
   return AlertThresholds(
-    ov: voltageMuted
-        ? ResolvedThreshold.unavailable
-        : pick(reported?.warnOv, defaults?.ov),
-    uv: voltageMuted
-        ? ResolvedThreshold.unavailable
-        : pick(reported?.warnUv, defaults?.uv),
-    ot: pick(reported?.warnOt, defaults?.ot),
+    ov: voltageMuted ? ResolvedThreshold.unavailable : pick(row?.ov),
+    uv: voltageMuted ? ResolvedThreshold.unavailable : pick(row?.uv),
+    ot: pick(row?.ot),
   );
 }
 
@@ -737,13 +669,13 @@ AlertThresholds resolveThresholds({
 // widget in sight. Keeping a second copy up there is how the row and the alarm
 // end up disagreeing in the last digit about the same number.
 
-/// Two decimals, matching how `0x2B` decodes (`b * 0.025 + 14.4`, i.e. 40 mV
-/// steps) and how every other voltage on this app's screens is rendered.
+/// Two decimals, matching how every other voltage on this app's screens is
+/// rendered.
 String formatVolts(double v) => v.toStringAsFixed(2);
 
 /// 🔴 **Always °C, whatever `TempUnit` the user picked, and this is a known
-/// deviation worth stating.** The thresholds are stored in °C because that is
-/// what `0x2B` carries (`b6 + 60`), and the settings screen shows a limit and
+/// deviation worth stating.** The thresholds are defined in °C (design 0098),
+/// and the settings screen shows a limit and
 /// the live reading side by side — converting one and not the other would be a
 /// defect, and converting both would make the value the user TYPES a converted
 /// quantity that has to survive a round trip through a byte-resolution field.
