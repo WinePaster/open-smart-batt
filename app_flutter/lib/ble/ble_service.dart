@@ -1296,7 +1296,11 @@ class BleService {
       if (chosen == null || link.writeChar == null || notify == null) {
         throw _noProfileError(choice, snapshot);
       }
-      link.session = chosen.openSession();
+      // `??=`: a link keeps its session for life, as it kept its decoder
+      // before design 0099 — a second setup on the same link (not reachable
+      // today; stated so it stays harmless) must not blank the accumulated
+      // sample.
+      link.session ??= chosen.openSession();
 
       // Subscribe BEFORE the first write (PROTOCOL.md §2). setNotifyValue(true)
       // writes the CCCD enable value [0x01, 0x00].
