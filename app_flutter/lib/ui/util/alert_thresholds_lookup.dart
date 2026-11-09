@@ -25,7 +25,13 @@
 /// notification disagree about the same unit. Same logged failure, fewer ways
 /// in.
 ///
-/// ## Why the `0x2B` is re-read every time and never cached
+/// ## ~~Why the `0x2B` is re-read every time and never cached~~
+///
+/// 🔵 **2026-11-09 (design 0098): `0x2B` is not read at all any more** — it is
+/// the unit's protection setting, and the thresholds are the app's fixed row
+/// for the wire's class. An offline saved unit therefore resolves fully from its
+/// persisted class, and the gap described below is closed. The live sample is
+/// still passed in, for its device-type byte only. Original text kept:
 ///
 /// It is not persisted anywhere — neither `saved_devices` nor `device_facts`
 /// has a column for it (design 0080 §7.5.2, verified 2026-08-22). So layer ②
@@ -85,20 +91,21 @@ AlertThresholds alertThresholdsFor(
   String? liveDeviceId,
   ProductClass liveClass = ProductClass.unknown,
 }) {
-  final saved = deviceId == null ? null : devices.deviceFor(deviceId);
+  // 🔵 2026-11-09 (design 0098) — ~~`final saved = devices.deviceFor(deviceId)`~~
+  // is gone: its last reader (the declaration) left with the bike/car tie. The
+  // persisted class still reaches the resolver, through `deviceClassFor` below.
   // 🔴 The gate. See the doc above — this is the whole of design 0079 §0.3, and
   // it refuses only when the two ids positively disagree.
   final mine =
       deviceId == null || liveDeviceId == null || deviceId == liveDeviceId;
   return resolveThresholds(
     // 🔵 2026-08-25 (FB-100) — ~~userOv: saved?.alertOv,~~ and its two
-    // neighbours went with layer ①. `saved` is still read below for the
-    // declaration, so the record is not suddenly unused here.
+    // neighbours went with layer ①.
+    // Read for its `deviceType` only (design 0098 — `0x2B` is not consulted).
     reported: mine ? liveSample : null,
-    // Tie-breaker only, and only for a `0x02` battery — see
-    // `categoryDefaultsFor`. Reading it for anything else would put a
-    // dropdown in charge of whether an alarm exists, which design 0066 forbids.
-    category: saved?.declared.category,
+    // 🔵 2026-11-09 (design 0098) — ~~category: saved?.declared.category,~~
+    // the bike/car tie it broke is gone (one battery row), so the declaration
+    // plays no part in alerts at all.
     // What the WIRE said, with the persisted class standing in only where no
     // live byte has arrived (§7.5.7). `deviceClassFor` already ranks stored >
     // cached facts > live-for-this-unit, and `resolveThresholds` overrules it
@@ -184,8 +191,9 @@ bool alertVoltageWatched(ProductClass wireClass) =>
 /// [alertThresholdsFor] wired to the providers, for widgets.
 ///
 /// Watches, rather than reads, the two controllers whose changes must redraw a
-/// threshold: the telemetry sample (a `0x2B` arriving flips a row from 「App
-/// 預設」 to 「裝置回報」) and the saved record (the user typing a value).
+/// threshold: the telemetry sample (a device-type byte arriving can change the
+/// class — ~~a `0x2B` arriving flips a row from 「App 預設」 to 「裝置回報」~~,
+/// gone with design 0098) and the saved record (its persisted class).
 ///
 /// 🔑 The live id is [TelemetryController.recordingDeviceId] — the SESSION's
 /// unit — not `ConnectionController.connectedDeviceId`. The two differ in the

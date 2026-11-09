@@ -304,7 +304,7 @@ void main() {
     test('🔴 no threshold was seeded from product_class or the declaration',
         () async {
       // The temptation this migration had to refuse. The battery below declares
-      // `motorcycle-battery`, for which `kCategoryDefaults` has a full row —
+      // `motorcycle-battery`, for which ~~`kCategoryDefaults`~~ (now `kAppAlertThresholds`) has a full row —
       // writing it in would have looked helpful on every screen and would have
       // made the unit's own 0x2B unreachable forever.
       final db = await upgradeFromV21('v22_noseed');
@@ -315,7 +315,9 @@ void main() {
       expect(row['alert_uv'], isNull);
       expect(row['alert_ot'], isNull);
 
-      // …and read back through the model, the resolution still reaches layer ②.
+      // …and read back through the model. 🔵 2026-11-09 (design 0098):
+      // ~~the resolution still reaches layer ②~~ — there is no layer ② any more;
+      // what this still proves is that the dormant columns are not consulted.
       final saved = (await DeviceRepo(db.db).getDevice(_batteryId))!;
       expect(saved.alertOv, isNull);
       // 🔵 2026-08-25 (FB-100) — ~~userOv: saved.alertOv,~~ and its two
@@ -326,19 +328,15 @@ void main() {
         reported: TelemetrySample(
           timestamp: DateTime.utc(2026, 8, 22),
           deviceType: 0x02,
-          warnOv: 15.0,
-          warnUv: 11.0,
-          warnOt: 80,
+          warnUv: 11.0, // the unit's 0x2B — present, and ignored
         ),
-        category: saved.declared.category,
         wireClass: saved.productClass,
       );
-      expect(t.ov.source, ThresholdSource.device,
-          reason: 'a seeded default would have made this the app default, '
-              'permanently, on every phone in the field (🔵 before 2026-08-25 '
-              'it would have been ThresholdSource.user — same defect, one '
-              'layer up)');
+      expect(t.ov.source, ThresholdSource.appDefault);
       expect(t.ov.value, 15.0);
+      expect(t.uv.value, 11.5,
+          reason: 'the design-0098 row — not the old bike 11.0, and not a '
+              'seeded column');
     });
 
     test('the power bank row is untouched too', () async {

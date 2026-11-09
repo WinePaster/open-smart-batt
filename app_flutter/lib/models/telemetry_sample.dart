@@ -81,15 +81,23 @@ class TelemetrySample {
   /// Warning under-voltage threshold (V) — selector 0x2B.
   final double? warnUv;
 
-  /// Warning over-temperature threshold (°C) — selector 0x2B.
+  /// Warning over-temperature threshold (°C) — selector 0x2B b6.
+  ///
+  /// 🔴 **Class-dependent, so it is derived, never decoded alone** — see
+  /// `TelemetryDecoder.warnOtFor`. Null until both [warnOtByte] and
+  /// [deviceType] are known, and null for a byte whose meaning has never been
+  /// observed. Re-derived whenever either input arrives, in either order.
   final double? warnOt;
 
-  /// Raw 4th byte (b7) of the 0x2B threshold frame. A 4th field is observed and
-  /// labelled **UT (under-temp)**; its scaling is not byte-verified, so we keep
-  /// the raw byte only (read-back). It is preserved on the write path instead of
-  /// being forced to 0x00, so setting OV/UV/OT does not clobber the device's UT.
-  /// PROTOCOL.md §10.2.
-  final int? warnUtByte;
+  /// Raw b6 of the 0x2B threshold frame — the input [warnOt] is derived from.
+  /// Kept because the same byte reads differently per class (a capacitor's
+  /// `0x28` is 80 °C on the vendor engineering app's own screen, not the
+  /// 100 °C the old class-blind `b6 + 60` produced).
+  final int? warnOtByte;
+
+  // 🔵 **`warnUtByte` removed 2026-11-09 (design 0098 Q2).** Its only job was
+  // to preserve the unit's UT byte on the `0x2B` WRITE path, and that path is
+  // deleted — this app never writes the unit's protection parameters.
 
   /// Discharge info v1 / v2 — selector 0x4A.
   ///
@@ -253,7 +261,7 @@ class TelemetrySample {
     this.warnOv,
     this.warnUv,
     this.warnOt,
-    this.warnUtByte,
+    this.warnOtByte,
     this.dischargeV1,
     this.dischargeV2,
     this.chargeCurrent,
@@ -393,7 +401,7 @@ class TelemetrySample {
     double? warnOv,
     double? warnUv,
     double? warnOt,
-    int? warnUtByte,
+    int? warnOtByte,
     double? dischargeV1,
     double? dischargeV2,
     double? chargeCurrent,
@@ -410,6 +418,9 @@ class TelemetrySample {
     int? mode,
     int? twfRaw,
     int? funcFlagsRaw,
+    // `copyWith` cannot null a field through `??`. The OT derivation needs to:
+    // a byte with no known meaning must CLEAR a stale value, not keep it.
+    bool clearWarnOt = false,
   }) {
     return TelemetrySample(
       timestamp: timestamp ?? this.timestamp,
@@ -423,8 +434,8 @@ class TelemetrySample {
       current: current ?? this.current,
       warnOv: warnOv ?? this.warnOv,
       warnUv: warnUv ?? this.warnUv,
-      warnOt: warnOt ?? this.warnOt,
-      warnUtByte: warnUtByte ?? this.warnUtByte,
+      warnOt: clearWarnOt ? null : (warnOt ?? this.warnOt),
+      warnOtByte: warnOtByte ?? this.warnOtByte,
       dischargeV1: dischargeV1 ?? this.dischargeV1,
       dischargeV2: dischargeV2 ?? this.dischargeV2,
       chargeCurrent: chargeCurrent ?? this.chargeCurrent,

@@ -743,7 +743,7 @@ abstract class AppLocalizations {
   /// No description provided for @statusAdvisoryThresholdBreach.
   ///
   /// In en, this message translates to:
-  /// **'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.'**
+  /// **'A live reading is outside the warning range (over-voltage / under-voltage / over-temperature). This is computed by the app, not a fault reported by the device.'**
   String get statusAdvisoryThresholdBreach;
 
   /// No description provided for @statusAdvisoryCapacitorSelfCheck.
@@ -1901,7 +1901,7 @@ abstract class AppLocalizations {
   /// No description provided for @historyRowThresholdWarning.
   ///
   /// In en, this message translates to:
-  /// **'Protection threshold warning'**
+  /// **'Warning threshold'**
   String get historyRowThresholdWarning;
 
   /// No description provided for @historyStatusEvent.
@@ -3812,30 +3812,6 @@ abstract class AppLocalizations {
   /// **'Warn below'**
   String get alertsRowBelowWarns;
 
-  /// Layer ② badge — the unit's own 0x2B.
-  ///
-  /// In en, this message translates to:
-  /// **'Device'**
-  String get alertsSourceDevice;
-
-  /// design 0080 §3.2.2 — the power bank's 50 °C is the one number nobody measured, and the screen is REQUIRED to say so.
-  ///
-  /// In en, this message translates to:
-  /// **'App default'**
-  String get alertsSourceApp;
-
-  /// No description provided for @alertsSourceNone.
-  ///
-  /// In en, this message translates to:
-  /// **'No basis'**
-  String get alertsSourceNone;
-
-  /// No description provided for @alertsSourceOffline.
-  ///
-  /// In en, this message translates to:
-  /// **'Known once connected'**
-  String get alertsSourceOffline;
-
   /// No description provided for @alertsValueUnset.
   ///
   /// In en, this message translates to:
@@ -3853,18 +3829,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{v} °C'**
   String alertsCelsiusValue(String v);
-
-  /// No description provided for @alertsOfflineNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Not connected — this device\'s own factory limits are only readable while connected.'**
-  String get alertsOfflineNote;
-
-  /// No description provided for @alertsReadOnlyNote.
-  ///
-  /// In en, this message translates to:
-  /// **'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.'**
-  String get alertsReadOnlyNote;
 
   /// design 0080 §7.5.6 C-3 / §7.5.7 — the TRANSIENT state. It must never borrow the words of alertsUnrecognisedTitle: every connect passes through here.
   ///
@@ -3887,7 +3851,7 @@ abstract class AppLocalizations {
   /// No description provided for @alertsPowerBankNoteBody.
   ///
   /// In en, this message translates to:
-  /// **'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.'**
+  /// **'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — so we have nothing to judge it against.'**
   String get alertsPowerBankNoteBody;
 
   /// No description provided for @alertsPowerBankOtNote.

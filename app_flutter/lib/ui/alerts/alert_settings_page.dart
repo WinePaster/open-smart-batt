@@ -16,10 +16,11 @@
 /// keeping straight is that TWO of them look like "no warnings" and mean
 /// entirely different things:
 ///
-///   * **A — every row from the device.** The ordinary case: the unit reported
-///     `0x2B`, three 「裝置回報」 badges, the user has to do nothing. 🔵 Since
-///     2026-08-25 this is also the ONLY thing a user can do about a threshold:
-///     read it.
+///   * **A — ~~every row from the device~~ the app's three rows.** The ordinary
+///     case. ~~the unit reported `0x2B`, three 「裝置回報」 badges~~ — 🔵
+///     2026-11-09 (design 0098): the values are the app's fixed ones (≥15 V /
+///     ≤11.5 V / ≥80 °C), `0x2B` is not read, and the rows carry no badge. The
+///     user still has nothing to do but read them.
 ///   * ~~**B — the user changed one field.** That row alone becomes 「自訂」 and
 ///     accented, with the device's own value still shown beside a 「還原」.~~
 ///     🔵 **Gone 2026-08-25 (FB-100, design 0080 §0.3): the thresholds are
@@ -40,8 +41,8 @@
 ///     else entirely.
 ///   * **D — a power bank.** ONE row, over-temperature. The two voltage rows are
 ///     **absent, not greyed** (§3.2.2 verbatim: 「不是顯示成灰色停用 —— 那會讓
-///     使用者以為是自己少設了什麼」), and the 50 °C carries an 「App 預設」 badge
-///     because it is the one number in the table nobody measured.
+///     使用者以為是自己少設了什麼」). ~~and the 50 °C carries an 「App 預設」
+///     badge~~ — no badges since design 0098 Q3.
 ///
 /// ## What P2 does NOT do
 ///
@@ -212,9 +213,10 @@ class AlertSettingsEntry extends StatelessWidget {
         formatCelsius(t.ot.value!),
       );
     }
-    // 🔴 Never "no limits". `0x2B` is persisted nowhere (§7.5.2), so an offline
-    // unit's factory limits are genuinely unknown rather than absent — and the
-    // copy has to say which of the two it is.
+    // 🔴 Never "no limits". ~~`0x2B` is persisted nowhere (§7.5.2), so an
+    // offline unit's factory limits are genuinely unknown~~ — since design 0098
+    // a recognised class always has its row, so this is reached only when the
+    // class itself is not known yet.
     return l10n.alertsEntrySummaryUnknown;
   }
 }
@@ -344,7 +346,6 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
     final thresholds = watchAlertThresholds(context, widget.deviceId);
     final wireClass = watchAlertWireClass(context, widget.deviceId);
     final tele = context.watch<TelemetryController>();
-    final live = tele.recordingDeviceId == widget.deviceId;
 
     return Scaffold(
       appBar: AppBar(
@@ -384,7 +385,6 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
               thresholds: thresholds,
               wireClass: wireClass,
               tele: tele,
-              live: live,
             ),
           ),
         ),
@@ -398,7 +398,6 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
     required AlertThresholds thresholds,
     required ProductClass wireClass,
     required TelemetryController tele,
-    required bool live,
   }) {
     // The unit stopped being saved under us (deleted from another screen).
     // Nothing here has anywhere to write, so say the same thing the entry row
@@ -451,7 +450,6 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
                   kind: kinds[i],
                   resolved: thresholds[kinds[i]],
                   reading: _readingFor(kinds[i], tele),
-                  live: live,
                   last: i == kinds.length - 1,
                 ),
             ],
@@ -460,8 +458,10 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
         // 🔵 2026-08-25 (FB-100) — the §6.2 「離目前讀數過近」 notices went with
         // the values that could be too near. See the note where their two
         // constants used to be.
-        _Note(text: l10n.alertsReadOnlyNote),
-        if (!live) _Note(text: l10n.alertsOfflineNote),
+        // 🔵 2026-11-09 (design 0098 Q3) — ~~alertsReadOnlyNote~~ (「這些門檻是
+        // 裝置出廠設定的…」, no longer true) and ~~alertsOfflineNote~~ (a
+        // threshold no longer needs a link) are gone, and by ruling nothing
+        // replaces them: 「拿掉每列標籤，不用補寫說明」.
         if (!voltage) ...[
           _Note(
             text: l10n.alertsPowerBankOtNote,
@@ -522,29 +522,24 @@ class _AlertSettingsPageState extends State<AlertSettingsPage> {
       context.read<DeviceController>().setAlertSettings(next);
 }
 
-/// One 「過壓 / 欠壓 / 過溫」 row: name, live reading, source badge, value.
+/// One 「過壓 / 欠壓 / 過溫」 row: name, live reading, value.
 ///
-/// 🔑 **The badge is a mitigation, not decoration** (§6.2 / §3.2.2). A user
-/// looking at "80 °C" cannot otherwise tell whether their unit said that or
-/// whether we did, and those two carry very different licence to be edited. The
-/// power bank's 50 °C is the case that forced it into the design.
+/// 🔵 **2026-11-09 (design 0098 Q3): the per-row source badge is gone.** ~~The
+/// badge is a mitigation, not decoration (§6.2 / §3.2.2)~~ — it told a unit's
+/// own `0x2B` apart from the app's table, and since design 0098 every value is
+/// the app's, so all three rows would have said the same word. The owner ruled
+/// it removed with nothing added in its place.
 class _ThresholdRow extends StatelessWidget {
   const _ThresholdRow({
     required this.kind,
     required this.resolved,
     required this.reading,
-    required this.live,
     required this.last,
   });
 
   final AlertKind kind;
   final ResolvedThreshold resolved;
   final double? reading;
-
-  /// Whether this unit is the one being recorded right now. Only used to word
-  /// an EMPTY row: offline, "we cannot know yet" is the truth (§7.5.2); online
-  /// with nothing to show, "no basis" is.
-  final bool live;
   final bool last;
 
   @override
@@ -595,8 +590,6 @@ class _ThresholdRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            _SourceBadge(source: resolved.source, live: live),
-            const SizedBox(width: 6),
             Text(
               resolved.isSet
                   ? (kind.isVoltage
@@ -615,43 +608,9 @@ class _ThresholdRow extends StatelessWidget {
   }
 }
 
-/// Layer ②/③/④, as one word (there is no layer ① since FB-100).
-class _SourceBadge extends StatelessWidget {
-  const _SourceBadge({required this.source, required this.live});
-
-  final ThresholdSource source;
-  final bool live;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final (label, color) = switch (source) {
-      // 🔵 ~~ThresholdSource.user => (l10n.alertsSourceUser, ...)~~ — removed
-      // 2026-08-25 (FB-100) along with the enum value it matched.
-      ThresholdSource.device => (
-          l10n.alertsSourceDevice,
-          context.accent.accentSecondary
-        ),
-      ThresholdSource.appDefault => (
-          l10n.alertsSourceApp,
-          context.colors.muted
-        ),
-      // 🔴 Two different sentences for one enum value, and the difference is
-      // §7.5.2's known gap rather than a nicety: `0x2B` is persisted NOWHERE, so
-      // an offline unit has no layer ② and never will until it is connected.
-      // Saying 「無依據」 there would report a permanent absence where the truth
-      // is "ask again when the link is up" — and the alternative, quietly
-      // caching the last triple against the device id, is what the design
-      // refused, because a stale factory limit is indistinguishable from a live
-      // one on screen.
-      ThresholdSource.none => (
-          live ? l10n.alertsSourceNone : l10n.alertsSourceOffline,
-          live ? AppSemantics.danger : context.colors.muted
-        ),
-    };
-    return _Pill(label: label, color: color);
-  }
-}
+// 🔵 **`_SourceBadge` removed 2026-11-09 (design 0098 Q3).** It rendered
+// layer ②/③/④ as one word (「裝置回報／App 預設／無依據／連線後才知道」); with
+// `0x2B` out there is one source left, and the owner ruled the badge removed.
 
 /// 「靜音 1 小時」 / 「靜音中 · 剩 N 分鐘」.
 class _MuteRow extends StatelessWidget {

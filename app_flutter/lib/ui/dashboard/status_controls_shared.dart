@@ -158,22 +158,25 @@ CapacitorHealth? capacitorHealthOf(int? mode) => switch (mode) {
 ///     know why — the SCREEN is the thing that must tell the two "empty"s apart
 ///     (`AlertsDisabledReason`), not this comparison.
 ///
-/// The comparison itself is unchanged, strictly greater / strictly less, and is
-/// deliberately the same shape as `AlertEvaluator`'s: two comparators disagreeing
-/// on the boundary would put the advisory line and the notification one hundredth
-/// of a volt apart.
+/// 🔵 **2026-11-09 (design 0098): the comparison is INCLUSIVE** — `pvlt >= ov`,
+/// `pvlt <= uv`, `temp >= ot` — by ruling (「>=15V警示 或小於等於11.5V」, and
+/// 「大於等於」 for 80 °C). ~~strictly greater / strictly less~~. It is
+/// deliberately the same shape as `AlertEvaluator._isBreaching`: two
+/// comparators disagreeing on the boundary would put the advisory line and the
+/// notification one hundredth of a volt apart.
 bool readingBreachesThreshold(
   TelemetryController tele,
   AlertThresholds thresholds,
 ) {
-  final pvlt = tele.pvlt;
-  final temp = tele.temperatureC;
-  final ov = thresholds.ov.value;
-  final uv = thresholds.uv.value;
-  final ot = thresholds.ot.value;
-  if (pvlt != null && ov != null && pvlt > ov) return true;
-  if (pvlt != null && uv != null && pvlt < uv) return true;
-  if (temp != null && ot != null && temp > ot) return true;
+  // One comparison for the screen and the notification: [AlertKind.breaches].
+  for (final kind in AlertKind.values) {
+    final reading =
+        kind.isVoltage ? tele.pvlt : tele.temperatureC?.toDouble();
+    final limit = thresholds[kind].value;
+    if (reading != null && limit != null && kind.breaches(reading, limit)) {
+      return true;
+    }
+  }
   return false;
 }
 

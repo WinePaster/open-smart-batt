@@ -398,7 +398,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statusAdvisoryThresholdBreach =>
-      '目前讀數已超出裝置回報的警戒範圍（過壓／低壓／過溫）。此為 App 依裝置回報的門檻自行計算，並非裝置回報的故障。';
+      '目前讀數已超出警示範圍（過壓／低壓／過溫）。此為 App 自行計算，並非裝置回報的故障。';
 
   @override
   String get statusAdvisoryCapacitorSelfCheck =>
@@ -1131,7 +1131,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get historyRowThresholdWarning => '保護門檻警告';
+  String get historyRowThresholdWarning => '警示門檻';
 
   @override
   String get historyStatusEvent => '事件';
@@ -2154,18 +2154,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alertsRowBelowWarns => '低於就警告';
 
   @override
-  String get alertsSourceDevice => '裝置回報';
-
-  @override
-  String get alertsSourceApp => 'App 預設';
-
-  @override
-  String get alertsSourceNone => '無依據';
-
-  @override
-  String get alertsSourceOffline => '連線後才知道';
-
-  @override
   String get alertsValueUnset => '未設定';
 
   @override
@@ -2179,12 +2167,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get alertsOfflineNote => '目前未連線，這台裝置自己回報的出廠門檻要連線後才讀得到。';
-
-  @override
-  String get alertsReadOnlyNote => '這些門檻是裝置出廠設定的，App 只負責讀出來提醒你，不會修改裝置。';
-
-  @override
   String get alertsPendingTitle => '正在辨識這台裝置';
 
   @override
@@ -2196,7 +2178,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alertsPowerBankNoteBody =>
-      '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事，而且它不回報出廠警戒門檻 —— 我們沒有依據可以判斷多少算異常。';
+      '行動電源回報的是電芯電壓（約 3.7 V 級），與電池／電容的包電壓不是同一件事 —— 我們沒有依據可以判斷多少算異常。';
 
   @override
   String get alertsPowerBankOtNote => '這台裝置沒有回報警戒門檻，50 °C 是 App 的預設值。';

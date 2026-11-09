@@ -62,7 +62,7 @@
 | Secondary current (mA) | pack | `0x2F` | parsed/logged only |
 | **Warning OV** (V) | pack | `0x2B` | `b4 * 0.025 + 14.4` |
 | **Warning UV** (V) | pack | `0x2B` | `b5 * 0.025 + 10.4` |
-| **Warning OT** (°C) | pack | `0x2B` | `b6 + 60.0` |
+| **Warning OT** (°C) | pack | `0x2B` | 🔴 **Class-dependent — corrected 2026-11-09.** ~~`b6 + 60.0`~~ was a two-point fit (battery `0x14`→80, capacitor `0x28`→100); the vendor engineering app's own `[2B]` screen reads `OV:16.0V\UV:11.5V\OT:80°C` for wire `402c2814`, so a capacitor's `0x28` is **80 °C**. Capacitor (`0x17`/`0x18`): `0x28` ⇒ 80 °C, the only value ever observed — a lookup, not a formula. Battery (`0x02`): `b6 + 60` kept but **unverified** (`0x14` ⇒ 80 °C). See §8.2.2 |
 | **Charge** v1 / v2 | ⛔ | `0x41` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **do not apply.** The v2 half is now positively refuted: on device-type `0x17` the last payload byte carries the `0x21` temperature in °C, so `b6..b7` is not a millivolt word. `0x18` uses yet another layout. See §10.1 |
 | **Discharge** v1 / v2 | ⚠️ | `0x4A` | `(b4*256+b5)/1000`, `(b6*256+b7)/1000` — **PACK-SIDE ONLY, and never observed on any pack.** On a power bank the same 4 bytes are `[u16 mV][u16 mA]` (§9.1) |
 | **Device type** | all | `0x10` | `b4` — `0x02` battery / `0x17` capacitor / `0x22` power bank (§9) |
@@ -141,6 +141,15 @@ render/export DVOL as *pending* until VADJ is known.
 
 ### 8.2.2 Warning thresholds differ **per unit**, not just per class
 
+> 🔵 **2026-11-09 — what `0x2B` is, and what OpenSmartBatt does with it.** `0x2B`
+> holds the unit's **internal protection parameters** (the vendor app calls them
+> 警戒參數). OpenSmartBatt **does not use them as its warning thresholds, does
+> not show them, and never writes them.** The app's warnings use its own fixed
+> values instead — batteries and capacitors: over-voltage **≥ 15.0 V**,
+> under-voltage **≤ 11.5 V**, over-temperature **≥ 80 °C**; power banks:
+> over-temperature **≥ 50 °C** only. The decode below is kept as protocol
+> documentation; the app still logs the raw frame.
+
 Measured `0x2B` readbacks, decoded with the §8.2 formulas (baseline: whole-corpus
 re-walk 2026-07-30):
 
@@ -148,8 +157,15 @@ re-walk 2026-07-30):
 |---|---|---|---|---|---|---|
 | `18401414` | 15.0 V | 12.0 V | 80 °C | `0x14` | battery (`0x02`) | 615 |
 | `1f3f1414` | 15.175 V | 11.975 V | 80 °C | `0x14` | battery (`0x02`) | 112 |
-| `102c2814` | 14.8 V | 11.5 V | 100 °C | `0x14` | capacitor (`0x17`) | 2290 |
-| `102c2800` | 14.8 V | 11.5 V | 100 °C | **`0x00`** | capacitor (`0x17`) | 40 |
+| `102c2814` | 14.8 V | 11.5 V | ~~100 °C~~ **80 °C** | `0x14` | capacitor (`0x17`) | 2290 |
+| `102c2800` | 14.8 V | 11.5 V | ~~100 °C~~ **80 °C** | **`0x00`** | capacitor (`0x17`) | 40 |
+
+> 🔴 **OT column corrected 2026-11-09.** The capacitor rows read ~~100 °C~~, computed
+> with the refuted class-blind `b6 + 60`. The vendor engineering app shows
+> `OT:80°C` on a gen-3 capacitor (`0x18`, wire `402c2814`, same b6 `0x28`) on the
+> very row that confirms OV and UV against the formulas above. The battery rows'
+> 80 °C is still `b6 + 60` and **has no screen confirmation** — one `[2B]` screen
+> of a battery decides it.
 
 **Two units of the same class carry different thresholds** (rows 1 and 2 are both
 batteries). So thresholds are a per-unit setting; never assume a class default.
@@ -168,9 +184,12 @@ Confirms the read scaling (exact inverse):
 ```
 OV_byte = round( (ov_volts − 14.4) / 0.025 )
 UV_byte = round( (uv_volts − 10.4) / 0.025 )
-OT_byte = round(  ot_celsius − 60 )
+OT_byte = round(  ot_celsius − 60 )      ⚠️ refuted for capacitors, see §8.2
 ```
 Frame: `[0xB8, 0x2B, 0x00, 0x04, OV_byte, UV_byte, OT_byte, 0x00] + XOR`.
+
+> OpenSmartBatt has no `0x2B` write path (removed 2026-11-09). This section
+> documents the vendor app's frame for reference only.
 *(Write path uses round-half (`LibcRound`); OV/UV additionally pass a precision-
 rounding step before rounding; read-path gauge/current use truncation — so a
 round-trip may differ by ±1 LSB.)*

@@ -345,10 +345,10 @@ class TelemetryController extends ChangeNotifier
   /// as-is, only as its [shortDeviceHash].
   String? get mac => _sample.mac;
 
-  /// Warning thresholds (selector 0x2B), in physical units.
-  double? get warnOv => _sample.warnOv;
-  double? get warnUv => _sample.warnUv;
-  double? get warnOt => _sample.warnOt;
+  // 🔵 **`warnOv` / `warnUv` / `warnOt` getters removed 2026-11-09 (design
+  // 0098).** `0x2B` is the unit's protection setting and must not reach any
+  // screen; without these getters no widget can read it by accident. The
+  // decoded values still live on `TelemetrySample` for the protocol tests.
 
   /// Raw temperature (°C).
   int? get temperatureC => _sample.temperatureC;
