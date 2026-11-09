@@ -66,8 +66,11 @@ class RceSession implements ProtocolSession {
   /// telemetry; it flips true once the tick-1 `!#` elicits the 0x10 frame,
   /// after which the every-5th `!#` schedule kicks in.
   @override
-  List<int> nextPoll(int tick) => rceTokenFor(commands,
-      tick: tick, isPowerBank: _decoder.sample.isPowerBank);
+  List<int> nextPoll(int tick) => rceTokenFor(
+    commands,
+    tick: tick,
+    isPowerBank: _decoder.sample.isPowerBank,
+  );
 
   @override
   bool ingest(List<int> chunk, DateTime at) {

@@ -85,7 +85,7 @@ class _LinkState {
   _LinkState({
     required this.deviceId,
     required this.device,
-    required this.session,
+    this.session,
   });
 
   /// BLE remote id — the map key, and the attribution stamped on this link's
@@ -164,7 +164,11 @@ class _LinkState {
   /// schedule — which used to be the [reassembler] / [decoder] fields the
   /// paragraphs above describe. The per-link rule they state is unchanged:
   /// one session per link, never shared.
-  final ProtocolSession session;
+  ///
+  /// design 0099 P2: null until the GATT table has chosen a protocol (a demo
+  /// link gets one at once). No session means nothing to poll and nothing to
+  /// write — which is exactly what an unrecognised peripheral must get.
+  ProtocolSession? session;
 
   /// FB-39: invalidates a connection setup that a newer connect/disconnect has
   /// superseded, so a slow unit cannot bring the app online under an identity
@@ -252,9 +256,15 @@ class BleService {
   BleService({
     CommandBuilder commands = const CommandBuilder(),
     MetadataParser parser = const NoopMetadataParser(),
+    List<DeviceProfile>? profiles,
   }) {
     _commands = commands;
     _parser = parser;
+    // design 0099 P2: the protocols a link may turn out to speak. RCE is the
+    // default so every existing construction — including the test doubles
+    // that `extends BleService` — keeps behaving exactly as before.
+    _profiles = List<DeviceProfile>.unmodifiable(
+        profiles ?? [RceProfile(parser: parser, commands: commands)]);
     // One persistent listener turns plugin scan results into [DiscoveredDevice].
     _scanSub = FlutterBluePlus.scanResults.listen(_onScanResults);
   }
@@ -266,9 +276,12 @@ class BleService {
   /// built per link instead of once per service.
   late final MetadataParser _parser;
 
-  /// A fresh protocol session for a new link (design 0099 P1). RCE only until
-  /// P2 lets the GATT table choose.
-  ProtocolSession _newSession() =>
+  /// Every protocol this service can speak, in priority order (design 0099).
+  late final List<DeviceProfile> _profiles;
+
+  /// The session a DEMO link speaks. A demo unit is an RCE unit by
+  /// construction, so it skips the GATT match (design 0099 §3.4, last line).
+  ProtocolSession _demoSession() =>
       RceSession(parser: _parser, commands: _commands);
 
   /// Live links by device id. **0 or 1 entry today** (see the class doc).
@@ -349,11 +362,6 @@ class BleService {
   /// platform dispatch can be asserted directly.
   @visibleForTesting
   bool get notifyDrivenKeepAlive => _pacer.active;
-
-  // Cached guids (cheap, but build once).
-  static final Guid _serviceGuid = Guid(Gatt.serviceUuid);
-  static final Guid _writeGuid = Guid(Gatt.writeCharUuid);
-  static final Guid _notifyGuid = Guid(Gatt.notifyCharUuid);
 
   /// Keep-alive cadence (~1 Hz). The battery streams telemetry as long as it
   /// keeps receiving a poll token; exact cadence is not protocol-critical.
@@ -699,11 +707,12 @@ class BleService {
   BleLinkState get currentState => _state;
 
   /// Latest accumulated telemetry snapshot (folds prior frames).
-  TelemetrySample get currentSample => _current?.session.sample ?? _noTelemetry;
+  TelemetrySample get currentSample =>
+      _current?.session?.sample ?? _noTelemetry;
 
   /// Latest accumulated engineering metadata (opaque; empty on the open build).
   DeviceMetadata get currentDeviceInfo =>
-      _current?.session.metadata ?? const EmptyDeviceMetadata();
+      _current?.session?.metadata ?? const EmptyDeviceMetadata();
 
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId =>
@@ -833,12 +842,15 @@ class BleService {
       final name = r.device.platformName.isNotEmpty
           ? r.device.platformName
           : r.advertisementData.advName;
-      // Vendor if it advertises our service UUID (most precise) OR its name
-      // carries a vendor token. See [looksLikeVendorName] for why this is a
-      // token-prefix match rather than `startsWith` or `contains`.
-      final isVendor =
-          r.advertisementData.serviceUuids.contains(_serviceGuid) ||
-              looksLikeVendorName(name);
+      // Vendor if any protocol we speak recognises it — for RCE, the vendor
+      // service UUID (most precise) OR a vendor name token; see
+      // [looksLikeVendorName] for why that is a token-prefix match. Soft
+      // evidence only: it orders the list, it never picks the protocol
+      // (design 0099 §3.4).
+      final ad = AdvertisementEvidence(name: name, serviceUuids: [
+        for (final g in r.advertisementData.serviceUuids) normaliseUuid(g.str128)
+      ]);
+      final isVendor = _profiles.any((p) => p.looksLikeThisDevice(ad));
       final existing = _scanSeen[id];
       if (existing == null ||
           existing.rssi != r.rssi ||
@@ -894,8 +906,7 @@ class BleService {
     if (demoKind != null) return _connectDemo(deviceId, demoKind);
 
     final device = BluetoothDevice.fromId(deviceId);
-    final link = _LinkState(
-        deviceId: deviceId, device: device, session: _newSession());
+    final link = _LinkState(deviceId: deviceId, device: device);
 
     // A fresh connect starts from a clean slate. Dropping the entries is what
     // the old `_reassembler.reset(); _decoder.reset(); _settingUp = false;`
@@ -982,7 +993,7 @@ class BleService {
   /// above cannot tell the difference, and no platform API is called.
   Future<void> _connectDemo(String deviceId, DemoKind kind) async {
     final link =
-        _LinkState(deviceId: deviceId, device: null, session: _newSession())
+        _LinkState(deviceId: deviceId, device: null, session: _demoSession())
           ..demo = DemoPeripheral(kind);
     _installLink(link);
     _current = link;
@@ -1223,18 +1234,22 @@ class BleService {
       link.writeChar = null;
       link.notifyChar = null;
 
-      // Prefer characteristics under the vendor service, but fall back to a
-      // full sweep — the service linkage is inferred, not byte-fixed.
-      for (final svc in services) {
-        final preferred = svc.uuid == _serviceGuid;
-        for (final c in svc.characteristics) {
-          if (c.uuid == _writeGuid && (link.writeChar == null || preferred)) {
-            link.writeChar = c;
-          }
-          if (c.uuid == _notifyGuid && (link.notifyChar == null || preferred)) {
-            link.notifyChar = c;
-          }
-        }
+      // design 0099 P2: the GATT table chooses the protocol. A session opens
+      // only for EXACTLY ONE confirmed profile; candidates alone, or several
+      // confirmed, open nothing and so write nothing (§3.4). Within the chosen
+      // profile the characteristic rule is the one this method always used —
+      // prefer the expected service, fall back to a full sweep — now in
+      // [pickEndpoints].
+      final snapshot = gattSnapshotOf(services);
+      final choice = resolveProfile(_profiles, snapshot);
+      final chosen = choice.profile;
+      final pick =
+          chosen == null ? null : pickEndpoints(snapshot, chosen.endpoints);
+      if (pick != null) {
+        link.writeChar =
+            services[pick.writeService].characteristics[pick.writeChar];
+        link.notifyChar =
+            services[pick.notifyService].characteristics[pick.notifyChar];
       }
 
       // Diagnostic: dump the full GATT table (svc/char UUID + properties) to the
@@ -1244,11 +1259,10 @@ class BleService {
       _dumpGatt(link, services);
 
       final notify = link.notifyChar;
-      if (link.writeChar == null || notify == null) {
-        throw StateError(
-            'GATT characteristics not found (write=${link.writeChar != null}, '
-            'notify=${notify != null})');
+      if (chosen == null || link.writeChar == null || notify == null) {
+        throw _noProfileError(choice, snapshot);
       }
+      link.session = chosen.openSession();
 
       // Subscribe BEFORE the first write (PROTOCOL.md §2). setNotifyValue(true)
       // writes the CCCD enable value [0x01, 0x00].
@@ -1282,6 +1296,53 @@ class BleService {
       link.settingUp = false;
     }
   }
+
+  /// The error a GATT setup throws when no single profile owns the table.
+  ///
+  /// The no-match wording is kept byte-for-byte from before design 0099
+  /// (`GATT characteristics not found (write=…, notify=…)`): field captures
+  /// are grepped for it, and [gattSetupFailureReason] keys on it. For an
+  /// RCE-only build the two flags mean exactly what they meant — whether the
+  /// write / notify characteristic was found anywhere in the table.
+  StateError _noProfileError(ProfileChoice choice, GattSnapshot snapshot) {
+    switch (choice.resolution) {
+      case ProfileResolution.candidatesOnly:
+        return StateError(
+            'no confirmed profile (candidates: ${choice.candidates.join(',')})');
+      case ProfileResolution.ambiguous:
+        return StateError(
+            'ambiguous profiles (confirmed: ${choice.confirmed.join(',')})');
+      case ProfileResolution.noMatch:
+      case ProfileResolution.resolved:
+        final uuids = {
+          for (final svc in snapshot.services)
+            for (final c in svc.characteristics) c.uuid
+        };
+        bool any(String Function(GattEndpoints e) f) => _profiles
+            .any((p) => uuids.contains(normaliseUuid(f(p.endpoints))));
+        return StateError('GATT characteristics not found '
+            '(write=${any((e) => e.writeCharUuid)}, '
+            'notify=${any((e) => e.notifyCharUuid)})');
+    }
+  }
+
+  /// A plugin GATT table as plain values for the profiles (design 0099 P2).
+  @visibleForTesting
+  static GattSnapshot gattSnapshotOf(List<BluetoothService> services) =>
+      GattSnapshot([
+        for (final svc in services)
+          GattServiceInfo(normaliseUuid(svc.uuid.str128), [
+            for (final c in svc.characteristics)
+              GattCharacteristicInfo(
+                normaliseUuid(c.uuid.str128),
+                read: c.properties.read,
+                write: c.properties.write,
+                writeWithoutResponse: c.properties.writeWithoutResponse,
+                notify: c.properties.notify,
+                indicate: c.properties.indicate,
+              ),
+          ]),
+      ]);
 
   /// Actually drop the link after a failed GATT setup — FB-51 (e), design 0031.
   ///
@@ -1347,8 +1408,10 @@ class BleService {
     }
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
-    final infoBefore = link.session.metadata;
-    final emitted = link.session.ingest(chunk, DateTime.now());
+    final session = link.session;
+    if (session == null) return;
+    final infoBefore = session.metadata;
+    final emitted = session.ingest(chunk, DateTime.now());
     if (emitted) {
       // 🔴 FB-88 / design 0078 (M1-b): stamp WHOSE frame this is on the way
       // out. This is the ONE place a telemetry sample leaves this service, and
@@ -1366,12 +1429,12 @@ class BleService {
       // out — mutating identity into it would put a transport fact inside the
       // decode. `copyWith` leaves the accumulation untouched and gives the
       // stream its own stamped view.
-      _telemetry.add(link.session.sample.copyWith(deviceId: link.deviceId));
+      _telemetry.add(session.sample.copyWith(deviceId: link.deviceId));
     }
     // Device-metadata side-channel. On the open build
     // the Noop parser never changes it, so this never fires.
-    if (!identical(infoBefore, link.session.metadata)) {
-      _deviceMetadata.add(link.session.metadata);
+    if (!identical(infoBefore, session.metadata)) {
+      _deviceMetadata.add(session.metadata);
     }
   }
 
@@ -1520,7 +1583,7 @@ class BleService {
     link.demoReplies.clear();
     link.demo = null;
     link.settingUp = false;
-    link.session.discardPartial();
+    link.session?.discardPartial();
     await notifyCancelled;
     await connCancelled;
     if (emitDisconnected) {
@@ -1567,7 +1630,7 @@ class BleService {
     // power-bank input is this link's own latest 0x10 — see [RceSession]).
     // The transport still owns the tick count, the guard above and everything
     // below.
-    final token = link.session.nextPoll(link.keepAliveTick);
+    final token = link.session?.nextPoll(link.keepAliveTick);
     if (token == null) {
       link.keepAliveInFlight = false;
       return;

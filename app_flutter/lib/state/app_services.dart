@@ -122,6 +122,9 @@ class AppServices {
   /// - [parser]: device-metadata parser forwarded to
   ///   the default [BleService]. The open build passes [NoopMetadataParser];
   ///   a closed composition root injects its own. Ignored when [ble] is provided.
+  /// - [profiles]: the protocols the default [BleService] may speak (design
+  ///   0099). Null = RCE only, which is what the open build passes. A closed
+  ///   composition root may add its own. Ignored when [ble] is provided.
   /// - [monitor]: inject a fake background-monitor handle in tests; defaults to
   ///   the platform's implementation (Android foreground service, else no-op).
   /// - [alertNotifier]: inject a fake local-notification handle in tests;
@@ -137,10 +140,11 @@ class AppServices {
     MonitorService? monitor,
     AlertNotifier? alertNotifier,
     MetadataParser parser = const NoopMetadataParser(),
+    List<DeviceProfile>? profiles,
     AppConfig config = AppConfig.open,
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
-    final bleService = ble ?? BleService(parser: parser);
+    final bleService = ble ?? BleService(parser: parser, profiles: profiles);
     // Resolved before any controller exists, so the very first recorded row
     // already carries it.
     final env = await resolveBuildInfo();
