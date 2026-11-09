@@ -178,7 +178,16 @@ class _LinkState {
   /// design 0097: the simulated unit behind a DEMO link, or null for a real
   /// one. A demo link has no plugin handle ([device] stays null) and touches no
   /// platform API; the single-link getters read this alongside [device].
-  DemoPeripheral? demo;
+  ///
+  /// design 0099 P3: generalised to any [SimulatedPeer], so a test can put a
+  /// protocol other than RCE behind the same link machinery. [demo] is this
+  /// field when it holds the demo unit.
+  SimulatedPeer? peer;
+
+  DemoPeripheral? get demo {
+    final p = peer;
+    return p is DemoPeripheral ? p : null;
+  }
 
   /// Answers [demo] has scheduled and not yet delivered. Cancelled by teardown
   /// so a torn-down demo link cannot speak after it has gone.
@@ -716,7 +725,8 @@ class BleService {
 
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId =>
-      _current?.device?.remoteId.str ?? _current?.demo?.kind.id;
+      _current?.device?.remoteId.str ??
+      (_current?.peer != null ? _current?.deviceId : null);
 
   /// Advertised name of the connected device (e.g. "RCE-SCAP_II"), or ''.
   String get connectedDeviceName =>
@@ -994,7 +1004,7 @@ class BleService {
   Future<void> _connectDemo(String deviceId, DemoKind kind) async {
     final link =
         _LinkState(deviceId: deviceId, device: null, session: _demoSession())
-          ..demo = DemoPeripheral(kind);
+          ..peer = DemoPeripheral(kind);
     _installLink(link);
     _current = link;
     _setState(BleLinkState.connecting);
@@ -1002,9 +1012,33 @@ class BleService {
     // A real connect takes a moment; an instant one would skip the
     // connecting state the UI is built to show.
     await Future<void>.delayed(demoConnectDelay);
-    if (!link.epoch.isCurrent(epoch) || link.demo == null) return;
+    if (!link.epoch.isCurrent(epoch) || link.peer == null) return;
     _setState(BleLinkState.connected);
     _emitEvent('demo link up (${kind.id})', link: link);
+    _startKeepAlive(link);
+    _setState(BleLinkState.ready);
+  }
+
+  /// Bring up a link to a [SimulatedPeer] speaking [session] — the demo
+  /// path (design 0097) with the protocol supplied by the caller instead of
+  /// fixed to RCE, for exercising the seam without a radio (design 0099).
+  ///
+  /// Same lifecycle as a demo link: the previous link is torn down first, the
+  /// state runs `connecting` → `connected` → `ready`, the keep-alive drives
+  /// [ProtocolSession.nextPoll], and every write passes the gate in
+  /// [_writeTo]. No GATT match: the caller has already chosen the protocol.
+  @visibleForTesting
+  Future<void> connectSimulated(String deviceId,
+      {required ProtocolSession session, required SimulatedPeer peer}) async {
+    _invalidateAllLinks();
+    await disconnect();
+    await stopScan();
+    final link = _LinkState(deviceId: deviceId, device: null, session: session)
+      ..peer = peer;
+    _installLink(link);
+    _current = link;
+    _setState(BleLinkState.connecting);
+    _setState(BleLinkState.connected);
     _startKeepAlive(link);
     _setState(BleLinkState.ready);
   }
@@ -1026,7 +1060,7 @@ class BleService {
     late final Timer t;
     t = Timer(demoReplyDelay, () {
       link.demoReplies.remove(t);
-      if (link.demo == null) return;
+      if (link.peer == null) return;
       for (var i = 0; i < bytes.length; i += demoChunkBytes) {
         final end = math.min(i + demoChunkBytes, bytes.length);
         _onNotify(link, bytes.sublist(i, end));
@@ -1474,7 +1508,7 @@ class BleService {
     _invalidateAllLinks();
     final link = _current;
     final device = link?.device;
-    if (link == null || (device == null && link.demo == null)) return;
+    if (link == null || (device == null && link.peer == null)) return;
     _setState(BleLinkState.disconnecting);
     try {
       await device?.disconnect();
@@ -1581,7 +1615,7 @@ class BleService {
       t.cancel();
     }
     link.demoReplies.clear();
-    link.demo = null;
+    link.peer = null;
     link.settingUp = false;
     link.session?.discardPartial();
     await notifyCancelled;
@@ -1612,7 +1646,7 @@ class BleService {
     // every early return, deliberately — a guarded tick still proves the
     // isolate ran.
     _execGap.tick(DateTime.now());
-    if (link.writeChar == null && link.demo == null) return;
+    if (link.writeChar == null && link.peer == null) return;
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH
     // directions stall for minutes, then everything resumes at once. Without
@@ -1711,11 +1745,29 @@ class BleService {
   /// never be delivered to a unit other than the one it was scheduled for.
   Future<void> _writeTo(_LinkState? link, List<int> bytes,
       {Duration? timeout}) async {
-    final demo = link?.demo;
-    if (demo != null) {
+    // design 0099 §3.5 — THE write gate. Every write this service makes, the
+    // keep-alive included, passes this point and nothing else reaches the
+    // radio ([BluetoothCharacteristic.write] is called below and nowhere
+    // else in this file). A read-only protocol is therefore read-only by
+    // construction: its session says no here, and no caller can route around
+    // it. The refusal line carries no payload, on purpose.
+    final session = link?.session;
+    if (session == null) {
+      if (link?.writeChar != null) {
+        // Unreachable by construction (characteristics are only resolved
+        // together with a session); stated so it stays that way.
+        throw StateError('writeCommand: link has no protocol session');
+      }
+    } else if (!session.allowsWrite(bytes)) {
+      _emitEvent('write refused by profile (${bytes.length} bytes)',
+          link: link);
+      throw const ProfileWriteRefused();
+    }
+    final peer = link?.peer;
+    if (peer != null) {
       _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
           deviceId: link!.deviceId));
-      _deliverDemo(link, demo.answer(bytes));
+      _deliverDemo(link, peer.answer(bytes));
       return;
     }
     final c = link?.writeChar;
@@ -1750,6 +1802,15 @@ class BleService {
     final creds = AuthCredentials(cb: cb, pwSum: pwSum);
     await writeCommand(_commands.switchMode(mode, creds));
   }
+
+  /// Write the mode sub-frame alone, without auth (design 0099 P3: moved from
+  /// `ConnectionController.switchModeOnly`, which built the bytes itself and
+  /// wrote them raw). EXPERIMENTAL as it always was — see that method.
+  Future<void> modeSet(int mode) => writeCommand(_commands.modeSet(mode));
+
+  /// Write the `0x23` read-back poll (design 0099 P3: moved from
+  /// `ConnectionController.pollMode`).
+  Future<void> modeReadBack() => writeCommand(_commands.modeReadBack());
 
   /// Verify-auth standalone (live HCI capture): the 9-byte auth frame
   /// the reference app sends ~2 s before a bundled mode+auth.

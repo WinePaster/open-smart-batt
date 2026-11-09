@@ -112,6 +112,18 @@ class BlePacketEvent {
       : at = at ?? DateTime.now();
 }
 
+/// A write the link's protocol session refused (design 0099 §3.5).
+///
+/// Thrown by every write path — keep-alive and command alike — because they
+/// all go through one gate. The refusal is logged without the payload: the
+/// point of refusing is that those bytes never reach the radio, and a log that
+/// carried them would reach further than the radio does.
+class ProfileWriteRefused implements Exception {
+  const ProfileWriteRefused();
+  @override
+  String toString() => 'ProfileWriteRefused';
+}
+
 /// Guards work that spans an `await` against a newer connect superseding it.
 ///
 /// FB-39. `_setupConnection()` reads `_device` once and then

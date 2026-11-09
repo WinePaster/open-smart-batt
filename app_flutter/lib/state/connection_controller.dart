@@ -2281,8 +2281,7 @@ class ConnectionController extends ChangeNotifier {
   /// EXPERIMENTAL — send ONLY the mode sub-frame, skipping the auth frame.
   /// Unproven: the device MAY ignore commands without auth. Provided as a
   /// car-side fallback to test whether auth is actually required.
-  Future<void> switchModeOnly(int mode) =>
-      writeCommand(const CommandBuilder().modeSet(mode));
+  Future<void> switchModeOnly(int mode) => _ble.modeSet(mode);
 
   /// EXPERIMENTAL release with no auth (mode 0x00 only). See [switchModeOnly].
   Future<void> releaseCutOffModeOnly() => switchModeOnly(ModeArg.unlock);
@@ -2293,8 +2292,7 @@ class ConnectionController extends ChangeNotifier {
   /// capture); a lone mode+auth write was observed to be intermittent
   /// (FB 2026.08.04/003), so [releaseCutOff] now pairs each write with this poll
   /// to match the known-good sequence (design 0036 §10).
-  Future<void> pollMode() =>
-      writeCommand(const CommandBuilder().modeReadBack());
+  Future<void> pollMode() => _ble.modeReadBack();
 
   /// Standalone verify-auth (9-byte auth frame).
   Future<void> sendAuth({required int cb, required int pwSum}) =>
