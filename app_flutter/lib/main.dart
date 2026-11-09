@@ -42,6 +42,8 @@ Future<void> main() => bootstrap(
 ///
 /// - [parser]: device-metadata parser threaded to [BleService] via
 ///   [AppServices.create]. Open default = [NoopMetadataParser].
+/// - [profiles]: the protocols [BleService] may speak (design 0099), threaded
+///   the same way. Open default = null = RCE only.
 /// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
 ///   open build (no panel; the open app never reads [DeviceMetadata] content).
 /// - [config]: per-edition branding (design 0092). Open default =
@@ -52,6 +54,7 @@ Future<void> bootstrap({
   MetadataParser parser = const NoopMetadataParser(),
   WidgetBuilder? deviceInfoPanelBuilder,
   AppConfig config = AppConfig.open,
+  List<DeviceProfile>? profiles,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
@@ -78,7 +81,8 @@ Future<void> bootstrap({
   // open. Fall back to a screen that says what happened instead.
   final AppServices services;
   try {
-    services = await AppServices.create(parser: parser, config: config);
+    services = await AppServices.create(
+        parser: parser, config: config, profiles: profiles);
   } catch (e) {
     runApp(
       StartupFailureApp(

@@ -23,6 +23,7 @@ import 'dart:typed_data';
 
 import '../protocol/protocol.dart';
 import 'demo_device.dart';
+import 'simulated_peer.dart';
 
 /// One instant of a demo unit's telemetry, in display units.
 class DemoReading {
@@ -51,7 +52,7 @@ class DemoReading {
 }
 
 /// The simulated unit for one demo link.
-class DemoPeripheral {
+class DemoPeripheral implements SimulatedPeer {
   DemoPeripheral(this.kind, {DateTime Function()? clock})
       : _clock = clock ?? DateTime.now;
 
@@ -150,6 +151,7 @@ class DemoPeripheral {
   }
 
   /// The frames this unit sends back after the app writes [written].
+  @override
   List<Uint8List> answer(List<int> written) {
     if (written.isEmpty) return const [];
     if (written.first == kSyncByte) return _answerCommands(written);
