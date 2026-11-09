@@ -59,20 +59,20 @@ TelemetrySample _sample({double? pvlt, int? tempC, DateTime? stamp}) =>
       temperatureC: tempC,
     );
 
-/// Thresholds as a car battery reports them (`18401414`), with no user override.
+/// A fixed threshold set for the state machine to run against.
 ///
-/// 🔵 2026-08-22 — `deviceType` is now part of the fixture, not decoration.
-/// Since §7.5.6 C-2 a unit whose class is unknown resolves to three empty
-/// fields no matter what its `0x2B` said, so without the `0x02` byte this
-/// fixture would silently become "nothing is watched" and every test built on
-/// it would pass by evaluating nothing.
-final AlertThresholds _carBattery = resolveThresholds(
-  reported: _sample().copyWith(
-    warnOv: 15.0,
-    warnUv: 12.0,
-    warnOt: 80,
-    deviceType: kSmartBatteryDeviceType,
-  ),
+/// 🔵 2026-11-09 (design 0098) — ~~thresholds as a car battery reports them
+/// (`18401414`), resolved through `resolveThresholds`~~. `0x2B` is no longer a
+/// source, and the evaluator is number-agnostic: it compares whatever
+/// [AlertThresholds] it is handed. So the fixture is built directly, and keeps
+/// the old UV 12.0 on purpose — every number in the tests below was written
+/// against it, and the app's real values (UV 11.5) are pinned where they live,
+/// in `alert_thresholds_test.dart`. The design-0098 numbers get their own group
+/// at the end of this file.
+const AlertThresholds _carBattery = AlertThresholds(
+  ov: ResolvedThreshold(15.0, ThresholdSource.appDefault),
+  uv: ResolvedThreshold(12.0, ThresholdSource.appDefault),
+  ot: ResolvedThreshold(80, ThresholdSource.appDefault),
 );
 
 /// A gate that lets everything through: saved unit, both switches on, no mute.
@@ -604,11 +604,12 @@ void main() {
     test('an unknown unit produces nothing however bad the reading', () {
       fakeAsync((async) {
         final e = AlertEvaluator();
-        // 🔵 A recognised battery that simply has no thresholds from any layer:
-        // since §7.5.6 C-2 a bare `resolveThresholds()` would be stopped by the
-        // DEVICE gate instead, which is a different rule and is tested in
-        // `alert_thresholds_test.dart`. This one is still about layer ④.
-        final none = resolveThresholds(wireClass: ProductClass.smartBattery);
+        // 🔵 Three empty fields on a unit the gate let through. ~~A recognised
+        // battery with no thresholds from any layer~~ — since design 0098
+        // (2026-11-09) every recognised class has its app row, so the shape is
+        // built directly. This is still about layer ④: the evaluator must not
+        // invent a limit for a field it was not given.
+        const none = AlertThresholds.none;
 
         for (var i = 0; i < 60; i++) {
           expect(_feed(e, pvlt: 3.0, tempC: 120, thresholds: none), isEmpty);
@@ -627,15 +628,13 @@ void main() {
         // Only a UV; nothing else from any layer. The wire class is required
         // since §7.5.6 C-2 — an unidentified unit gets no alarms at all, so
         // without it there would be no UV here to be partial about.
-        // 🔵 2026-08-25 (FB-100) — ~~userUv: 12.0~~ came from the user before
-        // the thresholds went read-only. A partial `0x2B` produces the same
-        // shape and is a state the wire can actually be in.
-        final partial = resolveThresholds(
-          reported: _sample().copyWith(
-            warnUv: 12.0,
-            deviceType: kSmartBatteryDeviceType,
-          ),
-          wireClass: ProductClass.smartBattery,
+        // 🔵 2026-11-09 (design 0098) — ~~a partial `0x2B`~~ no longer reaches
+        // the resolver, and no real class has a partial row except the power
+        // bank. The shape is built directly: the evaluator must still honour it.
+        const partial = AlertThresholds(
+          ov: ResolvedThreshold.unavailable,
+          uv: ResolvedThreshold(12.0, ThresholdSource.appDefault),
+          ot: ResolvedThreshold.unavailable,
         );
 
         _feed(e, pvlt: 11.5, tempC: 200, thresholds: partial);
@@ -660,10 +659,7 @@ void main() {
     // resolved values are unchanged, so everything below still reads the same —
     // only the reason it holds is different. The declaration stays in the call
     // because layer ③ is still where the 50 °C comes from.
-    final powerBank = resolveThresholds(
-      category: DeclaredCategory.powerBank,
-      wireClass: ProductClass.powerBank,
-    );
+    final powerBank = resolveThresholds(wireClass: ProductClass.powerBank);
 
     test('no voltage is ever evaluated, however far out it reads', () {
       fakeAsync((async) {
@@ -691,9 +687,11 @@ void main() {
         _feed(e, tempC: 49, thresholds: powerBank);
         async.elapse(const Duration(seconds: 10));
         expect(_feed(e, tempC: 50, thresholds: powerBank), isEmpty,
-            reason: 'strictly greater, matching readingBreachesThreshold — the '
-                'advisory line and the notification have to agree at exactly '
-                'the value the user is looking at (§3.8)');
+            reason: 'debounced: the breach opens here, nothing is said yet');
+        // 🔵 2026-11-09 (design 0098) — ~~strictly greater~~: 50 °C itself is
+        // a breach now (inclusive, via AlertKind.breaches, shared with the
+        // dashboard's readingBreachesThreshold).
+        expect(e.phaseOf(_dev, AlertKind.overTemperature), AlertPhase.pending);
 
         _feed(e, tempC: 51, thresholds: powerBank);
         async.elapse(const Duration(seconds: 5));
@@ -799,7 +797,7 @@ void main() {
         expect(x.kind, AlertKind.underVoltage);
         expect(x.reading, 10.82);
         expect(x.threshold, 12.0);
-        expect(x.source, ThresholdSource.device);
+        expect(x.source, ThresholdSource.appDefault);
         expect(x.index, 1);
         expect(x.at, start.add(const Duration(seconds: 5)));
         expect(x.shouldNotify, isTrue);
@@ -821,14 +819,14 @@ void main() {
         final e = AlertEvaluator();
         final table = resolveThresholds(
           reported: _sample().copyWith(deviceType: kSmartBatteryDeviceType),
-          category: DeclaredCategory.carBattery,
         );
 
-        _feed(e, pvlt: 11.8, thresholds: table);
+        _feed(e, pvlt: 11.4, thresholds: table);
         async.elapse(const Duration(seconds: 5));
-        final x = _feed(e, pvlt: 11.8, thresholds: table).single;
+        final x = _feed(e, pvlt: 11.4, thresholds: table).single;
 
-        expect(x.threshold, 12.0, reason: 'the car-battery row, no 0x2B');
+        expect(x.threshold, 11.5,
+            reason: 'the app row (design 0098), not the old car-battery 12.0');
         expect(x.source, ThresholdSource.appDefault);
       });
     });
@@ -867,6 +865,49 @@ void main() {
         expect(e.phaseOf(_dev, AlertKind.underVoltage), AlertPhase.silent);
         _feed(e, pvlt: 13.0);
         expect(e.phaseOf(_dev, AlertKind.underVoltage), AlertPhase.normal);
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('design 0098 — the boundaries are INCLUSIVE (≥15.0 / ≤11.5 / ≥80)', () {
+    // Owner, 2026-11-09: 「>=15V警示 或小於等於11.5V」, and 「大於等於」 for 80 °C.
+    // Run against the real resolved numbers, not the fixture above.
+    final battery = resolveThresholds(wireClass: ProductClass.smartBattery);
+
+    AlertPhase phaseAfter(AlertKind kind, {double? pvlt, int? tempC}) {
+      late AlertPhase phase;
+      fakeAsync((async) {
+        final e = AlertEvaluator();
+        _feed(e, pvlt: pvlt, tempC: tempC, thresholds: battery);
+        phase = e.phaseOf(_dev, kind);
+      });
+      return phase;
+    }
+
+    test('exactly 15.00 V is over-voltage; 14.99 V is not', () {
+      expect(phaseAfter(AlertKind.overVoltage, pvlt: 15.00), AlertPhase.pending);
+      expect(phaseAfter(AlertKind.overVoltage, pvlt: 14.99), AlertPhase.normal);
+    });
+
+    test('exactly 11.50 V is under-voltage; 11.51 V is not', () {
+      expect(phaseAfter(AlertKind.underVoltage, pvlt: 11.50), AlertPhase.pending);
+      expect(phaseAfter(AlertKind.underVoltage, pvlt: 11.51), AlertPhase.normal);
+    });
+
+    test('exactly 80 °C is over-temperature; 79 °C is not', () {
+      expect(phaseAfter(AlertKind.overTemperature, tempC: 80),
+          AlertPhase.pending);
+      expect(phaseAfter(AlertKind.overTemperature, tempC: 79),
+          AlertPhase.normal);
+    });
+
+    test('a capacitor gets the same boundaries', () {
+      final cap = resolveThresholds(wireClass: ProductClass.supercapacitor);
+      fakeAsync((async) {
+        final e = AlertEvaluator();
+        _feed(e, pvlt: 15.00, thresholds: cap);
+        expect(e.phaseOf(_dev, AlertKind.overVoltage), AlertPhase.pending);
       });
     });
   });

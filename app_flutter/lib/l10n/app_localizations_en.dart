@@ -414,7 +414,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusAdvisoryThresholdBreach =>
-      'A live reading is outside the warning range the device reports (over-voltage / under-voltage / over-temperature). This is computed by the app from the thresholds it read, not a fault reported by the device.';
+      'A live reading is outside the warning range (over-voltage / under-voltage / over-temperature). This is computed by the app, not a fault reported by the device.';
 
   @override
   String get statusAdvisoryCapacitorSelfCheck =>
@@ -1203,7 +1203,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get historyRowThresholdWarning => 'Protection threshold warning';
+  String get historyRowThresholdWarning => 'Warning threshold';
 
   @override
   String get historyStatusEvent => 'Event';
@@ -2282,18 +2282,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alertsRowBelowWarns => 'Warn below';
 
   @override
-  String get alertsSourceDevice => 'Device';
-
-  @override
-  String get alertsSourceApp => 'App default';
-
-  @override
-  String get alertsSourceNone => 'No basis';
-
-  @override
-  String get alertsSourceOffline => 'Known once connected';
-
-  @override
   String get alertsValueUnset => 'Not set';
 
   @override
@@ -2307,14 +2295,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get alertsOfflineNote =>
-      'Not connected — this device\'s own factory limits are only readable while connected.';
-
-  @override
-  String get alertsReadOnlyNote =>
-      'These limits are the device’s own factory settings. The app only reads them to warn you — it never changes the device.';
-
-  @override
   String get alertsPendingTitle => 'Still identifying this device';
 
   @override
@@ -2326,7 +2306,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alertsPowerBankNoteBody =>
-      'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — and it reports no factory warning limits at all, so we have nothing to judge it against.';
+      'A power bank reports CELL voltage (around 3.7 V), which is not the same quantity as a battery\'s or a capacitor\'s pack voltage — so we have nothing to judge it against.';
 
   @override
   String get alertsPowerBankOtNote =>

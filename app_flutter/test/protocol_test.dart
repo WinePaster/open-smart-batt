@@ -199,23 +199,9 @@ void main() {
       expect(w[5], xorFold(w.sublist(0, 5)));
     });
 
-    test('thresholdsRaw -> [B8,2B,00,04,ov,uv,ot,trailing,XOR]', () {
-      final f = cb.thresholdsRaw(0x10, 0x2C, 0x28, trailing: 0x14);
-      expect(f.sublist(0, 4), [0xB8, 0x2B, 0x00, 0x04]);
-      expect(f.sublist(4, 8), [0x10, 0x2C, 0x28, 0x14]);
-      expect(f.last, 0x97); // hand-folded
-      expect(f.last, xorFold(f.sublist(0, 8)));
-    });
-
-    test('thresholds(physical) inverts the read scaling', () {
-      // OV 14.8 V -> (14.8-14.4)/0.025 = 16 (0x10)
-      // UV 11.5 V -> (11.5-10.4)/0.025 = 44 (0x2C)
-      // OT 100 C  -> 100-60            = 40 (0x28)
-      final f =
-          cb.thresholds(ovVolts: 14.8, uvVolts: 11.5, otCelsius: 100, trailing: 0x14);
-      expect(f.sublist(4, 8), [0x10, 0x2C, 0x28, 0x14]);
-      expect(f.last, xorFold(f.sublist(0, 8)));
-    });
+    // ⛔ 2026-11-09 (design 0098 Q2) — the two `0x2B` WRITE-frame tests
+    // (~~thresholdsRaw~~ / ~~thresholds(physical)~~) went with the builders:
+    // this app never writes the unit's protection parameters.
 
     test('changeCutOffPassword uses the new password checksum on 0x2A', () {
       // 'AB' -> 0x41 + 0x42 = 0x83.
@@ -449,12 +435,34 @@ void main() {
       expect(d[3], closeTo(0.08, 1e-9));
     });
 
-    test('thresholds 0x2B: OV/UV/OT (capture values)', () {
-      // payload 10 2C 28 14 -> OV 14.8 V, UV 11.5 V, OT 100 C.
+    test('thresholds 0x2B: OV/UV (capture values)', () {
+      // payload 10 2C 28 14 -> OV 14.8 V, UV 11.5 V.
       final f = decodeOne(0x2B, [0x10, 0x2C, 0x28, 0x14]);
       expect(TelemetryDecoder.warnOv(f), closeTo(14.8, 1e-9));
       expect(TelemetryDecoder.warnUv(f), closeTo(11.5, 1e-9));
-      expect(TelemetryDecoder.warnOt(f), closeTo(100.0, 1e-9));
+    });
+
+    // 2026-11-09: OT is class-dependent. The vendor engineering app's [2B] row
+    // reads `OV:16.0V\UV:11.5V\OT:80°C` for wire 402c2814 — b6 = 0x28 is 80 °C
+    // on a capacitor, not the 100 °C class-blind `b6 + 60` gave.
+    test('thresholds 0x2B OT: capacitor 0x28 is 80 °C, both generations', () {
+      expect(TelemetryDecoder.warnOtFor(0x28, kSuperCapacitorDeviceType), 80.0);
+      expect(
+          TelemetryDecoder.warnOtFor(0x28, kSuperCapacitorGen3DeviceType), 80.0);
+    });
+
+    test('thresholds 0x2B OT: an unseen capacitor byte is NOT guessed', () {
+      // One point fits `b6 + 40` and `b6 * 2` alike; they disagree here.
+      expect(TelemetryDecoder.warnOtFor(0x14, kSuperCapacitorDeviceType), isNull);
+    });
+
+    test('thresholds 0x2B OT: battery keeps b6 + 60 (pending verification)', () {
+      expect(TelemetryDecoder.warnOtFor(0x14, kSmartBatteryDeviceType), 80.0);
+    });
+
+    test('thresholds 0x2B OT: no class, no answer', () {
+      expect(TelemetryDecoder.warnOtFor(0x28, null), isNull);
+      expect(TelemetryDecoder.warnOtFor(0x14, kPowerBankDeviceType), isNull);
     });
 
     test('charge 0x41 / discharge 0x4A = u16/1000 (v1,v2)', () {
@@ -532,12 +540,28 @@ void main() {
           TelemetryDecoder.apply(base, decodeOne(0x30, [0x00, 0x64]), at: at)
               .vadj,
           closeTo(1.0, 1e-9));
+      final cap = TelemetryDecoder.apply(
+          base, decodeOne(0x10, [kSuperCapacitorDeviceType]),
+          at: at);
       final t =
-          TelemetryDecoder.apply(base, decodeOne(0x2B, [0x10, 0x2C, 0x28, 0x14]),
+          TelemetryDecoder.apply(cap, decodeOne(0x2B, [0x10, 0x2C, 0x28, 0x14]),
               at: at);
       expect(t.warnOv, closeTo(14.8, 1e-9));
       expect(t.warnUv, closeTo(11.5, 1e-9));
-      expect(t.warnOt, closeTo(100.0, 1e-9));
+      expect(t.warnOt, 80.0);
+      expect(t.warnOtByte, 0x28);
+    });
+
+    test('0x2B before 0x10: OT waits for the class, then derives', () {
+      final early =
+          TelemetryDecoder.apply(base, decodeOne(0x2B, [0x40, 0x2C, 0x28, 0x14]),
+              at: at);
+      expect(early.warnOv, closeTo(16.0, 1e-9));
+      expect(early.warnOt, isNull, reason: 'no class yet ⇒ no OT');
+      final late = TelemetryDecoder.apply(
+          early, decodeOne(0x10, [kSuperCapacitorGen3DeviceType]),
+          at: at);
+      expect(late.warnOt, 80.0);
     });
 
     test('0x41 is not decoded at all, 0x4A -> dischargeV1/V2', () {
@@ -620,11 +644,8 @@ void main() {
           '01681234');
     });
 
-    test('0x2B threshold read stores UT raw byte (b7)', () {
-      final s = TelemetryDecoder.apply(
-          base, decodeOne(0x2B, [0x10, 0x2C, 0x28, 0x14]), at: at);
-      expect(s.warnUtByte, 0x14);
-    });
+    // 🔵 2026-11-09 — ~~'0x2B threshold read stores UT raw byte (b7)'~~:
+    // `warnUtByte` existed only for the deleted write path (design 0098 Q2).
 
     test('0x23 -> mode, 0x20 -> twfRaw', () {
       expect(TelemetryDecoder.apply(base, decodeOne(0x23, [0x05]), at: at).mode,

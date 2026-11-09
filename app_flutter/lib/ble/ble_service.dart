@@ -1696,33 +1696,10 @@ class BleService {
     await writeCommand(_commands.auth(creds));
   }
 
-  /// Set warning thresholds in physical units (PROTOCOL.md §8.3 write inverse).
-  ///
-  /// [trailing] is the frame's 4th byte (observed UT / under-temp). When
-  /// null (the default) we **preserve the last-read UT byte** from telemetry
-  /// (selector 0x2B, §10.2) instead of forcing 0x00 — so a user editing OV/UV/OT
-  /// does not silently clobber the device's under-temp setting.
-  Future<void> setThresholds({
-    required double ovVolts,
-    required double uvVolts,
-    required double otCelsius,
-    int? trailing,
-  }) async {
-    await writeCommand(_commands.thresholds(
-      ovVolts: ovVolts,
-      uvVolts: uvVolts,
-      otCelsius: otCelsius,
-      trailing: trailing ?? currentSample.warnUtByte ?? 0x00,
-    ));
-  }
-
-  /// Set warning thresholds from raw register bytes. [trailing] null preserves
-  /// the last-read UT byte (see [setThresholds]).
-  Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-      {int? trailing}) async {
-    await writeCommand(_commands.thresholdsRaw(ovByte, uvByte, otByte,
-        trailing: trailing ?? currentSample.warnUtByte ?? 0x00));
-  }
+  // ⛔ **`setThresholds` / `setThresholdsRaw` deleted 2026-11-09 (design 0098
+  // Q2).** `0x2B` is the unit's internal protection setting, and this app never
+  // writes it (owner: 「2B本身的數值那個就是電池內的保護參數 這個不異動」).
+  // Nothing had called them since FB-100; deleting them makes that structural.
 
   /// Send one scheduled keep-alive token on demand (advances the tick counter).
   /// No-op when nothing is connected, as it always was — the old body returned

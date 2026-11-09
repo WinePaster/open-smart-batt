@@ -2300,25 +2300,8 @@ class ConnectionController extends ChangeNotifier {
   Future<void> sendAuth({required int cb, required int pwSum}) =>
       _ble.sendAuth(cb: cb, pwSum: pwSum);
 
-  /// Set warning thresholds in physical units. [trailing] null preserves the
-  /// device's last-read UT byte (see [BleService.setThresholds]).
-  Future<void> setThresholds({
-    required double ovVolts,
-    required double uvVolts,
-    required double otCelsius,
-    int? trailing,
-  }) =>
-      _ble.setThresholds(
-        ovVolts: ovVolts,
-        uvVolts: uvVolts,
-        otCelsius: otCelsius,
-        trailing: trailing,
-      );
-
-  /// Set warning thresholds from raw register bytes.
-  Future<void> setThresholdsRaw(int ovByte, int uvByte, int otByte,
-          {int? trailing}) =>
-      _ble.setThresholdsRaw(ovByte, uvByte, otByte, trailing: trailing);
+  // ⛔ `setThresholds` / `setThresholdsRaw` deleted 2026-11-09 (design 0098
+  // Q2) — this app never writes `0x2B`. See `BleService`.
 
   /// Send one keep-alive byte on demand.
   Future<void> pokeKeepAlive() => _ble.pokeKeepAlive();

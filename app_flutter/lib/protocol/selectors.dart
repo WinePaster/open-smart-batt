@@ -228,8 +228,8 @@ class Commands {
   /// Password / auth. LEN 4, payload [cbHi, cbLo, pwHi, pwLo].
   static const int auth = 0x2A;
 
-  /// Warning thresholds. LEN 4, payload [OV, UV, OT, trailing].
-  static const int thresholds = 0x2B;
+  // ⛔ `thresholds = 0x2B` (the write command) deleted 2026-11-09 (design 0098
+  // Q2). The READ selector `Selectors.thresholds` stays: units still stream it.
 }
 
 /// Mode argument passed to `switchMode(mode)` (PROTOCOL.md §6.2).

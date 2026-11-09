@@ -7,6 +7,7 @@
 ///     required there).
 library;
 
+import '../models/product_class.dart';
 import '../models/telemetry_sample.dart';
 import 'inbound_frame.dart';
 import 'metadata_parser.dart';
@@ -105,8 +106,51 @@ class TelemetryDecoder {
   /// Warning under-voltage (V) — selector 0x2B: b5*0.025 + 10.4.
   static double warnUv(InboundFrame f) => f.b(5) * 0.025 + 10.4;
 
-  /// Warning over-temperature (°C) — selector 0x2B: b6 + 60.
-  static double warnOt(InboundFrame f) => f.b(6) + 60.0;
+  /// Warning over-temperature (°C) from 0x2B b6 — **depends on the class**.
+  ///
+  /// 🔴 The old class-blind `b6 + 60` is refuted. It was a two-point fit
+  /// (battery `0x14` → 80, capacitor `0x28` → 100), and the vendor engineering
+  /// app (`myIBatt` 2.55) shows `OT:80°C` for a capacitor whose wire `0x2B` is
+  /// `402c2814` — b6 = `0x28` — on the same screen row that confirms OV 16.0
+  /// and UV 11.5 against the formulas above. One anchor gone, no line left.
+  ///
+  /// What each branch rests on:
+  ///   * **supercapacitor (`0x17` / `0x18`)** — `0x28` ⇒ **80 °C**, read off
+  ///     that screen. `0x28` is the only b6 any capacitor in the corpus has
+  ///     ever reported, so it is a LOOKUP, not a formula: one point fits
+  ///     `b6 + 40` and `b6 * 2` equally, and they disagree everywhere else.
+  ///     Any other byte ⇒ null (not evaluated) rather than a guess.
+  ///     ⚠️ The screen was a gen-3 unit (`0x18`); gen 2 (`0x17`) carries the
+  ///     same byte and is read the same way, but has no screen of its own yet.
+  ///   * **battery (`0x02`)** — still `b6 + 60` (`0x14` ⇒ 80 °C). 🔲 Kept
+  ///     pending, not verified: the fit that produced it is the one refuted
+  ///     above, and one engineering-app screenshot of a battery's `[2B]` row
+  ///     settles it (60 ⇒ `+40`, 40 ⇒ `×2`, 80 ⇒ unchanged).
+  ///   * **anything else, or class not yet known** ⇒ null. Power banks never
+  ///     send 0x2B; for a unit whose 0x10 has not arrived the reading is simply
+  ///     deferred — [apply] re-derives it the moment the class lands.
+  static double? warnOtFor(int otByte, int? deviceType) {
+    switch (deviceType) {
+      case kSuperCapacitorDeviceType:
+      case kSuperCapacitorGen3DeviceType:
+        return otByte == 0x28 ? 80.0 : null;
+      case kSmartBatteryDeviceType:
+        return otByte + 60.0;
+      default:
+        return null;
+    }
+  }
+
+  /// [base] with [TelemetrySample.warnOt] re-derived from its own raw byte and
+  /// class. Clears rather than keeps a stale value when the answer is null.
+  static TelemetrySample _withDerivedOt(TelemetrySample s) {
+    final raw = s.warnOtByte;
+    if (raw == null) return s;
+    final ot = warnOtFor(raw, s.deviceType);
+    return ot == null
+        ? s.copyWith(clearWarnOt: true)
+        : s.copyWith(warnOt: ot);
+  }
 
   /// Charge / discharge value at spec index — /100 then /10 (= /1000).
   static double scaled1000(InboundFrame f, int specIndex) =>
@@ -261,15 +305,14 @@ class TelemetryDecoder {
         return base.copyWith(
             timestamp: ts, dvol: dvol(f, scale), dvolPending: false);
       case Selectors.thresholds:
-        return base.copyWith(
+        return _withDerivedOt(base.copyWith(
           timestamp: ts,
           warnOv: warnOv(f),
           warnUv: warnUv(f),
-          warnOt: warnOt(f),
-          // b7: observed 4th field (UT / under-temp). Scaling unverified —
-          // keep the raw byte so the write path can preserve it (§10.2).
-          warnUtByte: f.b(7),
-        );
+          warnOtByte: f.b(6),
+          // b7 (UT) is not kept: its only reader was the deleted write path
+          // (design 0098 Q2). It stays in the raw log like every other byte.
+        ));
       // Selectors.charge (0x41) is deliberately NOT decoded, and falls through
       // to `default`. It used to publish chargeV1/chargeV2 by reading b4..b5 and
       // b6..b7 as two millivolt words — the §8.2 pair formula. The v2 half is
@@ -379,7 +422,9 @@ class TelemetryDecoder {
           socPercent: socPercent(f),
         );
       case Selectors.deviceType:
-        return base.copyWith(timestamp: ts, deviceType: f.b(4));
+        // Re-derive OT: a 0x2B that landed before the class did is waiting on it.
+        return _withDerivedOt(
+            base.copyWith(timestamp: ts, deviceType: f.b(4)));
       case Selectors.serialB:
         return base.copyWith(timestamp: ts, serial: serial(f));
       case Selectors.year:

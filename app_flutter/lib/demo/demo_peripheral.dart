@@ -58,12 +58,14 @@ class DemoPeripheral {
   final DemoKind kind;
   final DateTime Function() _clock;
 
-  /// The `0x2B` bytes `[ov, uv, ot, ut]`. Writable, and held only here: a demo
-  /// session's settings vanish with it (design 0097 Q3).
-  List<int> _thresholds = List<int>.unmodifiable(_defaultThresholds);
-
-  /// OV 15.0 V, UV 10.8 V, OT 75 °C — the `0x2B` scaling in PROTOCOL.md §8.2.
-  static const List<int> _defaultThresholds = [24, 16, 15, 0];
+  /// The `0x2B` bytes `[ov, uv, ot, ut]` this unit streams — the most common
+  /// real payload of each class (`18401414` battery, `102c2814` capacitor).
+  /// 🔵 2026-11-09 (design 0098): read-only, as on real hardware from this app's
+  /// side — the app no longer writes `0x2B` and nothing on screen reads it. It
+  /// is still streamed so a demo log looks like a real one.
+  List<int> get _thresholds => kind == DemoKind.capacitor
+      ? const [0x10, 0x2C, 0x28, 0x14]
+      : const [0x18, 0x40, 0x14, 0x14];
 
   /// Battery: the [ReportedStatus] byte. Starts normal.
   int _batteryStatus = ReportedStatus.normal;
@@ -170,11 +172,6 @@ class DemoPeripheral {
         case Commands.modeSet:
           if (!isReadBack && f.len >= 1) _applyMode(f.payload.first);
           out.add(_modeFrame());
-        case Commands.thresholds:
-          if (!isReadBack && f.len >= 4) {
-            _thresholds = List<int>.unmodifiable(f.payload.sublist(0, 4));
-          }
-          out.add(_thresholdsFrame());
         case Commands.auth:
           // Accepted, never inspected (see the library doc).
           break;

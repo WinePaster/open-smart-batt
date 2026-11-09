@@ -462,14 +462,16 @@ class AlertEvaluator {
 
   /// Is [reading] past [limit] in the direction [kind] cares about?
   ///
-  /// Strict comparison, matching `readingBreachesThreshold` in
-  /// `status_controls_shared.dart` exactly (`pvlt > ov`, `pvlt < uv`,
-  /// `temp > ot`). §3.8 makes that agreement mandatory: once P2 has the
+  /// 🔵 **Inclusive since 2026-11-09 (design 0098)** — ~~strict comparison~~ —
+  /// matching `readingBreachesThreshold` in `status_controls_shared.dart`
+  /// exactly (`pvlt >= ov`, `pvlt <= uv`, `temp >= ot`). The owner's ruling
+  /// reads 「>=15V警示 或小於等於11.5V」 and 「大於等於」 for 80 °C. §3.8 makes
+  /// the agreement between the two mandatory: once P2 has the
   /// advisory line reading these same thresholds, a `>` here against a `>=`
   /// there would make the screen and the notification disagree at precisely the
   /// value the user set — the one reading they are most likely to be staring at.
   bool _isBreaching(AlertKind kind, double reading, double limit) =>
-      kind == AlertKind.underVoltage ? reading < limit : reading > limit;
+      kind.breaches(reading, limit);
 
   /// Has [reading] come back far enough INSIDE [limit] to end the event?
   ///

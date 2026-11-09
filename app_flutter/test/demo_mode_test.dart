@@ -58,9 +58,11 @@ void main() {
       for (var i = 0; i < 4; i++) {
         expect(s.dvol![i], closeTo(r.cellsV![i], 0.0005));
       }
+      // 🔵 2026-11-09 (design 0098): the demo battery streams the most common
+      // real payload, `18401414` (~~OV 15.0 / UV 10.8 / OT 75~~).
       expect(s.warnOv, closeTo(15.0, 1e-9));
-      expect(s.warnUv, closeTo(10.8, 1e-9));
-      expect(s.warnOt, 75.0);
+      expect(s.warnUv, closeTo(12.0, 1e-9));
+      expect(s.warnOt, 80.0);
     });
 
     test('capacitor routes to supercapacitor, healthy, zero current', () {
@@ -140,16 +142,15 @@ void main() {
       expect(p.statusByte, CapacitorStatus.healthy);
     });
 
-    test('thresholds write is kept and echoed', () {
-      final p = DemoPeripheral(DemoKind.battery, clock: () => at);
+    // ⛔ 2026-11-09 (design 0098 Q2) — ~~'thresholds write is kept and
+    // echoed'~~: the app has no `0x2B` write any more, so neither does the demo.
+    test('the demo capacitor streams a real capacitor 0x2B (102c2814)', () {
+      final p = DemoPeripheral(DemoKind.capacitor, clock: () => at);
       final d = TelemetryDecoder();
-      _decode(
-          p.answer(cmd.thresholds(ovVolts: 15.2, uvVolts: 11.0, otCelsius: 70)),
-          decoder: d);
-      expect(d.sample.warnOv, closeTo(15.2, 1e-9));
       _decode(p.answer(cmd.keepAlive()), decoder: d);
-      expect(d.sample.warnUv, closeTo(11.0, 1e-9));
-      expect(d.sample.warnOt, 70.0);
+      expect(d.sample.warnOv, closeTo(14.8, 1e-9));
+      expect(d.sample.warnOt, 80.0,
+          reason: 'class-aware OT decode: a capacitor 0x28 is 80 °C');
     });
 
     test('unknown writes get no answer', () {

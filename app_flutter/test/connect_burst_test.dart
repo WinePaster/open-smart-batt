@@ -56,7 +56,6 @@ void main() {
     expect(s.warnOv, closeTo(15.0, 1e-9));
     expect(s.warnUv, closeTo(12.0, 1e-9));
     expect(s.warnOt, closeTo(80.0, 1e-9));
-    expect(s.warnUtByte, 0x14, reason: '0x2B b7 => UT byte preserved');
   });
 
   test('after the burst, a streamed 0x24 yields real per-cell V (not pending)',
