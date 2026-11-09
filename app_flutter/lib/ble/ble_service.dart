@@ -85,8 +85,8 @@ class _LinkState {
   _LinkState({
     required this.deviceId,
     required this.device,
-    required MetadataParser parser,
-  }) : decoder = TelemetryDecoder(parser: parser);
+    required this.session,
+  });
 
   /// BLE remote id — the map key, and the attribution stamped on this link's
   /// packet events. Survives [device] being cleared by teardown, because a
@@ -160,8 +160,11 @@ class _LinkState {
   /// timestamps by whoever reads it.
   DateTime connSubAt = DateTime.now();
 
-  final FrameReassembler reassembler = FrameReassembler();
-  final TelemetryDecoder decoder;
+  /// design 0099 P1: this link's protocol — reassembly, decode and the poll
+  /// schedule — which used to be the [reassembler] / [decoder] fields the
+  /// paragraphs above describe. The per-link rule they state is unchanged:
+  /// one session per link, never shared.
+  final ProtocolSession session;
 
   /// FB-39: invalidates a connection setup that a newer connect/disconnect has
   /// superseded, so a slow unit cannot bring the app online under an identity
@@ -262,6 +265,11 @@ class BleService {
   /// build's is a no-op). Held rather than pre-applied because a decoder is now
   /// built per link instead of once per service.
   late final MetadataParser _parser;
+
+  /// A fresh protocol session for a new link (design 0099 P1). RCE only until
+  /// P2 lets the GATT table choose.
+  ProtocolSession _newSession() =>
+      RceSession(parser: _parser, commands: _commands);
 
   /// Live links by device id. **0 or 1 entry today** (see the class doc).
   ///
@@ -391,16 +399,16 @@ class BleService {
   ///   * %25 == 0            -> `@`  (0x40) — slow metadata (all devices).
   ///   * power bank & %5==0  -> `!#` — continuous SOC / port refresh.
   ///   * otherwise           -> `#`  (0x23).
+  ///
+  /// design 0099 P1: the schedule itself now lives in [rceTokenFor], which is
+  /// what [RceSession.nextPoll] calls. This static stays so the tests that pin
+  /// the schedule through it keep doing so unchanged.
   static List<int> keepAliveTokenFor(
     CommandBuilder commands, {
     required int tick,
     required bool isPowerBank,
-  }) {
-    if (tick <= 1) return commands.extendedPoll();
-    if (tick % 25 == 0) return commands.slowMetadataPoll();
-    if (isPowerBank && tick % 5 == 0) return commands.extendedPoll();
-    return commands.keepAlive();
-  }
+  }) =>
+      rceTokenFor(commands, tick: tick, isPowerBank: isPowerBank);
 
   /// Per-platform connect tuning (D.4). Android's `connectGatt` fails fast on a
   /// stale handle and frequently bounces on the FIRST attempt, so a few retries
@@ -691,11 +699,11 @@ class BleService {
   BleLinkState get currentState => _state;
 
   /// Latest accumulated telemetry snapshot (folds prior frames).
-  TelemetrySample get currentSample => _current?.decoder.sample ?? _noTelemetry;
+  TelemetrySample get currentSample => _current?.session.sample ?? _noTelemetry;
 
   /// Latest accumulated engineering metadata (opaque; empty on the open build).
   DeviceMetadata get currentDeviceInfo =>
-      _current?.decoder.deviceMetadata ?? const EmptyDeviceMetadata();
+      _current?.session.metadata ?? const EmptyDeviceMetadata();
 
   /// Remote id of the connected/connecting device, or null.
   String? get connectedDeviceId =>
@@ -887,7 +895,7 @@ class BleService {
 
     final device = BluetoothDevice.fromId(deviceId);
     final link = _LinkState(
-        deviceId: deviceId, device: device, parser: _parser);
+        deviceId: deviceId, device: device, session: _newSession());
 
     // A fresh connect starts from a clean slate. Dropping the entries is what
     // the old `_reassembler.reset(); _decoder.reset(); _settingUp = false;`
@@ -973,8 +981,9 @@ class BleService {
   /// `connecting` → `connected` → keep-alive → `ready` — so the controllers
   /// above cannot tell the difference, and no platform API is called.
   Future<void> _connectDemo(String deviceId, DemoKind kind) async {
-    final link = _LinkState(deviceId: deviceId, device: null, parser: _parser)
-      ..demo = DemoPeripheral(kind);
+    final link =
+        _LinkState(deviceId: deviceId, device: null, session: _newSession())
+          ..demo = DemoPeripheral(kind);
     _installLink(link);
     _current = link;
     _setState(BleLinkState.connecting);
@@ -1338,18 +1347,8 @@ class BleService {
     }
     _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
-    final frames = link.reassembler.addBytes(chunk);
-    final now = DateTime.now();
-    final infoBefore = link.decoder.deviceMetadata;
-    var emitted = false;
-    for (final f in frames) {
-      if (!f.checksumOk) continue;
-      final before = link.decoder.sample;
-      final after = link.decoder.ingest(f, at: now);
-      if (!identical(before, after)) {
-        emitted = true;
-      }
-    }
+    final infoBefore = link.session.metadata;
+    final emitted = link.session.ingest(chunk, DateTime.now());
     if (emitted) {
       // 🔴 FB-88 / design 0078 (M1-b): stamp WHOSE frame this is on the way
       // out. This is the ONE place a telemetry sample leaves this service, and
@@ -1367,12 +1366,12 @@ class BleService {
       // out — mutating identity into it would put a transport fact inside the
       // decode. `copyWith` leaves the accumulation untouched and gives the
       // stream its own stamped view.
-      _telemetry.add(link.decoder.sample.copyWith(deviceId: link.deviceId));
+      _telemetry.add(link.session.sample.copyWith(deviceId: link.deviceId));
     }
     // Device-metadata side-channel. On the open build
     // the Noop parser never changes it, so this never fires.
-    if (!identical(infoBefore, link.decoder.deviceMetadata)) {
-      _deviceMetadata.add(link.decoder.deviceMetadata);
+    if (!identical(infoBefore, link.session.metadata)) {
+      _deviceMetadata.add(link.session.metadata);
     }
   }
 
@@ -1521,7 +1520,7 @@ class BleService {
     link.demoReplies.clear();
     link.demo = null;
     link.settingUp = false;
-    link.reassembler.reset();
+    link.session.discardPartial();
     await notifyCancelled;
     await connCancelled;
     if (emitDisconnected) {
@@ -1563,16 +1562,16 @@ class BleService {
     if (link.keepAliveInFlight) return;
     link.keepAliveInFlight = true;
     link.keepAliveTick++;
-    // Whether the connected unit is a power bank is read from the LATEST decoded
-    // telemetry (device-type 0x22); it flips true once the tick-1 `!#` elicits
-    // the 0x10 frame, after which the every-5th `!#` schedule kicks in — so both
-    // inputs to the schedule have to come from THIS link, not from whichever
-    // unit answered most recently.
-    final token = keepAliveTokenFor(
-      _commands,
-      tick: link.keepAliveTick,
-      isPowerBank: link.decoder.sample.isPowerBank,
-    );
+    // design 0099 P1: what this tick says is the session's call; that it is
+    // THIS link's session is what keeps the schedule per link (for RCE, the
+    // power-bank input is this link's own latest 0x10 — see [RceSession]).
+    // The transport still owns the tick count, the guard above and everything
+    // below.
+    final token = link.session.nextPoll(link.keepAliveTick);
+    if (token == null) {
+      link.keepAliveInFlight = false;
+      return;
+    }
     final sw = Stopwatch()..start();
     try {
       await _writeTo(link, token, timeout: keepAliveWriteTimeout);

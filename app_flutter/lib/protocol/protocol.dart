@@ -11,3 +11,5 @@ export 'inbound_frame.dart';
 export 'metadata_parser.dart';
 export 'telemetry_decoder.dart';
 export 'gatt.dart';
+export 'session/protocol_session.dart';
+export 'rce/rce_session.dart';
