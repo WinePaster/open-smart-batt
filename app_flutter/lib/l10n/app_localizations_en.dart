@@ -400,6 +400,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusBadgeCapacitorSelfCheck => 'Self-check';
 
   @override
+  String get statusBadgeCapacitorSelfCheckFailed => 'Self-check failed';
+
+  @override
   String get statusBadgeCutOffOn => 'On';
 
   @override
@@ -421,6 +424,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'A self-check is running. While it runs the unit\'s voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.';
 
   @override
+  String get statusAdvisoryCapacitorSelfCheckFailed =>
+      'The capacitor reports that its last self-check did not pass. Turn the engine off, let it rest for about a minute and check again; if it still fails, have the capacitor inspected by your dealer.';
+
+  @override
   String get capacitorSelfCheckDialogTitle => 'Start capacitor self-check';
 
   @override
@@ -439,6 +446,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Self-check finished — the unit reports normal again.';
 
   @override
+  String get capacitorSelfCheckFailedResultSnack =>
+      'Self-check finished — the unit reports that it did not pass.';
+
+  @override
   String get capacitorSelfCheckStillRunningSnack =>
       'The unit has not reported normal yet. It may still be in self-check; the app has not sent anything to take it out of that mode. Keep watching the status above.';
 
@@ -448,7 +459,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get capacitorSelfCheckNoResponseSnack =>
-      'The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.';
+      'The command was sent, but the unit did not enter self-check, so nothing has changed. A unit may refuse while the engine runs, while charging or while its voltage is settling; turn the engine off, wait about a minute and try again.';
 
   @override
   String capacitorSelfCheckFailedSnack(String error) {

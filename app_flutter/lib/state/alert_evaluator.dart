@@ -458,7 +458,12 @@ class AlertEvaluator {
   static bool _inCapacitorSelfCheck(TelemetrySample sample) =>
       ProductClass.fromDeviceType(sample.deviceType) ==
           ProductClass.supercapacitor &&
-      CapacitorStatus.isSelfCheck(sample.mode);
+      (CapacitorStatus.isSelfCheck(sample.mode) ||
+          // Kept suppressed after a FAILED check too: this predicate covered
+          // `0x07` before it was re-read as a verdict (2026.11.10-002 §8), and
+          // what the unit's voltage does in that state is not something we
+          // have measured. Re-reading a byte is not a reason to start alarming.
+          CapacitorStatus.isSelfCheckFailed(sample.mode));
 
   /// Is [reading] past [limit] in the direction [kind] cares about?
   ///

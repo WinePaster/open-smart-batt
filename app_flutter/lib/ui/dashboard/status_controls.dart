@@ -100,7 +100,10 @@ class _CapacitorControlsState extends State<CapacitorControls> {
     // rather than the pack. The notification path suppresses the same phase for
     // the same reason; see `AlertEvaluator.fold`. The two must agree, per the
     // standing rule that this comparator and the alarm's never diverge.
+    // Same suppression after a FAILED check — kept in step with
+    // `AlertEvaluator._inCapacitorSelfCheck`, which covers both.
     final thresholdBreach = !selfChecking &&
+        health != CapacitorHealth.selfCheckFailed &&
         readingBreachesThreshold(
             tele, watchAlertThresholds(context, widget.deviceId));
 
@@ -115,6 +118,8 @@ class _CapacitorControlsState extends State<CapacitorControls> {
             // Busy, not broken. This member is the FB-102 fix: the byte used to
             // land in `unknown` and badge a working unit as 「無法辨識」.
             CapacitorHealth.selfCheck => l10n.statusBadgeCapacitorSelfCheck,
+            CapacitorHealth.selfCheckFailed =>
+              l10n.statusBadgeCapacitorSelfCheckFailed,
             // Plain language, never the raw byte: this app's readers are
             // vehicle owners. The byte still reaches us — ConnectionController
             // writes it to the diagnostic log via the always-on event path.
@@ -127,6 +132,8 @@ class _CapacitorControlsState extends State<CapacitorControls> {
             // in the warning colour FB-102 is about, and green would claim a
             // verdict the byte does not carry.
             CapacitorHealth.selfCheck => ControlTone.neutral,
+            // The unit's own verdict, so it may carry the warning colour.
+            CapacitorHealth.selfCheckFailed => ControlTone.warn,
             CapacitorHealth.unknown => ControlTone.warn,
             null => ControlTone.neutral,
           },
@@ -153,6 +160,8 @@ class _CapacitorControlsState extends State<CapacitorControls> {
         ...advisoryNotes([
           // What is happening and what to do about it, while the unit is busy.
           if (selfChecking) l10n.statusAdvisoryCapacitorSelfCheck,
+          if (health == CapacitorHealth.selfCheckFailed)
+            l10n.statusAdvisoryCapacitorSelfCheckFailed,
           // Tell the owner what to DO about an unrecognised status, instead of
           // showing them a hex byte they cannot act on.
           if (health == CapacitorHealth.unknown)

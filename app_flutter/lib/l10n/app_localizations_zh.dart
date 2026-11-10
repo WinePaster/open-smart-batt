@@ -384,6 +384,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get statusBadgeCapacitorSelfCheck => '檢測中';
 
   @override
+  String get statusBadgeCapacitorSelfCheckFailed => '檢測未通過';
+
+  @override
   String get statusBadgeCutOffOn => '啟用';
 
   @override
@@ -405,6 +408,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '正在進行電容自檢。檢測期間此機的電壓讀數會明顯下降，App 不會把它當成故障。請維持連線。';
 
   @override
+  String get statusAdvisoryCapacitorSelfCheckFailed =>
+      '電容回報上一次自檢沒有通過。建議熄火靜置約一分鐘後再檢測一次；若仍未通過，請送經銷商檢查這顆電容。';
+
+  @override
   String get capacitorSelfCheckDialogTitle => '開始電容自檢';
 
   @override
@@ -421,6 +428,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get capacitorSelfCheckDoneSnack => '檢測結束 —— 裝置已回報正常。';
 
   @override
+  String get capacitorSelfCheckFailedResultSnack => '檢測結束 —— 裝置回報未通過。';
+
+  @override
   String get capacitorSelfCheckStillRunningSnack =>
       '裝置還沒有回報恢復正常，可能仍在檢測模式；App 沒有送出任何把它拉回正常模式的指令。請繼續看上方的狀態。';
 
@@ -430,7 +440,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get capacitorSelfCheckNoResponseSnack =>
-      '指令已送出，但裝置沒有回報進入檢測模式。就 App 看得到的部分，什麼都沒有改變。';
+      '指令已送出，但裝置沒有進入檢測模式，什麼都沒有改變。引擎運轉、充電中或電壓不穩時裝置可能不接受，請熄火靜置約一分鐘後再試。';
 
   @override
   String capacitorSelfCheckFailedSnack(String error) {

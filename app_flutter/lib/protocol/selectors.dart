@@ -381,19 +381,40 @@ class CapacitorStatus {
   /// before the unit moves to [selfCheckRunning].
   static const int selfCheckStarting = 6;
 
-  /// Self-check RUNNING. See the class doc: this state may persist
-  /// indefinitely.
-  static const int selfCheckRunning = 7;
+  /// ~~Self-check RUNNING.~~ 🔴 **Re-read 2026-11-10: self-check FAILED, on a
+  /// `…0217` (second-generation) unit.** Analysis 2026.11.10-002 §8 (vendor-app
+  /// behaviour, clean-room analysis role): after a check, the vendor app
+  /// counts a return to [healthy] as a pass and this byte as a fail on `0217`
+  /// units ([selfCheckFailedGen3] on `0218` units). Our own corpus fits that
+  /// reading better than "running": the only unit ever seen reporting `0x07`
+  /// is the one whose capacitor would charge only to about 8.6 V, and it held
+  /// the byte across reconnections — a latched verdict, not a busy phase.
+  /// Owner's ruling 2026-11-10: adopt it.
+  static const int selfCheckFailedGen2 = 7;
 
-  /// True while the unit reports either self-check byte.
+  /// Self-check FAILED on a `…0218` (third-generation) unit — same source as
+  /// [selfCheckFailedGen2]. ⚠️ Never yet seen on the wire.
+  static const int selfCheckFailedGen3 = 0x0A;
+
+  /// True while the unit reports the self-check byte ([selfCheckStarting]).
   ///
-  /// 🔑 The single source of that two-value set. It is read by the badge, by
-  /// the button's own busy gate, and by the alert evaluator's under-voltage
-  /// suppression, and three private copies of `mode == 6 || mode == 7` is
-  /// exactly how the screen and the alarm end up disagreeing about whether a
-  /// unit is busy.
-  static bool isSelfCheck(int? mode) =>
-      mode == selfCheckStarting || mode == selfCheckRunning;
+  /// 🔑 The single source of that test. It is read by the badge, by the
+  /// button's own busy gate, and by the alert evaluator's under-voltage
+  /// suppression, and private copies of the comparison are exactly how the
+  /// screen and the alarm end up disagreeing about whether a unit is busy.
+  ///
+  /// ~~`mode == 6 || mode == 7`~~ — `0x07` is a verdict now, see
+  /// [isSelfCheckFailed].
+  static bool isSelfCheck(int? mode) => mode == selfCheckStarting;
+
+  /// True when the unit reports a failed self-check, either generation.
+  ///
+  /// ⚠️ Both codes are accepted regardless of generation: the vendor app keys
+  /// them on the serial (`0217` → `0x07`, `0218` → `0x0A`), but neither code
+  /// has ever been seen from the other generation, so the union loses nothing
+  /// observable and needs no serial plumbing into the badge.
+  static bool isSelfCheckFailed(int? mode) =>
+      mode == selfCheckFailedGen2 || mode == selfCheckFailedGen3;
 }
 
 /// Which of the two observed groups a SUPER-CAPACITOR's `0x3A` byte 0 is in.

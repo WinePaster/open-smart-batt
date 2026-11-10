@@ -118,6 +118,12 @@ enum CapacitorHealth {
   /// whether it is well.
   selfCheck,
 
+  /// The unit reports a FAILED self-check ([CapacitorStatus.isSelfCheckFailed]).
+  ///
+  /// 🔵 2026-11-10: `0x07` used to be read as [selfCheck] ("running"). Analysis
+  /// 2026.11.10-002 §8 re-reads it as the unit's own fail verdict.
+  selfCheckFailed,
+
   /// Some other byte. We have no captured fault sample to name a code from, so
   /// this is reported as unknown WITH the raw byte, never guessed at.
   unknown,
@@ -130,7 +136,9 @@ CapacitorHealth? capacitorHealthOf(int? mode) => switch (mode) {
       CapacitorStatus.healthy => CapacitorHealth.healthy,
       _ => CapacitorStatus.isSelfCheck(mode)
           ? CapacitorHealth.selfCheck
-          : CapacitorHealth.unknown,
+          : CapacitorStatus.isSelfCheckFailed(mode)
+              ? CapacitorHealth.selfCheckFailed
+              : CapacitorHealth.unknown,
     };
 
 /// True when a live reading breaches one of this unit's RESOLVED thresholds
@@ -204,6 +212,12 @@ const Duration _selfCheckWatchLimit = Duration(seconds: 30);
 /// thing that changes; the long wait is [_selfCheckWatchLimit], after it.
 const Duration _selfCheckAckWindow = Duration(seconds: 8);
 
+/// Gap between the standalone auth and the self-check write. The reference app
+/// sends its standalone auth well before the mode write (seconds, in the
+/// engineering-app capture); two seconds keeps the auth reply inside the raw
+/// packet log ahead of the write, so a capture shows which one it answered.
+const Duration _selfCheckAuthLead = Duration(seconds: 2);
+
 /// What one press of 檢測電容 ended in — the four outcomes, so the caller's copy
 /// and the tests name the same set.
 enum CapacitorSelfCheckOutcome {
@@ -214,8 +228,12 @@ enum CapacitorSelfCheckOutcome {
   noResponse,
 
   /// The unit entered self-check and then reported [CapacitorStatus.healthy]
-  /// again on its own.
+  /// again on its own — the vendor app's "pass" (2026.11.10-002 §8).
   finished,
+
+  /// The unit entered self-check and then reported a fail code
+  /// ([CapacitorStatus.isSelfCheckFailed]).
+  failed,
 
   /// The unit entered self-check and was still in it when we stopped watching.
   ///
@@ -377,6 +395,15 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   var entered = false;
   for (final creds in plan) {
     try {
+      // 🔵 2026-11-10 (owner's ruling, analysis 2026.11.10-002 §8): both vendor
+      // apps authenticate on their own first (standalone auth ++ `0x2A`
+      // read-back, once per connection, in every engineering-app HCI capture)
+      // and only then send the mode write.
+      // A standalone auth is a credential check, not a state change — the same
+      // frame the engineering app sends before every mode write.
+      await conn.sendAuth(cb: creds.cb, pwSum: creds.pwSum);
+      await conn.pollAuth();
+      await Future<void>.delayed(_selfCheckAuthLead);
       await conn.capacitorSelfCheck(cb: creds.cb, pwSum: creds.pwSum);
       // The same write ++ read-back pairing the release uses. A lone mode
       // write was measured to be intermittent, and this is a read, so it
@@ -389,8 +416,14 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
       ));
       return CapacitorSelfCheckOutcome.notSent;
     }
+    // A fail code counts as "entered": the unit took the command and answered
+    // with a verdict.
     entered = await _waitFor(
-        tele, (m) => CapacitorStatus.isSelfCheck(m), _selfCheckAckWindow);
+        tele,
+        (m) =>
+            CapacitorStatus.isSelfCheck(m) ||
+            CapacitorStatus.isSelfCheckFailed(m),
+        _selfCheckAckWindow);
     // No reading at all means the link went away: the next credential would
     // only be a write into a dead link. Same stop as [runReleasePlan] on
     // [ModeWatch.linkLost].
@@ -411,21 +444,26 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   // holds its own button and nothing about it changed.
   final returned = await _waitFor(
       tele,
-      (m) => m == CapacitorStatus.healthy && backToBaseline(),
+      (m) =>
+          (m == CapacitorStatus.healthy && backToBaseline()) ||
+          CapacitorStatus.isSelfCheckFailed(m),
       _selfCheckWatchLimit);
   // Which of the two halves is still outstanding decides what we say. Read
   // AFTER the wait, so it describes the state we actually gave up in.
   final modeBack = tele.mode == CapacitorStatus.healthy;
   final flagMoved = !backToBaseline();
-  final outcome = returned
-      ? CapacitorSelfCheckOutcome.finished
-      : modeBack && flagMoved
-          ? CapacitorSelfCheckOutcome.flagNotBack
-          : CapacitorSelfCheckOutcome.stillRunning;
+  final outcome = CapacitorStatus.isSelfCheckFailed(tele.mode)
+      ? CapacitorSelfCheckOutcome.failed
+      : returned
+          ? CapacitorSelfCheckOutcome.finished
+          : modeBack && flagMoved
+              ? CapacitorSelfCheckOutcome.flagNotBack
+              : CapacitorSelfCheckOutcome.stillRunning;
   messenger.showSnackBar(SnackBar(
     duration: const Duration(milliseconds: 4200),
     content: Text(switch (outcome) {
       CapacitorSelfCheckOutcome.finished => l10n.capacitorSelfCheckDoneSnack,
+      CapacitorSelfCheckOutcome.failed => l10n.capacitorSelfCheckFailedResultSnack,
       // ⛔ Never silent, and never "finished": the timeout that matters most is
       // the one where the app would otherwise have claimed success.
       CapacitorSelfCheckOutcome.flagNotBack =>

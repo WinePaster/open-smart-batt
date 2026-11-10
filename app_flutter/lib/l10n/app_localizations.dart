@@ -716,6 +716,12 @@ abstract class AppLocalizations {
   /// **'Self-check'**
   String get statusBadgeCapacitorSelfCheck;
 
+  /// No description provided for @statusBadgeCapacitorSelfCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-check failed'**
+  String get statusBadgeCapacitorSelfCheckFailed;
+
   /// No description provided for @statusBadgeCutOffOn.
   ///
   /// In en, this message translates to:
@@ -752,6 +758,12 @@ abstract class AppLocalizations {
   /// **'A self-check is running. While it runs the unit\'s voltage readings drop well below normal and the app does not treat them as a fault. Please leave the unit connected.'**
   String get statusAdvisoryCapacitorSelfCheck;
 
+  /// No description provided for @statusAdvisoryCapacitorSelfCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The capacitor reports that its last self-check did not pass. Turn the engine off, let it rest for about a minute and check again; if it still fails, have the capacitor inspected by your dealer.'**
+  String get statusAdvisoryCapacitorSelfCheckFailed;
+
   /// No description provided for @capacitorSelfCheckDialogTitle.
   ///
   /// In en, this message translates to:
@@ -782,6 +794,12 @@ abstract class AppLocalizations {
   /// **'Self-check finished — the unit reports normal again.'**
   String get capacitorSelfCheckDoneSnack;
 
+  /// No description provided for @capacitorSelfCheckFailedResultSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-check finished — the unit reports that it did not pass.'**
+  String get capacitorSelfCheckFailedResultSnack;
+
   /// No description provided for @capacitorSelfCheckStillRunningSnack.
   ///
   /// In en, this message translates to:
@@ -797,7 +815,7 @@ abstract class AppLocalizations {
   /// No description provided for @capacitorSelfCheckNoResponseSnack.
   ///
   /// In en, this message translates to:
-  /// **'The command was sent, but the unit has not reported entering self-check. Nothing has changed as far as this app can see.'**
+  /// **'The command was sent, but the unit did not enter self-check, so nothing has changed. A unit may refuse while the engine runs, while charging or while its voltage is settling; turn the engine off, wait about a minute and try again.'**
   String get capacitorSelfCheckNoResponseSnack;
 
   /// No description provided for @capacitorSelfCheckFailedSnack.

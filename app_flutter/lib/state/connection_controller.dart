@@ -2275,6 +2275,11 @@ class ConnectionController extends ChangeNotifier {
   /// not something we know, and the conservative answer while it is unknown is
   /// to leave the device alone. The accepted cost is stated where the caller
   /// gives up: the unit may still be in self-check, and we say so.
+  ///
+  /// 🔵 2026-11-10: the caller now sends a standalone [sendAuth] ++ [pollAuth]
+  /// first (analysis 2026.11.10-002 §8). The bundled auth keeps direction byte
+  /// `0x01` — that is what the engineering app put on the wire in every
+  /// accepted self-check; the `0x00` variant came from the consumer app only.
   Future<void> capacitorSelfCheck({required int cb, required int pwSum}) =>
       _ble.switchMode(ModeArg.capacitorSelfCheck, cb: cb, pwSum: pwSum);
 
@@ -2297,6 +2302,12 @@ class ConnectionController extends ChangeNotifier {
   /// Standalone verify-auth (9-byte auth frame).
   Future<void> sendAuth({required int cb, required int pwSum}) =>
       _ble.sendAuth(cb: cb, pwSum: pwSum);
+
+  /// Read back `0x2A` (`b82a01009326`) — the engineering app sends this right
+  /// after its standalone auth; the unit answers `b82a01010092` (first payload
+  /// byte `00`) on every connection in the HCI captures (2026.11.10-002 §8).
+  /// A read: it cannot take the device anywhere.
+  Future<void> pollAuth() => _ble.authReadBack();
 
   // ⛔ `setThresholds` / `setThresholdsRaw` deleted 2026-11-09 (design 0098
   // Q2) — this app never writes `0x2B`. See `BleService`.
@@ -3471,6 +3482,7 @@ class ConnectionController extends ChangeNotifier {
     // must not be filed as "not recognised" — that line in an exported log is
     // what sent a working unit's owner looking for a fault.
     if (CapacitorStatus.isSelfCheck(mode)) return;
+    if (CapacitorStatus.isSelfCheckFailed(mode)) return;
     if (!_loggedUnknownStatus.add(mode)) return;
     _event('capacitor status byte not recognised: 0x'
         '${mode.toRadixString(16).toUpperCase().padLeft(2, '0')} '

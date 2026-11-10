@@ -1820,6 +1820,9 @@ class BleService {
   /// `ConnectionController.pollMode`).
   Future<void> modeReadBack() => writeCommand(_commands.modeReadBack());
 
+  /// Write the `0x2A` read-back poll (see `ConnectionController.pollAuth`).
+  Future<void> authReadBack() => writeCommand(_commands.readBack(Commands.auth));
+
   /// Verify-auth standalone (live HCI capture): the 9-byte auth frame
   /// the reference app sends ~2 s before a bundled mode+auth.
   Future<void> sendAuth({required int cb, required int pwSum}) async {

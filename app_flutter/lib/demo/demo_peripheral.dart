@@ -207,9 +207,10 @@ class DemoPeripheral implements SimulatedPeer {
         final at = _selfCheckAt;
         if (at == null) return CapacitorStatus.healthy;
         final dt = _clock().difference(at);
-        if (dt < selfCheckStarting) return CapacitorStatus.selfCheckStarting;
+        // 🔵 2026-11-10: `0x07` is a FAIL verdict now (CapacitorStatus), so
+        // the demo holds `0x06` for the whole check and then passes.
         if (dt < selfCheckStarting + selfCheckRunning) {
-          return CapacitorStatus.selfCheckRunning;
+          return CapacitorStatus.selfCheckStarting;
         }
         _selfCheckAt = null;
         return CapacitorStatus.healthy;
