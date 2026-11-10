@@ -135,20 +135,30 @@ void main() {
     test('the self-check bytes are named, not filed as unknown', () {
       expect(capacitorHealthOf(CapacitorStatus.selfCheckStarting),
           CapacitorHealth.selfCheck);
-      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
-          CapacitorHealth.selfCheck);
-      // Not symbolic only: the two numbers ARE the fix, and a symbolic-only
+      // Not symbolic only: the numbers ARE the fix, and a symbolic-only
       // assertion would still pass if someone renumbered them.
       expect(CapacitorStatus.selfCheckStarting, 0x06);
-      expect(CapacitorStatus.selfCheckRunning, 0x07);
       expect(capacitorHealthOf(0x06), CapacitorHealth.selfCheck);
-      expect(capacitorHealthOf(0x07), CapacitorHealth.selfCheck);
     });
 
-    test('isSelfCheck is the single source of that two-value set', () {
+    // 🔵 2026-11-10 (analysis 2026.11.10-002 §8): `0x07` (0217 units) and
+    // `0x0A` (0218 units) are the unit's FAIL verdict, not "running".
+    test('0x07 / 0x0A are a failed self-check, named, never unknown', () {
+      expect(CapacitorStatus.selfCheckFailedGen2, 0x07);
+      expect(CapacitorStatus.selfCheckFailedGen3, 0x0A);
+      expect(capacitorHealthOf(0x07), CapacitorHealth.selfCheckFailed);
+      expect(capacitorHealthOf(0x0A), CapacitorHealth.selfCheckFailed);
+      expect(CapacitorStatus.isSelfCheckFailed(0x07), isTrue);
+      expect(CapacitorStatus.isSelfCheckFailed(0x0A), isTrue);
+      for (final b in [null, 0, 1, 2, 5, 6, 8, 0xFF]) {
+        expect(CapacitorStatus.isSelfCheckFailed(b), isFalse,
+            reason: 'byte $b is not a fail code');
+      }
+    });
+
+    test('isSelfCheck is the single source of the busy test', () {
       expect(CapacitorStatus.isSelfCheck(0x06), isTrue);
-      expect(CapacitorStatus.isSelfCheck(0x07), isTrue);
-      for (final b in [null, 0, 1, 2, 5, 8, 0x0A, 0xFF]) {
+      for (final b in [null, 0, 1, 2, 5, 7, 8, 0x0A, 0xFF]) {
         expect(CapacitorStatus.isSelfCheck(b), isFalse,
             reason: 'byte $b is not a self-check byte');
       }
@@ -156,15 +166,15 @@ void main() {
 
     test('self-check is NOT a health verdict', () {
       // It says "busy", never "well" — the badge must not render it as good.
-      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckStarting),
           isNot(CapacitorHealth.healthy));
-      expect(capacitorHealthOf(CapacitorStatus.selfCheckRunning),
+      expect(capacitorHealthOf(CapacitorStatus.selfCheckStarting),
           isNot(CapacitorHealth.unknown));
     });
 
     test('any other byte is UNKNOWN, never guessed at', () {
       // We hold no captured fault sample, so nothing else may be named.
-      for (final b in [0, 2, 4, 8, 10, 0xFF]) {
+      for (final b in [0, 2, 4, 8, 0xFF]) {
         expect(capacitorHealthOf(b), CapacitorHealth.unknown,
             reason: 'byte $b must not be named');
       }
@@ -188,9 +198,9 @@ void main() {
     // reason the under-voltage suppression can key on the byte at all: no
     // battery state can reach it.
     expect(packCodes.contains(CapacitorStatus.selfCheckStarting), isFalse);
-    expect(packCodes.contains(CapacitorStatus.selfCheckRunning), isFalse);
+    expect(packCodes.contains(CapacitorStatus.selfCheckFailedGen2), isFalse);
     expect(packRunModeOf(CapacitorStatus.selfCheckStarting), isNull);
-    expect(packRunModeOf(CapacitorStatus.selfCheckRunning), isNull);
+    expect(packRunModeOf(CapacitorStatus.selfCheckFailedGen2), isNull);
   });
 
   // =========================================================================
@@ -286,7 +296,7 @@ void main() {
       });
 
       await pumpUnder(tester, s, const CapacitorControls());
-      await emitMode(tester, CapacitorStatus.selfCheckRunning);
+      await emitMode(tester, CapacitorStatus.selfCheckStarting);
 
       // The exact symptom in the field report: an amber 「無法辨識」 badge and
       // an advisory asking the owner to export a log, on a working unit.
@@ -321,9 +331,10 @@ void main() {
       });
 
       await pumpUnder(tester, s, const CapacitorControls());
-      // 0x0A: outside both code spaces and outside the self-check pair, so the
-      // honest answer is still "we do not know what this is".
-      await emitMode(tester, 0x0A);
+      // 0x08: outside both code spaces and outside every named capacitor
+      // byte, so the honest answer is still "we do not know what this is".
+      // (~~0x0A~~ is a gen-3 fail code since 2026-11-10.)
+      await emitMode(tester, 0x08);
 
       expect(find.text('Unrecognised'), findsOneWidget);
       // The readers of this screen are vehicle owners: no raw byte on screen.

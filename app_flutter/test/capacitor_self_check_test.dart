@@ -60,6 +60,21 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 
+/// 🔵 2026-11-10 (analysis 2026.11.10-002 §8–§9): every self-check / restore
+/// attempt opens with a standalone auth ++ its `0x2A` read-back, byte for byte
+/// the engineering-app capture.
+const _authA8 = 'b82a000400a801e4db';
+const _authA9 = 'b82a000400a901e4da';
+const _authPoll = 'b82a01009326';
+const _modeRead = 'b82301009a26';
+const _checkA8 = 'b8230001069cb82a010400a801e4da';
+const _checkA9 = 'b8230001069cb82a010400a901e4db';
+const _restoreA8 = 'b8230001059fb82a010400a801e4da';
+
+/// The four frames of one attempt, in wire order.
+List<String> _attempt(String auth, String write) =>
+    [auth, _authPoll, write, _modeRead];
+
 /// Inert BleService that RECORDS every outbound write and can answer one, the
 /// way the hardware does — the `0x23` read-back follows a mode write.
 class _FakeBleService extends BleService {
@@ -90,6 +105,14 @@ class _FakeBleService extends BleService {
   /// this cb — a unit that accepts one credential and ignores the other.
   int? answerOnlyCb;
 
+  /// Mode byte to report after a RESTORE write (`0x23` <- `0x05`), or null for
+  /// a unit that ignores it (2026-11-10).
+  int? answerRestoreWithMode;
+
+  /// What the unit reports now, as far as this fake knows — the `0x23`
+  /// read-back answers with it.
+  int? _current;
+
   /// Extra fields every emitted sample carries, so the body under test sees a
   /// classified capacitor with a dealer code (auth is derived from it).
   TelemetrySample _sampleWith(int? mode) => TelemetrySample(
@@ -113,13 +136,35 @@ class _FakeBleService extends BleService {
   @override
   Future<void> writeCommand(List<int> bytes, {Duration? timeout}) async {
     writes.add(List<int>.unmodifiable(bytes));
+    // Only a `0x23` frame (the mode write or its read-back) moves the mode.
+    // The standalone auth and its `0x2A` read-back (2026-11-10) are answered
+    // by the hardware on `0x2A`, which this fake does not model.
+    final hex = _hex(bytes);
+    if (!hex.startsWith('b823')) return;
+    if (hex.startsWith('b82301')) {
+      // Read-back: report the current state, if a write ever set one.
+      final now = _current;
+      if (now != null) emitMode(now);
+      return;
+    }
+    if (hex.startsWith('b8230001059f')) {
+      final r = answerRestoreWithMode;
+      if (r != null) {
+        _current = r;
+        emitMode(r);
+      }
+      return;
+    }
     final answer = answerWriteWithMode;
     final only = answerOnlyCb;
     if (only != null) {
       final cb = only.toRadixString(16).padLeft(4, '0');
       if (!_hex(bytes).contains('b82a0104${cb}01e4')) return;
     }
-    if (answer != null) emitMode(answer);
+    if (answer != null) {
+      _current = answer;
+      emitMode(answer);
+    }
   }
 
   @override
@@ -270,7 +315,7 @@ void main() {
     test('the same reading during a self-check says NOTHING, ever', () {
       for (final mode in [
         CapacitorStatus.selfCheckStarting,
-        CapacitorStatus.selfCheckRunning,
+        CapacitorStatus.selfCheckStarting,
       ]) {
         fakeAsync((async) {
           final e = AlertEvaluator();
@@ -296,7 +341,7 @@ void main() {
             hasLength(1));
         expect(e.activeAlerts(dev), {AlertKind.underVoltage});
 
-        feed(e, sample(pvlt: 5.83, mode: CapacitorStatus.selfCheckRunning));
+        feed(e, sample(pvlt: 5.83, mode: CapacitorStatus.selfCheckStarting));
         expect(e.phaseOf(dev, AlertKind.underVoltage), AlertPhase.normal);
         expect(e.activeAlerts(dev), isEmpty);
       });
@@ -311,14 +356,14 @@ void main() {
             sample(
                 pvlt: 5.83,
                 tempC: 95,
-                mode: CapacitorStatus.selfCheckRunning));
+                mode: CapacitorStatus.selfCheckStarting));
         async.elapse(const Duration(seconds: 6));
         final out = feed(
             e,
             sample(
                 pvlt: 5.83,
                 tempC: 95,
-                mode: CapacitorStatus.selfCheckRunning));
+                mode: CapacitorStatus.selfCheckStarting));
         expect(out.map((e) => e.kind), [AlertKind.overTemperature],
             reason: 'an over-temperature during a self-check is still one');
       });
@@ -332,7 +377,7 @@ void main() {
         final e = AlertEvaluator();
         final s = sample(
           pvlt: 5.83,
-          mode: CapacitorStatus.selfCheckRunning,
+          mode: CapacitorStatus.selfCheckStarting,
           deviceType: kSmartBatteryDeviceType,
         );
         feed(e, s, thresholds: battery);
@@ -347,7 +392,7 @@ void main() {
         final s = TelemetrySample(
           timestamp: wrongClock,
           pvlt: 5.83,
-          mode: CapacitorStatus.selfCheckRunning,
+          mode: CapacitorStatus.selfCheckStarting,
           // No device-type byte: nothing has been positively read.
         );
         // Thresholds still come from a capacitor's registers, so the only
@@ -468,7 +513,7 @@ void main() {
       await goOnline(tester, CapacitorStatus.healthy);
       fakeBle.writes.clear();
       // The device answers the write the way the hardware does.
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -477,11 +522,11 @@ void main() {
       await tester.pump();
       await step(tester, times: 120);
 
-      expect(_hex(fakeBle.writes.first), 'b8230001069cb82a010400a801e4da',
-          reason: 'byte for byte, the documented pair');
-      // Second is the `0x23` read-back the release path also pairs with — a
-      // READ, so it cannot take the device anywhere.
-      expect(_hex(fakeBle.writes[1]), 'b82301009a26');
+      // Standalone auth ++ its read-back first (2026-11-10), then the
+      // documented pair, then the `0x23` read-back the release path also pairs
+      // with — two READS, neither can take the device anywhere.
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _checkA8),
+          reason: 'byte for byte, the engineering-app sequence');
     });
 
     testWidgets(
@@ -496,7 +541,7 @@ void main() {
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
       fakeBle.writes.clear();
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -513,9 +558,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
       }
 
-      // 🔴 THE ruling. Exactly two frames left this app: the self-check pair
-      // and its read-back. Nothing wrote `0x23` <- `0x05`, on any path.
-      expect(fakeBle.writes, hasLength(2),
+      // 🔴 THE ruling (still in force for a RUNNING check — 2026-11-10 only
+      // opened a FAILED one). Exactly one attempt left this app. Nothing wrote
+      // `0x23` <- `0x05`.
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _checkA8),
           reason: 'the app must never take a unit out of self-check');
       for (final w in fakeBle.writes) {
         expect(_hex(w), isNot(contains('b8230001059f')),
@@ -542,7 +588,7 @@ void main() {
       });
 
       await pumpUnder(tester, s, const CapacitorControls());
-      await goOnline(tester, CapacitorStatus.selfCheckRunning);
+      await goOnline(tester, CapacitorStatus.selfCheckStarting);
 
       // FB-102 (1): this is the badge a working unit was shown as
       // 「無法辨識」 in amber.
@@ -580,9 +626,7 @@ void main() {
   // 「沒有回報進入檢測模式」. Owner's ruling 2026-11-10: fold into FB-115.
 
   group('FB-115 — self-check auth: 0x00A8 first, derived cb once after', () {
-    const a8Pair = 'b8230001069cb82a010400a801e4da';
-    const readBack = 'b82301009a26';
-    final noResponse = find.textContaining('has not reported entering');
+    final noResponse = find.textContaining('did not enter self-check');
 
     Future<void> press(WidgetTester tester) async {
       await tester.tap(find.byWidgetPredicate(
@@ -611,13 +655,13 @@ void main() {
       return s;
     }
 
-    testWidgets('0168 unit that ignores it: exactly as before — 2 frames',
+    testWidgets('0168 unit that ignores it: one attempt — 4 frames',
         (tester) async {
       await online(tester, '01680217');
       await press(tester);
       await untilNoResponse(tester);
 
-      expect(fakeBle.writes.map(_hex), [a8Pair, readBack],
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _checkA8),
           reason: 'derived cb IS 0x00A8 on 0168 — no second credential');
       expect(noResponse, findsOneWidget);
     });
@@ -625,12 +669,12 @@ void main() {
     testWidgets('0169 unit: the FIRST frame carries 0x00A8, not 0x00A9',
         (tester) async {
       await online(tester, '01690217');
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
       fakeBle.answerOnlyCb = 0x00A8;
       await press(tester);
       await step(tester, times: 120);
 
-      expect(fakeBle.writes.map(_hex), [a8Pair, readBack],
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _checkA8),
           reason: 'entered on A8 ⇒ the derived A9 is never sent');
       expect(noResponse, findsNothing);
     });
@@ -638,16 +682,14 @@ void main() {
     testWidgets('0169 unit that only takes the derived cb: A8, then A9 once',
         (tester) async {
       await online(tester, '01690217');
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
       fakeBle.answerOnlyCb = 0x00A9;
       await press(tester);
       await step(tester, times: 120);
 
       expect(fakeBle.writes.map(_hex), [
-        a8Pair,
-        readBack,
-        'b8230001069cb82a010400a901e4db',
-        readBack,
+        ..._attempt(_authA8, _checkA8),
+        ..._attempt(_authA9, _checkA9),
       ]);
       expect(noResponse, findsNothing);
     });
@@ -658,8 +700,8 @@ void main() {
       await press(tester);
       await untilNoResponse(tester);
 
-      expect(fakeBle.writes, hasLength(4),
-          reason: 'one attempt per credential — a self-check is not retried');
+      expect(fakeBle.writes, hasLength(8),
+          reason: 'one attempt (4 frames) per credential — not retried');
       for (final w in fakeBle.writes) {
         expect(_hex(w), isNot(contains('b8230001059f')));
       }
@@ -800,7 +842,7 @@ void main() {
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
       fakeBle.writes.clear();
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -830,7 +872,7 @@ void main() {
       // ⛔ Not silent, and not a claim of success — but also NOT a write. Rule 3
       // is untouched by FB-111.
       expect(find.textContaining('finished'), findsNothing);
-      expect(fakeBle.writes, hasLength(2),
+      expect(fakeBle.writes, hasLength(4),
           reason: 'the self-check pair and its read-back, and nothing else');
     });
 
@@ -845,7 +887,7 @@ void main() {
       fakeBle.funcFlags = 0x5100;
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -891,7 +933,7 @@ void main() {
       fakeBle.funcFlags = 0x5800; // baseline: the bit-3 group
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -914,7 +956,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
       }
       expect(notBack, findsOneWidget);
-      expect(fakeBle.writes, hasLength(2),
+      expect(fakeBle.writes, hasLength(4),
           reason: 'the self-check pair and its read-back, and nothing else');
     });
 
@@ -932,7 +974,7 @@ void main() {
       fakeBle.funcFlags = 0x5800;
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -971,7 +1013,7 @@ void main() {
       fakeBle.funcFlags = null; // never answers 0x3A
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -1002,7 +1044,7 @@ void main() {
       fakeBle.funcFlags = 0x5800;
       await pumpUnder(tester, s, const CapacitorControls());
       await goOnline(tester, CapacitorStatus.healthy);
-      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
 
       await tester.tap(find.byWidgetPredicate(
           (w) => w is ControlButton && w.label == 'Check Capacitor'));
@@ -1020,8 +1062,146 @@ void main() {
       expect(gaveUp, findsOneWidget);
       expect(find.textContaining('has not gone back to the value it had'),
           findsNothing);
-      expect(fakeBle.writes, hasLength(2));
+      expect(fakeBle.writes, hasLength(4));
     });
   });
 
+
+  // =========================================================================
+  // 🔵 2026-11-10 — a FAILED check (0x07 / 0x0A) and restoring the output
+  // =========================================================================
+  //
+  // Owner's ruling 2026-11-10, narrowing 2026-08-28's "never write a unit
+  // back": A — a check THIS app started that ends in a fail code is followed
+  // once, automatically, by `0x23` <- `0x05`; B — a unit FOUND holding a fail
+  // code gets a button, and nothing is sent until the user confirms. A unit in
+  // self-check (`0x06`) is still never written back (the Q9 test above).
+  group('2026-11-10 — failed self-check: restore A (auto) / B (button)', () {
+    Future<AppServices> onlineAt(WidgetTester tester, int mode) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, mode);
+      fakeBle.writes.clear();
+      return s;
+    }
+
+    Future<void> pressCheck(WidgetTester tester) async {
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+    }
+
+    Future<void> until(WidgetTester tester, Finder f) async {
+      for (var i = 0; i < 80 && f.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+    }
+
+    final restored = find.textContaining('output has been restored');
+    final notRestored = find.textContaining('has not returned to normal output');
+
+    for (final fail in [
+      CapacitorStatus.selfCheckFailedGen2,
+      CapacitorStatus.selfCheckFailedGen3,
+    ]) {
+      testWidgets('A: fail code 0x${fail.toRadixString(16)} ⇒ one restore, '
+          'then "restored"', (tester) async {
+        await onlineAt(tester, CapacitorStatus.healthy);
+        fakeBle.answerWriteWithMode = fail;
+        fakeBle.answerRestoreWithMode = CapacitorStatus.healthy;
+        await pressCheck(tester);
+        await until(tester, restored);
+
+        expect(fakeBle.writes.map(_hex), [
+          ..._attempt(_authA8, _checkA8),
+          ..._attempt(_authA8, _restoreA8),
+        ], reason: 'the check, then exactly one restore with the same auth');
+        expect(restored, findsOneWidget);
+      });
+    }
+
+    testWidgets('A: a unit that ignores the restore ⇒ ONE restore, honest copy',
+        (tester) async {
+      await onlineAt(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckFailedGen2;
+      await pressCheck(tester);
+      await until(tester, notRestored);
+
+      final restores =
+          fakeBle.writes.map(_hex).where((w) => w == _restoreA8).length;
+      expect(restores, 1, reason: 'the restore is not retried');
+      expect(notRestored, findsOneWidget);
+      expect(restored, findsNothing);
+    });
+
+    testWidgets('A: a check that PASSES writes no restore', (tester) async {
+      await onlineAt(tester, CapacitorStatus.healthy);
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckStarting;
+      await pressCheck(tester);
+      await step(tester, times: 4);
+      // The unit comes back on its own.
+      await tester.runAsync(() async {
+        fakeBle.emitMode(CapacitorStatus.healthy);
+        await Future<void>.delayed(Duration.zero);
+      });
+      await until(tester, find.textContaining('Self-check finished'));
+
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _checkA8));
+    });
+
+    testWidgets('B: a unit found failed shows the button and locks the check',
+        (tester) async {
+      await onlineAt(tester, CapacitorStatus.selfCheckFailedGen2);
+
+      expect(find.text('Self-check failed'), findsOneWidget);
+      expect(buttonNamed(tester, 'Restore capacitor output').onPressed,
+          isNotNull);
+      expect(buttonNamed(tester, 'Check Capacitor').onPressed, isNull,
+          reason: 'restore first; a fail code would read as an instant verdict');
+      expect(fakeBle.writes, isEmpty, reason: 'nothing is sent on its own');
+    });
+
+    testWidgets('B: cancelling the restore dialog writes NOTHING',
+        (tester) async {
+      await onlineAt(tester, CapacitorStatus.selfCheckFailedGen2);
+      await tester.tap(find.byWidgetPredicate((w) =>
+          w is ControlButton && w.label == 'Restore capacitor output'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(fakeBle.writes, isEmpty);
+    });
+
+    testWidgets('B: confirming sends one restore and says so', (tester) async {
+      await onlineAt(tester, CapacitorStatus.selfCheckFailedGen2);
+      fakeBle.answerRestoreWithMode = CapacitorStatus.healthy;
+      await tester.tap(find.byWidgetPredicate((w) =>
+          w is ControlButton && w.label == 'Restore capacitor output'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Restore output'));
+      await tester.pump();
+      final done = find.text('Capacitor output restored.');
+      await until(tester, done);
+
+      expect(fakeBle.writes.map(_hex), _attempt(_authA8, _restoreA8));
+      expect(done, findsOneWidget);
+    });
+
+    testWidgets('a healthy or running unit has no restore button',
+        (tester) async {
+      await onlineAt(tester, CapacitorStatus.selfCheckStarting);
+      expect(
+          find.byWidgetPredicate((w) =>
+              w is ControlButton && w.label == 'Restore capacitor output'),
+          findsNothing,
+          reason: '0x06 is a running check — never written back');
+    });
+  });
 }

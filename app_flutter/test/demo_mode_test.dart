@@ -129,7 +129,7 @@ void main() {
       expect(s.mode, ReportedStatus.antiTheftActive);
     });
 
-    test('capacitor: cut-off is ignored, self-check runs and ends', () {
+    test('capacitor: cut-off is ignored, self-check runs and passes', () {
       var now = at;
       final p = DemoPeripheral(DemoKind.capacitor, clock: () => now);
       p.answer(cmd.switchMode(ModeArg.cutOff, creds));
@@ -137,7 +137,8 @@ void main() {
       p.answer(cmd.switchMode(ModeArg.capacitorSelfCheck, creds));
       expect(p.statusByte, CapacitorStatus.selfCheckStarting);
       now = at.add(const Duration(seconds: 6));
-      expect(p.statusByte, CapacitorStatus.selfCheckRunning);
+      // 0x07 is a fail verdict since 2026-11-10; the demo always passes.
+      expect(p.statusByte, CapacitorStatus.selfCheckStarting);
       now = at.add(const Duration(seconds: 16));
       expect(p.statusByte, CapacitorStatus.healthy);
     });
