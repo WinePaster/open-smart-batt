@@ -72,6 +72,11 @@ jobs:
       - name: build debug APK (smoke test)
         working-directory: ${{ env.APP_DIR }}
         run: flutter build apk --debug
+      # design 0102 §3.2 — see the script header. Checked on every PR so a
+      # plugin upgrade that brings back a foreground-service type is caught
+      # here, not at release time or in Play Console.
+      - name: foreground-service types (merged manifest)
+        run: tool/check_fgs_types.sh "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
 
   # iOS compile smoke test. Independent of the Android job above; added by the
   # iOS port (does NOT alter analyze-build).

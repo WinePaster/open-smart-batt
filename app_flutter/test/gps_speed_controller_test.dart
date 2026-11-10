@@ -377,6 +377,19 @@ void main() {
               'state machine declares a tunnel between two good fixes');
     });
 
+    test('Android never asks for the plugin\'s foreground service', () {
+      // design 0102 §3.2: the manifest strips foregroundServiceType="location"
+      // from GeolocatorLocationService so Play sees connectedDevice as the
+      // app's only foreground-service type. That is safe only while the plugin
+      // never calls startForeground(), which it does exactly when Dart passes
+      // a foregroundNotificationConfig. Passing one would throw
+      // MissingForegroundServiceTypeException on Android 14+ — and would also
+      // make this a background-location feature, which 0042 N1 rules out.
+      final s = GeolocatorSpeedSource.locationSettings(isAndroid: true)
+          as AndroidSettings;
+      expect(s.foregroundNotificationConfig, isNull);
+    });
+
     test('a fix with no reported accuracy is not scored as a perfect one', () {
       // Both platforms OMIT the key when the value is unavailable, and
       // Position._toDouble(null) turns an absent key into 0.0 — the best

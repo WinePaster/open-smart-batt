@@ -63,6 +63,23 @@ void main() {
       expect(manifest, contains('FOREGROUND_SERVICE_CONNECTED_DEVICE'));
     });
 
+    test('geolocator\'s service is kept, only its location type is stripped',
+        () {
+      // design 0102 §3.2. Both halves matter:
+      //  - tools:remove of the TYPE keeps "location" out of the merged
+      //    manifest that Play reads for its foreground-service declaration;
+      //  - the service itself must stay, because getPositionStream() binds it
+      //    and silently emits nothing when the bind fails. tools:node="remove"
+      //    would ship a speed card that never gets a fix.
+      final element = RegExp(
+              r'<service[^>]*com\.baseflow\.geolocator\.GeolocatorLocationService[^>]*>')
+          .firstMatch(manifest);
+      expect(element, isNotNull);
+      expect(element!.group(0),
+          contains('tools:remove="android:foregroundServiceType"'));
+      expect(element.group(0), isNot(contains('tools:node')));
+    });
+
     test('the BLE scan declaration is untouched', () {
       // Regression guard for §3.5: the two features share one location
       // permission, and neverForLocation is what keeps the BLE scan from being
