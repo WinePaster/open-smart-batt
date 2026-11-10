@@ -49,6 +49,11 @@ class MainActivity : FlutterActivity() {
                         stopService(Intent(this@MainActivity, MonitorService::class.java))
                         result.success(true)
                     }
+                    // Not monitor plumbing: BleService.ensurePermissions needs
+                    // the API level to ask for location ONLY where BLE scanning
+                    // requires it (API <= 30). Riding this channel avoids a
+                    // plugin dependency for one integer.
+                    "sdkInt" -> result.success(Build.VERSION.SDK_INT)
                     else -> result.notImplemented()
                 }
             }

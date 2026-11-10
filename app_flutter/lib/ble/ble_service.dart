@@ -27,6 +27,7 @@ import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -745,17 +746,45 @@ class BleService {
   // Permissions / adapter
   // ---------------------------------------------------------------------------
 
+  /// The runtime permissions BLE scanning needs on Android API [sdkInt].
+  ///
+  /// Location ONLY on API <= 30, where the platform gates BLE scanning on it.
+  /// On API 31+ BLUETOOTH_SCAN is declared `neverForLocation` in the manifest,
+  /// so scanning needs no location at all — and asking for it anyway put a
+  /// location prompt on the scan tab for every Android 12+ user (demo mode
+  /// included), contradicting the privacy policy's "location is requested
+  /// only when you turn on speed detection" and handing Play review an
+  /// unexplained sensitive permission (design 0102). flutter_blue_plus draws
+  /// the same line in its own startScan (FlutterBluePlusPlugin.java, `SDK_INT
+  /// >= 31` vs `<= 30`, with androidUsesFineLocation left at its false default).
+  ///
+  /// [sdkInt] null = unknown (channel failed): keep location, i.e. the old
+  /// behaviour, because a missing location grant on API <= 30 means a scan
+  /// that silently finds nothing.
+  @visibleForTesting
+  static List<Permission> blePermissionsFor(int? sdkInt) => [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        if (sdkInt == null || sdkInt <= 30) Permission.locationWhenInUse,
+      ];
+
+  static Future<int?> _androidSdkInt() async {
+    try {
+      return await const MethodChannel('com.winepaster.openSmartBatt/monitor')
+          .invokeMethod<int>('sdkInt');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Requests the runtime permissions BLE needs. On Android 12+ the critical
   /// pair is BLUETOOTH_SCAN + BLUETOOTH_CONNECT; pre-12 devices fall back to
   /// location for scanning. Returns true when scanning + connecting are allowed.
   Future<bool> ensurePermissions() async {
     if (!Platform.isAndroid) return true; // iOS prompts on first BLE use.
 
-    final statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    final statuses =
+        await blePermissionsFor(await _androidSdkInt()).request();
 
     final scanOk = statuses[Permission.bluetoothScan]?.isGranted ?? false;
     final connectOk =
