@@ -316,6 +316,20 @@ flutter build apk --release \
 open-smart-batt-v<versionName>-<build>.apk    例：open-smart-batt-v0.6.8-26072956.apk
 ```
 
+## Google Play（AAB）
+
+每次 release，`release.yml` 在出 APK 的**同一個 job** 裡另外出一份 Play 用的 AAB：
+
+```
+open-smart-batt-v<versionName>-<build>-play.aab
+```
+
+- **同號、同金鑰**：與 APK 共用 `key.properties` 與 build number；CI 會比對兩者的簽章憑證 SHA-256，不同就失敗。Play App Signing 設定為沿用這把金鑰 ⇒ Play 版與 GitHub APK **可以互相覆蓋更新**，換通路不必移除重裝。
+- **`--dart-define=OSB_CHANNEL=play`**：Play 版不檢查 GitHub 更新、不提示下載 APK（`lib/config/app_config.dart` `AppConfig.forChannel`）。
+- **不附在 GitHub Release**（手機裝不了 AAB），只存成 workflow artifact `play-aab-<tag>`（保留 90 天），手動上傳時從 Actions 頁面下載。
+- **自動上傳**：repo variable `PLAY_UPLOAD_ENABLED=true` 且 secret `PLAY_SERVICE_ACCOUNT_JSON`（Google Play 服務帳號金鑰）存在時，CI 會把 AAB 傳到 **內部測試軌**；推出到正式版一律在 Play Console 人工操作。未開啟時這兩步顯示為 skipped。⚠️ **新 App 的第一版必須在 Play Console 手動上傳**（API 無法建立 App），之後才能打開開關。
+- **前景服務型別**：合併後的 manifest 只能有 `connectedDevice` 一種（Play 依此要求申報）。`tool/check_fgs_types.sh` 在 CI 與 release 都會檢查；geolocator 自帶服務的 `location` 型別已在 `AndroidManifest.xml` 移除（服務本身必須保留，GPS 速度靠它）。
+
 ---
 
 ## iOS 版號

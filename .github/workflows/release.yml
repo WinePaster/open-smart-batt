@@ -131,7 +131,7 @@ jobs:
   build-release:
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45   # APK + Play AAB (design 0102)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -231,6 +231,84 @@ jobs:
           # because it is stable across releases while the hash is not.
           CERT_SHA="$(echo "$CERTS" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}' || true)"
           echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
+
+      # design 0102 §3.2: Play reads the MERGED manifest for its foreground-
+      # service declaration. connectedDevice must be the only type, and
+      # geolocator's service must still be there (removing it breaks GPS speed
+      # silently). The AAB below shares these manifests, so one check covers both.
+      - name: Check foreground-service types in the merged manifest
+        run: tool/check_fgs_types.sh "${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
+
+      # ── Google Play (design 0102) ───────────────────────────────────────
+      # Same job, same key.properties, same version/build as the APK, so the
+      # Play build and the GitHub APK can update over each other (Play App
+      # Signing is set up with this same key). OSB_CHANNEL=play turns off the
+      # GitHub update check: a Play build must never tell users to side-load.
+      - name: 編譯 Play AAB（OSB_CHANNEL=play）
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          flutter build appbundle --release \
+            --build-name="${{ needs.version.outputs.version }}" \
+            --build-number="${{ needs.version.outputs.build }}" \
+            --dart-define=OSB_CHANNEL=play
+
+      # An AAB carries a JAR (v1) signature, so keytool can read it. Compare
+      # against the APK's certificate rather than just "not debug": the whole
+      # point of the shared key is that the two are identical.
+      - name: Assert the AAB is signed with the same key as the APK
+        run: |
+          AAB="${APP_DIR}/build/app/outputs/bundle/release/app-release.aab"
+          AAB_SHA="$(keytool -printcert -jarfile "$AAB" | grep -m1 'SHA256:' | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')"
+          echo "AAB 憑證 SHA-256：${AAB_SHA:-<none>}"
+          echo "APK 憑證 SHA-256：${CERT_SHA:-<none>}"
+          if [ -z "$AAB_SHA" ] || [ "$AAB_SHA" != "$CERT_SHA" ]; then
+            echo "::error::AAB 與 APK 的簽章憑證不同（或讀不到）。Play 版與 GitHub APK 將無法互相覆蓋更新。"
+            exit 1
+          fi
+          OUT="open-smart-batt-${{ needs.version.outputs.tag }}-${{ needs.version.outputs.build }}-play.aab"
+          cp "$AAB" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "AAB=$OUT" >> "$GITHUB_ENV"
+
+      # Not attached to the GitHub Release (design 0102 Q3): a phone cannot
+      # install an AAB, so offering one next to the APK only invites the wrong
+      # download. It is kept as a workflow artifact for manual Play uploads.
+      - name: 保存 Play AAB（workflow artifact，不附在 Release）
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-aab-${{ needs.version.outputs.tag }}
+          path: |
+            ${{ env.AAB }}
+            ${{ env.AAB }}.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      # Automatic upload to the INTERNAL testing track only (design 0102 Q1).
+      # Promotion to production stays a human action in Play Console.
+      # Off until repo variable PLAY_UPLOAD_ENABLED=true: the first release of a
+      # new app has to be uploaded by hand (the API cannot create one), and a
+      # missing switch shows as a skipped step rather than a green no-op — the
+      # same convention as IOS_RELEASE_ENABLED below.
+      - name: Verify Play upload secret is present
+        if: vars.PLAY_UPLOAD_ENABLED == 'true'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::PLAY_UPLOAD_ENABLED=true 但缺少 secret PLAY_SERVICE_ACCOUNT_JSON（Google Play 服務帳號金鑰）。"
+            exit 1
+          fi
+
+      - name: 上傳 Google Play 內部測試軌
+        if: vars.PLAY_UPLOAD_ENABLED == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.winepaster.openSmartBatt
+          releaseFiles: ${{ env.AAB }}
+          releaseName: ${{ needs.version.outputs.version }} (${{ needs.version.outputs.build }})
+          track: internal
+          status: completed
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         run: |

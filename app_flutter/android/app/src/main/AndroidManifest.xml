@@ -27,8 +27,11 @@
          below keeps its connectedDevice type (design 0008 unchanged, 0042 N1).
          ⚠️ Merge note (verified 2026-08-07): geolocator_android's own manifest
          contributes a GeolocatorLocationService declared with
-         foregroundServiceType="location". We never start it, so it stays inert
-         and needs no permission — but it does appear in the merged manifest. -->
+         foregroundServiceType="location". We never put it in the foreground,
+         so it needs no permission — but the TYPE showed up in the merged
+         manifest, which Play reads for its foreground-service declaration.
+         It is stripped in <application> below (design 0102 §3.2). -->
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Foreground service that keeps the process alive while a pack is
@@ -99,6 +102,24 @@
             android:exported="false"
             android:stopWithTask="true"
             android:foregroundServiceType="connectedDevice" />
+        <!-- geolocator_android's service, with its foregroundServiceType="location"
+             removed so connectedDevice is the app's only foreground-service type
+             (Play declaration; design 0102 §3.2).
+
+             ⛔ Do NOT switch this to tools:node="remove". getPositionStream()
+             binds this service on every platform call, and when the bind fails
+             the plugin only logs and returns (StreamHandlerImpl.onListen,
+             geolocator_android 5.0.3): the speed card would wait for a first
+             fix forever with no error anywhere.
+
+             Safe without a type because the plugin calls startForeground() only
+             when Dart passes a foregroundNotificationConfig, and
+             GeolocatorSpeedSource.locationSettings never does — pinned by
+             gps_speed_controller_test.dart. Adding one would throw
+             MissingForegroundServiceTypeException on Android 14+. -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            tools:remove="android:foregroundServiceType" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
