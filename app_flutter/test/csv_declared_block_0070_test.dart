@@ -21,6 +21,7 @@
 // behaviour that stage two protects: given the list, both files say the same
 // thing, and neither block can be dropped without the other.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/theme/accent_theme.dart';
@@ -57,6 +58,7 @@ void main() {
         exportedAt: DateTime.utc(2026, 8, 18, 20),
         appBuild: '0.7.24+26081786',
         platform: 'ios Version 26.5 (Build 23F77)',
+        edition: AppEdition.community,
         scope: 'all devices',
         window: csv ? 'all' : null,
         ampereColumn: csv,

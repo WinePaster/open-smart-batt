@@ -1027,6 +1027,7 @@ class _DataCardState extends State<_DataCard> {
     final gMeter = appSettings.gMeterEffective;
     // design 0092: same pre-await capture rule as everything above it.
     final appName = AppConfigScope.of(context).appName;
+    final edition = AppConfigScope.of(context).edition;
     try {
       final filename = exportFileName(
         base: 'opensmartbatt-history',
@@ -1069,6 +1070,7 @@ class _DataCardState extends State<_DataCard> {
           exportedAt: DateTime.now(),
           appBuild: services.appBuild,
           platform: services.platform,
+          edition: edition,
           scope: exportScopeLabel(target),
           // FB-60. Unconditional here and always `all`: this button has no
           // range picker, so the file has to say so rather than leave the
@@ -1268,6 +1270,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     final l10n = AppLocalizations.of(context);
     // Captured now: the lookup runs after an await, when this screen may be gone.
     final appName = AppConfigScope.of(context).appName;
+    final edition = AppConfigScope.of(context).edition;
     final devices = context.read<DeviceController>();
     final facts = context.read<DeviceFactsController?>();
     final services = context.read<AppServices>();
@@ -1307,7 +1310,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           await _logHeader(
               tele, services, target, rawLog, logMode, logThemeMode,
               logAccent, speedOn, gMeterOn, layout, home, identities,
-              appName);
+              appName, edition);
       final log = await tele.exportLog(
         deviceId: target.deviceId,
         sessionId: target.sessionId,
@@ -1454,6 +1457,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // method awaits before it builds the header, so the branding has to arrive
     // already read rather than be looked up off a context that may be gone.
     String appName,
+    AppEdition edition,
   ) async {
     final sessions = target.scope == ExportScope.currentSession
         ? 1
@@ -1463,6 +1467,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       exportedAt: DateTime.now(),
       appBuild: services.appBuild,
       platform: services.platform,
+      edition: edition,
       scope: exportScopeLabel(target),
       layout: layout,
       home: home,

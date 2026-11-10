@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -246,6 +247,7 @@ void main() {
           exportedAt: DateTime(2026, 8, 11),
           appBuild: '0.7.11+26081001',
           platform: 'android',
+          edition: AppEdition.community,
           scope: 'all devices',
           window: window,
           layout: 'face=fixed modules=x',

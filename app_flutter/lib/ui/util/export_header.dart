@@ -13,6 +13,7 @@
 /// plugin and possibly disagreeing with them.
 library;
 
+import '../../config/app_config.dart' show AppEdition;
 import '../../data/history_repo.dart';
 import '../../models/app_settings.dart' show AppMode, AppThemeMode;
 import '../../theme/accent_theme.dart';
@@ -168,6 +169,11 @@ List<String> exportHeaderLines({
   required DateTime exportedAt,
   required String appBuild,
   required String platform,
+  // Which app wrote the file: the community build or OSB Pro. NO DEFAULT, for
+  // the reason `devices:` has none (design 0070): a defaulted `community`
+  // would compile at a pro call site that forgot to pass it, and the file would
+  // then state the wrong edition rather than none.
+  required AppEdition edition,
   required String scope,
   required String layout,
   required String home,
@@ -210,6 +216,21 @@ List<String> exportHeaderLines({
     'exported: ${exportedAt.toIso8601String()}',
     scopeLine.toString(),
     'app: $appBuild  platform: $platform',
+    // Which edition wrote this file (2026-11-10). Both editions share one
+    // version scheme, one filename prefix and this whole preamble, so before
+    // this line the ONLY difference between an OSB Pro export and a community
+    // one was the brand inside the title — and the title has already been
+    // wrong once (FB-109: every 0.7.41 file is titled with the literal
+    // `$appName`). A dedicated, machine-stable key is what lets the corpus
+    // keep the dealer's pro captures apart from the community ones.
+    //
+    // Its own line rather than a token on the `app:` line: `platform:` runs to
+    // the end of that line (the OS version string contains spaces), so
+    // anything appended there would be read as part of the OS version by the
+    // existing ingest recipes. Emitted unconditionally — the standing FB-32
+    // rule: an `edition:` that appeared only for pro would make its absence
+    // mean both "community" and "a build older than this line".
+    'edition: ${edition.name}',
     // FB-60. WHICH TIME RANGE THE USER ASKED FOR — distinct from the
     // `range: A .. B` the repo computes, and the distinction is the whole
     // point. `range:` says what the data happens to span; `window:` says what

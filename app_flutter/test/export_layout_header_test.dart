@@ -13,6 +13,7 @@
 // The six format constraints are asserted individually below because each one
 // has a specific downstream consumer that breaks silently, not loudly.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -41,6 +42,7 @@ void main() {
         exportedAt: DateTime.utc(2026, 8, 4, 9, 30),
         appBuild: '0.6.16+1',
         platform: 'android 15',
+        edition: AppEdition.community,
         scope: 'device=battery/1206',
         layout: layout,
         home: home,

@@ -59,6 +59,7 @@ Future<void> exportHistoryCsv(
   final l10n = AppLocalizations.of(context);
   // design 0092: read with the other pre-await captures below.
   final appName = AppConfigScope.of(context).appName;
+  final edition = AppConfigScope.of(context).edition;
   final messenger = ScaffoldMessenger.of(context);
   // Captured now: every lookup below runs after an await, when the screen that
   // started this may already be gone.
@@ -143,6 +144,7 @@ Future<void> exportHistoryCsv(
         exportedAt: DateTime.now(),
         appBuild: services.appBuild,
         platform: services.platform,
+        edition: edition,
         scope: exportScopeLabel(target),
         window: window,
         resolution: resolution,

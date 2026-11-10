@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/ble/ble.dart';
@@ -417,6 +418,7 @@ void main() {
           exportedAt: at,
           appBuild: '0.7.12+26081101',
           platform: 'android 15',
+          edition: AppEdition.community,
           scope: 'all devices',
           window: window,
           ampereColumn: ampereColumn,
