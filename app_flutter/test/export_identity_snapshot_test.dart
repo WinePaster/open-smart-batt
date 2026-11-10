@@ -386,8 +386,11 @@ void main() {
     /// `history_csv_export.dart` and both surfaces call it; the rule did not
     /// change, only where it is enforced. The screen that ASKS for an export is
     /// still checked below, for the half of the rule that still applies to it.
+    ///
+    /// 📦 design 0100 likewise moved the Settings screen's two writers into
+    /// `export_writers.dart`; the screen moved to [requesters] below.
     const writers = <String>[
-      'lib/ui/settings/settings_screen.dart',
+      'lib/ui/util/export_writers.dart',
       'lib/ui/util/history_csv_export.dart',
     ];
 
@@ -402,6 +405,10 @@ void main() {
       // is unchanged — this surface still ASKS for an export and still may
       // not resolve any of it for itself.
       'lib/ui/history/device_history_tab.dart',
+      // design 0100: the Settings buttons and the report bundle ask; the
+      // writing is done by `export_writers.dart`.
+      'lib/ui/settings/settings_screen.dart',
+      'lib/ui/settings/report_problem.dart',
     ];
 
     test('🔴 no export handler reads the live layout for itself', () {

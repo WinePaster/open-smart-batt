@@ -18,21 +18,20 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../alerts/alert_consent_dialog.dart';
 import '../dashboard/capture_mark_labels.dart';
-import '../dashboard/watchfaces.dart';
 import '../diagnostics/capture_wizard.dart';
 import '../../config/app_config.dart';
 import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
-import '../util/export_header.dart';
-import '../util/export_naming.dart';
 import '../util/export_scope.dart';
 import '../util/export_share.dart';
+import '../util/export_writers.dart';
 import '../util/update_check.dart';
 import '../widgets/industrial.dart';
 import 'g_calibration_wizard.dart';
 import 'measurement_explainer.dart';
+import 'report_problem.dart';
 import 'g_meter_consent_dialog.dart';
 import 'speed_consent_dialog.dart';
 
@@ -904,6 +903,20 @@ class _DataCard extends StatefulWidget {
 class _DataCardState extends State<_DataCard> {
   bool _busy = false;
 
+  /// design 0100: the report row's own spinner. Separate from [_busy] so the
+  /// two rows do not show each other's work.
+  bool _reporting = false;
+
+  Future<void> _report() async {
+    if (_busy || _reporting) return;
+    await reportProblem(
+      context,
+      onBusy: (b) {
+        if (mounted) setState(() => _reporting = b);
+      },
+    );
+  }
+
   /// What history is costing, and how fast — design 0061 T8c.
   ///
   /// 🔴 It is on this screen because the retention control above it stopped
@@ -968,129 +981,18 @@ class _DataCardState extends State<_DataCard> {
     );
     if (target == null || !mounted) return;
     setState(() => _busy = true);
-    final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
-    // Captured now: the label lookup runs after an await, when this screen may
-    // already be gone.
-    final devices = context.read<DeviceController>();
-    // design 0057: what each unit said about itself, saved or not. Captured
-    // with the rest and looked up as a nullable type, so a harness that
-    // provides no cache still builds and simply behaves as it did before.
-    final facts = context.read<DeviceFactsController?>();
-    final services = context.read<AppServices>();
-    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
-    // Live pair captured with the rest (design 0055 follow-up): an unnamed unit
-    // has no stored class, and the CSV's current column is class-gated — see
-    // [deviceClassFor]. design 0057 puts the cache between the two, which is
-    // what keeps the column right after the link drops.
-    final liveId = tele.recordingDeviceId;
-    final liveClass = context.read<ConnectionController>().resolvedClass;
-    ProductClass classFor(String? id) => deviceClassFor(
-          devices,
-          id,
-          facts: facts,
-          liveDeviceId: liveId,
-          liveClass: liveClass,
-        );
+    // Every phone-side fact the file states, read before the first await
+    // (design 0100 moved the writer to `export_writers.dart`, shared with the
+    // report bundle). The layout comes from the target — FB-68.
+    final capture = ExportCapture.of(context, target);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
-    // The dashboard layout in force when this export STARTED (design 0034 §8).
-    //
-    // 🔴 FB-68: taken from the target, not re-read here. `chooseExportScope`
-    // resolved it in the same breath as the unit's identity, before the sheet;
-    // reading it again now would be a second sample of a value the scope sheet
-    // gave the link time to change — and it did, in the field, in the 17 s
-    // between one sitting's two files (batch 2026.08.13-001).
-    final layout = target.layout;
-    // design 0046 Step 10. Read before the first await, because by the time the
-    // file is written the screen may be gone. NOT part of the FB-68 snapshot:
-    // the home grid is a phone-wide setting with no link to lose, so it cannot
-    // flip when the connection drops.
-    final home = currentExportHomeValue(context);
-    // design 0042 §3.9: emitted unconditionally, `off` included, so that an
-    // empty `speed` column has one reading instead of two.
-    //
-    // 🔴 The EFFECTIVE values (design 0063 §3.0.3 / Q1'), not the stored
-    // switches. In advanced mode the switches keep the user's answer while the
-    // features are withheld, so printing the stored value would put
-    // `g meter: on` on a file whose `g_long` column cannot contain anything —
-    // the same lie FB-32 spent three replies chasing, arriving down a new path.
-    // `mode:` beside them says which of the two is being reported.
-    final appSettings = context.read<SettingsController>().settings;
-    final mode = appSettings.mode;
-    // design 0064: captured with the rest of the snapshot, before the awaits.
-    final themeMode = appSettings.themeMode;
-    final accent =
-        AccentTheme.byId(appSettings.accentThemeId) ?? AccentTheme.amber;
-    final speedDetection = appSettings.speedDetectionEffective;
-    final gMeter = appSettings.gMeterEffective;
-    // design 0092: same pre-await capture rule as everything above it.
-    final appName = AppConfigScope.of(context).appName;
-    final edition = AppConfigScope.of(context).edition;
     try {
-      final filename = exportFileName(
-        base: 'opensmartbatt-history',
-        classSlug: target.classSlug,
-        ident: target.ident,
-        stamp: exportStamp(),
-        extension: 'csv',
-      );
-      // design 0061 T7b: the last ~10 seconds live in a write buffer until
-      // something asks for them, and an export is exactly that.
-      await tele.flushHistoryForExport();
+      final filename = allDataCsvFileName(target);
       final file = await exportTempFile(filename);
-      // design 0061 T4a — asked of the database over this export's own scope.
-      final resolution = ExportResolution.forCsv(
-        target.granularity,
-        await tele.historyBucketWidths(deviceId: target.deviceId),
-      );
-      // "Export all data" means all of it, and it always did — this path never
-      // carried a row cap. What it DID carry was the whole table in memory
-      // three times over, which is the same defect as the History screen's cap
-      // seen from the other side: one lost rows silently, this one fell over
-      // silently. Both now stream page by page (design 0030 T4b).
-      // design 0070. The identity list this file has been missing since the
-      // block existed: `exportHeaderLines` builds BOTH `devices:` and
-      // `declared:` out of it, so omitting it made a CSV claim zero declared
-      // units while the log exported seconds later named three.
-      // 🔑 Computed per export path rather than threaded, matching
-      // `_exportLog` and `exportHistoryCsv` — each asks the same question of
-      // the same snapshotted `target`, so the three answers cannot drift.
-      final identities =
-          await exportDeviceIdentities(devices, tele, target, facts: facts);
-      final rows = await tele.exportHistoryCsvToFile(
-        file,
-        deviceId: target.deviceId,
-        granularity: target.granularity,
-        labelFor: labelFor,
-        classFor: classFor,
-        header: exportHeaderLines(
-          title: '$appName history export',
-          exportedAt: DateTime.now(),
-          appBuild: services.appBuild,
-          platform: services.platform,
-          edition: edition,
-          scope: exportScopeLabel(target),
-          // FB-60. Unconditional here and always `all`: this button has no
-          // range picker, so the file has to say so rather than leave the
-          // recipient to infer it from a missing line.
-          window: 'all',
-          resolution: resolution,
-          // Same column, same rule as the History screen's export — the two
-          // paths write the same CSV shape and must describe it identically.
-          ampereColumn: true,
-          layout: layout,
-          home: home,
-          mode: mode,
-          themeMode: themeMode,
-          accent: accent,
-          speedDetection: speedDetection,
-          gMeter: gMeter,
-          // design 0070 — see the note on `identities` above.
-          devices: identities,
-        ),
-      );
+      final rows = await writeAllDataCsv(capture, file);
       // Row count, not text emptiness: the preamble means the file is never
       // empty, so the older `!csv.contains('\n')` test would always pass and
       // hand the user a header-only file with no warning.
@@ -1103,7 +1005,7 @@ class _DataCardState extends State<_DataCard> {
         file: file,
         filename: filename,
         mimeType: 'text/csv',
-        subject: l10n.settingsExportSubjectAllData(appName),
+        subject: l10n.settingsExportSubjectAllData(capture.appName),
         sharePositionOrigin: origin,
       );
     } catch (e) {
@@ -1139,6 +1041,15 @@ class _DataCardState extends State<_DataCard> {
       headingIcon: Icons.description_outlined,
       child: Column(
         children: [
+          // design 0100 Q2: first in the card — the one row a reporter needs.
+          SettingsLinkRow(
+            key: const ValueKey('settings-report'),
+            icon: Icons.outgoing_mail,
+            label: l10n.settingsReportLabel,
+            sub: l10n.settingsReportSub,
+            onTap: _report,
+            trailing: _reporting ? const _SmallSpinner() : null,
+          ),
           SettingsRow(
             label: l10n.settingsRetentionLabel,
             sub: l10n.settingsRetentionSub,
@@ -1225,6 +1136,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       ));
       return;
     }
+    // design 0100 §3.1: the unit the script ran against, for the report the
+    // finish snackbar offers — taken before the wizard, while it is certain.
+    final scriptedId = context.read<TelemetryController>().recordingDeviceId;
     final done = await showCaptureWizard(
       context,
       marks: marks,
@@ -1232,8 +1146,17 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     );
     if (!done) return;
     messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 2600),
+      // Long enough to read and reach the button; the Data card's
+      // 「回報問題」 row is the way back if it times out.
+      duration: const Duration(seconds: 8),
       content: Text(l10n.captureWizardFinished),
+      action: SnackBarAction(
+        label: l10n.captureWizardReportNow,
+        onPressed: () {
+          if (!mounted) return;
+          reportProblem(context, deviceId: scriptedId, afterCapture: true);
+        },
+      ),
     ));
   }
 
@@ -1265,73 +1188,26 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       return;
     }
     setState(() => _busy = true);
-    final tele = context.read<TelemetryController>();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
-    // Captured now: the lookup runs after an await, when this screen may be gone.
-    final appName = AppConfigScope.of(context).appName;
-    final edition = AppConfigScope.of(context).edition;
-    final devices = context.read<DeviceController>();
-    final facts = context.read<DeviceFactsController?>();
-    final services = context.read<AppServices>();
-    final rawLog = context.read<SettingsController>().rawPacketLog;
-    // Effective, not stored — see the history-CSV handler above for why, and
-    // `export_header.dart`'s `mode:` line for what tells the two apart.
-    final logSettings = context.read<SettingsController>().settings;
-    final logMode = logSettings.mode;
-    // design 0064, captured here for the same pre-await reason as the rest.
-    final logThemeMode = logSettings.themeMode;
-    final logAccent =
-        AccentTheme.byId(logSettings.accentThemeId) ?? AccentTheme.amber;
-    final speedOn = logSettings.speedDetectionEffective;
-    final gMeterOn = logSettings.gMeterEffective;
-    // 🔴 FB-68: the layout comes from the target, resolved with the identity at
-    // the moment the export was asked for. This handler is the one that proved
-    // it matters — the diagnostic log of batch 2026.08.13-001 carried
-    // `layout: face=- modules=-` beside a CSV from 17 s earlier that said
-    // `face=fixed`, because a teardown landed between the two and this line used
-    // to be gated on `conn.isOnline`.
-    final layout = target.layout;
-    // The home grid (design 0046 Step 10) is still read here: it is a
-    // phone-wide setting, so no link state can flip it mid-export.
-    final home = currentExportHomeValue(context);
-    String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
+    // Every phone-side fact the file states, read before the first await
+    // (design 0100: the writer lives in `export_writers.dart`, shared with the
+    // report bundle). 🔴 FB-68: the layout comes from the target — this handler
+    // is the one that proved it matters (batch 2026.08.13-001).
+    final capture = ExportCapture.of(context, target);
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      // design 0027 §3.1: name every unit this export touches in the header,
-      // even an all-devices export where the rows carry only nicknames.
-      // design 0057 G3: with the cache the header can still name a unit that
-      // was never saved and is no longer on the link — before it, provenance
-      // for those rows vanished the moment the connection ended.
-      final identities =
-          await exportDeviceIdentities(devices, tele, target, facts: facts);
-      final header =
-          await _logHeader(
-              tele, services, target, rawLog, logMode, logThemeMode,
-              logAccent, speedOn, gMeterOn, layout, home, identities,
-              appName, edition);
-      final log = await tele.exportLog(
-        deviceId: target.deviceId,
-        sessionId: target.sessionId,
-        header: header,
-        labelFor: labelFor,
-      );
+      final log = await buildDiagnosticLog(capture);
       if (log.trim().isEmpty) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.settingsLogEmpty)));
         return;
       }
       await shareTextAsFile(
         content: log,
-        filename: exportFileName(
-          base: 'opensmartbatt',
-          classSlug: target.classSlug,
-          ident: target.ident,
-          stamp: exportStamp(),
-          extension: 'log',
-        ),
+        filename: diagnosticLogFileName(target),
         mimeType: 'text/plain',
-        subject: l10n.settingsExportSubjectDiagLog(appName),
+        subject: l10n.settingsExportSubjectDiagLog(capture.appName),
         sharePositionOrigin: origin,
       );
     } catch (e) {
@@ -1340,6 +1216,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
 
   /// FB-37 (ruled 2026-07-30: disclose, do not redact). Returns true to export.
   ///
@@ -1426,65 +1303,6 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
       return false;
     }
     return choice == _RawLogChoice.exportAnyway;
-  }
-
-  /// The `#`-prefixed preamble telling whoever receives the diagnostic log
-  /// which unit it covers, which app build produced it, how many connections it
-  /// spans and whether raw packets were being recorded at all. Without it a
-  /// recipient cannot tell a genuinely quiet capture from one the app never
-  /// wrote, and has to guess at the version — which is how an app-side bug once
-  /// got read as a hardware limitation.
-  Future<List<String>> _logHeader(
-    TelemetryController tele,
-    AppServices services,
-    ExportTarget target,
-    // Passed in, not read here: this method awaits first, by which time the
-    // screen may be gone and a `context.read` would throw mid-export — the same
-    // reason `labelFor` is captured by the caller.
-    bool rawPacketLog,
-    // design 0063. Threaded through with the other pre-await reads rather than
-    // fetched here, for the reason stated on `rawPacketLog` above.
-    AppMode mode,
-    // design 0064, same pre-await capture rule as `mode` above.
-    AppThemeMode themeMode,
-    AccentTheme accent,
-    bool speedDetection,
-    bool gMeter,
-    String layout,
-    String home,
-    List<ExportDeviceIdentity> devices,
-    // design 0092, same pre-await capture rule as `rawPacketLog` above: this
-    // method awaits before it builds the header, so the branding has to arrive
-    // already read rather than be looked up off a context that may be gone.
-    String appName,
-    AppEdition edition,
-  ) async {
-    final sessions = target.scope == ExportScope.currentSession
-        ? 1
-        : await tele.logSessionCount(deviceId: target.deviceId);
-    return exportHeaderLines(
-      title: '$appName diagnostic log',
-      exportedAt: DateTime.now(),
-      appBuild: services.appBuild,
-      platform: services.platform,
-      edition: edition,
-      scope: exportScopeLabel(target),
-      layout: layout,
-      home: home,
-      mode: mode,
-      themeMode: themeMode,
-      accent: accent,
-      speedDetection: speedDetection,
-      gMeter: gMeter,
-      // design 0061 §3.4.3: this file has no history rows at all, so it says
-      // so out loud rather than omitting the line. A line that appears only
-      // when there is something to say makes its absence mean both "nothing"
-      // and "an older build wrote this" — FB-32's rule.
-      resolution: ExportResolution.none,
-      connections: sessions,
-      rawPacketLog: rawPacketLog,
-      devices: devices,
-    );
   }
 
   Future<void> _clearLog() async {

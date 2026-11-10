@@ -506,9 +506,13 @@ void main() {
       // and both surfaces call it. One writer is the point — two copies of a
       // 14-field preamble is how the two would start describing one database
       // differently.
+      // 📦 design 0100 moved the Settings screen's two writers into
+      // `export_writers.dart` (shared with the report bundle), so that file
+      // replaces `settings_screen.dart` here; the screen still asks, it no
+      // longer writes.
       expect(callers, {
         'lib/ui/util/history_csv_export.dart',
-        'lib/ui/settings/settings_screen.dart',
+        'lib/ui/util/export_writers.dart',
       });
       for (final f in callers) {
         final src = File(f).readAsStringSync();

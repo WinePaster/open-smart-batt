@@ -527,7 +527,7 @@ abstract class AppLocalizations {
   /// No description provided for @captureWizardFinished.
   ///
   /// In en, this message translates to:
-  /// **'Capture finished. Export the diagnostic log and send it to us.'**
+  /// **'Capture finished. Tap “Report now” to send it to us.'**
   String get captureWizardFinished;
 
   /// No description provided for @dashboardProtectionHeading.
@@ -2731,6 +2731,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{appName} diagnostic log'**
   String settingsExportSubjectDiagLog(String appName);
+
+  /// design 0100 — Settings › Data, first row: one tap packs the CSV, the diagnostic log and a note into one zip.
+  ///
+  /// In en, this message translates to:
+  /// **'Report a problem'**
+  String get settingsReportLabel;
+
+  /// No description provided for @settingsReportSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Packs your records and a note into one file to send us by LINE or email'**
+  String get settingsReportSub;
+
+  /// No description provided for @reportDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report a problem'**
+  String get reportDialogTitle;
+
+  /// No description provided for @reportDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This makes one zip file holding your data records (CSV), the diagnostic log, and the note you write below. After “Send”, choose the app to send it with.'**
+  String get reportDialogBody;
+
+  /// No description provided for @reportNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What happened? (which vehicle, which battery, when)'**
+  String get reportNoteHint;
+
+  /// No description provided for @reportNotePrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Please don’t include phone numbers, addresses or other personal details.'**
+  String get reportNotePrivacy;
+
+  /// No description provided for @reportSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get reportSend;
+
+  /// design 0100 — share-sheet subject of the report bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} problem report'**
+  String reportSubject(String appName);
+
+  /// No description provided for @reportDemoRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo mode has no records to report.'**
+  String get reportDemoRefused;
+
+  /// No description provided for @captureWizardReportNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Report now'**
+  String get captureWizardReportNow;
 
   /// No description provided for @startupFailedTitle.
   ///

@@ -77,9 +77,10 @@ void main() {
         .where((f) => !f.endsWith('export_header.dart'))
         .toSet();
     // Same pair FB-109's sweep pins; a third surface must be added to both.
+    // 📦 design 0100: the Settings writers moved to `export_writers.dart`.
     expect(callers, {
       'lib/ui/util/history_csv_export.dart',
-      'lib/ui/settings/settings_screen.dart',
+      'lib/ui/util/export_writers.dart',
     });
     expect(callers, isNotEmpty);
     for (final f in callers) {

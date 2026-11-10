@@ -379,12 +379,17 @@ class SettingsLinkRow extends StatelessWidget {
     required this.onTap,
     this.last = false,
     this.trailing,
+    this.sub,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool last;
+
+  /// Optional muted caption under the label (design 0100's report row). Null
+  /// keeps the row exactly as it was.
+  final String? sub;
 
   /// Optional trailing widget replacing the default chevron (e.g. a value).
   final Widget? trailing;
@@ -405,13 +410,35 @@ class SettingsLinkRow extends StatelessWidget {
             Icon(icon, size: 15, color: context.accent.accentSecondary),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: context.accent.accentSecondary,
-                ),
-              ),
+              child: sub == null
+                  ? Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.accent.accentSecondary,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: context.accent.accentSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          sub!,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            height: 1.5,
+                            color: context.colors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
             trailing ??
                 Icon(
