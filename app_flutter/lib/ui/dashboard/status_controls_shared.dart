@@ -246,9 +246,30 @@ enum CapacitorSelfCheckOutcome {
 ///
 /// What it does now: `0x23` <- [ModeArg.capacitorSelfCheck], bundled with the
 /// auth sub-frame in one 15-byte write, i.e. exactly the shape every other mode
-/// write in this app already had ([CommandBuilder.switchMode]). Auth is derived
-/// the same way the release derives it ([releaseAuthFromDealerCode]) — the
-/// owner types nothing.
+/// write in this app already had ([CommandBuilder.switchMode]). Auth comes from
+/// the same plan the release uses ([releaseAuthPlan]) — the owner types
+/// nothing.
+///
+/// 🔵 **FB-115, extended to this path (owner's ruling 2026-11-10).** This used
+/// to send ONLY the cb derived from the dealer code
+/// ([releaseAuthFromDealerCode]). On a `0169…` unit that is `0x00A9` — the
+/// value FB-115 had already shown never releases a `0169…` pack — and capture
+/// 2026.11.10/001 (a `0169…` capacitor, raw packet log off) ended in
+/// [CapacitorSelfCheckOutcome.noResponse]. FB-115 had fixed 復電 and left
+/// this second writer on the old rule. Now: `0x00A8` first; only if `0x23`
+/// never entered self-check inside [_selfCheckAckWindow], the derived value
+/// once. On a `0168…` unit the plan has one entry, so the bytes and the count
+/// of writes are exactly what they were.
+///
+/// ⚠️ Whether a capacitor, like a battery, accepts only `0x00A8` is NOT
+/// established — every accepted self-check in the corpus used `0x00A8`, and
+/// none has ever used `0x00A9`. The plan is the conservative reading: it sends
+/// the one value with a track record first and keeps the other as a fallback.
+///
+/// One attempt per credential, not the release's three: a self-check is the
+/// write that makes the unit's voltage drop, so it is not something to repeat
+/// on a unit that may simply be refusing it (2026.09.03/001 refused the
+/// correct `0x00A8` twice).
 ///
 /// ## The three rules this flow is built around
 ///
@@ -288,7 +309,9 @@ enum CapacitorSelfCheckOutcome {
 ///    stopped being able to back up.
 ///
 /// The ONE outbound write in this function is [ConnectionController
-/// .capacitorSelfCheck]. Anything that adds a second one is undoing rule 3.
+/// .capacitorSelfCheck] (sent at most once per credential in the plan, each
+/// followed by its read-back). Anything that adds a different write is undoing
+/// rule 3.
 Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     BuildContext context, TelemetryController tele) async {
   final conn = context.read<ConnectionController>();
@@ -342,8 +365,8 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   // borrowing it would put cut-off copy in front of a capacitor owner. The
   // dealer code arrives within seconds of a link going ready, so "not yet" is
   // a wait, not a dead end.
-  final creds = releaseAuthFromDealerCode(tele.dealerCode);
-  if (creds == null) {
+  final plan = releaseAuthPlan(tele.dealerCode);
+  if (plan == null) {
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 3600),
       content: Text(l10n.capacitorSelfCheckNotReady),
@@ -351,22 +374,28 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     return CapacitorSelfCheckOutcome.notSent;
   }
 
-  try {
-    await conn.capacitorSelfCheck(cb: creds.cb, pwSum: creds.pwSum);
-    // The same write ++ read-back pairing the release uses. A lone mode write
-    // was measured to be intermittent, and this is a read, so it cannot take
-    // the device anywhere.
-    await conn.pollMode();
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 3600),
-      content: Text(l10n.capacitorSelfCheckFailedSnack('$e')),
-    ));
-    return CapacitorSelfCheckOutcome.notSent;
+  var entered = false;
+  for (final creds in plan) {
+    try {
+      await conn.capacitorSelfCheck(cb: creds.cb, pwSum: creds.pwSum);
+      // The same write ++ read-back pairing the release uses. A lone mode
+      // write was measured to be intermittent, and this is a read, so it
+      // cannot take the device anywhere.
+      await conn.pollMode();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(milliseconds: 3600),
+        content: Text(l10n.capacitorSelfCheckFailedSnack('$e')),
+      ));
+      return CapacitorSelfCheckOutcome.notSent;
+    }
+    entered = await _waitFor(
+        tele, (m) => CapacitorStatus.isSelfCheck(m), _selfCheckAckWindow);
+    // No reading at all means the link went away: the next credential would
+    // only be a write into a dead link. Same stop as [runReleasePlan] on
+    // [ModeWatch.linkLost].
+    if (entered || tele.mode == null) break;
   }
-
-  final entered = await _waitFor(
-      tele, (m) => CapacitorStatus.isSelfCheck(m), _selfCheckAckWindow);
   if (!entered) {
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 4200),
@@ -518,7 +547,9 @@ Future<ModeWatch> watchModeAfterWrite(
 ///     168 = 0x00A8). ⚠️ Confirmed on `0168…` packs only; on a `0169…` pack the
 ///     derived 0x00A9 never released (FB 2026.09.27/003). 復電 therefore leads
 ///     with [kReleaseCbFirst] and uses this value only as the fallback — see
-///     [releaseAuthPlan].
+///     [releaseAuthPlan]. ⛔ Do not call this directly from a writer: the
+///     capacitor self-check did, and sent 0x00A9 to a `0169…` unit
+///     (FB-115, extended 2026-11-10). Go through [releaseAuthPlan].
 ///   * `pwSum` — the built-in [kDefaultCutoffPwSum]; the cut-off password is
 ///     assumed a dealer-wide constant (design 0036 §2, working assumption).
 /// Returns null when the dealer code has not arrived on the wire yet, so the

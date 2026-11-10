@@ -82,6 +82,14 @@ class _FakeBleService extends BleService {
   /// described then. The `0x3A`-aware paths set it explicitly.
   int? funcFlags;
 
+  /// The dealer code every emitted sample carries — auth is derived from it.
+  /// `0168…` by default; FB-115 tests switch it to a `0169…` unit.
+  String dealerCode = '01680217';
+
+  /// When set, a write answers [answerWriteWithMode] only if its auth carries
+  /// this cb — a unit that accepts one credential and ignores the other.
+  int? answerOnlyCb;
+
   /// Extra fields every emitted sample carries, so the body under test sees a
   /// classified capacitor with a dealer code (auth is derived from it).
   TelemetrySample _sampleWith(int? mode) => TelemetrySample(
@@ -89,7 +97,7 @@ class _FakeBleService extends BleService {
         mode: mode,
         funcFlagsRaw: funcFlags,
         deviceType: kSuperCapacitorDeviceType,
-        dealerCode: '01680217',
+        dealerCode: dealerCode,
         pvlt: 13.2,
       );
 
@@ -106,6 +114,11 @@ class _FakeBleService extends BleService {
   Future<void> writeCommand(List<int> bytes, {Duration? timeout}) async {
     writes.add(List<int>.unmodifiable(bytes));
     final answer = answerWriteWithMode;
+    final only = answerOnlyCb;
+    if (only != null) {
+      final cb = only.toRadixString(16).padLeft(4, '0');
+      if (!_hex(bytes).contains('b82a0104${cb}01e4')) return;
+    }
     if (answer != null) emitMode(answer);
   }
 
@@ -553,6 +566,104 @@ void main() {
 
       expect(buttonNamed(tester, 'Check Capacitor').onPressed, isNotNull);
       expect(find.text('Normal'), findsOneWidget);
+    });
+  });
+
+  // =========================================================================
+  // 🔵 FB-115, extended — the self-check takes the release's auth plan
+  // =========================================================================
+  //
+  // WHAT WAS WRONG. The self-check derived cb from the dealer code and sent
+  // only that. On a `0169…` unit it is `0x00A9`, the value FB-115 had shown
+  // never releases a `0169…` pack; FB-115 fixed 復電 and left this writer
+  // behind. Capture 2026.11.10/001 — a `0169…` capacitor — ended in
+  // 「沒有回報進入檢測模式」. Owner's ruling 2026-11-10: fold into FB-115.
+
+  group('FB-115 — self-check auth: 0x00A8 first, derived cb once after', () {
+    const a8Pair = 'b8230001069cb82a010400a801e4da';
+    const readBack = 'b82301009a26';
+    final noResponse = find.textContaining('has not reported entering');
+
+    Future<void> press(WidgetTester tester) async {
+      await tester.tap(find.byWidgetPredicate(
+          (w) => w is ControlButton && w.label == 'Check Capacitor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I understand — start it'));
+      await tester.pump();
+    }
+
+    Future<void> untilNoResponse(WidgetTester tester) async {
+      for (var i = 0; i < 60 && noResponse.evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+    }
+
+    Future<AppServices> online(WidgetTester tester, String dealer) async {
+      final s = await makeServices(tester);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        await s.dispose();
+      });
+      fakeBle.dealerCode = dealer;
+      await pumpUnder(tester, s, const CapacitorControls());
+      await goOnline(tester, CapacitorStatus.healthy);
+      fakeBle.writes.clear();
+      return s;
+    }
+
+    testWidgets('0168 unit that ignores it: exactly as before — 2 frames',
+        (tester) async {
+      await online(tester, '01680217');
+      await press(tester);
+      await untilNoResponse(tester);
+
+      expect(fakeBle.writes.map(_hex), [a8Pair, readBack],
+          reason: 'derived cb IS 0x00A8 on 0168 — no second credential');
+      expect(noResponse, findsOneWidget);
+    });
+
+    testWidgets('0169 unit: the FIRST frame carries 0x00A8, not 0x00A9',
+        (tester) async {
+      await online(tester, '01690217');
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerOnlyCb = 0x00A8;
+      await press(tester);
+      await step(tester, times: 120);
+
+      expect(fakeBle.writes.map(_hex), [a8Pair, readBack],
+          reason: 'entered on A8 ⇒ the derived A9 is never sent');
+      expect(noResponse, findsNothing);
+    });
+
+    testWidgets('0169 unit that only takes the derived cb: A8, then A9 once',
+        (tester) async {
+      await online(tester, '01690217');
+      fakeBle.answerWriteWithMode = CapacitorStatus.selfCheckRunning;
+      fakeBle.answerOnlyCb = 0x00A9;
+      await press(tester);
+      await step(tester, times: 120);
+
+      expect(fakeBle.writes.map(_hex), [
+        a8Pair,
+        readBack,
+        'b8230001069cb82a010400a901e4db',
+        readBack,
+      ]);
+      expect(noResponse, findsNothing);
+    });
+
+    testWidgets('🔴 0169 unit that ignores both: 2 credentials, no third, '
+        'and nothing writes it back to 0x05', (tester) async {
+      await online(tester, '01690217');
+      await press(tester);
+      await untilNoResponse(tester);
+
+      expect(fakeBle.writes, hasLength(4),
+          reason: 'one attempt per credential — a self-check is not retried');
+      for (final w in fakeBle.writes) {
+        expect(_hex(w), isNot(contains('b8230001059f')));
+      }
+      expect(noResponse, findsOneWidget);
     });
   });
 
