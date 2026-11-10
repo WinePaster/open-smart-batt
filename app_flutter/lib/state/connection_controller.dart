@@ -2268,8 +2268,10 @@ class ConnectionController extends ChangeNotifier {
   /// (`capacitorSelfCheck` in `ui/dashboard/status_controls_shared.dart`) owns
   /// the class gate and the user confirmation.
   ///
-  /// 🔴 **There is deliberately NO counterpart that writes the unit back to
-  /// [CapacitorStatus.healthy]** (owner's ruling, 2026-08-28). The app does not
+  /// ~~🔴 **There is deliberately NO counterpart that writes the unit back to
+  /// [CapacitorStatus.healthy]** (owner's ruling, 2026-08-28).~~ 🔵 Narrowed
+  /// 2026-11-10: [capacitorRestoreOutput] exists, for a FAILED check only —
+  /// the paragraph below still holds for a check that is running (`0x06`). The app does not
   /// take a device out of self-check — not on a timer, not on give-up, not at
   /// all. Whether writing `0x05` interrupts a check that is still running is
   /// not something we know, and the conservative answer while it is unknown is
@@ -2282,6 +2284,13 @@ class ConnectionController extends ChangeNotifier {
   /// accepted self-check; the `0x00` variant came from the consumer app only.
   Future<void> capacitorSelfCheck({required int cb, required int pwSum}) =>
       _ble.switchMode(ModeArg.capacitorSelfCheck, cb: cb, pwSum: pwSum);
+
+  /// Write a super-capacitor back to normal (`0x23` <- `0x05` bundled with
+  /// auth). ONLY for a unit reporting a failed self-check — see
+  /// [ModeArg.capacitorNormal] for the rule and `capacitorRestoreOutput` in
+  /// `ui/dashboard/status_controls_shared.dart` for the gate.
+  Future<void> capacitorRestoreOutput({required int cb, required int pwSum}) =>
+      _ble.switchMode(ModeArg.capacitorNormal, cb: cb, pwSum: pwSum);
 
   /// EXPERIMENTAL — send ONLY the mode sub-frame, skipping the auth frame.
   /// Unproven: the device MAY ignore commands without auth. Provided as a

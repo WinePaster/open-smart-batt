@@ -231,8 +231,12 @@ enum CapacitorSelfCheckOutcome {
   /// again on its own — the vendor app's "pass" (2026.11.10-002 §8).
   finished,
 
-  /// The unit entered self-check and then reported a fail code
-  /// ([CapacitorStatus.isSelfCheckFailed]).
+  /// The unit reported a fail code ([CapacitorStatus.isSelfCheckFailed]) and
+  /// the follow-up [capacitorRestoreOutput] brought it back to normal.
+  failedRestored,
+
+  /// The unit reported a fail code and is still holding it: the restore write
+  /// went unanswered (or could not be sent).
   failed,
 
   /// The unit entered self-check and was still in it when we stopped watching.
@@ -326,6 +330,8 @@ enum CapacitorSelfCheckOutcome {
 ///    "finished" or "cancelled" — both would be claims about a device we have
 ///    stopped being able to back up.
 ///
+/// 🔵 2026-11-10: plus, after a FAILED check only, one [_restoreOnce] — see
+/// [ModeArg.capacitorNormal]. Otherwise:
 /// The ONE outbound write in this function is [ConnectionController
 /// .capacitorSelfCheck] (sent at most once per credential in the plan, each
 /// followed by its read-back). Anything that adds a different write is undoing
@@ -344,6 +350,11 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   // there is nothing to compare against, and the unlock then does not gate on
   // `0x3A` at all — a gate keyed on a register the device does not answer is a
   // state with no exit (FB-50 / FB-52's shape).
+  // A unit already holding a failed check is restored first (the button), not
+  // re-checked: its fail code would read as this check's instant verdict.
+  if (CapacitorStatus.isSelfCheckFailed(tele.mode)) {
+    return CapacitorSelfCheckOutcome.notSent;
+  }
   final baseline = CapacitorFunctionFlags.group(tele.funcFlagsRaw);
   bool backToBaseline() {
     if (baseline == null) return true;
@@ -393,6 +404,7 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   }
 
   var entered = false;
+  AuthCredentials? enteredWith;
   for (final creds in plan) {
     try {
       // 🔵 2026-11-10 (owner's ruling, analysis 2026.11.10-002 §8): both vendor
@@ -427,6 +439,7 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     // No reading at all means the link went away: the next credential would
     // only be a write into a dead link. Same stop as [runReleasePlan] on
     // [ModeWatch.linkLost].
+    if (entered) enteredWith = creds;
     if (entered || tele.mode == null) break;
   }
   if (!entered) {
@@ -452,17 +465,28 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   // AFTER the wait, so it describes the state we actually gave up in.
   final modeBack = tele.mode == CapacitorStatus.healthy;
   final flagMoved = !backToBaseline();
-  final outcome = CapacitorStatus.isSelfCheckFailed(tele.mode)
+  var outcome = CapacitorStatus.isSelfCheckFailed(tele.mode)
       ? CapacitorSelfCheckOutcome.failed
       : returned
           ? CapacitorSelfCheckOutcome.finished
           : modeBack && flagMoved
               ? CapacitorSelfCheckOutcome.flagNotBack
               : CapacitorSelfCheckOutcome.stillRunning;
+  // 🔵 Owner's ruling 2026-11-10 (case A): a check WE started that ends in a
+  // fail code is followed, once, by the restore write — the user agreed to it
+  // in the confirmation dialog. A unit found failed at connect is case B: the
+  // button, never this path.
+  if (outcome == CapacitorSelfCheckOutcome.failed &&
+      enteredWith != null &&
+      await _restoreOnce(conn, tele, enteredWith)) {
+    outcome = CapacitorSelfCheckOutcome.failedRestored;
+  }
   messenger.showSnackBar(SnackBar(
-    duration: const Duration(milliseconds: 4200),
+    duration: const Duration(milliseconds: 5200),
     content: Text(switch (outcome) {
       CapacitorSelfCheckOutcome.finished => l10n.capacitorSelfCheckDoneSnack,
+      CapacitorSelfCheckOutcome.failedRestored =>
+        l10n.capacitorSelfCheckFailedRestoredSnack,
       CapacitorSelfCheckOutcome.failed => l10n.capacitorSelfCheckFailedResultSnack,
       // ⛔ Never silent, and never "finished": the timeout that matters most is
       // the one where the app would otherwise have claimed success.
@@ -473,6 +497,89 @@ Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
   ));
   // 🔴 Nothing is written here on any branch. See rule 3 above.
   return outcome;
+}
+
+/// Restore a FAILED capacitor's output: standalone auth ++ `0x2A` read-back,
+/// the auth lead, then `0x23` <- `0x05` bundled with auth ++ the `0x23`
+/// read-back — the self-check's own sequence with the mode byte changed.
+/// ONE write; true when `0x23` reads [CapacitorStatus.healthy] within
+/// [_selfCheckAckWindow].
+///
+/// ⛔ Callers gate on [CapacitorStatus.isSelfCheckFailed] — never on a unit
+/// in self-check (`0x06`): the 2026-08-28 reason (we do not know what `0x05`
+/// does to a check in progress) still holds there.
+Future<bool> _restoreOnce(
+    ConnectionController conn, TelemetryController tele, AuthCredentials creds) async {
+  if (!CapacitorStatus.isSelfCheckFailed(tele.mode)) return false;
+  try {
+    await conn.sendAuth(cb: creds.cb, pwSum: creds.pwSum);
+    await conn.pollAuth();
+    await Future<void>.delayed(_selfCheckAuthLead);
+    if (!CapacitorStatus.isSelfCheckFailed(tele.mode)) {
+      return tele.mode == CapacitorStatus.healthy;
+    }
+    await conn.capacitorRestoreOutput(cb: creds.cb, pwSum: creds.pwSum);
+    await conn.pollMode();
+  } catch (_) {
+    return false;
+  }
+  return _waitFor(
+      tele, (m) => m == CapacitorStatus.healthy, _selfCheckAckWindow);
+}
+
+/// 恢復電容輸出 — case B of the owner's 2026-11-10 ruling: a unit found
+/// reporting a failed self-check (not one this app just checked) is restored
+/// only when the user presses the button and confirms. One write per
+/// credential in [releaseAuthPlan], stopping at the first that works.
+Future<bool> capacitorRestoreOutput(
+    BuildContext context, TelemetryController tele) async {
+  final conn = context.read<ConnectionController>();
+  final l10n = AppLocalizations.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  if (!CapacitorStatus.isSelfCheckFailed(tele.mode)) return false;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l10n.capacitorRestoreDialogTitle),
+      content: SingleChildScrollView(
+        child: Text(
+          l10n.capacitorRestoreDialogBody,
+          style: TextStyle(color: ctx.colors.muted, height: 1.5),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(l10n.commonCancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(l10n.capacitorRestoreDialogConfirm),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return false;
+  final plan = releaseAuthPlan(tele.dealerCode);
+  if (plan == null) {
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3600),
+      content: Text(l10n.capacitorSelfCheckNotReady),
+    ));
+    return false;
+  }
+  var ok = false;
+  for (final creds in plan) {
+    ok = await _restoreOnce(conn, tele, creds);
+    if (ok || tele.mode == null) break;
+  }
+  messenger.showSnackBar(SnackBar(
+    duration: const Duration(milliseconds: 4200),
+    content: Text(ok
+        ? l10n.capacitorRestoreDoneSnack
+        : l10n.capacitorRestoreNoResponseSnack),
+  ));
+  return ok;
 }
 
 /// Poll `0x23` until [test] accepts it or [window] runs out.

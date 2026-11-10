@@ -761,7 +761,7 @@ abstract class AppLocalizations {
   /// No description provided for @statusAdvisoryCapacitorSelfCheckFailed.
   ///
   /// In en, this message translates to:
-  /// **'The capacitor reports that its last self-check did not pass. Turn the engine off, let it rest for about a minute and check again; if it still fails, have the capacitor inspected by your dealer.'**
+  /// **'The capacitor reports that its self-check did not pass, and its output is currently cut off, so it is not supporting the vehicle. Press “Restore capacitor output” to reconnect it, and have the capacitor inspected by your dealer.'**
   String get statusAdvisoryCapacitorSelfCheckFailed;
 
   /// No description provided for @capacitorSelfCheckDialogTitle.
@@ -773,7 +773,7 @@ abstract class AppLocalizations {
   /// No description provided for @capacitorSelfCheckDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor\'s voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nDo not do this while the vehicle is depending on this unit to start.'**
+  /// **'This puts the capacitor into its self-check mode. It is a command sent to the unit, not a screen refresh.\n\nWhile the check runs the capacitor\'s voltage drops noticeably, and the app cannot tell you in advance how long that lasts — units have been seen finishing in a few seconds and have been seen staying in this mode indefinitely.\n\nIf the check does not pass, the app puts the capacitor back to normal output and tells you the result.\n\nDo not do this while the vehicle is depending on this unit to start.'**
   String get capacitorSelfCheckDialogBody;
 
   /// No description provided for @capacitorSelfCheckDialogConfirm.
@@ -797,8 +797,50 @@ abstract class AppLocalizations {
   /// No description provided for @capacitorSelfCheckFailedResultSnack.
   ///
   /// In en, this message translates to:
-  /// **'Self-check finished — the unit reports that it did not pass.'**
+  /// **'The self-check did not pass, and the capacitor has not returned to normal output. You can press “Restore capacitor output” to try again; have it inspected by your dealer.'**
   String get capacitorSelfCheckFailedResultSnack;
+
+  /// No description provided for @capacitorSelfCheckFailedRestoredSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The self-check did not pass — capacitor output has been restored. Have this capacitor inspected by your dealer.'**
+  String get capacitorSelfCheckFailedRestoredSnack;
+
+  /// No description provided for @controlRestoreCapacitorOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore capacitor output'**
+  String get controlRestoreCapacitorOutput;
+
+  /// No description provided for @capacitorRestoreDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore capacitor output'**
+  String get capacitorRestoreDialogTitle;
+
+  /// No description provided for @capacitorRestoreDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This capacitor reports that its self-check did not pass, and its output is currently cut off, so it is not supporting the vehicle.\n\nRestoring reconnects it to the vehicle. A failed check can mean the capacitor has lost capacity; have it inspected by your dealer.'**
+  String get capacitorRestoreDialogBody;
+
+  /// No description provided for @capacitorRestoreDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore output'**
+  String get capacitorRestoreDialogConfirm;
+
+  /// No description provided for @capacitorRestoreDoneSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Capacitor output restored.'**
+  String get capacitorRestoreDoneSnack;
+
+  /// No description provided for @capacitorRestoreNoResponseSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'The command was sent, but the capacitor did not return to normal mode.'**
+  String get capacitorRestoreNoResponseSnack;
 
   /// No description provided for @capacitorSelfCheckStillRunningSnack.
   ///

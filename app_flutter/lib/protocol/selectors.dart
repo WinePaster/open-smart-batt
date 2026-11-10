@@ -271,6 +271,21 @@ class ModeArg {
   ///     fallback, deliberately: that fallback's whole safety argument is that
   ///     nothing in it can change a device's state.
   static const int capacitorSelfCheck = 6;
+
+  /// Super-capacitor back to NORMAL (`0x05`) — the engineering app's
+  /// 「正常」 mode write (`b8230001059f`).
+  ///
+  /// 🔵 Owner's ruling 2026-11-10, narrowing the 2026-08-28 "never write a unit
+  /// back" rule: sent ONLY when the unit reports a FAILED self-check
+  /// ([CapacitorStatus.isSelfCheckFailed]) — automatically once at the end of
+  /// a self-check this app started, otherwise only from a button the user
+  /// presses. Never while the unit reports [CapacitorStatus.selfCheckStarting].
+  /// Why it is safe enough to send: a failed unit holds its output cut
+  /// (`0x3A` bit-3 group, 98/98 frames on the one unit seen at `0x07`) until
+  /// told otherwise, and the engineering-app capture shows this write clearing
+  /// `0x07` within 0.16 s, after which the same unit self-checked normally
+  /// (analysis 2026.11.10-002 §8–§9). Same class gate as [capacitorSelfCheck].
+  static const int capacitorNormal = 5;
 }
 
 /// Reported mode/status code, stored device-side at offset 0x113 (PROTOCOL.md

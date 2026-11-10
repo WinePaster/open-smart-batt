@@ -409,14 +409,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statusAdvisoryCapacitorSelfCheckFailed =>
-      '電容回報上一次自檢沒有通過。建議熄火靜置約一分鐘後再檢測一次；若仍未通過，請送經銷商檢查這顆電容。';
+      '電容回報自檢沒有通過，目前它的輸出是切斷的，沒有在幫車子供電。可以按「恢復電容輸出」把它接回；建議送經銷商檢查這顆電容。';
 
   @override
   String get capacitorSelfCheckDialogTitle => '開始電容自檢';
 
   @override
   String get capacitorSelfCheckDialogBody =>
-      '這會把電容切入自檢模式 —— 是真的向裝置送出指令，不是重新整理畫面。\n\n檢測期間電容電壓會明顯下降，而且 App 無法預先告訴你會持續多久 —— 實測既有幾秒就結束的，也有一直停在這個模式不回來的。\n\n請不要在車輛正需要靠這顆電容啟動時執行。';
+      '這會把電容切入自檢模式 —— 是真的向裝置送出指令，不是重新整理畫面。\n\n檢測期間電容電壓會明顯下降，而且 App 無法預先告訴你會持續多久 —— 實測既有幾秒就結束的，也有一直停在這個模式不回來的。\n\n若檢測未通過，App 會把電容恢復成正常輸出，並告訴你結果。\n\n請不要在車輛正需要靠這顆電容啟動時執行。';
 
   @override
   String get capacitorSelfCheckDialogConfirm => '我了解，開始檢測';
@@ -428,7 +428,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get capacitorSelfCheckDoneSnack => '檢測結束 —— 裝置已回報正常。';
 
   @override
-  String get capacitorSelfCheckFailedResultSnack => '檢測結束 —— 裝置回報未通過。';
+  String get capacitorSelfCheckFailedResultSnack =>
+      '檢測未通過，而且電容沒有回到正常輸出。可以按「恢復電容輸出」再試一次，並建議送經銷商檢查。';
+
+  @override
+  String get capacitorSelfCheckFailedRestoredSnack =>
+      '檢測未通過 —— 已恢復電容輸出。建議送經銷商檢查這顆電容。';
+
+  @override
+  String get controlRestoreCapacitorOutput => '恢復電容輸出';
+
+  @override
+  String get capacitorRestoreDialogTitle => '恢復電容輸出';
+
+  @override
+  String get capacitorRestoreDialogBody =>
+      '這顆電容回報自檢沒有通過，目前它的輸出是切斷的，沒有在幫車子供電。\n\n恢復後會把它重新接回車上。沒通過檢測可能代表電容容量變差，建議送經銷商檢查。';
+
+  @override
+  String get capacitorRestoreDialogConfirm => '恢復輸出';
+
+  @override
+  String get capacitorRestoreDoneSnack => '已恢復電容輸出。';
+
+  @override
+  String get capacitorRestoreNoResponseSnack => '指令已送出，但電容沒有回到正常模式。';
 
   @override
   String get capacitorSelfCheckStillRunningSnack =>

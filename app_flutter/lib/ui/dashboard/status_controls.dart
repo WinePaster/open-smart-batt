@@ -68,6 +68,15 @@ class _CapacitorControlsState extends State<CapacitorControls> {
   /// returns — the design 0082 Q5 lock.
   bool _selfCheckBusy = false;
 
+  Future<void> _runRestore(TelemetryController tele) async {
+    setState(() => _selfCheckBusy = true);
+    try {
+      await capacitorRestoreOutput(context, tele);
+    } finally {
+      if (mounted) setState(() => _selfCheckBusy = false);
+    }
+  }
+
   Future<void> _runSelfCheck(TelemetryController tele) async {
     setState(() => _selfCheckBusy = true);
     try {
@@ -146,10 +155,27 @@ class _CapacitorControlsState extends State<CapacitorControls> {
           // Disabled while OUR check is in flight (Q5) and while the unit says
           // it is already in one — a second `0x06` on top of a running check is
           // a write we have no reason to believe is harmless.
-          onPressed: online && !_selfCheckBusy && !selfChecking
+          // Also disabled while the unit holds a FAILED check: the fail code
+          // would read as an instant verdict on the new check, and what `0x06`
+          // does to a latched unit is not captured. Restore first.
+          onPressed: online &&
+                  !_selfCheckBusy &&
+                  !selfChecking &&
+                  health != CapacitorHealth.selfCheckFailed
               ? () => _runSelfCheck(tele)
               : null,
         ),
+        // 🔵 Owner's ruling 2026-11-10, case B: a unit found holding a failed
+        // self-check (output cut) is restored only from this button.
+        if (health == CapacitorHealth.selfCheckFailed) ...[
+          const SizedBox(height: 8),
+          ControlButton(
+            variant: ControlButtonVariant.ghost,
+            icon: Icons.power_outlined,
+            label: l10n.controlRestoreCapacitorOutput,
+            onPressed: online && !_selfCheckBusy ? () => _runRestore(tele) : null,
+          ),
+        ],
         // The permanent "this unit is a super-capacitor…" note was removed on
         // 2026-08-04 (design 0034 §5.4): it fired on every render and told the
         // owner nothing they could act on. What is left is conditional and
