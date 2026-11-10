@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/ble/ble.dart';
@@ -72,6 +73,7 @@ void main() {
         exportedAt: at,
         appBuild: '0.6.8+26072812',
         platform: 'ios 18.5',
+        edition: AppEdition.community,
         scope: 'device=battery/1206',
         layout: layout,
         home: 'tiles=auto',
@@ -98,6 +100,7 @@ void main() {
         exportedAt: at,
         appBuild: 'b',
         platform: 'p',
+        edition: AppEdition.community,
         scope: 'all devices',
         layout: layout,
         home: 'tiles=auto',
@@ -152,6 +155,7 @@ void main() {
         exportedAt: at,
         appBuild: '0.6.8+26072812',
         platform: 'android 15',
+        edition: AppEdition.community,
         scope: 'device=capacitor/7809 session=3',
         layout: layout,
         home: 'tiles=auto',
@@ -171,6 +175,8 @@ void main() {
         'exported: ${at.toIso8601String()}',
         'scope: device=capacitor/7809 session=3  connections=2',
         'app: 0.6.8+26072812  platform: android 15',
+        // 2026-11-10: which edition wrote the file, right after `app:`.
+        'edition: community',
         'resolution: requested=n/a (no history rows)',
         // design 0063. Directly above the two switch lines because it is what
         // makes their `off` readable: since 0063 they print the EFFECTIVE
@@ -217,6 +223,7 @@ void main() {
         exportedAt: at,
         appBuild: '0.6.8+26072812',
         platform: 'android 15',
+        edition: AppEdition.community,
         scope: 'device=battery/7809',
         window: 'all',
         ampereColumn: true,
@@ -239,6 +246,8 @@ void main() {
         'exported: ${at.toIso8601String()}',
         'scope: device=battery/7809',
         'app: 0.6.8+26072812  platform: android 15',
+        // 2026-11-10: which edition wrote the file, right after `app:`.
+        'edition: community',
         'window: all',
         'resolution: requested=1s',
         'resolution: contains=1s,60s',

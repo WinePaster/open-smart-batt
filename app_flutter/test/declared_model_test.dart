@@ -18,6 +18,7 @@
 // and field reports.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -696,6 +697,7 @@ void main() {
           exportedAt: DateTime.utc(2026, 8, 17),
           appBuild: '0.7.22+26081701',
           platform: 'android 15',
+          edition: AppEdition.community,
           scope: 'all devices',
           layout: 'face=standard modules=readouts',
           home: 'tiles=auto',

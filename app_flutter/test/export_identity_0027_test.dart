@@ -15,6 +15,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_smart_batt/data/data.dart';
@@ -340,6 +341,7 @@ void main() {
           exportedAt: DateTime.utc(2026, 8, 1),
           appBuild: '0.6.15+1',
           platform: 'ios',
+          edition: AppEdition.community,
           scope: 'all devices',
           layout: 'default',
           home: 'tiles=auto',
@@ -409,6 +411,7 @@ void main() {
         exportedAt: DateTime.utc(2026, 8, 1),
         appBuild: '0.6.15',
         platform: 'ios',
+        edition: AppEdition.community,
         scope: 'all devices',
         layout: 'default',
         home: 'tiles=auto',

@@ -16,6 +16,7 @@
 // Two reporters doing the same thing produced 63,375 frames and 1 line. The
 // file has to be able to say which of those it is.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
@@ -30,6 +31,7 @@ void main() {
         exportedAt: DateTime.utc(2026, 7, 30, 17, 55),
         appBuild: '0.6.12+1',
         platform: 'ios 26.6',
+        edition: AppEdition.community,
         scope: 'all devices',
         layout: kLayout,
         home: 'tiles=auto',
@@ -190,9 +192,13 @@ void main() {
       // point of this test is that the middle's shape cannot drift without
       // somebody writing the drift down, and eleven collected batches are
       // parsed against it.
+      //
+      // 🔴 And position 5 became 6 on 2026-11-10: `edition:` now follows
+      // `app:` directly (which app wrote the file, community or OSB Pro).
       final h = header(rawPacketLog: false);
-      expect(h[4], 'resolution: requested=n/a (no history rows)');
-      expect(h[5], 'raw packet log: off');
+      expect(h[4], 'edition: community');
+      expect(h[5], 'resolution: requested=n/a (no history rows)');
+      expect(h[6], 'raw packet log: off');
       expect(h.last, 'layout: $kLayout');
     });
 
@@ -202,8 +208,9 @@ void main() {
       expect(h[1], startsWith('exported: '));
       expect(h[2], startsWith('scope: '));
       expect(h[3], startsWith('app: '));
-      expect(h[4], 'resolution: requested=n/a (no history rows)');
-      expect(h[5], 'raw packet log: on');
+      expect(h[4], 'edition: community');
+      expect(h[5], 'resolution: requested=n/a (no history rows)');
+      expect(h[6], 'raw packet log: on');
       expect(h.last, 'layout: $kLayout');
     });
 

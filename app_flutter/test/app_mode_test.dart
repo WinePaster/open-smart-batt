@@ -37,6 +37,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/theme/accent_theme.dart';
+import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart';
@@ -92,6 +93,7 @@ List<String> _header(AppSettings s) => exportHeaderLines(
       exportedAt: DateTime.utc(2026, 8, 15, 12, 0),
       appBuild: '0.7.20+26081500',
       platform: 'android 15',
+      edition: AppEdition.community,
       scope: 'device=battery/1206',
       layout: 'face=standard modules=gaugeVoltage,readouts,cells',
       home: 'tiles=auto',
