@@ -792,7 +792,8 @@ Future<({ModeWatch result, int writes})> runReleasePlan(
 /// Credentials come from [releaseAuthPlan]: [kReleaseCbFirst] three times,
 /// then — only on a pack whose dealer code derives a different `cb` — the
 /// derived value three times (FB 2026.09.27/003, owner's ruling 2026-09-29).
-/// ⚠️ Worst case is therefore six writes, about 20 s before the snack.
+/// ⚠️ Worst case is therefore six writes, about 20 s before the snack (plus
+/// one standalone auth and its 2 s lead per credential, since 2026-11-10).
 ///
 /// Writing "normal" clears anti-theft as well as cut-off — hence the copy, and
 /// hence the control is no longer named after cut-off alone.
@@ -838,9 +839,21 @@ Future<void> releaseCutOff(
     plan = [req.creds!];
   }
   try {
+    // 🔵 Owner's ruling 2026-11-10 (「多送一個授權也不影響」): before the first
+    // write of each credential, the standalone auth ++ `0x2A` read-back the
+    // engineering app sends ahead of EVERY mode write (HCI captures, batteries
+    // included; analysis 2026.11.10-002 §8–§9). Once per credential, not per
+    // retry: the engineering app authenticates once per connection.
+    AuthCredentials? authed;
     final run = await runReleasePlan(
       plan,
       attempt: (creds) async {
+        if (!identical(authed, creds)) {
+          await conn.sendAuth(cb: creds.cb, pwSum: creds.pwSum);
+          await conn.pollAuth();
+          await Future<void>.delayed(_selfCheckAuthLead);
+          authed = creds;
+        }
         await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
         await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
       },
