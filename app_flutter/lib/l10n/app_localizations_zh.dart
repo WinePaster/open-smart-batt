@@ -275,7 +275,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get captureWizardAbort => '中止';
 
   @override
-  String get captureWizardFinished => '擷取完成。請匯出診斷日誌並回傳給我們。';
+  String get captureWizardFinished => '擷取完成。按「立即回報」把紀錄傳給我們。';
 
   @override
   String get dashboardProtectionHeading => '防護狀態 / 模式';
@@ -1575,6 +1575,39 @@ class AppLocalizationsZh extends AppLocalizations {
   String settingsExportSubjectDiagLog(String appName) {
     return '$appName 診斷日誌';
   }
+
+  @override
+  String get settingsReportLabel => '回報問題';
+
+  @override
+  String get settingsReportSub => '把紀錄和你的說明打包成一個檔，用 LINE 或 Email 傳給我們';
+
+  @override
+  String get reportDialogTitle => '回報問題';
+
+  @override
+  String get reportDialogBody =>
+      '會打包成一個 zip 檔：資料紀錄 (CSV)、診斷日誌，以及你在下面寫的說明。按「傳送」後，選擇要用哪個 App 傳出去。';
+
+  @override
+  String get reportNoteHint => '發生了什麼事？（哪台車、哪顆電池、什麼時候）';
+
+  @override
+  String get reportNotePrivacy => '請不要寫電話、地址等個人資料。';
+
+  @override
+  String get reportSend => '傳送';
+
+  @override
+  String reportSubject(String appName) {
+    return '$appName 問題回報';
+  }
+
+  @override
+  String get reportDemoRefused => '示範模式沒有可回報的紀錄。';
+
+  @override
+  String get captureWizardReportNow => '立即回報';
 
   @override
   String get startupFailedTitle => '無法啟動';

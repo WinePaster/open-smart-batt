@@ -285,7 +285,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get captureWizardFinished =>
-      'Capture finished. Export the diagnostic log and send it to us.';
+      'Capture finished. Tap “Report now” to send it to us.';
 
   @override
   String get dashboardProtectionHeading => 'Protection Status / Mode';
@@ -1674,6 +1674,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String settingsExportSubjectDiagLog(String appName) {
     return '$appName diagnostic log';
   }
+
+  @override
+  String get settingsReportLabel => 'Report a problem';
+
+  @override
+  String get settingsReportSub =>
+      'Packs your records and a note into one file to send us by LINE or email';
+
+  @override
+  String get reportDialogTitle => 'Report a problem';
+
+  @override
+  String get reportDialogBody =>
+      'This makes one zip file holding your data records (CSV), the diagnostic log, and the note you write below. After “Send”, choose the app to send it with.';
+
+  @override
+  String get reportNoteHint =>
+      'What happened? (which vehicle, which battery, when)';
+
+  @override
+  String get reportNotePrivacy =>
+      'Please don’t include phone numbers, addresses or other personal details.';
+
+  @override
+  String get reportSend => 'Send';
+
+  @override
+  String reportSubject(String appName) {
+    return '$appName problem report';
+  }
+
+  @override
+  String get reportDemoRefused => 'Demo mode has no records to report.';
+
+  @override
+  String get captureWizardReportNow => 'Report now';
 
   @override
   String get startupFailedTitle => 'Couldn\'t start';

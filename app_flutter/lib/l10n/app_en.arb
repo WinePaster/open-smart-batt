@@ -185,7 +185,7 @@
   "captureWizardNext": "Done",
   "captureWizardSkip": "Skip",
   "captureWizardAbort": "Stop",
-  "captureWizardFinished": "Capture finished. Export the diagnostic log and send it to us.",
+  "captureWizardFinished": "Capture finished. Tap \u201cReport now\u201d to send it to us.",
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "Primary Voltage",
   "gaugeSohUnknown": "SOH --",
@@ -1274,6 +1274,27 @@
       }
     }
   },
+  "settingsReportLabel": "Report a problem",
+  "@settingsReportLabel": {
+    "description": "design 0100 \u2014 Settings \u203a Data, first row: one tap packs the CSV, the diagnostic log and a note into one zip."
+  },
+  "settingsReportSub": "Packs your records and a note into one file to send us by LINE or email",
+  "reportDialogTitle": "Report a problem",
+  "reportDialogBody": "This makes one zip file holding your data records (CSV), the diagnostic log, and the note you write below. After \u201cSend\u201d, choose the app to send it with.",
+  "reportNoteHint": "What happened? (which vehicle, which battery, when)",
+  "reportNotePrivacy": "Please don\u2019t include phone numbers, addresses or other personal details.",
+  "reportSend": "Send",
+  "reportSubject": "{appName} problem report",
+  "@reportSubject": {
+    "description": "design 0100 \u2014 share-sheet subject of the report bundle.",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+  "reportDemoRefused": "Demo mode has no records to report.",
+  "captureWizardReportNow": "Report now",
   "startupFailedTitle": "Couldn't start",
   "startupFailedBody": "The database could not be opened. Try again first; if it keeps failing, resetting the database is the last resort (it deletes all records).",
   "startupDowngradeTitle": "App is older than your data",
