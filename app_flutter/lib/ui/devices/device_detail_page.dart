@@ -87,6 +87,15 @@ import 'save_device_flow.dart';
 String? autoConnectBlocker({
   required bool isSaved,
   required bool autoReconnect,
+  // 🔴 2026-11-11: the user dropped the link WHILE THIS PAGE WAS OPEN — the
+  // notification's 停止監看 is the reachable case. The latch below is only
+  // spent by an attempt, so a page entered on a live link (`already online`,
+  // or `link busy` through the list's 連線 door) still held its one shot, and
+  // the disconnect's own notify re-ran the gates with nothing left in the way:
+  // the link came back ~2 s after the user stopped it (Play FGS video take 2,
+  // 40.7 s). Scoped to THIS VISIT on purpose — see
+  // [ConnectionController.manualDisconnectCount] for why the flag will not do.
+  required bool userDisconnectedThisVisit,
   required bool isOnline,
   required bool isBusy,
   required bool isRetrying,
@@ -105,6 +114,9 @@ String? autoConnectBlocker({
 }) {
   if (!isSaved) return 'device not saved';
   if (!autoReconnect) return 'auto-connect setting off';
+  // Right after the setting: both are the user's own decision, and those
+  // outrank every state gate (A21).
+  if (userDisconnectedThisVisit) return 'user disconnected on this visit';
   if (isOnline) return 'already online';
   if (isBusy) return 'link busy';
   if (isRetrying) return 'reconnect already pending';
@@ -128,6 +140,11 @@ String? autoConnectBlocker({
 /// off` was left blank ON PURPOSE — whether to remind someone of a switch they
 /// themselves turned off is a product judgement, and the ruling reserved it as
 /// its own future line rather than letting it ride in on this one.
+///
+/// 📌 A TENTH gate was added 2026-11-11 — `user disconnected on this visit` —
+/// and it is silent too: the user has just pressed stop, so a notice saying
+/// "no automatic attempt was made" would describe their own action back to
+/// them. The two loud ones are unchanged.
 ///
 /// ⚠️ What these two say is NOT "why the connection failed" — the screen has
 /// already answered that. When either fires, [connectionFailureCopy] is already
@@ -290,6 +307,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// or theme rebuild would be a connect loop, not a convenience.
   bool _autoConnectTried = false;
 
+  /// [ConnectionController.manualDisconnectCount] when this page first had a
+  /// controller. Null until then. Anything above it is a disconnect the user
+  /// made while looking at this page.
+  int? _disconnectsAtOpen;
+
   /// Which skip reasons this page instance has already written (FB-82).
   ///
   /// 🔴 Not a counter and not "log every time": [didChangeDependencies] re-runs
@@ -407,6 +429,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     if (_autoConnectTried) return;
     final conn = _conn;
     if (conn == null) return;
+    final disconnectsAtOpen =
+        _disconnectsAtOpen ??= conn.manualDisconnectCount;
 
     // FB-82 Q4: an attempt is under way, or was. See [_attemptSeen] — this is
     // read before the gates because `isBusy` is itself one of them, and the
@@ -423,6 +447,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       // RE-connection is exactly the confusion this feature came from, so it is
       // read as the one switch that governs "the app may connect on its own".
       autoReconnect: context.read<SettingsController>().autoReconnect,
+      userDisconnectedThisVisit:
+          conn.manualDisconnectCount != disconnectsAtOpen,
       isOnline: conn.isOnline,
       isBusy: conn.isBusy,
       isRetrying: conn.isRetrying,
