@@ -627,6 +627,17 @@ class ConnectionController extends ChangeNotifier {
 
   String? _desiredDeviceId; // device we want to stay connected to
   bool _manualDisconnect = false;
+
+  /// How many times [disconnect] has run in this process. Only ever grows.
+  ///
+  /// 🔑 A COUNT rather than a read of [_manualDisconnect], because the one
+  /// reader — the detail page's FB-75 auto-connect — needs "did the user drop
+  /// the link SINCE I OPENED", not "is the flag set". The flag stays set until
+  /// the next user connect, so gating on it would stop every later visit to a
+  /// saved unit's page from connecting at all, which is FB-75 undone.
+  int _manualDisconnects = 0;
+  int get manualDisconnectCount => _manualDisconnects;
+
   Timer? _reconnectTimer;
 
   /// Deadline on an armed autoConnect (FB-53 / [autoConnectWatchdog]).
@@ -2206,6 +2217,7 @@ class ConnectionController extends ChangeNotifier {
   /// User-initiated disconnect (suppresses auto-reconnect).
   Future<void> disconnect() async {
     _manualDisconnect = true;
+    _manualDisconnects++;
     _desiredDeviceId = null;
     _seedClass = ProductClass.unknown; // no target ⇒ nothing to route for
     _reconnectTimer?.cancel();
