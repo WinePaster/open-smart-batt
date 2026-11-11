@@ -289,7 +289,9 @@ class _DeviceTile extends StatelessWidget {
       // 📌 交付二 seam (design 0046 §8 seam 1), taken by design 0103: with no
       // multi-link experiment bound, `isOnlineFor` IS the old expression
       // (`isOnline && connectedDeviceId == deviceId`).
-      if (conn.multiLink != null) context.watch<MultiLinkController>();
+      // Nullable lookup: subscribe when the shell provides it, never throw
+      // when a surface is mounted without it.
+      if (conn.multiLink != null) context.watch<MultiLinkController?>();
       live = conn.isOnlineFor(deviceId);
     }
     final alias = (saved?.alias.isNotEmpty ?? false)
@@ -403,7 +405,7 @@ class _LiveReading extends StatelessWidget {
       final ml = conn.multiLink;
       final secondary = ml != null &&
           !(conn.isOnline && conn.connectedDeviceId == deviceId)
-          ? context.watch<MultiLinkController>().telemetryFor(deviceId)
+          ? (context.watch<MultiLinkController?>() ?? ml).telemetryFor(deviceId)
           : null;
       if (secondary != null) {
         tele = secondary;
@@ -594,7 +596,7 @@ class _ModuleTile extends StatelessWidget {
     // design 0103: `isOnlineFor` is the old `isOnline && connectedDeviceId ==
     // id` when no multi-link experiment is bound.
     final ml = conn.multiLink;
-    if (ml != null) context.watch<MultiLinkController>();
+    if (ml != null) context.watch<MultiLinkController?>();
     final live = id == null || conn.isOnlineFor(id);
     final onPrimary =
         id == null || (conn.isOnline && conn.connectedDeviceId == id);
