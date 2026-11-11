@@ -5,6 +5,9 @@ name: Release APK
 #      CI 算出下一版號、**回寫 pubspec.yaml 並 commit 回分支**、再建 tag 與 Release。
 #   B. 明確版號     — 先把 pubspec.yaml 的 version 改成目標版號並 commit，
 #      再推 tag v*.*.*（例 git push origin v0.4.0）。版號不符會**直接失敗**。
+#   C. 只出 Play AAB — Run workflow 勾 play_aab_only（2026-11-11 擁有者裁：rc 不再發 GitHub Release）。
+#      versionName 取 pubspec 版號去掉 -rc 後綴（例 0.7.51），build number 照常由時鐘推導；
+#      **不打 tag、不發 Release、不回寫 pubspec**，AAB 只放 workflow artifact。bump 選項此時忽略。
 on:
   push:
     tags: ['v*.*.*']
@@ -15,6 +18,10 @@ on:
         type: choice
         default: patch
         options: [patch, minor, major, prerelease]
+      play_aab_only:
+        description: '只出 Play AAB（不打 tag、不發 GitHub Release、不回寫 pubspec）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # 建立 tag / 發佈 Release / 回寫 pubspec
@@ -49,6 +56,8 @@ jobs:
 
       - name: 計算 versionName / build number
         id: ver
+        env:
+          PLAY_ONLY: ${{ inputs.play_aab_only == true }}
         run: |
           set -e
 
@@ -56,7 +65,13 @@ jobs:
           # 取代舊的 github.run_number（綁在單一 workflow 檔案上，改名即歸零）。
           BUILD="$(tool/build_number.sh)"
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "$PLAY_ONLY" == true ]]; then
+            # Mode C: the version already in pubspec, minus any -rc suffix. TAG
+            # only names the artifact — no git tag is ever created from it.
+            CUR="$(grep -m1 '^version:' "${APP_DIR}/pubspec.yaml" | sed 's/^version:[[:space:]]*//' | cut -d+ -f1)"
+            VER="${CUR%%-*}"
+            TAG="play-v${VER}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             VER="${TAG#v}"
           else
@@ -96,12 +111,16 @@ jobs:
         env:
           VER: ${{ steps.ver.outputs.VERSION }}
           TAG: ${{ steps.ver.outputs.TAG }}
+          PLAY_ONLY: ${{ inputs.play_aab_only == true }}
         run: |
           set -e
           PUBSPEC="${APP_DIR}/pubspec.yaml"
           CURRENT="$(grep -m1 '^version:' "$PUBSPEC" | sed 's/^version:[[:space:]]*//' | cut -d+ -f1)"
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "$PLAY_ONLY" == true ]]; then
+            # Mode C writes nothing back: the AAB is built from this exact commit.
+            echo "SHA=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             # 模式 B：tag 是權威，但 pubspec 必須先被更新過。
             # 不符就失敗 —— 這正是 0.6.7+109 與 run_number 13 長期漂移的成因。
             if [ "$CURRENT" != "$VER" ]; then
@@ -311,6 +330,7 @@ jobs:
           status: completed
 
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
+        if: inputs.play_aab_only != true
         run: |
           SRC="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
           OUT="open-smart-batt-${{ needs.version.outputs.tag }}-${{ needs.version.outputs.build }}.apk"
@@ -327,6 +347,7 @@ jobs:
           echo "LATEST_APK=$LATEST" >> "$GITHUB_ENV"
 
       - name: 發佈 GitHub Release（含 APK）
+        if: inputs.play_aab_only != true
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
@@ -372,7 +393,7 @@ jobs:
   ios-ipa:
     name: iOS IPA (TestFlight)
     needs: version
-    if: vars.IOS_RELEASE_ENABLED == 'true'
+    if: vars.IOS_RELEASE_ENABLED == 'true' && inputs.play_aab_only != true
     runs-on: macos-15
     timeout-minutes: 40
     steps:
