@@ -530,7 +530,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffDialogBody =>
-      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功：目前仍有電池在多次復電後都解不開，原因還在查證。如果復電失敗，本 App 無法讓這顆電池恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。';
+      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功：目前仍有電池在多次復電後都解不開，原因還在查證。如果復電失敗，本 App 無法讓這顆電池恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。\n\n送出前請先熄火、關閉電源，並確認人員已離車。';
 
   @override
   String get cutOffDialogConfirm => '我了解，仍要送出';
@@ -542,6 +542,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffDisabledNote => '只有在裝置回報運行正常時，才能送出斷電指令。';
+
+  @override
+  String get cutOffLinkLostSnack =>
+      '斷電結果無法確認 —— 等待回報時藍牙連線中斷了。電池可能已經斷電，而且斷線後仍會保持。請重新連線；若顯示斷電，按「復電」。';
+
+  @override
+  String get cutOffGenerationNote => '斷電只開放序號 0168、0169 開頭的電池。';
 
   @override
   String get releaseDisabledNote => '裝置目前回報運行正常，不在斷電或防盜模式，沒有需要恢復的對象。';
