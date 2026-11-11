@@ -443,8 +443,11 @@ void main() {
 
     // And the telemetry-driven call site must actually pass one. A signature
     // that nobody feeds is the same bug with extra steps.
-    expect(src, contains('_touchLastSeen(id, value: s.pvlt)'),
-        reason: 'the per-frame path must hand over the sample it already has');
+    expect(src, contains('_touchLastSeen(id, value: s.pvlt, soc: s.socPercent)'),
+        reason: 'the per-frame path must hand over the sample it already has '
+            '— PVLT and, since design 0103 Q7, the SOC a power bank is '
+            'cached as');
+    expect(touchSig.group(0), contains('int? soc'));
   });
 
 

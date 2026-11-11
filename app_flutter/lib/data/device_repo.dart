@@ -64,12 +64,14 @@ class DeviceRepo {
   }
 
   /// Update last-seen / last-value telemetry meta (used after a connection).
-  Future<int> touch(String id, {DateTime? lastSeen, double? lastValue}) {
+  Future<int> touch(String id,
+      {DateTime? lastSeen, double? lastValue, int? lastSoc}) {
     return _db.update(
       Db.tableSavedDevices,
       {
         'last_seen': (lastSeen ?? DateTime.now()).millisecondsSinceEpoch,
         'last_value': ?lastValue,
+        'last_soc': ?lastSoc,
       },
       where: 'id = ?',
       whereArgs: [id],

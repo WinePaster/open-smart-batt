@@ -103,9 +103,11 @@ class DeviceController extends ChangeNotifier {
   }
 
   /// Update last-seen / last-value meta for [id] (no-op if not saved).
-  Future<void> touch(String id, {DateTime? lastSeen, double? lastValue}) async {
+  Future<void> touch(String id,
+      {DateTime? lastSeen, double? lastValue, int? lastSoc}) async {
     if (!isSaved(id)) return;
-    await _repo.touch(id, lastSeen: lastSeen, lastValue: lastValue);
+    await _repo.touch(id,
+        lastSeen: lastSeen, lastValue: lastValue, lastSoc: lastSoc);
     await load();
   }
 
