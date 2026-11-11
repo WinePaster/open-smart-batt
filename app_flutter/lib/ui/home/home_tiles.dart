@@ -421,13 +421,16 @@ class _CachedReading extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final d = device;
-    final hasDatedValue = d?.lastValue != null && d?.lastSeen != null;
+    // design 0103 Q7: a power bank's cached reading is SOC %, matching its live
+    // card — see [SavedDevice.cachedReading].
+    final cached = d?.lastSeen != null ? d!.cachedReading : null;
+    final isBank = d?.productClass == ProductClass.powerBank;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _BigValue(
-          value: hasDatedValue ? d!.lastValue!.toStringAsFixed(2) : '--',
-          unit: 'V',
+          value: cached?.value ?? '--',
+          unit: cached?.unit ?? (isBank ? '%' : 'V'),
           muted: true,
         ),
         const SizedBox(height: 8),

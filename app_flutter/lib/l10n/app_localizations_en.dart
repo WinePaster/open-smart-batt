@@ -383,6 +383,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'The saved entry is pointing at another unit with the same name. Scan again and pick the right one, or remove this entry and add it back.';
 
   @override
+  String quickPickLastSoc(String value) {
+    return 'Last $value%';
+  }
+
+  @override
   String quickPickLastValue(String value) {
     return 'Last $value V';
   }

@@ -46,6 +46,16 @@ class SavedDevice {
   /// Last PVLT value (V) shown in the quick-pick meta line; null if never read.
   final double? lastValue;
 
+  /// Last device-reported SOC (%), stored next to [lastValue] by the same
+  /// write (schema v26, design 0103 Q7 / D8).
+  ///
+  /// 🔴 For a power bank THIS is the cached reading, never [lastValue]: a power
+  /// bank's PVLT is one cell (~3.8 V, FB-43), while its live card shows SOC % —
+  /// so the offline card used to change unit and meaning the moment the link
+  /// went away. Null on rows written before v26 and on units that never sent a
+  /// SOC; the card then shows `--` rather than falling back to the cell voltage.
+  final int? lastSoc;
+
   /// True once a connect to this record's (iOS) id failed to resolve — the
   /// saved NSUUID is likely stale (reinstall / rotated). Surfaced so the UI can
   /// prompt a re-pick instead of the controller retrying forever.
@@ -185,6 +195,7 @@ class SavedDevice {
     this.name = '',
     this.lastSeen,
     this.lastValue,
+    this.lastSoc,
     this.stale = false,
     this.productClass = ProductClass.unknown,
     this.displayLayout = DisplayLayout.defaults,
@@ -212,6 +223,7 @@ class SavedDevice {
     String? name,
     DateTime? lastSeen,
     double? lastValue,
+    int? lastSoc,
     bool? stale,
     ProductClass? productClass,
     DisplayLayout? displayLayout,
@@ -235,6 +247,7 @@ class SavedDevice {
         name: name ?? this.name,
         lastSeen: lastSeen ?? this.lastSeen,
         lastValue: lastValue ?? this.lastValue,
+        lastSoc: lastSoc ?? this.lastSoc,
         stale: stale ?? this.stale,
         productClass: productClass ?? this.productClass,
         displayLayout: displayLayout ?? this.displayLayout,
@@ -266,6 +279,7 @@ class SavedDevice {
         'name': name,
         'last_seen': lastSeen?.millisecondsSinceEpoch,
         'last_value': lastValue,
+        'last_soc': lastSoc,
         'stale': stale ? 1 : 0,
         'product_class': productClass.storageKey,
         // A default layout is written as NULL, not as its JSON. The column then
@@ -304,6 +318,21 @@ class SavedDevice {
         'alert_muted_until': alertMutedUntilMs,
       };
 
+  /// The cached reading every offline surface shows — ONE rule for the home
+  /// card, the device list and the quick-pick line (design 0103 Q7).
+  ///
+  /// A power bank is cached as SOC %, the same quantity its live card shows;
+  /// it never falls back to [lastValue] (one cell, FB-43). Everything else is
+  /// cached as PVLT, as before. Null when there is nothing to show.
+  ({String value, String unit})? get cachedReading {
+    if (productClass == ProductClass.powerBank) {
+      final soc = lastSoc;
+      return soc == null ? null : (value: '$soc', unit: '%');
+    }
+    final v = lastValue;
+    return v == null ? null : (value: v.toStringAsFixed(2), unit: 'V');
+  }
+
   static SavedDevice fromMap(Map<String, Object?> m) => SavedDevice(
         id: m['id'] as String,
         alias: (m['alias'] as String?) ?? '',
@@ -315,6 +344,8 @@ class SavedDevice {
             : DateTime.fromMillisecondsSinceEpoch(
                 (m['last_seen'] as num).toInt()),
         lastValue: (m['last_value'] as num?)?.toDouble(),
+        // Absent column (pre-v26) or NULL both read back as null.
+        lastSoc: (m['last_soc'] as num?)?.toInt(),
         stale: ((m['stale'] as num?)?.toInt() ?? 0) == 1,
         // Absent column / unknown key falls back to unknown (old rows).
         productClass: ProductClass.fromStorageKey(m['product_class'] as String?),

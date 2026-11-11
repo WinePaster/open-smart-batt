@@ -255,6 +255,14 @@
   "@disconnectedWrongDeviceHint": {
     "description": "Advice card for wrong_device (design 0068 C). The standing hint says 'check it is nearby and powered', which is the wrong instruction here: the unit answered, it was simply not this one."
   },
+  "quickPickLastSoc": "Last {value}%",
+  "@quickPickLastSoc": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "quickPickLastValue": "Last {value} V",
   "@quickPickLastValue": {
     "placeholders": {

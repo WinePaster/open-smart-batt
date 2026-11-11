@@ -3214,7 +3214,7 @@ class ConnectionController extends ChangeNotifier {
     if (id != null) {
       // The sample is right here, so the stored value and the stored age come
       // from the same instant. See [_touchLastSeen].
-      _touchLastSeen(id, value: s.pvlt);
+      _touchLastSeen(id, value: s.pvlt, soc: s.socPercent);
       _persistIdentity(id, s);
       _persistFacts(id, s);
       _persistProductClass(id);
@@ -3530,7 +3530,8 @@ class ConnectionController extends ChangeNotifier {
   /// happening anyway. The forced calls pass null, and `DeviceRepo.touch`
   /// omits a null rather than clearing the column — a disconnect must not
   /// erase the last thing we knew.
-  void _touchLastSeen(String id, {bool force = false, double? value}) {
+  void _touchLastSeen(String id,
+      {bool force = false, double? value, int? soc}) {
     final now = DateTime.now();
     final last = _lastSeenWrittenAt;
     if (!force &&
@@ -3541,7 +3542,8 @@ class ConnectionController extends ChangeNotifier {
     }
     _lastSeenWrittenAt = now;
     _lastSeenDeviceId = id;
-    final touch = _devices?.touch(id, lastSeen: now, lastValue: value);
+    final touch =
+        _devices?.touch(id, lastSeen: now, lastValue: value, lastSoc: soc);
     if (touch != null) _pending.add(touch);
   }
 

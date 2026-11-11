@@ -686,6 +686,12 @@ abstract class AppLocalizations {
   /// **'The saved entry is pointing at another unit with the same name. Scan again and pick the right one, or remove this entry and add it back.'**
   String get disconnectedWrongDeviceHint;
 
+  /// No description provided for @quickPickLastSoc.
+  ///
+  /// In en, this message translates to:
+  /// **'Last {value}%'**
+  String quickPickLastSoc(String value);
+
   /// No description provided for @quickPickLastValue.
   ///
   /// In en, this message translates to:

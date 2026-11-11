@@ -480,7 +480,17 @@ class Db {
   /// `static const int schemaVersion` out of every local and remote ref on
   /// 2026-09-05 — the highest anywhere was 23 (28 refs at 23, 32 at 22).
   /// 25 follows it in the same branch.
-  static const int schemaVersion = 25;
+  ///
+  /// v26 — design 0103 Q7 / D8 (owner 2026-11-11 「Q7: OK」).
+  /// `saved_devices.last_soc INTEGER`: the last device-reported SOC (%), so an
+  /// offline power-bank card shows the same quantity as its live card instead
+  /// of `last_value`, which for a power bank is ONE cell's voltage (FB-43).
+  /// Additive and nullable; no backfill is possible (the SOC was never stored).
+  ///
+  /// CLAIMING A NUMBER: 26 was taken after reading `static const int
+  /// schemaVersion` out of every local and remote ref of both repos on
+  /// 2026-11-11 — the highest anywhere was 25.
+  static const int schemaVersion = 26;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1081,6 +1091,13 @@ class AppDatabase {
         'VALUES (${Db.logStatsRowId}, 0)',
       );
     }
+    if (from < 26) {
+      // design 0103 Q7 — see [Db.schemaVersion] v26. NULL for every existing
+      // row: the SOC was never stored, and there is nothing to derive it from.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN last_soc INTEGER',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -1177,6 +1194,7 @@ class AppDatabase {
       name TEXT NOT NULL DEFAULT '',
       last_seen INTEGER,
       last_value REAL,
+      last_soc INTEGER,
       stale INTEGER NOT NULL DEFAULT 0,
       product_class TEXT NOT NULL DEFAULT 'unknown',
       display_layout TEXT,

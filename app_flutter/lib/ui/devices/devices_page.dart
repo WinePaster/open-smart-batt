@@ -1330,7 +1330,8 @@ class _TabLabel extends StatelessWidget {
 
 String _savedMeta(SavedDevice d, int? rssi, AppLocalizations l10n) {
   final parts = <String>[shortDeviceId(d.id)];
-  if (d.lastValue != null) parts.add('${d.lastValue!.toStringAsFixed(2)}V');
+  final cached = d.cachedReading;
+  if (cached != null) parts.add('${cached.value}${cached.unit}');
   final t = d.lastSeen;
   if (t != null) {
     final diff = DateTime.now().difference(t);

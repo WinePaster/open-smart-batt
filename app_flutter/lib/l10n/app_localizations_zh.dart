@@ -367,6 +367,11 @@ class AppLocalizationsZh extends AppLocalizations {
       '這筆儲存的紀錄指到了另一台同名的裝置。請重新掃描並選擇正確的那一台，或把這筆紀錄移除後重新加入。';
 
   @override
+  String quickPickLastSoc(String value) {
+    return '上次 $value%';
+  }
+
+  @override
   String quickPickLastValue(String value) {
     return '上次 $value V';
   }

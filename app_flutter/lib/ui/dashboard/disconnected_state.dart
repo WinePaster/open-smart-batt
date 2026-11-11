@@ -280,8 +280,11 @@ class _QuickPick extends StatelessWidget {
 
   static String _metaLine(AppLocalizations l10n, SavedDevice d) {
     final parts = <String>[];
-    if (d.lastValue != null) {
-      parts.add(l10n.quickPickLastValue(d.lastValue!.toStringAsFixed(2)));
+    final cached = d.cachedReading;
+    if (cached != null) {
+      parts.add(cached.unit == '%'
+          ? l10n.quickPickLastSoc(cached.value)
+          : l10n.quickPickLastValue(cached.value));
     }
     parts.add(relativeTime(l10n, d.lastSeen));
     return parts.join(' · ');
