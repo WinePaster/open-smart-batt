@@ -504,6 +504,15 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   @override
   void dispose() {
     _setVisible(false);
+    // design 0103 D1: leaving a power bank's page hands the connection back to
+    // the other devices. Post-frame for [_setVisible]'s reason. `multiLink` is
+    // null in a normal build.
+    final ml = _conn?.multiLink;
+    if (ml != null) {
+      final id = widget.deviceId;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => ml.onDetailClosed(id));
+    }
     super.dispose();
   }
 

@@ -2705,4 +2705,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get demoBannerEnd => 'End demo';
+
+  @override
+  String get multiLinkSettingLabel => 'Multiple devices at once (experimental)';
+
+  @override
+  String get multiLinkSettingSub =>
+      'For internal testing. Up to 3 devices at once; a power bank connects on its own.';
+
+  @override
+  String get multiLinkPowerBankDialogTitle => 'Power bank connects on its own';
+
+  @override
+  String get multiLinkPowerBankDialogBodyPause =>
+      'A power bank needs the connection to itself. While you are on its page, other devices pause their updates and resume when you leave.';
+
+  @override
+  String get multiLinkPowerBankDialogBodyDisconnect =>
+      'A power bank needs the connection to itself. While you are on its page, other devices disconnect for a moment and reconnect when you leave.';
+
+  @override
+  String get multiLinkPowerBankDialogEnter => 'Open';
+
+  @override
+  String get multiLinkPowerBankDialogDontAsk => 'Don\'t show again';
+
+  @override
+  String monitorBodyMultiLink(int count, String reading) {
+    return 'Monitoring $count · $reading';
+  }
 }

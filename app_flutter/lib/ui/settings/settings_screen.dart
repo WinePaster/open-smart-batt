@@ -1354,6 +1354,19 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
               ],
             ),
           ),
+          // design 0103: the multi-link experiment's switch. The row exists only
+          // in a build made with --dart-define=OSB_MULTILINK=true — `multiLink`
+          // is null in every other build, so normal users never see it.
+          if (context.watch<ConnectionController>().multiLink != null)
+            SettingsRow(
+              label: l10n.multiLinkSettingLabel,
+              sub: l10n.multiLinkSettingSub,
+              trailing: _Toggle(
+                value: context.watch<MultiLinkController>().enabled,
+                onChanged: (v) =>
+                    context.read<MultiLinkController>().setEnabled(v),
+              ),
+            ),
           // The guided capture run lives in Diagnostics rather than on the
           // dashboard because it is a deliberate procedure, not a quick action —
           // the dashboard bar covers spontaneous marking.

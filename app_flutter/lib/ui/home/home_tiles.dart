@@ -286,9 +286,11 @@ class _DeviceTile extends StatelessWidget {
       // the connected device's telemetry under another unit's name — FB-41's
       // attribution mistake, in the UI.
       //
-      // 📌 交付二 seam: this one expression becomes `conn.isOnlineFor(deviceId)`
-      // when several links may be up at once (design 0046 §8 seam 1).
-      live = conn.isOnline && conn.connectedDeviceId == deviceId;
+      // 📌 交付二 seam (design 0046 §8 seam 1), taken by design 0103: with no
+      // multi-link experiment bound, `isOnlineFor` IS the old expression
+      // (`isOnline && connectedDeviceId == deviceId`).
+      if (conn.multiLink != null) context.watch<MultiLinkController>();
+      live = conn.isOnlineFor(deviceId);
     }
     final alias = (saved?.alias.isNotEmpty ?? false)
         ? saved!.alias
@@ -395,10 +397,21 @@ class _LiveReading extends StatelessWidget {
       tele = p.tele;
       isBank = p.shellClass == ProductClass.powerBank;
     } else {
-      tele = context.watch<TelemetryController>();
-      isBank =
-          context.watch<ConnectionController>().displayClass ==
-          ProductClass.powerBank;
+      final conn = context.watch<ConnectionController>();
+      // design 0103: a unit live on a SECONDARY link reads that link's data.
+      // Never taken in a normal build (`multiLink` is null there).
+      final ml = conn.multiLink;
+      final secondary = ml != null &&
+          !(conn.isOnline && conn.connectedDeviceId == deviceId)
+          ? context.watch<MultiLinkController>().telemetryFor(deviceId)
+          : null;
+      if (secondary != null) {
+        tele = secondary;
+        isBank = ml!.classFor(deviceId) == ProductClass.powerBank;
+      } else {
+        tele = context.watch<TelemetryController>();
+        isBank = conn.displayClass == ProductClass.powerBank;
+      }
     }
     final value = isBank
         ? (tele.socPercent == null ? '--' : tele.socPercent.toString())
@@ -578,10 +591,30 @@ class _ModuleTile extends StatelessWidget {
     // home surface's single resolver — has already dropped any module whose
     // switch is off. A second check would be the duplicate decision point
     // design 0042 W4 removed, just on a different surface.
-    final live = id == null || (conn.isOnline && conn.connectedDeviceId == id);
+    // design 0103: `isOnlineFor` is the old `isOnline && connectedDeviceId ==
+    // id` when no multi-link experiment is bound.
+    final ml = conn.multiLink;
+    if (ml != null) context.watch<MultiLinkController>();
+    final live = id == null || conn.isOnlineFor(id);
+    final onPrimary =
+        id == null || (conn.isOnline && conn.connectedDeviceId == id);
     final Widget card;
     if (!live) {
       card = HomeWaitingTile(module: module);
+    } else if (!onPrimary && ml != null) {
+      // Live on a SECONDARY link: that link's data, that unit's saved class.
+      final tele = ml.telemetryFor(id);
+      card = (tele == null
+              ? null
+              : dashboardCardFor(
+                  context,
+                  module,
+                  shellClass: ml.classFor(id),
+                  surface: CardSurface.home,
+                  tele: tele,
+                  view: view,
+                )) ??
+          HomeWaitingTile(module: module);
     } else {
       final shellClass = homeTileShellClass(id, conn);
       card =

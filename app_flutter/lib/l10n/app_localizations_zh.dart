@@ -2555,4 +2555,32 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get demoBannerEnd => '結束示範';
+
+  @override
+  String get multiLinkSettingLabel => '多裝置同時連線（實驗）';
+
+  @override
+  String get multiLinkSettingSub => '內部測試用。最多同時連 3 台；行動電源會單獨連線。';
+
+  @override
+  String get multiLinkPowerBankDialogTitle => '行動電源單獨連線';
+
+  @override
+  String get multiLinkPowerBankDialogBodyPause =>
+      '行動電源需要單獨連線。進入後，其他裝置會暫停更新，離開後自動恢復。';
+
+  @override
+  String get multiLinkPowerBankDialogBodyDisconnect =>
+      '行動電源需要單獨連線。進入後，其他裝置會暫時斷開，離開後自動重連。';
+
+  @override
+  String get multiLinkPowerBankDialogEnter => '進入';
+
+  @override
+  String get multiLinkPowerBankDialogDontAsk => '不再提示';
+
+  @override
+  String monitorBodyMultiLink(int count, String reading) {
+    return '監看中 $count 台 · $reading';
+  }
 }

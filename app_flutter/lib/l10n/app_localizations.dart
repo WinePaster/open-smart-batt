@@ -4503,6 +4503,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'End demo'**
   String get demoBannerEnd;
+
+  /// design 0103. Settings switch for the multi-link experiment. Exists only in a build made with --dart-define=OSB_MULTILINK=true (internal testers).
+  ///
+  /// In en, this message translates to:
+  /// **'Multiple devices at once (experimental)'**
+  String get multiLinkSettingLabel;
+
+  /// design 0103. Subtitle of the multi-link switch. Never say a power bank is 'not supported' (0046a §5.5).
+  ///
+  /// In en, this message translates to:
+  /// **'For internal testing. Up to 3 devices at once; a power bank connects on its own.'**
+  String get multiLinkSettingSub;
+
+  /// design 0103 D2. Title of the prompt shown before opening a power bank's page while other devices are connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Power bank connects on its own'**
+  String get multiLinkPowerBankDialogTitle;
+
+  /// design 0103 §3.4, pause wording (D1). Draft pending owner review (Q8). Never say 'not supported'.
+  ///
+  /// In en, this message translates to:
+  /// **'A power bank needs the connection to itself. While you are on its page, other devices pause their updates and resume when you leave.'**
+  String get multiLinkPowerBankDialogBodyPause;
+
+  /// design 0103 §3.4, disconnect wording (D1 fallback). Draft pending owner review (Q8).
+  ///
+  /// In en, this message translates to:
+  /// **'A power bank needs the connection to itself. While you are on its page, other devices disconnect for a moment and reconnect when you leave.'**
+  String get multiLinkPowerBankDialogBodyDisconnect;
+
+  /// design 0103 D2. Confirm button of the power-bank prompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get multiLinkPowerBankDialogEnter;
+
+  /// design 0103 §3.4. Checkbox on the power-bank prompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t show again'**
+  String get multiLinkPowerBankDialogDontAsk;
+
+  /// design 0103 D7. Ongoing-notification reading line while several devices are connected: count of live devices, then the latest reading (numbers and units only).
+  ///
+  /// In en, this message translates to:
+  /// **'Monitoring {count} · {reading}'**
+  String monitorBodyMultiLink(int count, String reading);
 }
 
 class _AppLocalizationsDelegate

@@ -1780,5 +1780,45 @@
   "demoBannerEnd": "End demo",
   "@demoBannerEnd": {
     "description": "design 0097. Button on the demo banner; disconnects the demo unit."
+  },
+  "multiLinkSettingLabel": "Multiple devices at once (experimental)",
+  "@multiLinkSettingLabel": {
+    "description": "design 0103. Settings switch for the multi-link experiment. Exists only in a build made with --dart-define=OSB_MULTILINK=true (internal testers)."
+  },
+  "multiLinkSettingSub": "For internal testing. Up to 3 devices at once; a power bank connects on its own.",
+  "@multiLinkSettingSub": {
+    "description": "design 0103. Subtitle of the multi-link switch. Never say a power bank is 'not supported' (0046a \u00a75.5)."
+  },
+  "multiLinkPowerBankDialogTitle": "Power bank connects on its own",
+  "@multiLinkPowerBankDialogTitle": {
+    "description": "design 0103 D2. Title of the prompt shown before opening a power bank's page while other devices are connected."
+  },
+  "multiLinkPowerBankDialogBodyPause": "A power bank needs the connection to itself. While you are on its page, other devices pause their updates and resume when you leave.",
+  "@multiLinkPowerBankDialogBodyPause": {
+    "description": "design 0103 \u00a73.4, pause wording (D1). Draft pending owner review (Q8). Never say 'not supported'."
+  },
+  "multiLinkPowerBankDialogBodyDisconnect": "A power bank needs the connection to itself. While you are on its page, other devices disconnect for a moment and reconnect when you leave.",
+  "@multiLinkPowerBankDialogBodyDisconnect": {
+    "description": "design 0103 \u00a73.4, disconnect wording (D1 fallback). Draft pending owner review (Q8)."
+  },
+  "multiLinkPowerBankDialogEnter": "Open",
+  "@multiLinkPowerBankDialogEnter": {
+    "description": "design 0103 D2. Confirm button of the power-bank prompt."
+  },
+  "multiLinkPowerBankDialogDontAsk": "Don't show again",
+  "@multiLinkPowerBankDialogDontAsk": {
+    "description": "design 0103 \u00a73.4. Checkbox on the power-bank prompt."
+  },
+  "monitorBodyMultiLink": "Monitoring {count} · {reading}",
+  "@monitorBodyMultiLink": {
+    "description": "design 0103 D7. Ongoing-notification reading line while several devices are connected: count of live devices, then the latest reading (numbers and units only).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reading": {
+        "type": "String"
+      }
+    }
   }
 }
