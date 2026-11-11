@@ -550,6 +550,7 @@ void main() {
   String? blockerWith({
     bool isSaved = true,
     bool autoReconnect = true,
+    bool userDisconnectedThisVisit = false,
     bool isOnline = false,
     bool isBusy = false,
     bool isRetrying = false,
@@ -561,6 +562,7 @@ void main() {
       autoConnectBlocker(
         isSaved: isSaved,
         autoReconnect: autoReconnect,
+        userDisconnectedThisVisit: userDisconnectedThisVisit,
         isOnline: isOnline,
         isBusy: isBusy,
         isRetrying: isRetrying,
@@ -578,6 +580,7 @@ void main() {
     final reasons = <String>[
       blockerWith(isSaved: false)!,
       blockerWith(autoReconnect: false)!,
+      blockerWith(userDisconnectedThisVisit: true)!,
       blockerWith(isOnline: true)!,
       blockerWith(isBusy: true)!,
       blockerWith(isRetrying: true)!,
@@ -599,6 +602,7 @@ void main() {
     final reasons = <String>[
       blockerWith(isSaved: false)!,
       blockerWith(autoReconnect: false)!,
+      blockerWith(userDisconnectedThisVisit: true)!,
       blockerWith(isOnline: true)!,
       blockerWith(isBusy: true)!,
       blockerWith(isRetrying: true)!,
@@ -607,7 +611,9 @@ void main() {
       blockerWith(isSetupStalled: true)!,
       blockerWith(isAdapterOn: false)!,
     ];
-    expect(reasons, hasLength(9));
+    // 10 since 2026-11-11 (`user disconnected on this visit`, A38–A41) — the
+    // count moved by one ADDED gate, not by the scan gate coming back.
+    expect(reasons, hasLength(10));
     for (final r in reasons) {
       expect(r, isNot(contains('scan')));
     }
@@ -677,6 +683,7 @@ void main() {
       for (final r in <String>[
         blockerWith(isSaved: false)!,
         blockerWith(autoReconnect: false)!,
+        blockerWith(userDisconnectedThisVisit: true)!,
         blockerWith(isOnline: true)!,
         blockerWith(isBusy: true)!,
         blockerWith(isRetrying: true)!,
@@ -688,7 +695,7 @@ void main() {
         r: autoConnectSkipNotice(r),
     };
 
-    expect(loud, hasLength(9));
+    expect(loud, hasLength(10)); // the tenth (2026-11-11) is silent
     expect(
       loud.values.where((n) => n != null).toList(),
       hasLength(2),
@@ -986,5 +993,70 @@ void main() {
     expect(find.text(en.devicesAutoConnectSkippedStalled), findsOneWidget,
         reason: 'FB-82 Q4 re-judged: the notice explains the card above it, so '
             'gating it on `mine` could only hide the explanation');
+  });
+
+  // ── 2026-11-11: the user's own stop, made WHILE THIS PAGE IS OPEN ────────
+  //
+  // 🔴 Found on the Play FGS declaration video (take 2, 40.7 s): on a unit's
+  // page, the notification's 停止監看 dropped the link and ~2 s later the app
+  // was connected again. The one-shot latch is only spent by an ATTEMPT, so a
+  // page entered on a live link (A2's gate) or a link in flight (A3's — the
+  // list's 連線 door, FB-92) still held its shot, and the disconnect's own
+  // notify re-ran the gates with nothing left in the way.
+
+  testWidgets('A38: entered on a live link, the user stops it ⇒ it stays '
+      'stopped', (tester) async {
+    await boot(tester, configure: (c) => c.online = true);
+    expect(conn.connectToSavedCalls, 0);
+
+    conn.online = false;
+    await conn.disconnect(); // what _onMonitorStop calls
+    conn.bump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 0,
+        reason: 'the user pressed stop; connecting again is the app '
+            'overruling them');
+    expect(conn.skips, contains('user disconnected on this visit'));
+  });
+
+  testWidgets('A39: ...and the same when the page was entered mid-connect '
+      '(FB-92 door)', (tester) async {
+    await boot(tester, configure: (c) => c.busy = true);
+
+    conn.busy = false;
+    await conn.disconnect();
+    conn.bump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 0);
+  });
+
+  testWidgets('A40: only the USER\'S disconnect counts — a link that drops by '
+      'itself still leaves the page its one attempt', (tester) async {
+    // Pins the scope of A38, not a new behaviour: this is what the page did
+    // before 2026-11-11 for every drop. Without it, A38 would also pass with a
+    // gate that simply latched on "was ever online".
+    await boot(tester, configure: (c) => c.online = true);
+
+    conn
+      ..online = false
+      ..bump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(conn.connectToSavedCalls, 1);
+  });
+
+  testWidgets('A41: a disconnect BEFORE the page opened does not block it — '
+      'FB-75 still connects on arrival', (tester) async {
+    // Why the gate is a per-visit count and not `_manualDisconnect`: that flag
+    // stays set until the next user connect, so gating on it would make every
+    // later visit to a saved unit's page do nothing.
+    await boot(tester, configure: (c) => unawaited(c.disconnect()));
+
+    expect(conn.connectToSavedCalls, 1);
   });
 }
