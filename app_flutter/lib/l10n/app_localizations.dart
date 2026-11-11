@@ -947,7 +947,7 @@ abstract class AppLocalizations {
   /// No description provided for @cutOffDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.'**
+  /// **'Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.'**
   String get cutOffDialogBody;
 
   /// No description provided for @cutOffDialogConfirm.
@@ -967,6 +967,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The cut-off command can only be sent while the device reports it is running normally.'**
   String get cutOffDisabledNote;
+
+  /// No description provided for @cutOffLinkLostSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t confirm the cut-off — the Bluetooth link dropped while waiting for the device to report. The battery may already be cut off, and it stays cut off across a disconnect. Reconnect; if it shows cut off, press Restore Power.'**
+  String get cutOffLinkLostSnack;
+
+  /// No description provided for @cutOffGenerationNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off is only offered on batteries whose serial starts with 0168 or 0169.'**
+  String get cutOffGenerationNote;
 
   /// No description provided for @releaseDisabledNote.
   ///

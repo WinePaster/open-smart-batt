@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../config/control_features.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../util/alert_thresholds_lookup.dart';
@@ -245,9 +246,14 @@ class BatteryControls extends StatelessWidget {
     // this body invokes.
     final isCutOff = isCutOffMode(tele.mode);
     // See `releaseActionEnabled` for the gate's asymmetry and why it leans the
-    // way it does. `cutOffActionEnabled` is deliberately NOT consulted here —
-    // this build ships no cut-off button at all (see the note below).
+    // way it does.
     final canRelease = releaseActionEnabled(tele.mode);
+    // 斷電 exists only where a composition root injected it (design 0104: OSB
+    // Pro). Absent provider ⇒ null ⇒ off, so the community build and every
+    // test harness that does not provide one render exactly what they did.
+    final offerCutOff = context.watch<ControlFeatures?>()?.cutOff ?? false;
+    final cutOffModeOk = cutOffActionEnabled(tele.mode);
+    final cutOffGenOk = cutOffGenerationAllowed(tele.dealerCode);
     // FB-30. This body was the ONLY one of the three that never consulted
     // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
     // over-temperature limits IT REPORTED (0x2B) said nothing at all, while a
@@ -295,15 +301,27 @@ class BatteryControls extends StatelessWidget {
         ),
         const SizedBox(height: 13),
         // 🔴 The community build offers RELEASE ONLY (owner's decision,
-        // 2026-07-30). Cut-off and anti-theft both leave a
-        // vehicle unable to start, and the path back is still unproven, so the
-        // build that reaches the general public only ever moves a pack toward
-        // normal. The `cutOff()` action and its gate stay in
-        // status_controls_shared.dart with their tests: the distributor build
-        // will need them, and deleting a tested destructive path only to
-        // rewrite it later is how it comes back less careful.
+        // 2026-07-30). Cut-off and anti-theft both leave a vehicle unable to
+        // start, so the build that reaches the general public only ever moves a
+        // pack toward normal. 斷電 appears only when [ControlFeatures.cutOff]
+        // was injected (design 0104, OSB Pro), and is then live only on a pack
+        // that positively reports normal AND belongs to a generation seen to
+        // release on the wire.
         Row(
           children: [
+            if (offerCutOff) ...[
+              Expanded(
+                child: ControlButton(
+                  variant: ControlButtonVariant.ghost,
+                  icon: Icons.power_off,
+                  label: l10n.commonCutOffAction,
+                  onPressed: online && cutOffModeOk && cutOffGenOk
+                      ? () => cutOff(context, tele)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 9),
+            ],
             Expanded(
               child: ControlButton(
                 variant: ControlButtonVariant.warn,
@@ -341,6 +359,11 @@ class BatteryControls extends StatelessWidget {
           // shown while online: offline, everything is disabled for one obvious
           // reason and repeating it per-button is noise.
           if (online && !canRelease) l10n.releaseDisabledNote,
+          // Why 斷電 is grey, when it is offered at all. The mode reason wins:
+          // it is the one the owner can act on (release first).
+          if (offerCutOff && online && !cutOffModeOk) l10n.cutOffDisabledNote,
+          if (offerCutOff && online && cutOffModeOk && !cutOffGenOk)
+            l10n.cutOffGenerationNote,
           // Same treatment as the other two bodies: OUR computation from the
           // device's own thresholds, so it is an advisory line and never a
           // device-reported status badge.

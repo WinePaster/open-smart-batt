@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'ble/ble.dart';
 import 'config/app_config.dart';
+import 'config/control_features.dart';
 import 'data/data.dart';
 import 'demo/demo.dart';
 import 'models/models.dart';
@@ -46,6 +47,10 @@ Future<void> main() => bootstrap(
 ///   the same way. Open default = null = RCE only.
 /// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
 ///   open build (no panel; the open app never reads [DeviceMetadata] content).
+/// - [allowCutOff]: offer 斷電 on an identified smart battery (design 0104).
+///   Open default = false — the community build offers release only. Published
+///   as [ControlFeatures]; it is NOT part of [config], which carries no
+///   behaviour.
 /// - [config]: per-edition branding (design 0092). Open default =
 ///   [AppConfig.open], so this build says exactly what it said before the
 ///   parameter existed. It carries NO behaviour — see the header of
@@ -55,8 +60,10 @@ Future<void> bootstrap({
   WidgetBuilder? deviceInfoPanelBuilder,
   AppConfig config = AppConfig.open,
   List<DeviceProfile>? profiles,
+  bool allowCutOff = false,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  final controls = ControlFeatures(cutOff: allowCutOff);
   // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
   // restoration HERE, and nowhere else. See [BleService.enableStateRestoration]
   // for why this is the only line in the app where the option can still take
@@ -92,6 +99,8 @@ Future<void> bootstrap({
           parser: parser,
           deviceInfoPanelBuilder: deviceInfoPanelBuilder,
           config: config,
+          profiles: profiles,
+          allowCutOff: allowCutOff,
         ),
       ),
     );
@@ -147,6 +156,7 @@ Future<void> bootstrap({
       services: services,
       deviceInfoPanelBuilder: deviceInfoPanelBuilder,
       config: config,
+      controls: controls,
     ),
   );
 }
@@ -184,9 +194,14 @@ class OpenSmartBattApp extends StatefulWidget {
     required this.services,
     this.deviceInfoPanelBuilder,
     this.config = AppConfig.open,
+    this.controls = ControlFeatures.none,
   });
 
   final AppServices services;
+
+  /// Device-state controls beyond the community set (design 0104). Published
+  /// as `Provider<ControlFeatures>`; [ControlFeatures.none] on the open build.
+  final ControlFeatures controls;
 
   /// This build's branding (design 0092). Published to the subtree via
   /// [AppConfigScope] so screens do not each need it threaded down.
@@ -315,6 +330,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           Provider<DeviceRepo>.value(value: s.deviceRepo),
           Provider<SettingsRepo>.value(value: s.settingsRepo),
           Provider<LogRepo>.value(value: s.logRepo),
+          Provider<ControlFeatures>.value(value: widget.controls),
           // Controllers (lifecycle owned by AppServices, hence .value).
           ChangeNotifierProvider<SettingsController>.value(value: s.settings),
           ChangeNotifierProvider<DeviceController>.value(value: s.devices),

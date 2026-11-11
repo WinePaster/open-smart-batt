@@ -799,9 +799,7 @@ Future<({ModeWatch result, int writes})> runReleasePlan(
 /// hence the control is no longer named after cut-off alone.
 Future<void> releaseCutOff(
     BuildContext context, TelemetryController tele) async {
-  final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
-  final messenger = ScaffoldMessenger.of(context);
   final action = l10n.commonReleaseCutOff;
   final before = tele.mode;
   final ok = await showDialog<bool>(
@@ -827,6 +825,54 @@ Future<void> releaseCutOff(
     ),
   );
   if (ok != true) return;
+  if (!context.mounted) return;
+  await sendModeWithAuthPlan(
+    context,
+    tele,
+    mode: ModeArg.unlock,
+    action: action,
+    before: before,
+    failedSnack: l10n.releaseFailedSnack,
+  );
+}
+
+/// The ONE way this app sends a run-mode write to a smart battery (design
+/// 0104): 復電 (`ModeArg.unlock`) and, on a build that offers it, 斷電
+/// (`ModeArg.cutOff`) both come through here and differ ONLY in [mode].
+///
+/// 🔑 "Cut-off is sent exactly like release" (owner, 2026-11-12) is enforced by
+/// there being a single sequence, not by two copies kept in step:
+///
+/// 1. credentials from [releaseAuthPlan] (`0x00A8` first, the dealer-code
+///    value only if different); dealer code not on the wire yet ⇒ the manual
+///    auth dialog, which must yield credentials (never mode-only);
+/// 2. per credential, once: standalone auth ++ `0x2A` read-back, then
+///    [_selfCheckAuthLead];
+/// 3. the 15-byte mode+auth write, then the `0x23` read-back;
+/// 4. watch `0x23` for [_releaseWindow]; unchanged ⇒ repeat 3, up to
+///    [_releaseAttempts] per credential ([runReleasePlan]). Any change, or the
+///    link dropping, stops the plan — so a write is never repeated onto a unit
+///    already seen to have moved.
+///
+/// The engineering app's cut-off and release differ in the mode byte alone on
+/// the wire (re-checked 2026-11-12 across four captures, 20 mode writes,
+/// `0168` and `0169` packs, all `0x00A8`), which is why one routine is right.
+///
+/// [linkLostSnack] overrides the generic "couldn't confirm" text: after a
+/// cut-off the honest next step is different (the pack may already be cut off
+/// and stays so across a disconnect — reconnect and release).
+Future<void> sendModeWithAuthPlan(
+  BuildContext context,
+  TelemetryController tele, {
+  required int mode,
+  required String action,
+  required int? before,
+  required String Function(String error) failedSnack,
+  String? linkLostSnack,
+}) async {
+  final conn = context.read<ConnectionController>();
+  final l10n = AppLocalizations.of(context);
+  final messenger = ScaffoldMessenger.of(context);
   var plan = releaseAuthPlan(tele.dealerCode);
   if (plan == null) {
     // Dealer code not on the wire yet — let the owner supply auth manually.
@@ -835,7 +881,7 @@ Future<void> releaseCutOff(
       context,
       initialDealerCode: tele.dealerCode,
     );
-    if (req == null || req.creds == null) return; // release requires auth (Q3)
+    if (req == null || req.creds == null) return; // auth is required (Q3)
     plan = [req.creds!];
   }
   try {
@@ -854,7 +900,7 @@ Future<void> releaseCutOff(
           await Future<void>.delayed(_selfCheckAuthLead);
           authed = creds;
         }
-        await conn.releaseCutOff(cb: creds.cb, pwSum: creds.pwSum); // mode+auth
+        await conn.switchMode(mode, cb: creds.cb, pwSum: creds.pwSum);
         await conn.pollMode(); // 0x23 read-back — match the eng-app pairing
       },
       watch: () => watchModeAfterWrite(() => tele.mode, before, _releaseWindow),
@@ -864,7 +910,7 @@ Future<void> releaseCutOff(
       duration: const Duration(milliseconds: 4200),
       content: Text(switch (run.result) {
         ModeWatch.changed => l10n.modeChangedSnack(action, status),
-        ModeWatch.linkLost => l10n.modeLinkLostSnack(action),
+        ModeWatch.linkLost => linkLostSnack ?? l10n.modeLinkLostSnack(action),
         ModeWatch.unchanged =>
           l10n.modeUnchangedRetriedSnack(action, run.writes, status),
       }),
@@ -873,40 +919,50 @@ Future<void> releaseCutOff(
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(milliseconds: 1600),
-        content: Text(l10n.releaseFailedSnack('$e')),
+        content: Text(failedSnack('$e')),
       ),
     );
   }
 }
 
-/// 斷電 — manual cut-off (mode 0x02 + auth).
+/// Serial generations a cut-off may be sent to (design 0104 Q1): the two whose
+/// cut-off AND release are both on the wire from the engineering app with
+/// `0x00A8` (`0168…` and `0169…`). Matched on the dealer code (`0x27`), whose
+/// first four characters are the serial's. Anything else — including no dealer
+/// code yet — is refused: we do not lock a pack we have never seen unlocked.
+const List<String> kCutOffGenerations = ['0168', '0169'];
+
+/// Is [dealerCode] one of [kCutOffGenerations]?
+bool cutOffGenerationAllowed(String? dealerCode) {
+  if (dealerCode == null || dealerCode.length < 4) return false;
+  return kCutOffGenerations.contains(dealerCode.substring(0, 4));
+}
+
+/// 斷電 — cut-off (`0x23` <- `0x02`), sent EXACTLY like 復電 (design 0104).
 ///
-/// ⚠️ NO BUTTON IN THIS BUILD invokes this. It is kept, tested and gated so the
-/// distributor build can wire it up without anyone re-deriving a destructive
-/// path from scratch — that is how such a path comes back less careful. The
-/// public app deliberately only ever moves a pack toward normal.
+/// Offered only where a composition root injected
+/// `ControlFeatures(cutOff: true)` (OSB Pro); the community build renders no
+/// button for it. A caller must additionally gate the button on
+/// [cutOffActionEnabled] (the pack positively reports normal) and
+/// [cutOffGenerationAllowed] (a generation seen to release on the wire).
 ///
-/// SAFETY: this is the app's only outbound command that can immobilise a
-/// vehicle. Two gates stand in front of it: an explicit risk confirmation
-/// naming that specific consequence, then the same per-device auth dialog
-/// anti-theft uses. A caller that adds a button must additionally gate it on
-/// [cutOffActionEnabled].
+/// SAFETY: this is the app's only outbound command meant to immobilise a
+/// vehicle. In front of it: the risk confirmation naming that consequence
+/// (cancel first), then [sendModeWithAuthPlan] — the release's own sequence,
+/// standalone auth first, with the mode byte changed and nothing else.
 ///
-/// The release path that would undo it used to be described here as "not proven
-/// to work — no capture in hand shows any pack responding to a mode write".
-/// That is **no longer true** (corrected 2026-08-14): three independent packs
-/// released 5 times out of 5 attempts, `0x23` following the write within
-/// 2–89 ms. See `releaseCutOff` in ConnectionController.
+/// 🔴 Until 2026-11-12 this function wrote ONE mode+auth frame with no
+/// standalone auth, no `0x23` read-back and no retry, and its auth dialog
+/// offered a mode-only "skip auth" send. All of that is gone: a cut-off that
+/// does not authenticate the way the release does would be a lock whose key is
+/// cut differently from the lock.
 ///
-/// ⚠️ The gates stay exactly as they are, and this correction is **not** a
-/// reason to relax them. Release works but is not reliable on the first try —
-/// one of six writes drew no response and needed the automatic retry — so a
-/// build that wires up a cut-off button is still committing a user to a path
-/// whose undo can take several seconds and, in principle, may not land at all.
+/// The release path that undoes it works on the wire (three packs, 5/5 in
+/// 2026-08; engineering-app captures re-checked 2026-11-12) but not always on
+/// the first write — the engineering app itself saw about one write in ten
+/// draw no response — and a cut-off holds across a disconnect.
 Future<void> cutOff(BuildContext context, TelemetryController tele) async {
-  final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
-  final messenger = ScaffoldMessenger.of(context);
   final action = l10n.commonCutOffAction;
   final before = tele.mode;
   final confirmed = await showDialog<bool>(
@@ -938,31 +994,15 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
   );
   if (confirmed != true) return;
   if (!context.mounted) return;
-  final req = await showReleaseCutOffDialog(
+  await sendModeWithAuthPlan(
     context,
-    initialDealerCode: tele.dealerCode,
+    tele,
+    mode: ModeArg.cutOff,
+    action: action,
+    before: before,
+    failedSnack: l10n.cutOffFailedSnack,
+    linkLostSnack: l10n.cutOffLinkLostSnack,
   );
-  if (req == null) return;
-  try {
-    if (req.skipAuth) {
-      await conn.switchModeOnly(ModeArg.cutOff);
-    } else {
-      await conn.switchMode(ModeArg.cutOff,
-          cb: req.creds!.cb, pwSum: req.creds!.pwSum);
-    }
-    messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 3600),
-      content: Text(await _modeWriteOutcome(l10n, tele,
-          action: action, before: before, skipAuth: req.skipAuth)),
-    ));
-  } catch (e) {
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(milliseconds: 1600),
-        content: Text(l10n.cutOffFailedSnack('$e')),
-      ),
-    );
-  }
 }
 
 /// 防盜 — NOT a documented-safe path: require explicit confirmation and the same
