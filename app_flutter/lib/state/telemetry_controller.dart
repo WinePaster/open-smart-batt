@@ -787,7 +787,7 @@ class TelemetryController extends ChangeNotifier
       watch.stalled = false; // recovered
     }
     notifyListeners();
-    _maybeAutoLog(s);
+    _maybeAutoLog(s, _session.deviceId);
     // design 0080 P3 — LAST, and after the guard at the top of this method.
     //
     // Last because everything above is what the app already promised to do
@@ -835,8 +835,7 @@ class TelemetryController extends ChangeNotifier
   /// one row per minute is roughly 6 MB a year, against the 5 MB cap a single
   /// diagnostic log carries on its own. The setting the user actually needs is
   /// how long to KEEP history, and that is what replaced it.
-  void _maybeAutoLog(TelemetrySample s) {
-    final deviceId = _session.deviceId;
+  void _maybeAutoLog(TelemetrySample s, String? deviceId) {
     // design 0043 §3.1: a history row with no device is not recorded at all.
     // Such rows are unreadable by construction — the History screen aggregates
     // by device, so an unattributed row can only ever be averaged in with units
@@ -1401,6 +1400,48 @@ class TelemetryController extends ChangeNotifier
 
   void _onGForceEstimate(GForceEstimate s) =>
       foldSpeedSample(gLongMs2: s.longMs2, gLatMs2: s.latMs2);
+
+  // ---- design 0103: rows from the multi-link experiment's secondary links --
+  //
+  // A secondary link is its own BleService, so none of its frames reach the
+  // subscriptions above. These three entry points are how its rows get
+  // recorded, and every one of them is keyed by the id the LINK names — never
+  // by [_session], which belongs to the primary link. That is the FB-41 rule
+  // ("a row is attributed to the unit that sent it") applied to the case it was
+  // written for. Nothing calls them in a normal build.
+
+  /// One decoded frame from a secondary link: history row + alert evaluation,
+  /// both under [deviceId].
+  void recordExtraSample(String deviceId, TelemetrySample s) {
+    _maybeAutoLog(s, deviceId);
+    _alerts?.onSample(deviceId, s);
+  }
+
+  /// A packet/event crossing a secondary link. [BlePacketEvent.deviceId] is
+  /// always set by the transport for link traffic; [fallbackDeviceId] covers
+  /// service-level lines that name no link.
+  void logExtraPacket(BlePacketEvent e, {String? fallbackDeviceId}) {
+    if (e.direction != LogDirection.event && !_settings.rawPacketLog) return;
+    final deviceId = e.deviceId ?? fallbackDeviceId;
+    _pending.add(_logs.insertLog(
+      LogEntry.fromBytes(
+        e.direction,
+        e.bytes,
+        at: e.at,
+        note: e.note,
+        deviceId: deviceId,
+        // Secondary links open no session in [SessionContext] (that object
+        // tracks the primary's "current" unit), so their rows carry none
+        // rather than borrow the primary's number.
+        sessionId: null,
+        appBuild: _appBuild,
+      ),
+      maxBytes: _settings.logTrimBudget,
+    ));
+  }
+
+  /// Close [deviceId]'s open history second — its secondary link dropped.
+  void flushHistoryFor(String deviceId) => _flushBucket(deviceId);
 
   void _onPacket(BlePacketEvent e) {
     if (!_settings.rawPacketLog) return;

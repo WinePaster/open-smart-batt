@@ -34,6 +34,7 @@ import '../platform/platform.dart';
 import '../protocol/protocol.dart';
 import 'background_window_tracker.dart';
 import 'device_controller.dart';
+import 'multi_link_controller.dart';
 import 'device_facts_controller.dart';
 import 'pack_class_resolver.dart';
 import 'session_context.dart';
@@ -232,8 +233,12 @@ class ConnectionController extends ChangeNotifier {
   void _updateMonitor() {
     // design 0097 §2.2: no "connected" notification for a unit that does not
     // exist, and nothing to keep alive in the background.
-    final shouldRun =
-        isOnline && _settings.backgroundMonitoring && !_ble.isDemoLink;
+    // design 0103: secondary links count as "connected" for the monitor —
+    // otherwise a phone watching two units with no primary link would be
+    // frozen by the OS the moment the screen goes off. Null in a normal build.
+    final shouldRun = (isOnline || (_multiLink?.onlineCount ?? 0) > 0) &&
+        _settings.backgroundMonitoring &&
+        !_ble.isDemoLink;
     if (shouldRun == _monitorRunning) return;
     _monitorRunning = shouldRun;
     if (shouldRun) {
@@ -270,9 +275,12 @@ class ConnectionController extends ChangeNotifier {
   /// the FB-53-era foreground behaviour — including the resume probe's
   /// `pokeKeepAlive` — is untouched.
   void _updateKeepAlivePacing() {
-    _ble.setNotifyDrivenKeepAlive(_monitorRunning &&
+    final active = _monitorRunning &&
         _monitor.pacesKeepAliveInBackground &&
-        _bgWindow.inBackground);
+        _bgWindow.inBackground;
+    _ble.setNotifyDrivenKeepAlive(active);
+    // design 0103: the secondary links follow the same regime.
+    _multiLink?.setNotifyDrivenKeepAlive(active);
   }
 
   Future<void> _startMonitor() async {
@@ -292,6 +300,8 @@ class ConnectionController extends ChangeNotifier {
     _monitorRunning = false;
     _updateKeepAlivePacing();
     if (isOnline) unawaited(disconnect());
+    // design 0103: "stop" stops every link, not only the primary.
+    _multiLink?.onMonitorStopped();
   }
 
   /// Watch the link's telemetry freshness so the notification can stop lying.
@@ -335,6 +345,9 @@ class ConnectionController extends ChangeNotifier {
   /// `telemetryStalled` first would label it "no data" and hang a
   /// last-updated clock on it for a reading that never existed.
   String get _stateTitle {
+    // design 0103: with no primary link the health watch has nothing to say,
+    // but the secondaries are streaming — the plain title is the true one.
+    if (!isOnline && (_multiLink?.onlineCount ?? 0) > 0) return _notifyTitle;
     final h = _health;
     if (h == null) return _notifyTitle; // nothing bound (iOS, tests)
     if (!h.hasTelemetry) return _notifyTitleConnecting;
@@ -401,7 +414,9 @@ class ConnectionController extends ChangeNotifier {
   /// rate-limits it anyway, so the extra posts would be dropped regardless.
   void _updateNotificationBody(TelemetrySample s) {
     if (!_monitorRunning) return;
-    final body = formatMonitorBody(s);
+    // design 0103 D7: 「監看中 N 台」＋ the latest reading, while secondaries
+    // are up. Null (and so unchanged) in a normal build.
+    final body = _multiLink?.notificationBody(s) ?? formatMonitorBody(s);
     if (body == _notifyBody && _lastNotifyAt != null) return;
     final now = DateTime.now();
     final last = _lastNotifyAt;
@@ -1166,6 +1181,31 @@ class ConnectionController extends ChangeNotifier {
   /// True once notify is enabled + keep-alive is running (telemetry flowing).
   bool get isOnline => _link == BleLinkState.ready;
 
+  /// Whether [deviceId] has live telemetry right now — the primary link, or
+  /// (design 0103) one of the multi-link experiment's secondary links.
+  ///
+  /// With no experiment bound this is exactly the expression the home tiles
+  /// used to spell out (`isOnline && connectedDeviceId == id`, design 0046 §8
+  /// seam 1).
+  bool isOnlineFor(String deviceId) =>
+      (isOnline && connectedDeviceId == deviceId) ||
+      (_multiLink?.isOnlineFor(deviceId) ?? false);
+
+  /// The multi-link experiment (design 0103), or null — always null unless the
+  /// build was made with `--dart-define=OSB_MULTILINK=true`.
+  MultiLinkController? get multiLink => _multiLink;
+  MultiLinkController? _multiLink;
+
+  /// Wired once by the composition root, in a multi-link build only.
+  void bindMultiLink(MultiLinkController controller) => _multiLink = controller;
+
+  /// Re-evaluate the monitor and its reading line after a secondary link
+  /// changed (design 0103). Called by [MultiLinkController].
+  void refreshMultiLinkMonitor(TelemetrySample? latest) {
+    _updateMonitor();
+    if (latest != null) _updateNotificationBody(latest);
+  }
+
   /// True while connecting / discovering / disconnecting (UI shows a spinner).
   bool get isBusy =>
       _link == BleLinkState.connecting ||
@@ -1902,6 +1942,13 @@ class ConnectionController extends ChangeNotifier {
       ProductClass? seedClass,
       String? requestedId,
       String? autoTrigger}) async {
+    // design 0103: a unit already held as a SECONDARY link must be released
+    // before the primary connects to it — two Dart links on one physical
+    // connection is the 2026-08-13 doubled-GATT fault. Also where a power
+    // bank's exclusivity starts (other links pause before it connects). Null
+    // in a normal build, so nothing here awaits.
+    final ml = _multiLink;
+    if (ml != null) await ml.beforePrimaryConnect(deviceId);
     _reconnectTimer?.cancel();
     // FB-53: a manual connect supersedes an armed autoConnect and its deadline
     // — the user has just restated, by hand, what they want to be connected to.

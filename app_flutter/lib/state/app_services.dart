@@ -12,6 +12,7 @@ import 'dart:async';
 
 import '../ble/ble.dart';
 import '../config/app_config.dart';
+import '../config/multi_link_config.dart';
 import '../data/data.dart';
 import '../platform/platform.dart';
 import '../protocol/protocol.dart';
@@ -23,6 +24,7 @@ import 'device_controller.dart';
 import 'device_facts_controller.dart';
 import 'g_force_controller.dart';
 import 'gps_speed_controller.dart';
+import 'multi_link_controller.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
@@ -47,6 +49,7 @@ class AppServices {
     required this.speed,
     required this.gforce,
     required this.alerts,
+    required this.multiLink,
     required this.pending,
     required this.appBuild,
     required this.platform,
@@ -102,6 +105,10 @@ class AppServices {
   /// something asks it to post or to request a permission.
   final AlertController alerts;
 
+  /// design 0103's experiment, or null — null unless the build was made with
+  /// `--dart-define=OSB_MULTILINK=true` (or a test asked for one).
+  final MultiLinkController? multiLink;
+
   /// Fire-and-forget database writes still in flight. Drained by [dispose]
   /// before the database closes; see [PendingWrites].
   final PendingWrites pending;
@@ -142,6 +149,8 @@ class AppServices {
     MetadataParser parser = const NoopMetadataParser(),
     List<DeviceProfile>? profiles,
     AppConfig config = AppConfig.open,
+    bool multiLinkBuild = kMultiLinkBuild,
+    BleService Function()? multiLinkBleFactory,
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
     final bleService = ble ?? BleService(parser: parser, profiles: profiles);
@@ -216,6 +225,19 @@ class AppServices {
       appBuild: env.build,
       pending: pending,
     );
+    // design 0103: the multi-link experiment exists only in a build that asked
+    // for it. Each secondary link gets a BleService of its own, built exactly
+    // like the primary's.
+    final MultiLinkController? multiLink = multiLinkBuild
+        ? MultiLinkController(
+            connection: connection,
+            devices: devices,
+            telemetry: telemetry,
+            settings: settings,
+            bleFactory: multiLinkBleFactory ??
+                () => BleService(parser: parser, profiles: profiles),
+          )
+        : null;
     // design 0080 P3. Thresholds arrive as a CLOSURE rather than as a set of
     // controller references, so `resolveThresholds()` keeps being the app's one
     // threshold source (§3.8) while `lib/state` keeps its back turned on
@@ -238,7 +260,12 @@ class AppServices {
         facts: facts,
         liveSample: sample,
         liveDeviceId: deviceId,
-        liveClass: connection.resolvedClass,
+        // design 0103: a SECONDARY link's frame is judged with that unit's
+        // saved class, not the primary's resolved one. `multiLink` is null in
+        // a normal build, so this reads `connection.resolvedClass` as before.
+        liveClass: (multiLink?.isOnlineFor(deviceId) ?? false)
+            ? multiLink!.classFor(deviceId)
+            : connection.resolvedClass,
       ),
     );
     // Holds no resources until its gate opens; see [GpsSpeedController].
@@ -273,6 +300,13 @@ class AppServices {
     // Prime the persisted controllers before the first frame.
     await Future.wait([settings.load(), devices.load(), facts.load()]);
 
+    // design 0103 — only in a multi-link build. Created after the saved
+    // devices are loaded, so its first reconcile sees them.
+    if (multiLink != null) {
+      connection.bindMultiLink(multiLink);
+      await multiLink.load();
+    }
+
     // 🔴 The G meter's ONLY input. It holds no persistence of its own (see
     // [GForceController]), so the stored switch and matrix reach it here and
     // nowhere else — once now, and again on every settings write. Forgetting
@@ -305,6 +339,7 @@ class AppServices {
       speed: speed,
       gforce: gforce,
       alerts: alerts,
+      multiLink: multiLink,
       pending: pending,
       appBuild: env.build,
       platform: env.platform,
@@ -343,6 +378,9 @@ class AppServices {
   /// remedy at this point and nowhere left to report to, since the log sink is
   /// the database we are about to close.
   Future<void> dispose() async {
+    // design 0103: the secondary links are event sources too — stop them with
+    // the primary, before the drain.
+    multiLink?.dispose();
     await ble.dispose();
     // 🔴 FLUSH, THEN DRAIN, THEN CLOSE — and the order is the whole point
     // (design 0061 T7e). History rows are buffered for ~10 seconds before they

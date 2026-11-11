@@ -20,6 +20,7 @@ export 'g_force_controller.dart';
 export 'g_force_estimator.dart';
 export 'gps_speed_controller.dart';
 export 'live_trend_buffer.dart';
+export 'multi_link_controller.dart';
 export 'session_context.dart';
 export 'settings_controller.dart';
 export 'speed_estimator.dart';

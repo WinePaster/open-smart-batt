@@ -32,6 +32,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../demo/demo.dart';
+import '../models/device_ident.dart' show shortDeviceHash;
 import '../models/log_entry.dart' show LogDirection;
 import '../models/telemetry_sample.dart';
 import '../protocol/protocol.dart';
@@ -107,6 +108,21 @@ class _LinkState {
   bool keepAliveInFlight = false;
   bool keepAliveWriteFailed = false;
   int keepAliveFailures = 0;
+
+  /// design 0103 (multi-link experiment): when non-null the poll is
+  /// deliberately suspended on this link — the keep-alive timer keeps ticking
+  /// (so the exec-gap heartbeat is unchanged), only the write is skipped, and
+  /// the notify subscription stays up. Never set outside the experiment.
+  DateTime? pollPausedAt;
+
+  /// Notification chunks received while [pollPausedAt] was set — the
+  /// "autonomous push kept flowing" half of 0103 §4 ②.
+  int rxDuringPause = 0;
+
+  /// design 0103 D5: the most recent successful keep-alive write durations
+  /// (ms), newest last. Null unless [BleService.trackWriteWindow] is on, which
+  /// only the multi-link controller turns on for its own links.
+  List<int>? writeWindow;
 
   /// When this link's keep-alive last WROTE successfully — the debounce zero
   /// point for the notify-driven pacer (design 0047 Phase 1). Successful
@@ -1171,6 +1187,8 @@ class BleService {
     // [connect]), and everything order-sensitive in [_dropAllLinks] has already
     // run by the time it returns.
     unawaited(_dropAllLinks());
+    // design 0103: only a multi-link secondary ever turns tracking on.
+    if (_trackWriteWindow) link.writeWindow = <int>[];
     _links[link.deviceId] = link;
   }
 
@@ -1460,6 +1478,7 @@ class BleService {
     // bounds the window from the app side. One line per gap — the first
     // backlogged chunk re-ticks the tracker, so the rest stay quiet.
     _checkExecGap('notify');
+    if (link.pollPausedAt != null) link.rxDuringPause++;
     // Phase 1 (design 0047 §3.2): while backgrounded on iOS this notify IS the
     // execution window — ride it with a keep-alive write when the last
     // successful one is a full interval old, so the device keeps streaming
@@ -1559,6 +1578,11 @@ class BleService {
   /// and subtracting is still possible; reconstructing a total from windows
   /// that a disconnect may have truncated is not.
   void _recordWriteDuration(_LinkState link, int ms) {
+    final window = link.writeWindow;
+    if (window != null) {
+      window.add(ms);
+      if (window.length > writeWindowSize) window.removeAt(0);
+    }
     link.writeOkCount++;
     link.writeMsTotal += ms;
     if (ms > link.writeMsMax) link.writeMsMax = ms;
@@ -1613,6 +1637,15 @@ class BleService {
     // writeStatsEvery would otherwise report nothing at all, and short sessions
     // are exactly the ones a slow unit produces.
     _emitWriteStats(link);
+    final pausedAt = link.pollPausedAt;
+    if (pausedAt != null) {
+      _emitEvent(
+          'link lost while paused id=${shortDeviceHash(link.deviceId)} '
+          'paused_ms=${DateTime.now().difference(pausedAt).inMilliseconds} '
+          'rx_during_pause=${link.rxDuringPause}',
+          link: link);
+      link.pollPausedAt = null;
+    }
     link.keepAlive?.cancel();
     link.keepAlive = null;
     link.keepAliveTick = 0;
@@ -1684,6 +1717,9 @@ class BleService {
     // isolate ran.
     _execGap.tick(DateTime.now());
     if (link.writeChar == null && link.peer == null) return;
+    // design 0103: a paused link writes nothing. Null on every link the
+    // multi-link experiment never touched, i.e. always in a normal build.
+    if (link.pollPausedAt != null) return;
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH
     // directions stall for minutes, then everything resumes at once. Without
@@ -1758,6 +1794,75 @@ class BleService {
   /// original proposal, but `!#` is itself a write, so in the only case that
   /// needs it the resend fails too.
   int get keepAliveFailures => _current?.keepAliveFailures ?? 0;
+
+  // ---------------------------------------------------------------------------
+  // design 0103 — multi-link experiment hooks
+  //
+  // Inert unless called, and only `MultiLinkController` calls them, on BleService
+  // instances it owns (one per secondary link). The primary instance is never
+  // paused and never tracks a window, so a normal build runs none of this.
+  // ---------------------------------------------------------------------------
+
+  /// Size of the rolling write window (design 0103 D5 ①: last 60 writes).
+  static const int writeWindowSize = 60;
+
+  /// Keep a rolling window of keep-alive write durations on links created from
+  /// now on (and the current one), for [recentWriteAvgMs].
+  bool get trackWriteWindow => _trackWriteWindow;
+  bool _trackWriteWindow = false;
+  set trackWriteWindow(bool v) {
+    _trackWriteWindow = v;
+    final link = _current;
+    if (link != null) link.writeWindow = v ? (link.writeWindow ?? <int>[]) : null;
+  }
+
+  /// Mean of the current link's last [writeWindowSize] write durations, or
+  /// null until the window is full (a half-empty window would let one slow
+  /// write right after connect demote a healthy unit).
+  int? get recentWriteAvgMs {
+    final w = _current?.writeWindow;
+    if (w == null || w.length < writeWindowSize) return null;
+    return w.reduce((a, b) => a + b) ~/ w.length;
+  }
+
+  /// Forget the window — used when a demoted link is given another chance, so
+  /// it is judged on writes made after the retry, not the ones that demoted it.
+  void resetWriteWindow() => _current?.writeWindow?.clear();
+
+  /// When the current link's poll was paused, or null.
+  DateTime? get pollPausedAt => _current?.pollPausedAt;
+
+  /// Stop writing the poll on the current link; keep the link and its notify
+  /// subscription. Returns false when there is no live link or it is already
+  /// paused. [reason] goes into the `link paused` diagnostic line.
+  bool pausePolling({required String reason}) {
+    final link = _current;
+    if (link == null ||
+        (link.device == null && link.peer == null) ||
+        link.pollPausedAt != null) {
+      return false;
+    }
+    link.pollPausedAt = DateTime.now();
+    link.rxDuringPause = 0;
+    _emitEvent('link paused id=${shortDeviceHash(link.deviceId)} reason=$reason',
+        link: link);
+    return true;
+  }
+
+  /// End a [pausePolling] window; the first poll goes out at once, as
+  /// [_startKeepAlive] does, so gated fields refill within one tick.
+  void resumePolling() {
+    final link = _current;
+    final pausedAt = link?.pollPausedAt;
+    if (link == null || pausedAt == null) return;
+    link.pollPausedAt = null;
+    _emitEvent(
+        'link resumed id=${shortDeviceHash(link.deviceId)} '
+        'paused_ms=${DateTime.now().difference(pausedAt).inMilliseconds} '
+        'rx_during_pause=${link.rxDuringPause}',
+        link: link);
+    unawaited(_sendKeepAlive(link));
+  }
 
   /// True while the keep-alive write path is known to be broken.
   bool get keepAliveWriteFailed => _current?.keepAliveWriteFailed ?? false;
