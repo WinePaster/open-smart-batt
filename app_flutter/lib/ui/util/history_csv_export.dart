@@ -60,6 +60,11 @@ Future<void> exportHistoryCsv(
   // design 0092: read with the other pre-await captures below.
   final appName = AppConfigScope.of(context).appName;
   final edition = AppConfigScope.of(context).edition;
+  // design 0103 §3.6 — null (no header line) unless the multi-link experiment
+  // is on. Nullable lookup: a harness without a connection controller writes
+  // the header it always did.
+  final multiLink =
+      context.read<ConnectionController?>()?.multiLink?.exportHeaderValue;
   final messenger = ScaffoldMessenger.of(context);
   // Captured now: every lookup below runs after an await, when the screen that
   // started this may already be gone.
@@ -145,6 +150,7 @@ Future<void> exportHistoryCsv(
         appBuild: services.appBuild,
         platform: services.platform,
         edition: edition,
+        multiLink: multiLink,
         scope: exportScopeLabel(target),
         window: window,
         resolution: resolution,

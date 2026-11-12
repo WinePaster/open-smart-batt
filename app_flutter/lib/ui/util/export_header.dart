@@ -187,6 +187,11 @@ List<String> exportHeaderLines({
   bool ampereColumn = false,
   int? connections,
   bool? rawPacketLog,
+  // design 0103 §3.6: `on max=<n>` while the multi-link experiment is on, and
+  // NO line at all otherwise. Unlike `edition:`, absence is the honest value
+  // here: every build that predates the experiment, and every build that
+  // never had it, recorded single-link — which is what "no line" means.
+  String? multiLink,
   // design 0070 stage two. NO DEFAULT, on purpose.
   //
   // This parameter used to be `= const []`, and that default is the whole
@@ -231,6 +236,7 @@ List<String> exportHeaderLines({
     // rule: an `edition:` that appeared only for pro would make its absence
     // mean both "community" and "a build older than this line".
     'edition: ${edition.name}',
+    if (multiLink != null) 'multilink: $multiLink',
     // FB-60. WHICH TIME RANGE THE USER ASKED FOR — distinct from the
     // `range: A .. B` the repo computes, and the distinction is the whole
     // point. `range:` says what the data happens to span; `window:` says what

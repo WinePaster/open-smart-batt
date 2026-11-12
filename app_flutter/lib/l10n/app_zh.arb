@@ -739,5 +739,13 @@
   "demoCapacitorDesc": "超級電容 · 可試自我檢查",
   "demoBanner": "示範模式 · 資料為模擬，未連線任何裝置",
   "demoRowMeta": "模擬資料 · 不是真的裝置",
-  "demoBannerEnd": "結束示範"
+  "demoBannerEnd": "結束示範",
+  "multiLinkSettingLabel": "多裝置同時連線（實驗）",
+  "multiLinkSettingSub": "最多同時連 3 台；行動電源會單獨連線。",
+  "multiLinkPowerBankDialogTitle": "行動電源單獨連線",
+  "multiLinkPowerBankDialogBodyPause": "行動電源需要單獨連線。進入後，其他裝置會暫停更新，離開後自動恢復。",
+  "multiLinkPowerBankDialogBodyDisconnect": "行動電源需要單獨連線。進入後，其他裝置會暫時斷開，離開後自動重連。",
+  "multiLinkPowerBankDialogEnter": "進入",
+  "multiLinkPowerBankDialogDontAsk": "不再提示",
+  "monitorBodyMultiLink": "監看中 {count} 台 · {reading}"
 }

@@ -24,6 +24,7 @@ import 'ui/devices/devices_page.dart';
 import 'ui/history/history_screen.dart';
 import 'ui/home/home_editor_page.dart';
 import 'ui/home/home_page.dart';
+import 'ui/home/power_bank_exclusive_dialog.dart';
 import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
 import 'ui/util/update_check.dart';
@@ -348,6 +349,11 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           // per-device warning screen and the Settings card — and, unlike the two
           // above, it is also what a notification tap arrives through.
           ChangeNotifierProvider<AlertController>.value(value: s.alerts),
+          // design 0103 — registered only in a multi-link build; every reader
+          // first checks `ConnectionController.multiLink != null`.
+          if (s.multiLink != null)
+            ChangeNotifierProvider<MultiLinkController>.value(
+                value: s.multiLink!),
         ],
         // Rebuild MaterialApp when the theme preference changes.
         child: Consumer<SettingsController>(
@@ -696,6 +702,12 @@ class _RootShellState extends State<RootShell> {
       channelName: l10n.monitorChannelName,
       channelDescription: l10n.monitorChannelDescription,
     );
+    // design 0103 D7: the multi-link reading line, localized for the same
+    // reason as the strings above. No-op in a normal build.
+    context
+        .read<ConnectionController>()
+        .multiLink
+        ?.setBodyFormat(l10n.monitorBodyMultiLink);
     // 🔴 design 0080 §5.2 — the warning notifications' text, for the SAME
     // reason as the six lines above and not merely by analogy: a notification
     // is posted from the telemetry path, where there is no `BuildContext` to
@@ -772,6 +784,18 @@ class _RootShellState extends State<RootShell> {
   /// pauses the radio off that (W-3, rewired 2026-08-12). It used to be the
   /// pusher's job, which is why this route could only safely be opened from the
   /// devices list.
+  /// A home card was tapped. In a multi-link build, opening a power bank's
+  /// page while other devices are connected asks first (design 0103 D2); in
+  /// every other build this is exactly [_openDetail].
+  Future<void> _openDetailFromHome(String deviceId) async {
+    final ml = context.read<ConnectionController>().multiLink;
+    if (ml != null && ml.shouldPromptForPowerBank(deviceId)) {
+      final go = await showPowerBankExclusiveDialog(context, ml);
+      if (!go || !mounted) return;
+    }
+    _openDetail(deviceId);
+  }
+
   void _openDetail(String deviceId, {String fallbackName = ''}) =>
       Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -990,7 +1014,7 @@ class _RootShellState extends State<RootShell> {
                     HomePage(
                       onOpenDevices: () => _setTab(_Tab.devices),
                       onEdit: _openHomeEditor,
-                      onOpenDetail: _openDetail,
+                      onOpenDetail: _openDetailFromHome,
                     ),
                   // The dashboard's stale-telemetry banner links to Settings,
                   // and the dashboard now lives inside a route this page pushes
