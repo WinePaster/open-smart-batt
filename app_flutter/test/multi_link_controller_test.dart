@@ -11,6 +11,8 @@
 //   D7  notification line counts every live link
 //   D2  prompt only for a power bank, only while other links are live
 //   §3.6 / FB-41  two links interleaving samples never cross-attribute
+//   004 only units seen nearby (scan or live link) take a slot; an absent held
+//       unit gives its slot back after the presence window
 import 'dart:async';
 import 'dart:io';
 
@@ -19,6 +21,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/config/app_config.dart';
+import 'package:open_smart_batt/config/multi_link_config.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
@@ -28,9 +31,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// The primary link: driven by hand, never touches a radio.
 class _FakePrimary extends BleService {
+  _FakePrimary({this.adapterOn = false});
+
+  final bool adapterOn;
   final _linkOut = StreamController<BleLinkState>.broadcast();
   final _teleOut = StreamController<TelemetrySample>.broadcast();
+  final _scanOut = StreamController<List<DiscoveredDevice>>.broadcast();
   String? connectedId;
+
+  /// What a scan finds: [startScan] reports exactly these ids.
+  Set<String> nearby = <String>{};
+  int scans = 0;
 
   @override
   String? get connectedDeviceId => connectedId;
@@ -39,19 +50,33 @@ class _FakePrimary extends BleService {
   @override
   Stream<TelemetrySample> get telemetry => _teleOut.stream;
   @override
-  Stream<BluetoothAdapterState> get adapterState =>
-      const Stream<BluetoothAdapterState>.empty();
+  Stream<BluetoothAdapterState> get adapterState => adapterOn
+      ? Stream<BluetoothAdapterState>.value(BluetoothAdapterState.on)
+      : const Stream<BluetoothAdapterState>.empty();
   @override
   Stream<bool> get scanning => const Stream<bool>.empty();
   @override
   bool get isScanning => false;
+  @override
+  Stream<List<DiscoveredDevice>> get scanResults => _scanOut.stream;
+
+  @override
+  Future<void> startScan({Duration timeout = const Duration(seconds: 15)}) async {
+    scans++;
+    emitScan(nearby);
+  }
 
   void emitLink(BleLinkState s) => _linkOut.add(s);
+
+  void emitScan(Iterable<String> ids) => _scanOut.add([
+        for (final id in ids) DiscoveredDevice(id: id, name: id, rssi: -60),
+      ]);
 
   @override
   Future<void> dispose() async {
     await _linkOut.close();
     await _teleOut.close();
+    await _scanOut.close();
     await super.dispose();
   }
 }
@@ -142,24 +167,37 @@ void main() {
   late List<String> log;
   late List<_FakeSecondary> secondaries;
   late AppServices s;
+  late DateTime now;
 
   _FakeSecondary sec(String id) => secondaries.lastWhere((b) => b.id == id);
 
+  /// [nearby] is what a scan has already found before the switch turns on;
+  /// null means every saved unit, which is what the tests written before
+  /// 2026.11.12/004 assume.
   Future<MultiLinkController> boot(List<SavedDevice> devices,
-      {bool enable = true, String? primaryId}) async {
+      {bool enable = true,
+      String? primaryId,
+      Set<String>? nearby,
+      bool adapterOn = false}) async {
     final db = await AppDatabase.open(
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
     );
-    primary = _FakePrimary();
+    primary = _FakePrimary(adapterOn: adapterOn);
     s = await AppServices.create(
       appDatabase: db,
       ble: primary,
       multiLinkBuild: true,
       multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
+      multiLinkClock: () => now,
     );
     for (final d in devices) {
       await s.devices.save(d);
+    }
+    final seen = nearby ?? {for (final d in devices) d.id};
+    if (seen.isNotEmpty) {
+      primary.emitScan(seen);
+      await _settle();
     }
     await s.settings.setRawPacketLog(true);
     if (primaryId != null) {
@@ -178,6 +216,7 @@ void main() {
     AckMarker.debugDirectoryOverride = markers;
     log = <String>[];
     secondaries = <_FakeSecondary>[];
+    now = DateTime(2026, 11, 13, 12);
   });
 
   tearDown(() async {
@@ -342,6 +381,7 @@ void main() {
     await s.devices.save(bat('B'));
     // A short retry so three rounds fit in a test.
     final ml = MultiLinkController(
+      clock: () => now,
       connection: s.connection,
       devices: s.devices,
       telemetry: s.telemetry,
@@ -349,6 +389,9 @@ void main() {
       bleFactory: () => _FakeSecondary(log, secondaries),
       demoteRetryAfter: const Duration(milliseconds: 10),
     );
+    // Seen by a scan (2026.11.12/004: only units in range are adopted).
+    primary.emitScan({'A', 'B'});
+    await _settle();
     await ml.setEnabled(true);
     await _settle();
     for (var round = 1; round <= 3; round++) {
@@ -440,6 +483,93 @@ void main() {
     primary.emitLink(BleLinkState.disconnected);
     await _settle();
     expect(ml.heldIds, {'B'});
+  });
+
+  // 2026.11.12/004: twelve saved units, and the three slots went to the three
+  // most recently SEEN — none of them in range — while the two units in front
+  // of the dealer waited for him to tap them (≈ 1 min 26 s).
+  test('004: only units seen nearby take a slot', () async {
+    final ml = await boot(
+        [bat('A'), bat('B'), bat('C'), bat('D'), bat('E')],
+        nearby: {'D', 'E'});
+    expect(ml.heldIds, {'D', 'E'});
+  });
+
+  test('004: an absent held unit gives its slot back after the window', () async {
+    final ml = await boot([bat('A'), bat('B'), bat('C'), bat('D')],
+        nearby: {'A', 'B', 'C'});
+    expect(ml.heldIds, {'A', 'B', 'C'});
+    // C goes out of range: its link drops and it never comes back.
+    await sec('C').disconnect();
+    await _settle();
+    // Inside the window it keeps its slot (a brief drop must not cost it).
+    now = now.add(MultiLinkConfig.presenceWindow);
+    ml.presenceTick();
+    await _settle();
+    expect(ml.heldIds, contains('C'));
+    // Past the window it is let go …
+    now = now.add(const Duration(seconds: 1));
+    ml.presenceTick();
+    await _settle();
+    expect(ml.heldIds.contains('C'), isFalse);
+    expect(log, contains('disconnect C'));
+    // … and a unit a scan finds takes the slot.
+    primary.emitScan({'D'});
+    await _settle();
+    expect(ml.heldIds, {'A', 'B', 'D'});
+  });
+
+  test('004: a live secondary stays a candidate without being scanned again',
+      () async {
+    final ml = await boot([bat('A'), bat('B')], nearby: {'A', 'B'});
+    expect(ml.heldIds, {'A', 'B'});
+    // Connected units do not advertise; samples are their presence.
+    now = now.add(const Duration(minutes: 30));
+    ml.presenceTick();
+    await _settle();
+    expect(ml.heldIds, {'A', 'B'});
+  });
+
+  test('004: a hand-off keeps the old primary eligible as a secondary',
+      () async {
+    final ml = await boot([bat('A'), bat('B')], nearby: {'B'}, primaryId: 'A');
+    expect(ml.heldIds, {'B'});
+    // A has been the primary for an hour; no scan has seen it (connected).
+    now = now.add(const Duration(hours: 1));
+    await ml.beforePrimaryConnect('B');
+    primary.connectedId = 'B';
+    primary.emitLink(BleLinkState.ready);
+    await _settle();
+    expect(ml.heldIds, {'A'});
+  });
+
+  test('004: with a slot free and a unit unaccounted for, the controller scans',
+      () async {
+    final ml = await boot([bat('A'), bat('B'), bat('C')],
+        nearby: const {}, adapterOn: true);
+    expect(primary.scans, 1, reason: 'switch-on looks for nearby units');
+    expect(ml.heldIds, isEmpty, reason: 'nothing in range yet');
+    // Rate-limited: another tick inside presenceScanEvery does not rescan.
+    primary.nearby = {'B'};
+    ml.presenceTick();
+    await _settle();
+    expect(primary.scans, 1);
+    now = now.add(MultiLinkConfig.presenceScanEvery);
+    ml.presenceTick();
+    await _settle();
+    expect(primary.scans, 2);
+    expect(ml.heldIds, {'B'});
+  });
+
+  test('004: no presence scan in the background or behind a device page',
+      () async {
+    await boot([bat('A')], nearby: const {}, adapterOn: true);
+    final before = primary.scans;
+    s.connection.setDetailVisible(true);
+    now = now.add(const Duration(minutes: 5));
+    s.multiLink!.presenceTick();
+    await _settle();
+    expect(primary.scans, before);
   });
 
   test('§3.6: export header carries the line only while the switch is on',

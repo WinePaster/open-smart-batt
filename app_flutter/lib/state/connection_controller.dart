@@ -1275,6 +1275,32 @@ class ConnectionController extends ChangeNotifier {
   /// True while a scan is in progress.
   bool get isScanning => _scanning;
 
+  /// True while the app is backgrounded (the same tracker the keep-alive
+  /// pacing gate reads).
+  bool get inBackground => _bgWindow.inBackground;
+
+  /// True while a per-device page is on screen ([setDetailVisible]).
+  bool get detailVisible => _detailVisible;
+
+  /// A short scan on behalf of the multi-link experiment (design 0103,
+  /// 2026.11.12/004): it only needs to learn which saved units are in range.
+  ///
+  /// Not [startScan]: that records the devices tab WANTING a scan
+  /// (`_wantScan`), which would restart a 15 s scan whenever a device page
+  /// closes, and it surfaces failures as user-facing errors. This one does
+  /// neither — it skips rather than fails, and leaves no intent behind. The
+  /// results still arrive on [scanResults] and the roster is still logged.
+  Future<void> startPresenceScan(
+      {Duration timeout = const Duration(seconds: 4)}) async {
+    if (_scanning || _detailVisible || !isAdapterOn) return;
+    _event('scan start (multilink presence)');
+    try {
+      await _ble.startScan(timeout: timeout);
+    } catch (e) {
+      _event('presence scan failed: $e');
+    }
+  }
+
   /// Bluetooth radio state.
   BluetoothAdapterState get adapterState => _adapter;
 

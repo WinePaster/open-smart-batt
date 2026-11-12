@@ -20,6 +20,14 @@ import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakePrimary extends BleService {
+  /// A scan that has already found both units: since 2026.11.12/004 only a
+  /// unit seen in range is adopted as a secondary.
+  @override
+  Stream<List<DiscoveredDevice>> get scanResults =>
+      Stream<List<DiscoveredDevice>>.value(const [
+        DiscoveredDevice(id: 'A', name: 'A', rssi: -60),
+        DiscoveredDevice(id: 'B', name: 'B', rssi: -60),
+      ]);
   @override
   String? get connectedDeviceId => null;
   @override

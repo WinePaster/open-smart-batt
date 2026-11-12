@@ -151,6 +151,8 @@ class AppServices {
     AppConfig config = AppConfig.open,
     bool multiLinkBuild = kMultiLinkBuild,
     BleService Function()? multiLinkBleFactory,
+    // Tests only: the presence window (2026.11.12/004) is measured on this.
+    DateTime Function()? multiLinkClock,
   }) async {
     final db = appDatabase ?? await AppDatabase.open(path: dbPath);
     final bleService = ble ?? BleService(parser: parser, profiles: profiles);
@@ -236,6 +238,7 @@ class AppServices {
             settings: settings,
             bleFactory: multiLinkBleFactory ??
                 () => BleService(parser: parser, profiles: profiles),
+            clock: multiLinkClock,
           )
         : null;
     // design 0080 P3. Thresholds arrive as a CLOSURE rather than as a set of

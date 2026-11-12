@@ -99,6 +99,10 @@ class MultiLinkController extends ChangeNotifier {
     this.demoteRetryAfter = MultiLinkConfig.demoteRetryAfter,
     this.retryBase = MultiLinkConfig.secondaryRetryBase,
     this.retryCap = MultiLinkConfig.secondaryRetryCap,
+    this.presenceWindow = MultiLinkConfig.presenceWindow,
+    this.presenceScanEvery = MultiLinkConfig.presenceScanEvery,
+    this.presenceScanTimeout = MultiLinkConfig.presenceScanTimeout,
+    DateTime Function()? clock,
   // Private fields from public named parameters: the `this._x` form the lint
   // suggests does not compile for named parameters (see SettingsController).
   })  : _conn = connection,
@@ -112,7 +116,8 @@ class MultiLinkController extends ChangeNotifier {
         // ignore: prefer_initializing_formals
         _enabledMarker = enabledMarker,
         // ignore: prefer_initializing_formals
-        _skipPromptMarker = skipPromptMarker {
+        _skipPromptMarker = skipPromptMarker,
+        _now = clock ?? DateTime.now {
     _conn.addListener(_onPrimaryChanged);
     _devices.addListener(_reconcile);
     _lastPrimary = _conn.connectedDeviceId;
@@ -132,6 +137,22 @@ class MultiLinkController extends ChangeNotifier {
   final Duration demoteRetryAfter;
   final Duration retryBase;
   final Duration retryCap;
+  final Duration presenceWindow;
+  final Duration presenceScanEvery;
+  final Duration presenceScanTimeout;
+  final DateTime Function() _now;
+
+  /// When each unit was last known to be in range: seen in a scan, or live on
+  /// the primary or a secondary link (2026.11.12/004, option a). Only a unit
+  /// seen within [presenceWindow] is a candidate — see [_isPresent].
+  final Map<String, DateTime> _seenAt = <String, DateTime>{};
+
+  /// The scan list last harvested into [_seenAt]. A finished scan's list stays
+  /// on the controller; comparing identity keeps it from re-stamping forever.
+  List<DiscoveredDevice>? _lastScan;
+
+  /// When [presenceTick] last asked for a scan of its own.
+  DateTime? _lastPresenceScanAt;
 
   final Map<String, _Secondary> _links = <String, _Secondary>{};
 
@@ -269,6 +290,10 @@ class MultiLinkController extends ChangeNotifier {
   /// The primary link is about to connect to [deviceId].
   Future<void> beforePrimaryConnect(String deviceId) async {
     _handoffTarget = deviceId;
+    // The unit being handed AWAY from was live a moment ago, so it is in range
+    // — and a connected unit does not advertise, so no scan would say so.
+    final cur = _conn.connectedDeviceId;
+    if (cur != null && _conn.isOnline) _seenAt[cur] = _now();
     _stoppedByUser = false;
     _leftOut.remove(deviceId);
     _released.remove(deviceId);
@@ -312,12 +337,17 @@ class MultiLinkController extends ChangeNotifier {
 
   void _start() {
     _demoteTimer?.cancel();
-    _demoteTimer = Timer.periodic(demoteCheckEvery, (_) => checkDemotions());
+    _demoteTimer = Timer.periodic(demoteCheckEvery, (_) {
+      checkDemotions();
+      presenceTick();
+    });
     _reconcile();
+    presenceTick();
   }
 
   void _stop() {
     _handoffTarget = null;
+    _lastPresenceScanAt = null;
     _demoteTimer?.cancel();
     _demoteTimer = null;
     _powerBankHeld = false;
@@ -335,6 +365,7 @@ class MultiLinkController extends ChangeNotifier {
 
   void _onPrimaryChanged() {
     if (_disposed) return;
+    _notePresence();
     final p = _conn.connectedDeviceId;
     // The hand-off has landed: from here on the target is excluded as the
     // primary itself, which is the rule that should hold it.
@@ -345,6 +376,8 @@ class MultiLinkController extends ChangeNotifier {
       // desired id; a radio drop keeps it while the ladder runs). A → B is a
       // hand-off, and A becomes eligible as a secondary.
       if (gone != null && p == null) _released.add(gone);
+      // A → B: A was the live primary until just now.
+      if (gone != null && p != null) _seenAt[gone] = _now();
       _lastPrimary = p;
     }
     if (!_enabled) return;
@@ -383,8 +416,35 @@ class MultiLinkController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Which saved units should hold a secondary link right now, in saved order.
-  List<String> _candidates() {
+  /// Fold what the primary controller knows into [_seenAt]: a new scan list,
+  /// and the primary itself while it is live.
+  void _notePresence() {
+    final now = _now();
+    final scan = _conn.scanResults;
+    if (!identical(scan, _lastScan)) {
+      _lastScan = scan;
+      for (final r in scan) {
+        _seenAt[r.id] = now;
+      }
+    }
+    final p = _conn.connectedDeviceId;
+    if (p != null && _conn.isOnline) _seenAt[p] = now;
+  }
+
+  /// In range: live on a secondary link, or seen within [presenceWindow].
+  bool _isPresent(String id) {
+    if (_links[id]?.online ?? false) return true;
+    final at = _seenAt[id];
+    return at != null && _now().difference(at) <= presenceWindow;
+  }
+
+  /// Which saved units should hold a secondary link right now, in saved order
+  /// — and in range (2026.11.12/004: an absent unit no longer takes a slot).
+  List<String> _candidates() =>
+      [for (final id in _eligible()) if (_isPresent(id)) id];
+
+  /// Saved units that could hold a secondary link, in range or not.
+  List<String> _eligible() {
     final primary = _conn.connectedDeviceId;
     return [
       for (final d in _devices.devices)
@@ -507,6 +567,7 @@ class MultiLinkController extends ChangeNotifier {
       unawaited(_release(l.id, reason: 'is-power-bank'));
       return;
     }
+    _seenAt[l.id] = _now();
     l.last = s;
     l.trend.add(s);
     _tele.recordExtraSample(l.id, s);
@@ -519,6 +580,35 @@ class MultiLinkController extends ChangeNotifier {
     }
     _conn.refreshMultiLinkMonitor(s);
     notifyListeners();
+  }
+
+  /// 2026.11.12/004: re-evaluate presence, and look for nearby units when a
+  /// slot is free. Public for tests; the periodic timer started by [_start]
+  /// (and [_start] itself) are the production callers.
+  ///
+  /// The reconcile is what frees a slot: a held unit that is offline and has
+  /// not been seen for [presenceWindow] is no longer a candidate, so it is
+  /// released instead of retrying in a slot a nearby unit could use.
+  ///
+  /// Scans run only where the user is looking at the app and not at one
+  /// unit's page — the same window the devices tab scans in — and only when a
+  /// slot is free AND some saved unit's presence is unknown. The devices tab
+  /// only scans while it is open, so without this a cold start on the home
+  /// tab would know of no unit at all.
+  @visibleForTesting
+  void presenceTick() {
+    if (_disposed || !_enabled || _stoppedByUser) return;
+    _reconcile();
+    if (_powerBankHeld) return;
+    final budget = maxLinks - (_conn.connectedDeviceId != null ? 1 : 0);
+    if (_links.length >= budget) return;
+    final now = _now();
+    final last = _lastPresenceScanAt;
+    if (last != null && now.difference(last) < presenceScanEvery) return;
+    if (_conn.inBackground || _conn.detailVisible || _conn.isScanning) return;
+    if (!_eligible().any((id) => !_isPresent(id))) return;
+    _lastPresenceScanAt = now;
+    unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
   }
 
   /// D5: evaluate the slow-writer rule once. Public for tests; the periodic

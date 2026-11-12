@@ -59,6 +59,20 @@ abstract final class MultiLinkConfig {
   static const Duration secondaryRetryBase = Duration(seconds: 30);
   static const Duration secondaryRetryCap = Duration(minutes: 5);
 
+  /// 2026.11.12/004 (owner ruling 2026-11-13, option a): only a unit seen
+  /// within this window — in a scan, or live on a link — may take a secondary
+  /// slot. With twelve saved units the slots used to go to the three most
+  /// recently SEEN (`last_seen DESC`), absent or not, and an absent one retries
+  /// forever without yielding while the units in front of the user wait.
+  static const Duration presenceWindow = Duration(minutes: 3);
+
+  /// How often the controller may run its own short scan to find nearby
+  /// units while a slot is free (foreground, no device page on screen).
+  static const Duration presenceScanEvery = Duration(seconds: 60);
+
+  /// Length of that scan. Short: it only has to catch one advertisement.
+  static const Duration presenceScanTimeout = Duration(seconds: 4);
+
   /// Marker files (`AckMarker`), not settings columns: the experiment must
   /// not change the database schema, or installing a normal build over this
   /// one would be a schema DOWNGRADE.
