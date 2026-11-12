@@ -143,6 +143,19 @@ class MultiLinkController extends ChangeNotifier {
   /// secondary behind their back. Cleared when they connect it again.
   final Set<String> _released = <String>{};
 
+  /// The unit the primary link is being handed to, from [beforePrimaryConnect]
+  /// until the primary actually names it. Never a candidate in that window.
+  ///
+  /// 🔴 2026.11.12/001: without this, the primary still reports the OLD unit
+  /// while it tears that one down, so [_reconcile] saw the target as an
+  /// ordinary saved unit and adopted it again — a second Dart link on the one
+  /// physical connection. As soon as the primary named the target, that link
+  /// was released as `not-wanted`, and its disconnect cancelled the primary's
+  /// fresh connection too (`gatt setup failed: device is disconnected`). Each
+  /// tap onto another unit cost 3.8–5.0 s against 1.8–2.1 s with the switch
+  /// off, 4 of 4 hand-offs in that batch.
+  String? _handoffTarget;
+
   bool _enabled = false;
   bool _skipPrompt = false;
   bool _stoppedByUser = false;
@@ -255,6 +268,7 @@ class MultiLinkController extends ChangeNotifier {
 
   /// The primary link is about to connect to [deviceId].
   Future<void> beforePrimaryConnect(String deviceId) async {
+    _handoffTarget = deviceId;
     _stoppedByUser = false;
     _leftOut.remove(deviceId);
     _released.remove(deviceId);
@@ -303,6 +317,7 @@ class MultiLinkController extends ChangeNotifier {
   }
 
   void _stop() {
+    _handoffTarget = null;
     _demoteTimer?.cancel();
     _demoteTimer = null;
     _powerBankHeld = false;
@@ -321,6 +336,9 @@ class MultiLinkController extends ChangeNotifier {
   void _onPrimaryChanged() {
     if (_disposed) return;
     final p = _conn.connectedDeviceId;
+    // The hand-off has landed: from here on the target is excluded as the
+    // primary itself, which is the rule that should hold it.
+    if (p != null && p == _handoffTarget) _handoffTarget = null;
     if (p != _lastPrimary) {
       final gone = _lastPrimary;
       // A → null is the user letting go (only `disconnect()` clears the
@@ -371,6 +389,7 @@ class MultiLinkController extends ChangeNotifier {
     return [
       for (final d in _devices.devices)
         if (d.id != primary &&
+            d.id != _handoffTarget &&
             d.productClass != ProductClass.powerBank &&
             !isDemoDeviceId(d.id) &&
             !d.stale &&

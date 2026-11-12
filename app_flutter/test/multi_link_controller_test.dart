@@ -226,6 +226,45 @@ void main() {
     expect(ml.heldIds.contains('B'), isFalse);
   });
 
+  // 2026.11.12/001: the primary still names the OLD unit while it tears that
+  // one down, and a reconcile in that window used to adopt the target again —
+  // a second Dart link on the one physical connection, whose release then
+  // cancelled the primary's fresh connection (4 of 4 taps, 3.8–5.0 s each).
+  test('hand-off: the target is not re-adopted while the primary still names '
+      'the old unit', () async {
+    final ml = await boot([bat('A'), bat('B')], primaryId: 'A');
+    expect(ml.heldIds, {'B'});
+    await ml.beforePrimaryConnect('B');
+    // The primary starts dropping A; it has not named B yet.
+    primary.emitLink(BleLinkState.disconnecting);
+    await _settle();
+    expect(ml.heldIds.contains('B'), isFalse,
+        reason: 'the target belongs to the primary from beforePrimaryConnect');
+    expect(log.where((e) => e == 'connect B'), hasLength(1),
+        reason: 'only the original secondary ever connected to B');
+    // The primary lands on B: A becomes the secondary, B stays out.
+    primary.connectedId = 'B';
+    primary.emitLink(BleLinkState.ready);
+    await _settle();
+    expect(ml.heldIds, {'A'});
+    expect(log.where((e) => e == 'connect B'), hasLength(1));
+  });
+
+  test('hand-off: once landed, a later hand-off back makes the old target a '
+      'candidate again', () async {
+    final ml = await boot([bat('A'), bat('B')], primaryId: 'A');
+    await ml.beforePrimaryConnect('B');
+    primary.connectedId = 'B';
+    primary.emitLink(BleLinkState.ready);
+    await _settle();
+    expect(ml.heldIds, {'A'});
+    await ml.beforePrimaryConnect('A');
+    primary.connectedId = 'A';
+    primary.emitLink(BleLinkState.ready);
+    await _settle();
+    expect(ml.heldIds, {'B'}, reason: 'B is no longer the hand-off target');
+  });
+
   test('D1: a power bank as primary pauses the others; they resume after',
       () async {
     final ml = await boot([bat('A'), bat('B'), pb('PB')]);

@@ -361,7 +361,7 @@ class BleService {
   /// Ask [_execGap] about one inbound event and publish its line, if any.
   void _checkExecGap(String endedBy) {
     final line = _execGap.onEvent(endedBy, DateTime.now());
-    if (line != null) _diagnostics.add(line);
+    if (line != null) _emitTo(_diagnostics, line);
   }
 
   /// Notify-driven keep-alive pacing (design 0047 Phase 1). Service-level like
@@ -381,7 +381,7 @@ class BleService {
   /// buried here.
   void setNotifyDrivenKeepAlive(bool active) {
     final line = _pacer.setActive(active, DateTime.now());
-    if (line != null) _diagnostics.add(line);
+    if (line != null) _emitTo(_diagnostics, line);
   }
 
   /// Whether keep-alives currently ride the notify path. Test-visible so the
@@ -853,7 +853,7 @@ class BleService {
     // on throws a FlutterBluePlusException — so wait (bounded) for `on` first.
     await _awaitAdapterOn(const Duration(seconds: 6));
     _scanSeen.clear();
-    _scan.add(const []);
+    _emitTo(_scan, const []);
     // D.1: do NOT swallow the "Bluetooth must be turned on" / unauthorized
     // failure — let it propagate so the controller can surface a real UI error
     // (and distinguish off vs unauthorized via the adapter state).
@@ -927,7 +927,7 @@ class BleService {
           if (a.isVendor != b.isVendor) return a.isVendor ? -1 : 1;
           return b.rssi.compareTo(a.rssi);
         });
-      _scan.add(list);
+      _emitTo(_scan, list);
     }
   }
 
@@ -1251,7 +1251,7 @@ class BleService {
   void _logConnectionState(_LinkState link, BluetoothConnectionState s,
       DisconnectReason? reason, LinkAction action) {
     final sub = DateTime.now().difference(link.connSubAt).inMilliseconds;
-    _diagnostics.add('conn-state: ${s.name} reason=${reason?.code ?? 'null'} '
+    _emitTo(_diagnostics, 'conn-state: ${s.name} reason=${reason?.code ?? 'null'} '
         'sub=${sub}ms decision=${action.name}');
   }
 
@@ -1492,7 +1492,7 @@ class BleService {
             lastWriteOk: link.lastKeepAliveOkAt, now: DateTime.now())) {
       unawaited(_sendKeepAlive(link));
     }
-    _packets.add(BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
+    _emitTo(_packets, BlePacketEvent(LogDirection.rx, List<int>.unmodifiable(chunk),
         deviceId: link.deviceId));
     final session = link.session;
     if (session == null) return;
@@ -1515,19 +1515,21 @@ class BleService {
       // out — mutating identity into it would put a transport fact inside the
       // decode. `copyWith` leaves the accumulation untouched and gives the
       // stream its own stamped view.
-      _telemetry.add(session.sample.copyWith(deviceId: link.deviceId));
+      // Spelled out rather than through [_emitTo]: FB-88 T1b pins this as the
+      // ONE `_telemetry.add(` site, and that pin is what keeps it stamped.
+      if (!_telemetry.isClosed) _telemetry.add(session.sample.copyWith(deviceId: link.deviceId));
     }
     // Device-metadata side-channel. On the open build
     // the Noop parser never changes it, so this never fires.
     if (!identical(infoBefore, session.metadata)) {
-      _deviceMetadata.add(session.metadata);
+      _emitTo(_deviceMetadata, session.metadata);
     }
   }
 
   /// Emit a diagnostic note line into the packet log (an EVT row), attributed to
   /// [link] when there is one.
   void _emitEvent(String message, {_LinkState? link}) {
-    _packets.add(BlePacketEvent(LogDirection.event, const [],
+    _emitTo(_packets, BlePacketEvent(LogDirection.event, const [],
         note: message, deviceId: link?.deviceId));
   }
 
@@ -1907,7 +1909,7 @@ class BleService {
     }
     final peer = link?.peer;
     if (peer != null) {
-      _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
+      _emitTo(_packets, BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
           deviceId: link!.deviceId));
       _deliverDemo(link, peer.answer(bytes));
       return;
@@ -1924,7 +1926,7 @@ class BleService {
       withoutResponse: woResp,
       timeout: (timeout ?? const Duration(seconds: 15)).inSeconds,
     );
-    _packets.add(BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
+    _emitTo(_packets, BlePacketEvent(LogDirection.tx, List<int>.unmodifiable(bytes),
         deviceId: link!.deviceId));
   }
 
@@ -1991,10 +1993,22 @@ class BleService {
 
   // ---------------------------------------------------------------------------
 
+  /// Every add to this service's own streams goes through here.
+  ///
+  /// 🔴 2026.11.12/001: a secondary link (design 0103) is a whole [BleService]
+  /// that [dispose] closes while a connect or teardown may still be in flight;
+  /// the late `conn-state` / link-state add then threw `Bad state: Cannot add
+  /// new events after calling close` (5 uncaught in 16 minutes, each at a
+  /// release). Nobody is listening to a disposed service, so the event is
+  /// dropped. A live service is unaffected.
+  void _emitTo<T>(StreamController<T> c, T v) {
+    if (!c.isClosed) c.add(v);
+  }
+
   void _setState(BleLinkState s) {
     if (_state == s) return;
     _state = s;
-    _link.add(s);
+    _emitTo(_link, s);
   }
 
   /// Release all resources. The service is unusable afterwards.
