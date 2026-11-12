@@ -29,6 +29,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Records what the platform channel would have been asked to do.
 class _FakeMonitor implements MonitorService {
+  _FakeMonitor({this.holdsThroughReconnect = true});
+
+  /// Android-shaped by default, like the rest of this fake.
+  @override
+  final bool holdsThroughReconnect;
+
   final List<String> calls = [];
   final List<MonitorNotification> posted = [];
   final _stop = StreamController<void>.broadcast();
@@ -100,6 +106,16 @@ class _StubBle extends BleService {
 
   @override
   Future<void> disconnect() async => disconnectCalls++;
+
+  final List<String> connects = [];
+
+  /// A connect that never lands: the caller drives the link by hand.
+  @override
+  Future<void> connect(String deviceId,
+      {Duration? timeout, bool autoConnect = false}) async {
+    connects.add(deviceId);
+    _linkOut.add(BleLinkState.connecting);
+  }
 
   @override
   Future<void> pokeKeepAlive() async => pokeCalls++;
@@ -237,6 +253,99 @@ void main() {
       await settle();
       expect(ble.disconnectCalls, greaterThan(0));
       expect(s.connection.monitorRunning, isFalse);
+    });
+  });
+
+  // 2026.11.12/005: a scooter ride, the app backgrounded, the link dropped —
+  // and the service stopped with it. The OS then froze the app, the reconnect
+  // ladder's timers ran whenever it thawed (`exec gap` 20–120 s), and the
+  // ride went 6 min 33 s without data; the attempt that finally ran on time
+  // connected in 0.7 s.
+  group('the service holds through an auto-reconnect (2026.11.12/005)', () {
+    Future<(AppServices, _StubBle, _FakeMonitor)> onlineThenDropped(
+        {bool holds = true}) async {
+      final ble = _StubBle();
+      final monitor = _FakeMonitor(holdsThroughReconnect: holds);
+      final s = await makeServices(ble, monitor);
+      addTearDown(s.dispose);
+      s.connection.setNotificationStrings(
+        title: 'monitoring',
+        titleConnecting: 'connecting',
+        titleStalled: 'no data',
+        stopLabel: 'Stop',
+        channelName: 'ch',
+        channelDescription: 'desc',
+      );
+      unawaited(s.connection.connect('STUB-DEV'));
+      await settle();
+      ble.emitLink(BleLinkState.connected);
+      ble.emitLink(BleLinkState.ready);
+      await settle();
+      expect(s.connection.monitorRunning, isTrue);
+      // A radio drop of a healthy link: the ladder takes over.
+      ble.emitLink(BleLinkState.disconnected);
+      await settle();
+      return (s, ble, monitor);
+    }
+
+    test('a dropped link keeps the service up, retitled "connecting"',
+        () async {
+      final (s, _, monitor) = await onlineThenDropped();
+      expect(s.connection.monitorRunning, isTrue);
+      expect(monitor.calls, isNot(contains('stop')));
+      expect(monitor.posted.last.title, 'connecting');
+    });
+
+    test('the link coming back keeps the same service, retitled', () async {
+      final (s, ble, monitor) = await onlineThenDropped();
+      final starts = monitor.calls.where((c) => c == 'start').length;
+      ble.emitLink(BleLinkState.connected);
+      ble.emitLink(BleLinkState.ready);
+      await settle();
+      expect(s.connection.monitorRunning, isTrue);
+      expect(monitor.calls.where((c) => c == 'start').length, starts,
+          reason: 'no stop/start churn across the reconnect');
+      // `ready` with nothing received yet is still "connecting" (the rule the
+      // notification group below pins); the first reading makes it monitoring.
+      ble.emitTelemetry(sampleAt(pvlt: 13.2));
+      await settle();
+      expect(monitor.posted.last.title, 'monitoring');
+    });
+
+    test('"stop" while reconnecting stops the reconnect too', () async {
+      final (s, ble, monitor) = await onlineThenDropped();
+      monitor.requestStop();
+      await settle();
+      expect(ble.disconnectCalls, greaterThan(0));
+      expect(s.connection.monitorRunning, isFalse);
+      // The manual disconnect's own `disconnected` must not bring it back.
+      ble.emitLink(BleLinkState.disconnected);
+      await settle();
+      expect(s.connection.monitorRunning, isFalse);
+    });
+
+    test('a user disconnect still stops the service', () async {
+      final ble = _StubBle();
+      final monitor = _FakeMonitor();
+      final s = await makeServices(ble, monitor);
+      addTearDown(s.dispose);
+      unawaited(s.connection.connect('STUB-DEV'));
+      await settle();
+      ble.emitLink(BleLinkState.connected);
+      ble.emitLink(BleLinkState.ready);
+      await settle();
+      await s.connection.disconnect();
+      ble.emitLink(BleLinkState.disconnected);
+      await settle();
+      expect(s.connection.monitorRunning, isFalse);
+      expect(monitor.calls.last, 'stop');
+    });
+
+    test('a platform that does not hold (iOS shape) stops on the drop',
+        () async {
+      final (s, _, monitor) = await onlineThenDropped(holds: false);
+      expect(s.connection.monitorRunning, isFalse);
+      expect(monitor.calls.last, 'stop');
     });
   });
 

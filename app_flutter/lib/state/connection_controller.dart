@@ -232,9 +232,25 @@ class ConnectionController extends ChangeNotifier {
   void _updateMonitor() {
     // design 0097 §2.2: no "connected" notification for a unit that does not
     // exist, and nothing to keep alive in the background.
+    //
+    // 2026.11.12/005: and, where the platform says so, through an auto-
+    // reconnect of a link that dropped — see
+    // [MonitorService.holdsThroughReconnect]. Stopping on the drop is what let
+    // Android freeze the ladder that was supposed to bring the link back.
     final shouldRun =
-        isOnline && _settings.backgroundMonitoring && !_ble.isDemoLink;
-    if (shouldRun == _monitorRunning) return;
+        (isOnline || (_monitor.holdsThroughReconnect && _autoReconnecting)) &&
+            _settings.backgroundMonitoring &&
+            !_ble.isDemoLink;
+    if (shouldRun == _monitorRunning) {
+      // Online ⇄ reconnecting with the service up the whole time: the title
+      // has to follow, and nothing else would push it.
+      if (shouldRun && isOnline != _monitorOnline) {
+        _monitorOnline = isOnline;
+        unawaited(_monitor.update(_buildNotification()));
+      }
+      return;
+    }
+    _monitorOnline = isOnline;
     _monitorRunning = shouldRun;
     if (shouldRun) {
       _lastNotifyAt = null;
@@ -291,7 +307,26 @@ class ConnectionController extends ChangeNotifier {
     if (!_monitorRunning) return;
     _monitorRunning = false;
     _updateKeepAlivePacing();
-    if (isOnline) unawaited(disconnect());
+    // Stop while reconnecting means stop reconnecting too — otherwise the next
+    // rung would bring the link (and the service) straight back.
+    if (isOnline || _autoReconnecting) unawaited(disconnect());
+  }
+
+  /// An auto-reconnect ladder is under way for a link that existed: a rung is
+  /// pending or in flight, the user has not let go, and it has not given up.
+  ///
+  /// `_reconnectAttempts > 0` is the ladder's own record that it started
+  /// ([_scheduleReconnect] increments before arming); `ready` and a manual
+  /// connect reset it. A first connect that never reached `connected` never
+  /// starts the ladder (FB-53), so it never holds the service either.
+  bool get _autoReconnecting {
+    final id = _desiredDeviceId;
+    return id != null &&
+        !isOnline &&
+        !_manualDisconnect &&
+        _settings.autoReconnect &&
+        _reconnectAttempts > 0 &&
+        lastErrorFor(id) != 'reconnect_exhausted';
   }
 
   /// Watch the link's telemetry freshness so the notification can stop lying.
@@ -335,6 +370,9 @@ class ConnectionController extends ChangeNotifier {
   /// `telemetryStalled` first would label it "no data" and hang a
   /// last-updated clock on it for a reading that never existed.
   String get _stateTitle {
+    // Held through an auto-reconnect (2026.11.12/005): there is no link, so
+    // "monitoring" would be a lie and "no data" would hide that we are trying.
+    if (!isOnline) return _notifyTitleConnecting;
     final h = _health;
     if (h == null) return _notifyTitle; // nothing bound (iOS, tests)
     if (!h.hasTelemetry) return _notifyTitleConnecting;
@@ -417,6 +455,10 @@ class ConnectionController extends ChangeNotifier {
   final BleService _ble;
   late final MonitorService _monitor;
   bool _monitorRunning = false;
+
+  /// Whether the link was online the last time [_updateMonitor] ran with the
+  /// service up — so an online ⇄ reconnecting edge re-posts the title.
+  bool _monitorOnline = false;
   DateTime? _lastNotifyAt;
   /// Pre-l10n seeds for the three ongoing-notification titles, replaced by
   /// [setNotificationStrings] on the first frame. Seeded from the injected
@@ -3085,6 +3127,8 @@ class ConnectionController extends ChangeNotifier {
         _setError('reconnect_exhausted', deviceId: id);
         _event('auto-reconnect gave up after $_reconnectAttempts attempts '
             '(stale device?)');
+        // A service held through the ladder (2026.11.12/005) ends with it.
+        _updateMonitor();
         notifyListeners();
       }
       return;

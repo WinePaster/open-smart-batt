@@ -79,6 +79,9 @@ class _StubBle extends BleService {
 
 /// The Android/desktop shape: a monitor whose strategy does NOT pace.
 class _NonPacingMonitor implements MonitorService {
+  @override
+  bool get holdsThroughReconnect => false;
+
   final _stop = StreamController<void>.broadcast();
 
   @override

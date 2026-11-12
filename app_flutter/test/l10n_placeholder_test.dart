@@ -115,6 +115,9 @@ const AppConfig _injected = AppConfig(
 /// Records what the platform channel would have been asked to post.
 /// Same shape as `foreground_service_test.dart`'s `_FakeMonitor`.
 class _FakeMonitor implements MonitorService {
+  @override
+  bool get holdsThroughReconnect => false;
+
   final List<MonitorNotification> posted = [];
   final _stop = StreamController<void>.broadcast();
 
