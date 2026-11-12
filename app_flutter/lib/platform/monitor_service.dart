@@ -84,6 +84,21 @@ abstract class MonitorService {
   /// is unreachable by construction, not merely unexercised.
   bool get pacesKeepAliveInBackground;
 
+  /// True when keeping this service up while the app auto-reconnects a
+  /// dropped link is what lets that reconnect run on time.
+  ///
+  /// Android: the service is what keeps the process schedulable. Stopping it
+  /// the moment the link drops let the OS freeze a backgrounded app, and the
+  /// reconnect ladder's timers — and each attempt's 8 s connect timeout —
+  /// then ran whenever the process happened to thaw: `2026.11.12/005`, a
+  /// scooter ride, 6 min 33 s without data, attempts stretched to 82 s and
+  /// 249 s by `exec gap`s of 20–120 s, and the third attempt, once it really
+  /// ran, connected in 0.7 s.
+  ///
+  /// iOS answers false: it reconnects through CoreBluetooth's autoConnect,
+  /// not an app-side ladder, and its "service" only gates keep-alive pacing.
+  bool get holdsThroughReconnect;
+
   /// The right implementation for the running platform.
   factory MonitorService.forPlatform() {
     if (Platform.isAndroid) return AndroidMonitorService();
@@ -110,6 +125,9 @@ class NoopMonitorService implements MonitorService {
 
   @override
   bool get pacesKeepAliveInBackground => false;
+
+  @override
+  bool get holdsThroughReconnect => false;
 
   @override
   void dispose() => _stop.close();
@@ -169,6 +187,9 @@ class IosMonitorService implements MonitorService {
 
   @override
   bool get pacesKeepAliveInBackground => true;
+
+  @override
+  bool get holdsThroughReconnect => false;
 
   @override
   void dispose() => _stop.close();
@@ -240,6 +261,10 @@ class AndroidMonitorService implements MonitorService {
   /// 0047's hard condition 1 forbids exactly that).
   @override
   bool get pacesKeepAliveInBackground => false;
+
+  /// True: see [MonitorService.holdsThroughReconnect].
+  @override
+  bool get holdsThroughReconnect => true;
 
   @override
   void dispose() {
