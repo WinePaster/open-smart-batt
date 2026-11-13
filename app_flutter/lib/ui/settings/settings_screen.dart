@@ -189,6 +189,21 @@ class _DisplayCard extends StatelessWidget {
             ),
           ),
           const _AccentThemeRow(),
+          // Two levels on top of the OS font setting (owner ruling
+          // 2026-11-13). Large first: it is the default and today's rendering.
+          SettingsRow(
+            key: const ValueKey('settings-text-size'),
+            label: l10n.settingsTextSizeLabel,
+            sub: l10n.settingsTextSizeSub,
+            trailing: SegmentedControl<AppTextSize>(
+              selected: s.textSize,
+              onChanged: s.setTextSize,
+              options: [
+                (value: AppTextSize.large, label: l10n.settingsTextSizeLarge),
+                (value: AppTextSize.small, label: l10n.settingsTextSizeSmall),
+              ],
+            ),
+          ),
           SettingsRow(
             label: l10n.settingsLanguageLabel,
             sub: l10n.settingsLanguageSub,

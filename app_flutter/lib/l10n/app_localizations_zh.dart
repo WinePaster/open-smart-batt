@@ -1269,6 +1269,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsThemeAuto => '自動';
 
   @override
+  String get settingsTextSizeLabel => '字體大小';
+
+  @override
+  String get settingsTextSizeSub => '大：比系統字體再大一些；小：與系統字體相同';
+
+  @override
+  String get settingsTextSizeLarge => '大';
+
+  @override
+  String get settingsTextSizeSmall => '小';
+
+  @override
   String get settingsAccentThemeLabel => '主題色彩';
 
   @override

@@ -27,6 +27,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/app_settings.dart' show AppTextSize;
+
 import 'accent_theme.dart';
 import 'card_style.dart';
 
@@ -266,16 +268,46 @@ class AppTheme {
   /// Standard card padding (mockup `.card { padding: 15px }`).
   static const EdgeInsets cardPadding = EdgeInsets.all(15);
 
-  /// The app's own text-size bump, applied on top of the OS setting in
-  /// `main.dart`. It has been 1.15 since the first build; naming it means the
-  /// gauge sizing below can tell "the user enlarged their system font" apart
-  /// from "the app always renders 15 % larger", which a bare literal could not.
+  /// The app's own text-size bump for [AppTextSize.large], applied on top of
+  /// the OS setting in `main.dart`. It has been 1.15 since the first build;
+  /// naming it means the gauge sizing below can tell "the user enlarged their
+  /// system font" apart from "the app renders 15 % larger", which a bare
+  /// literal could not.
+  ///
+  /// 🔴 Since the two-level text size (2026-11-13) this is the LARGE factor,
+  /// not "the" factor. Code that needs to undo the app-side bump must ask
+  /// [AppTextScaleScope.factorOf] for the one actually in force — dividing by
+  /// this constant under Small would read the missing 15 % as the user having
+  /// SHRUNK their system font.
   static const double baseTextScale = 1.15;
 
-  /// How much the USER has enlarged text, relative to [baseTextScale].
-  /// 1.0 means they left their system font alone.
+  /// The app-side factor for a text-size choice: [baseTextScale] for Large
+  /// (today's rendering), 1.0 for Small (the OS size alone).
+  static double appTextScaleFor(AppTextSize size) => switch (size) {
+        AppTextSize.large => baseTextScale,
+        AppTextSize.small => 1.0,
+      };
+
+  /// The text scaler the whole app runs under, given the OS one.
+  ///
+  /// * Large: the OS scale times [baseTextScale], collapsed to a linear scaler
+  ///   — byte-for-byte what `main.dart` did before the setting existed.
+  /// * Small: the OS scaler itself, untouched. "The same size as the OS
+  ///   setting" taken literally — including a non-linear OS scaler (Android
+  ///   14+), which a `linear(scale(1))` rebuild would flatten.
+  static TextScaler applyAppTextScale(TextScaler os, AppTextSize size) =>
+      switch (size) {
+        AppTextSize.large =>
+          TextScaler.linear(os.scale(1) * appTextScaleFor(size)),
+        AppTextSize.small => os,
+      };
+
+  /// How much the USER has enlarged text, relative to the app-side factor in
+  /// force ([AppTextScaleScope.factorOf]). 1.0 means they left their system
+  /// font alone — under EITHER text size.
   static double userTextScale(BuildContext context) =>
-      MediaQuery.textScalerOf(context).scale(1) / baseTextScale;
+      MediaQuery.textScalerOf(context).scale(1) /
+      AppTextScaleScope.factorOf(context);
 
   /// Dial diameter for [PvltGauge] given the card's inner width.
   ///
@@ -450,4 +482,40 @@ class AppTheme {
       ),
     );
   }
+}
+
+/// Publishes the app-side text factor that `main.dart` multiplied into the
+/// ambient [MediaQuery] text scaler, so [AppTheme.userTextScale] can divide
+/// out exactly that factor and nothing else.
+///
+/// Installed once, in `MaterialApp.builder`, beside the [MediaQuery] it
+/// describes. The two must change together — which is why they are built from
+/// the same [AppTextSize] in the same expression.
+class AppTextScaleScope extends InheritedWidget {
+  const AppTextScaleScope({
+    super.key,
+    required this.factor,
+    required super.child,
+  });
+
+  /// The app-side multiplier on top of the OS scale (1.15 Large, 1.0 Small).
+  final double factor;
+
+  /// The factor in force, or [AppTheme.baseTextScale] where no scope is
+  /// installed.
+  ///
+  /// 🔑 The fallback is the Large factor on purpose: before the setting existed
+  /// every screen ran under 1.15 and divided by 1.15, and widget tests that
+  /// pump a screen on its own (with `osScale * baseTextScale` as their
+  /// scaler) still describe exactly that world. Falling back to 1.0 would
+  /// silently re-interpret all of them as a user who enlarged their font.
+  static double factorOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<AppTextScaleScope>()
+          ?.factor ??
+      AppTheme.baseTextScale;
+
+  @override
+  bool updateShouldNotify(AppTextScaleScope oldWidget) =>
+      factor != oldWidget.factor;
 }

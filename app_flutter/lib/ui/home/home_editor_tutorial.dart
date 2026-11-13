@@ -134,8 +134,8 @@ class _HomeEditorTutorialDialogState extends State<_HomeEditorTutorialDialog> {
             maxWidth: 360,
             // 🔴 The height clamp is load-bearing, not defensive.
             //
-            // `AppTheme.baseTextScale` is 1.15 ON TOP of the OS setting, so
-            // four illustrated paragraphs are taller than a 360 pt phone before
+            // `AppTheme.baseTextScale` is 1.15 ON TOP of the OS setting (the
+            // default Large text size), so four illustrated paragraphs are taller than a 360 pt phone before
             // the user has enlarged anything. Without both this and the
             // scroll view below, the Column overflows and Flutter paints the
             // striped bar over the last paragraph.

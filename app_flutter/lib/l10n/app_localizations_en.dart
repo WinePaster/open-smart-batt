@@ -1349,6 +1349,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsThemeAuto => 'Auto';
 
   @override
+  String get settingsTextSizeLabel => 'Text size';
+
+  @override
+  String get settingsTextSizeSub =>
+      'Large: a bit bigger than your system font · Small: same as system';
+
+  @override
+  String get settingsTextSizeLarge => 'Large';
+
+  @override
+  String get settingsTextSizeSmall => 'Small';
+
+  @override
   String get settingsAccentThemeLabel => 'Accent colour';
 
   @override

@@ -994,6 +994,13 @@
   "settingsThemeLight": "Light",
   "settingsThemeDark": "Dark",
   "settingsThemeAuto": "Auto",
+  "settingsTextSizeLabel": "Text size",
+  "@settingsTextSizeLabel": {
+    "description": "Owner ruling 2026-11-13: two levels on top of the OS font setting. Large (the default) is the rendering every earlier build had, 15% above the system size; Small is the system size alone."
+  },
+  "settingsTextSizeSub": "Large: a bit bigger than your system font · Small: same as system",
+  "settingsTextSizeLarge": "Large",
+  "settingsTextSizeSmall": "Small",
   "settingsAccentThemeLabel": "Accent colour",
   "settingsAccentThemeSub": "Two colours, not one — the second is what charts draw temperature with",
   "accentThemeAmber": "Amber",
