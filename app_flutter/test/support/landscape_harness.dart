@@ -46,7 +46,11 @@ class Win {
 /// `demo_ui_test` does it. Never reaches the flutter_blue_plus platform.
 class LandscapeFakeBle extends BleService {
   final _linkOut = StreamController<BleLinkState>.broadcast();
+  final _telemetryOut = StreamController<TelemetrySample>.broadcast();
   String? connectedId;
+
+  /// Push one sample, as if it arrived over the link.
+  void emit(TelemetrySample s) => _telemetryOut.add(s);
 
   @override
   String? get connectedDeviceId => connectedId;
@@ -59,8 +63,7 @@ class LandscapeFakeBle extends BleService {
   Stream<BluetoothAdapterState> get adapterState =>
       Stream<BluetoothAdapterState>.value(BluetoothAdapterState.on);
   @override
-  Stream<TelemetrySample> get telemetry =>
-      const Stream<TelemetrySample>.empty();
+  Stream<TelemetrySample> get telemetry => _telemetryOut.stream;
   @override
   Stream<bool> get scanning => const Stream<bool>.empty();
   @override
@@ -94,8 +97,50 @@ class LandscapeFakeBle extends BleService {
   @override
   Future<void> dispose() async {
     await _linkOut.close();
+    await _telemetryOut.close();
     await super.dispose();
   }
+}
+
+/// Device-type bytes of the three saved harness units (smart battery,
+/// second-generation super-capacitor, power bank).
+const int kTypeBattery = 0x02;
+const int kTypeCapacitor = 0x17;
+const int kTypePowerBank = 0x22;
+
+/// Link [ble] to saved unit [id] and feed it a few seconds of fixed
+/// telemetry carrying [deviceType], so the device page routes and classifies
+/// exactly as it would for real hardware — deterministically.
+Future<void> linkWithTelemetry(
+  WidgetTester tester,
+  AppServices s,
+  String id,
+  int deviceType,
+) async {
+  final ble = s.ble as LandscapeFakeBle;
+  await tester.runAsync(() => s.connection.connect(id));
+  final t0 = DateTime.now();
+  final pb = deviceType == kTypePowerBank;
+  for (var i = 0; i < 6; i++) {
+    ble.emit(
+      TelemetrySample(
+        timestamp: t0.add(Duration(seconds: i)),
+        deviceId: id,
+        deviceType: deviceType,
+        pvlt: pb ? null : 13.18 + i * 0.01,
+        svlt: pb ? 5.02 : 12.64,
+        temperatureC: 25,
+        current: pb ? 1.2 : 0.0,
+        dvol: deviceType == kTypeBattery
+            ? const [3.299, 3.292, 3.296, 3.293]
+            : null,
+        socPercent: pb ? 76 : null,
+        mode: 0,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  await settleHarness(tester);
 }
 
 /// Saved units of every class, so the home grid has tiles to lay out.
@@ -202,6 +247,9 @@ Future<void> pumpShell(WidgetTester tester, AppServices s) async {
   await tester.pumpWidget(OpenSmartBattApp(services: s));
   await settleHarness(tester);
   addTearDown(() async {
+    // Writes queued by a link (touch, class) call back into controllers the
+    // app disposes with itself — drain them while those are still alive.
+    await tester.runAsync(() => s.pending.drain());
     await tester.pumpWidget(const SizedBox());
   });
 }

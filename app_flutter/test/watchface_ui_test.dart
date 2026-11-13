@@ -22,6 +22,8 @@
 //    pinned, as the definition old `face=standard` captures were taken under.
 //  * The §6 invariant is UNTOUCHED and still swept over every enum value: the
 //    control card is last, always, and no stored slug can move or remove it.
+//    (design 0105 Q5 = A: in a two-column landscape page "last" means last in
+//    the RIGHT column — see `landscape_detail_test.dart`.)
 //
 // CLEAN-ROOM: expectations derive from this project's own source and design docs.
 import 'dart:async';
@@ -742,6 +744,14 @@ void main() {
         // placed follows", which is the property that was always meant. The
         // loop below is the other half and is unchanged: every card a pack face
         // can place sits above the controls.
+        //
+        // 🔵 **AMENDED 2026-11-13 (design 0105 Q5 = A).** This file pumps a
+        // PORTRAIT window, where the page is still one column and everything
+        // below holds verbatim. In a wide landscape window the page splits in
+        // two and "last" is relaxed to **last in the RIGHT column**, the
+        // warnings entry still its one follower; that half is pinned in
+        // `landscape_detail_test.dart`. The structural half — no DisplayModule
+        // for the control card — is unchanged and is what makes both true.
         final children = shellChildren(tester);
         final placeable = children
             .where((w) => w is! AlertSettingsEntry)
