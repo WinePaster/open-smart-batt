@@ -1819,8 +1819,25 @@ class ConnectionController extends ChangeNotifier {
   /// (needs the radio toggled) cases.
   Future<void> startScan(
       {Duration timeout = const Duration(seconds: 15)}) async {
-    final ok = await _ble.ensurePermissions();
+    debugPrint('OSB scan: controller.startScan');
+    // 🔴 The permission step has to be inside a catch of its own. Uncaught, a
+    // throw here (permission_handler reports "a request is already running" and
+    // "no Activity" as PlatformExceptions) left this method by the side door:
+    // `main.dart`'s platformDispatcher.onError swallows it into the diagnostic
+    // log only, so logcat showed nothing, the screen showed the empty list, and
+    // 重新掃描 looked dead (2026-11-14, ROG Phone 9 Pro, 0.7.51+26111340).
+    final bool ok;
+    try {
+      ok = await _ble.ensurePermissions();
+    } catch (e) {
+      debugPrint('OSB scan: permission check threw: $e');
+      _setError(e.toString());
+      _event('scan aborted: permission check failed: $e');
+      notifyListeners();
+      return;
+    }
     if (!ok) {
+      debugPrint('OSB scan: aborted — permission denied');
       // No `deviceId`: a scan is not about a unit, and the code is radio-level
       // anyway (see [_setError]).
       _setError('permission_denied');
@@ -1830,8 +1847,10 @@ class ConnectionController extends ChangeNotifier {
     }
     _wantScan = true;
     _event('scan start');
+    debugPrint('OSB scan: permissions ok, starting');
     try {
       await _ble.startScan(timeout: timeout);
+      debugPrint('OSB scan: started');
       // design 0088 §3 #2 — a successful scan proves the ADAPTER works and
       // nothing else. Clearing a unit's connect failure here would wash away
       // the FB-52 / FB-58 latches on an unrelated scan.
@@ -1841,10 +1860,12 @@ class ConnectionController extends ChangeNotifier {
           ? 'bluetooth_unauthorized'
           : 'bluetooth_off';
       _setError(code);
+      debugPrint('OSB scan: failed ($code): ${e.description ?? e.code}');
       _event('scan failed ($code): ${e.description ?? e.code}');
       notifyListeners();
     } catch (e) {
       _setError(e.toString());
+      debugPrint('OSB scan: failed: $e');
       _event('scan failed: $e');
       notifyListeners();
     }

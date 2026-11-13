@@ -329,6 +329,30 @@ jobs:
           track: internal
           status: completed
 
+      # Mode C publishes no Release, so without this the release-signed APK it
+      # just built and verified is thrown away. Kept as a workflow artifact for
+      # side-loading a test build OVER an installed Play/CI build (same key ⇒ no
+      # uninstall, no lost history). 2026-11-14: rescan-trace build for the
+      # ROG Phone 9 Pro report.
+      - name: 保存 release APK（模式 C，workflow artifact，不發 Release）
+        if: inputs.play_aab_only == true
+        run: |
+          OUT="open-smart-batt-${{ needs.version.outputs.tag }}-${{ needs.version.outputs.build }}.apk"
+          cp "${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "PLAY_APK=$OUT" >> "$GITHUB_ENV"
+
+      - name: 上傳 release APK artifact（模式 C）
+        if: inputs.play_aab_only == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ needs.version.outputs.tag }}
+          path: |
+            ${{ env.PLAY_APK }}
+            ${{ env.PLAY_APK }}.sha256
+          retention-days: 90
+          if-no-files-found: error
+
       - name: 重新命名 APK（含固定名 latest 供網站一鍵下載）
         if: inputs.play_aab_only != true
         run: |

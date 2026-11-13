@@ -152,6 +152,11 @@ Future<void> bootstrap({
         .ignore();
   };
   WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    // Returning true below marks the error handled, which also stops the
+    // engine printing it — so without this line a release build's uncaught
+    // errors reach the diagnostic log and nothing else, and a tester reading
+    // logcat sees a tap that "did nothing" (2026-11-14 rescan report).
+    debugPrint('Uncaught: $error\n$stack');
     services.logRepo.insertLog(LogEntry.event('Uncaught: $error')).ignore();
     return true;
   };
