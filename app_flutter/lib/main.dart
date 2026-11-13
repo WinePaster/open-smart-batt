@@ -381,21 +381,27 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
             home: RootShell(
               deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
             ),
-            // Global font bump on top of the user's system text scale. The factor
-            // is [AppTheme.baseTextScale], not a literal, because the dashboard
-            // has to divide it back out to tell how much the USER enlarged text
-            // (see AppTheme.gaugeDiameter).
+            // Global font bump on top of the user's system text scale, chosen
+            // by the text-size setting (2026-11-13): Large = OS ×
+            // [AppTheme.baseTextScale], today's rendering and the default;
+            // Small = the OS scale alone. The factor is published through
+            // [AppTextScaleScope] beside the MediaQuery it went into, because
+            // the dashboard has to divide exactly that factor back out to tell
+            // how much the USER enlarged text (see AppTheme.gaugeDiameter).
             builder: (context, child) {
               final mq = MediaQuery.of(context);
-              return MediaQuery(
-                data: mq.copyWith(
-                  textScaler: TextScaler.linear(
-                    mq.textScaler.scale(1) * AppTheme.baseTextScale,
+              final size = settings.textSize;
+              return AppTextScaleScope(
+                factor: AppTheme.appTextScaleFor(size),
+                child: MediaQuery(
+                  data: mq.copyWith(
+                    textScaler:
+                        AppTheme.applyAppTextScale(mq.textScaler, size),
                   ),
+                  // design 0097 §3.5 — above the navigator, so every route
+                  // carries it while a demo unit is linked.
+                  child: DemoBannerFrame(child: child!),
                 ),
-                // design 0097 §3.5 — above the navigator, so every route
-                // carries it while a demo unit is linked.
-                child: DemoBannerFrame(child: child!),
               );
             },
           ),

@@ -2144,6 +2144,30 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get settingsThemeAuto;
 
+  /// Owner ruling 2026-11-13: two levels on top of the OS font setting. Large (the default) is the rendering every earlier build had, 15% above the system size; Small is the system size alone.
+  ///
+  /// In en, this message translates to:
+  /// **'Text size'**
+  String get settingsTextSizeLabel;
+
+  /// No description provided for @settingsTextSizeSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Large: a bit bigger than your system font · Small: same as system'**
+  String get settingsTextSizeSub;
+
+  /// No description provided for @settingsTextSizeLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Large'**
+  String get settingsTextSizeLarge;
+
+  /// No description provided for @settingsTextSizeSmall.
+  ///
+  /// In en, this message translates to:
+  /// **'Small'**
+  String get settingsTextSizeSmall;
+
   /// No description provided for @settingsAccentThemeLabel.
   ///
   /// In en, this message translates to:

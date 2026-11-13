@@ -1374,9 +1374,9 @@ class _Header extends StatelessWidget {
           // clip, which is how it survived to 2026-08-14 unnoticed (measured at
           // 37 px on a 320 pt surface). Widths here are not hypothetical:
           // `main.dart` multiplies the system text scale by
-          // `AppTheme.baseTextScale = 1.15` and does NOT cap it, so a user at
-          // 2.0 renders this at 2.3×, and `Select device` / `Rescan` are wider
-          // than the Chinese strings.
+          // `AppTheme.baseTextScale = 1.15` (the default Large text size) and
+          // does NOT cap it, so a user at 2.0 renders this at 2.3×, and
+          // `Select device` / `Rescan` are wider than the Chinese strings.
           Flexible(
             child: Text(
               l10n.devicesSheetTitle,
@@ -1710,9 +1710,9 @@ class _DeviceRow extends StatelessWidget {
               //
               // 🔴 A [Wrap], not a [Row] — changed 2026-08-17 when design 0066
               // added a THIRD action ("型號") between the two. `main.dart`
-              // MULTIPLIES the system text scale by `AppTheme.baseTextScale` and
-              // never clamps it, and three words do not fit a 320 pt card the
-              // way two did. A `Row` of three loose [Flexible]s caps each at a
+              // MULTIPLIES the system text scale by `AppTheme.baseTextScale`
+              // (under the default Large text size) and never clamps it, and
+              // three words do not fit a 320 pt card the way two did. A `Row` of three loose [Flexible]s caps each at a
               // third of the card, which at that width ellipsises 重新命名 down
               // to 重新… — and a control whose WORD has been clipped is the FB-70
               // failure mode wearing a longer label, since the word is the whole

@@ -24,6 +24,30 @@ enum SpeedUnit { kmh, mph }
 /// [light].
 enum AppThemeMode { light, dark, auto }
 
+/// How large the app draws text, ON TOP of the OS font-size setting
+/// (owner ruling 2026-11-13: two levels, Large is the default).
+///
+/// 🔑 **[large] IS today's app, to the pixel.** Every build before this
+/// setting multiplied the OS text scale by a fixed app-side bump
+/// (`AppTheme.baseTextScale`); Large keeps exactly that. [small] drops the
+/// bump, so text is the size the OS setting alone asks for.
+///
+/// The numeric factor deliberately does NOT live here: this file is pure Dart
+/// and stores the CHOICE, the same split as [AppSettings.accentThemeId] (id
+/// here, colours in `theme/`). `AppTheme.appTextScaleFor` maps it.
+///
+/// Persisted by `.name` in `settings.text_size` (schema v27). An unreadable or
+/// absent value decodes to [large] and never throws — see
+/// [AppSettings._textSizeFromMap].
+enum AppTextSize {
+  /// The OS scale times the app's own bump — what every build before this
+  /// setting rendered. Every install, new or upgraded, starts here.
+  large,
+
+  /// The OS scale alone, no app-side bump.
+  small,
+}
+
 /// Which shape of the app the user wants (design 0063). DEFAULT [personal].
 ///
 /// 🔑 **[personal] IS today's app, to the byte.** Same four tabs, same startup
@@ -173,6 +197,10 @@ class AppSettings {
 
   /// Theme preference (light / dark / auto). DEFAULT [AppThemeMode.light].
   final AppThemeMode themeMode;
+
+  /// Text size on top of the OS setting (schema v27). DEFAULT
+  /// [AppTextSize.large], which is today's rendering — see [AppTextSize].
+  final AppTextSize textSize;
 
   /// The chosen accent set's id (design 0064), or NULL for "never chose".
   ///
@@ -415,6 +443,10 @@ class AppSettings {
     // ones land in the same place without a T8a-style split.
     this.mode = AppMode.personal,
     this.themeMode = AppThemeMode.light,
+    // 🔴 Large is not merely "the sensible default": it is the only one that
+    // leaves every existing screen unchanged. `fromMap` falls back to the same
+    // value for an upgraded row, so new installs and old ones agree.
+    this.textSize = AppTextSize.large,
     this.accentThemeId,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
@@ -449,6 +481,7 @@ class AppSettings {
     bool? keepScreenAwake,
     AppMode? mode,
     AppThemeMode? themeMode,
+    AppTextSize? textSize,
     AppLang? lang,
     TempUnit? tempUnit,
     bool? speedDetection,
@@ -488,6 +521,7 @@ class AppSettings {
         keepScreenAwake: keepScreenAwake ?? this.keepScreenAwake,
         mode: mode ?? this.mode,
         themeMode: themeMode ?? this.themeMode,
+        textSize: textSize ?? this.textSize,
         accentThemeId: clearAccentTheme
             ? null
             : (accentThemeId ?? this.accentThemeId),
@@ -538,6 +572,9 @@ class AppSettings {
         // setting changes".
         'app_mode': mode.name,
         'theme_mode': themeMode.name,
+        // schema v27. Written even for `large`, for the INSERT OR REPLACE
+        // reason at the head of this map.
+        'text_size': textSize.name,
         // schema v19. NULL when never chosen — the column's own meaning; see
         // the field. Written on every save for the reason stated above: this
         // map REPLACES the row. The `theme:` prefix is added HERE and stripped
@@ -582,6 +619,7 @@ class AppSettings {
             (m['background_monitoring_ios'] as num?)?.toInt() == 1,
         mode: _appModeFromMap(m),
         themeMode: _themeModeFromMap(m),
+        textSize: _textSizeFromMap(m),
         accentThemeId: _accentThemeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],
@@ -675,6 +713,23 @@ class AppSettings {
       }
     }
     return AppMode.personal;
+  }
+
+  /// Resolve the text size from a persisted row (schema v27).
+  ///
+  /// Same contract as [_appModeFromMap]: a missing column (pre-v27 row), a
+  /// NULL, and a name this build does not know (a downgrade after a future
+  /// release adds a third size) all read as [AppTextSize.large] — the size the
+  /// user already had. **Never throws**: a cosmetic field must not be able to
+  /// stop the app from starting.
+  static AppTextSize _textSizeFromMap(Map<String, Object?> m) {
+    final raw = m['text_size'];
+    if (raw is String) {
+      for (final e in AppTextSize.values) {
+        if (e.name == raw) return e;
+      }
+    }
+    return AppTextSize.large;
   }
 
   /// Resolve the accent set's id from a persisted row (schema v19).

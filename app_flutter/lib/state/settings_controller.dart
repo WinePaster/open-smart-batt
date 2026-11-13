@@ -66,6 +66,10 @@ class SettingsController extends ChangeNotifier {
   /// `initState` and again from its listener — it decides how many tabs exist.
   AppMode get mode => _settings.mode;
   AppThemeMode get themeMode => _settings.themeMode;
+
+  /// Large (today's rendering, the default) or Small (the OS size alone).
+  /// `main.dart` reads it to pick the app-side text factor.
+  AppTextSize get textSize => _settings.textSize;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
   /// 🔴 **The STORED switch — what the user said, not whether the feature is
@@ -135,6 +139,8 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setThemeMode(AppThemeMode v) =>
       update(_settings.copyWith(themeMode: v));
+  Future<void> setTextSize(AppTextSize v) =>
+      update(_settings.copyWith(textSize: v));
 
   /// Choose an accent set (design 0064), or null to go back to "never chose".
   ///

@@ -490,7 +490,24 @@ class Db {
   /// CLAIMING A NUMBER: 26 was taken after reading `static const int
   /// schemaVersion` out of every local and remote ref of both repos on
   /// 2026-11-11 — the highest anywhere was 25.
-  static const int schemaVersion = 26;
+  ///
+  /// v27 — two-level text size (owner ruling 2026-11-13).
+  ///
+  ///   settings.text_size  TEXT, **nullable, NO DEFAULT** — `AppTextSize.name`
+  ///     (`large` / `small`), or NULL for every row written before this
+  ///     migration.
+  ///
+  /// Same shape and same reasoning as v18's `app_mode`: an enum stored by its
+  /// name, and NULL is the answer rather than a gap. `AppSettings.fromMap`
+  /// reads NULL — and any name it does not know — as `large`, which is exactly
+  /// the rendering every earlier build had, so an upgrade changes nothing on
+  /// screen. No DEFAULT, because a DEFAULT of `large` would state that every
+  /// pre-v27 user chose Large when none of them was offered a choice.
+  ///
+  /// CLAIMING A NUMBER: 27 was taken after searching every local and remote
+  /// ref of the public repo on 2026-11-13 for a `schemaVersion` above 26 —
+  /// there was none.
+  static const int schemaVersion = 27;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1098,6 +1115,14 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSavedDevices} ADD COLUMN last_soc INTEGER',
       );
     }
+    if (from < 27) {
+      // Two-level text size — see [Db.schemaVersion] v27. Additive, nullable,
+      // NO DEFAULT: NULL decodes to Large, today's rendering, and the migration
+      // must not invent a choice nobody made.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN text_size TEXT',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -1241,6 +1266,7 @@ class AppDatabase {
       g_calibration TEXT,
       app_mode TEXT,
       accent_theme TEXT,
+      text_size TEXT,
       alerts_enabled INTEGER NOT NULL DEFAULT 0,
       alert_sustain_sec INTEGER NOT NULL DEFAULT 5,
       alert_repeat_min INTEGER NOT NULL DEFAULT 15,
