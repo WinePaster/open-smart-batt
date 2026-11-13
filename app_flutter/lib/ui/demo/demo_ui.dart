@@ -96,35 +96,43 @@ Future<DemoKind?> showDemoPicker(BuildContext context) {
   return showModalBottomSheet<DemoKind>(
     context: context,
     showDragHandle: true,
+    // design 0105 P5: scrollable. A sheet without `isScrollControlled` is
+    // capped at 9/16 of the window, ≈ 219 dp on a phone on its side — less
+    // than the handle, the title and two two-line rows. Where it fits (every
+    // portrait phone) the scroll view is exactly as tall as the column, so
+    // nothing moves.
     builder: (sheet) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(
-              l10n.demoPickTitle,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-          ),
-          for (final k in DemoKind.values)
-            ListTile(
-              key: ValueKey('demo-pick-${k.id}'),
-              leading: Icon(
-                k == DemoKind.battery
-                    ? Icons.battery_full
-                    : Icons.electric_bolt_outlined,
-                color: sheet.accent.accent,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                l10n.demoPickTitle,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
-              title: Text(demoDisplayName(l10n, k.id)!),
-              subtitle: Text(k == DemoKind.battery
-                  ? l10n.demoBatteryDesc
-                  : l10n.demoCapacitorDesc),
-              onTap: () => Navigator.of(sheet).pop(k),
             ),
-          const SizedBox(height: 8),
-        ],
+            for (final k in DemoKind.values)
+              ListTile(
+                key: ValueKey('demo-pick-${k.id}'),
+                leading: Icon(
+                  k == DemoKind.battery
+                      ? Icons.battery_full
+                      : Icons.electric_bolt_outlined,
+                  color: sheet.accent.accent,
+                ),
+                title: Text(demoDisplayName(l10n, k.id)!),
+                subtitle: Text(k == DemoKind.battery
+                    ? l10n.demoBatteryDesc
+                    : l10n.demoCapacitorDesc),
+                onTap: () => Navigator.of(sheet).pop(k),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     ),
   );

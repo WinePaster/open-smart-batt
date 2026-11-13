@@ -30,6 +30,7 @@ import 'ui/startup_failure.dart';
 import 'ui/util/orientation_policy.dart';
 import 'ui/util/update_check.dart';
 import 'ui/util/wide_layout.dart';
+import 'ui/widgets/landscape_max_width.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
 /// `OSB_CHANNEL` selects the distribution channel (see [AppConfig.forChannel]);
@@ -605,6 +606,10 @@ class _RootShellState extends State<RootShell> {
   /// migration and no export-header field belong to this feature (Q3 moot).
   bool _immersive = false;
 
+  /// Keeps the four pages' state when a rotation or full screen moves them to
+  /// a different parent — see [_buildContent].
+  final GlobalKey _contentKey = GlobalKey(debugLabel: 'shell-content');
+
   @override
   void initState() {
     super.initState();
@@ -1084,8 +1089,18 @@ class _RootShellState extends State<RootShell> {
   /// The four pages plus the full-screen exit button, shared verbatim by the
   /// portrait and the landscape scaffold — only the chrome around it differs.
   Widget _buildContent() {
+    // 🔴 The GlobalKey is what keeps every page's state across a rotation
+    // (design 0105 P2). Portrait and landscape put this subtree under
+    // different parents — the Scaffold body vs. the rail's Row — and without
+    // a GlobalKey Flutter would throw the four pages away and build them
+    // again: the devices page would re-run its `initState`, every list would
+    // jump to the top, and History would reload. With it the subtree is
+    // MOVED. It sits on the Stack, INSIDE `_wrapExits`, because entering full
+    // screen re-parents it too (under the exits' PopScope / GestureDetector) —
+    // which until now rebuilt every page on each entry and exit.
     return _wrapExits(
       Stack(
+        key: _contentKey,
         children: [
           IndexedStack(
             index: _tab.index,
@@ -1134,15 +1149,24 @@ class _RootShellState extends State<RootShell> {
               // [DeviceDetailPage] too, and a second copy that only did
               // `_setTab` would put the invisible-tab-switch defect back on
               // one of the two entrances. See [_openSettingsFromDetail].
-              DevicesPage(
-                active: _tab == _Tab.devices,
-                onOpenSettings: _openSettingsFromDetail,
+              // design 0105 P5: the three pages with no width cap of their
+              // own are centred at 560 in landscape; in portrait
+              // [LandscapeMaxWidth] passes the constraints straight through.
+              LandscapeMaxWidth(
+                child: DevicesPage(
+                  active: _tab == _Tab.devices,
+                  onOpenSettings: _openSettingsFromDetail,
+                ),
               ),
               // Re-keyed on each switch to 歷史 so it reloads the latest
               // records.
-              HistoryScreen(key: ValueKey(_historyEpoch)),
-              SettingsScreen(
-                deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+              LandscapeMaxWidth(
+                child: HistoryScreen(key: ValueKey(_historyEpoch)),
+              ),
+              LandscapeMaxWidth(
+                child: SettingsScreen(
+                  deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+                ),
               ),
             ],
           ),
