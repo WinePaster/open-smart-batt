@@ -40,6 +40,7 @@ import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:open_smart_batt/ui/history/device_history_tab.dart';
 import 'package:open_smart_batt/ui/history/history_chart_page.dart';
 import 'package:open_smart_batt/ui/history/history_screen.dart';
+import 'package:open_smart_batt/ui/util/orientation_policy.dart';
 import 'package:open_smart_batt/ui/widgets/one_screen_report.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -648,8 +649,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 150));
       }
       expect(find.byType(HistoryChartPage), findsNothing);
-      expect(orientations.last, contains('DeviceOrientation.portraitUp'),
-          reason: 'leaving the page must put the app back in portrait');
+      // 🔵 design 0105 P1: back TO THE ORIENTATION POLICY, whatever it says
+      // for this window (the default 800×600 test view is ≥ 600 dp on its
+      // shortest side, so here that is "any"); never a hard-coded portrait.
+      expect(orientations.last,
+          [for (final o in OrientationPolicy.current) o.toString()],
+          reason: 'leaving the page must restore the orientation policy');
       await tester.runAsync(
           () async => Future<void>.delayed(const Duration(milliseconds: 200)));
       await tester.pump();

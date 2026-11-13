@@ -27,6 +27,7 @@ import 'ui/home/home_page.dart';
 import 'ui/home/power_bank_exclusive_dialog.dart';
 import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
+import 'ui/util/orientation_policy.dart';
 import 'ui/util/update_check.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
@@ -75,11 +76,12 @@ Future<void> bootstrap({
   // The outcome is held rather than logged: the log lives in a database that is
   // not open yet. It is written a few lines further down, beside `cold-start:`.
   final restoreLine = await configureBleStateRestoration();
-  // Portrait-locked (mockup: 直式鎖定).
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // design 0105 P1: the orientation comes from ONE policy. Before the
+  // settings exist it knows only the window size — portrait on a phone,
+  // exactly the lock every earlier build applied here; landscape allowed on a
+  // window whose shortest side is ≥ 600 dp (Q3 = A). The user's 「允許橫式畫面」
+  // is folded in by [_OpenSmartBattAppState] once the settings have loaded.
+  await OrientationPolicy.apply();
 
   // Composition root: open DB, build repos + BLE service, wire controllers.
   //
@@ -240,6 +242,30 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
       setAppResumed: widget.services.gforce.setAppResumed,
     );
     WidgetsBinding.instance.addObserver(this);
+    // design 0105 P1: fold the stored 「允許橫式畫面」 into the orientation
+    // policy now, and again whenever it is written. `AppServices.create` has
+    // already awaited `settings.load()`, so this is the real value.
+    widget.services.settings.addListener(_applyOrientationPolicy);
+    _applyOrientationPolicy();
+  }
+
+  /// Forward the setting to [OrientationPolicy] (design 0105 P1). Cheap and
+  /// idempotent: the policy sends nothing when the resulting set is unchanged,
+  /// so the many unrelated settings writes cost nothing here.
+  void _applyOrientationPolicy() {
+    unawaited(OrientationPolicy.apply(
+      userAllowsLandscape: widget.services.settings.allowLandscape,
+    ));
+  }
+
+  /// The window changed size — a split-screen resize, a foldable opening, or
+  /// the first real metrics arriving after `bootstrap()` saw a zero-sized view.
+  /// The policy's shortest-side test may now answer differently (design 0105
+  /// P1); a plain rotation leaves the shortest side alone and sends nothing.
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    unawaited(OrientationPolicy.apply());
   }
 
   /// Record foreground/background transitions into the diagnostic log.
@@ -307,6 +333,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.services.settings.removeListener(_applyOrientationPolicy);
     // Before the services go: its timer's callback drives one of them.
     _speedLifecycle.dispose();
     // Fire-and-forget teardown of streams / BLE link / DB on app exit.

@@ -70,6 +70,10 @@ class SettingsController extends ChangeNotifier {
   /// Large (today's rendering, the default) or Small (the OS size alone).
   /// `main.dart` reads it to pick the app-side text factor.
   AppTextSize get textSize => _settings.textSize;
+
+  /// 「允許橫式畫面」 (design 0105 Q2 = B). `main.dart` forwards it to
+  /// `OrientationPolicy`.
+  bool get allowLandscape => _settings.allowLandscape;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
   /// 🔴 **The STORED switch — what the user said, not whether the feature is
@@ -141,6 +145,8 @@ class SettingsController extends ChangeNotifier {
       update(_settings.copyWith(themeMode: v));
   Future<void> setTextSize(AppTextSize v) =>
       update(_settings.copyWith(textSize: v));
+  Future<void> setAllowLandscape(bool v) =>
+      update(_settings.copyWith(allowLandscape: v));
 
   /// Choose an accent set (design 0064), or null to go back to "never chose".
   ///

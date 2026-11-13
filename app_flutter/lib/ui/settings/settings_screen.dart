@@ -204,6 +204,19 @@ class _DisplayCard extends StatelessWidget {
               ],
             ),
           ),
+          // design 0105 Q2 = B: off by default, so a phone stays portrait
+          // unless its user asks. Beside the text size because both decide
+          // how the app is drawn, and a head-unit user looking for "make it
+          // fit my screen" looks here.
+          SettingsRow(
+            key: const ValueKey('settings-allow-landscape'),
+            label: l10n.settingsAllowLandscapeLabel,
+            sub: l10n.settingsAllowLandscapeSub,
+            trailing: _Toggle(
+              value: s.allowLandscape,
+              onChanged: s.setAllowLandscape,
+            ),
+          ),
           SettingsRow(
             label: l10n.settingsLanguageLabel,
             sub: l10n.settingsLanguageSub,

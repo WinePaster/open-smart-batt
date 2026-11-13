@@ -2168,6 +2168,18 @@ abstract class AppLocalizations {
   /// **'Small'**
   String get settingsTextSizeSmall;
 
+  /// Design 0105 Q2 = B: an off-by-default switch that lets a phone (or a small car head unit) turn to landscape. Windows whose shortest side is 600 dp or more allow landscape without it (Q3 = A).
+  ///
+  /// In en, this message translates to:
+  /// **'Allow landscape'**
+  String get settingsAllowLandscapeLabel;
+
+  /// No description provided for @settingsAllowLandscapeSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets the app turn sideways on this phone or a small car screen. Large screens (tablets, most car screens) can always turn.'**
+  String get settingsAllowLandscapeSub;
+
   /// No description provided for @settingsAccentThemeLabel.
   ///
   /// In en, this message translates to:

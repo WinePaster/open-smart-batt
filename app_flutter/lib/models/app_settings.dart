@@ -202,6 +202,14 @@ class AppSettings {
   /// [AppTextSize.large], which is today's rendering — see [AppTextSize].
   final AppTextSize textSize;
 
+  /// 「允許橫式畫面」/ "Allow landscape" (design 0105 Q2 = B, schema v28).
+  /// DEFAULT false: phones stay portrait unless the user turns this on.
+  ///
+  /// It decides ORIENTATION only — `OrientationPolicy` also allows landscape
+  /// by itself on a window whose shortest side is ≥ 600 dp (Q3 = A), and the
+  /// landscape layout follows the window's shape, not this switch.
+  final bool allowLandscape;
+
   /// The chosen accent set's id (design 0064), or NULL for "never chose".
   ///
   /// 🔴 The CHOICE is stored, never the colours. Storing the three hex values
@@ -447,6 +455,8 @@ class AppSettings {
     // leaves every existing screen unchanged. `fromMap` falls back to the same
     // value for an upgraded row, so new installs and old ones agree.
     this.textSize = AppTextSize.large,
+    // Off: an upgraded install keeps exactly the portrait lock it had.
+    this.allowLandscape = false,
     this.accentThemeId,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
@@ -482,6 +492,7 @@ class AppSettings {
     AppMode? mode,
     AppThemeMode? themeMode,
     AppTextSize? textSize,
+    bool? allowLandscape,
     AppLang? lang,
     TempUnit? tempUnit,
     bool? speedDetection,
@@ -522,6 +533,7 @@ class AppSettings {
         mode: mode ?? this.mode,
         themeMode: themeMode ?? this.themeMode,
         textSize: textSize ?? this.textSize,
+        allowLandscape: allowLandscape ?? this.allowLandscape,
         accentThemeId: clearAccentTheme
             ? null
             : (accentThemeId ?? this.accentThemeId),
@@ -575,6 +587,9 @@ class AppSettings {
         // schema v27. Written even for `large`, for the INSERT OR REPLACE
         // reason at the head of this map.
         'text_size': textSize.name,
+        // schema v28 (design 0105). Written on every save for the INSERT OR
+        // REPLACE reason at the head of this map.
+        'allow_landscape': allowLandscape ? 1 : 0,
         // schema v19. NULL when never chosen — the column's own meaning; see
         // the field. Written on every save for the reason stated above: this
         // map REPLACES the row. The `theme:` prefix is added HERE and stripped
@@ -620,6 +635,13 @@ class AppSettings {
         mode: _appModeFromMap(m),
         themeMode: _themeModeFromMap(m),
         textSize: _textSizeFromMap(m),
+        // A pre-v28 row has no column: off, the portrait lock it always had.
+        // Type-checked rather than cast, `_textSizeFromMap`'s rule: a display
+        // preference must never be able to stop the app from starting.
+        allowLandscape: switch (m['allow_landscape']) {
+          final num v => v.toInt() == 1,
+          _ => false,
+        },
         accentThemeId: _accentThemeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],
