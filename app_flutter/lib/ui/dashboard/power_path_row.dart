@@ -400,24 +400,29 @@ class _PowerPathRowState extends State<PowerPathRow> {
     ];
     final chosen = await showModalBottomSheet<(String, String)>(
       context: context,
+      // design 0105 P5: scrollable — the 9/16 cap of a sheet without
+      // `isScrollControlled` is ≈ 219 dp on a phone on its side. Where it
+      // fits, the scroll view is exactly the column's height.
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(l10n.powerPathAskWhichPort,
-                    style: Theme.of(ctx).textTheme.titleSmall),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(l10n.powerPathAskWhichPort,
+                      style: Theme.of(ctx).textTheme.titleSmall),
+                ),
               ),
-            ),
-            for (final o in options)
-              ListTile(
-                title: Text(o.$2),
-                onTap: () => Navigator.of(ctx).pop(o),
-              ),
-          ],
+              for (final o in options)
+                ListTile(
+                  title: Text(o.$2),
+                  onTap: () => Navigator.of(ctx).pop(o),
+                ),
+            ],
+          ),
         ),
       ),
     );

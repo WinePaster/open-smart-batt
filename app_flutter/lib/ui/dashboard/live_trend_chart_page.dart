@@ -40,13 +40,13 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/orientation_policy.dart';
 import 'display_modules.dart';
 import 'live_trend_chart.dart';
 
@@ -125,20 +125,18 @@ class _LiveTrendChartPageState extends State<LiveTrendChartPage> {
     // close button's callback: the system back gesture never reaches that
     // callback, and an app left locked to landscape is the worst outcome this
     // file can produce.
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // design 0105 P1: through the one orientation policy, never directly.
+    unawaited(OrientationPolicy.enterFullScreenLandscape());
     _ticker = Timer.periodic(LiveTrendChart.frameInterval, (_) => _tick());
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    // design 0105 P1: restore TO THE POLICY, not to a hard-coded portrait —
+    // on a head unit or with 「允許橫式畫面」 on, leaving a chart must not ask
+    // for portrait (0105 §4.1).
+    unawaited(OrientationPolicy.exitFullScreenLandscape());
     super.dispose();
   }
 

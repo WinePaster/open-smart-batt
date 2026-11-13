@@ -34,6 +34,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../alerts/alert_settings_page.dart';
 import 'dashboard_cards.dart';
+import 'detail_columns.dart';
 import 'power_flow.dart';
 import 'watchfaces.dart';
 
@@ -73,73 +74,93 @@ class PowerBankView extends StatelessWidget {
         ProductClass.powerBank, stored.watchface, settings,
         gForceAvailable: gAvailable);
 
-    return Center(
+    // ---- device-type chip (deterministic) ---------------------------------
+    final chip = Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // The glyph follows the flow. It used to be a hardwired charging
+          // battery, which meant a bank being drained down still showed a
+          // charging icon (FB-47, symptom 1).
+          Icon(powerFlowIcon(flow), size: 14, color: const Color(0xFFF0A030)),
+          const SizedBox(width: 6),
+          Text(
+            l10n.dashboardDeviceTypeDetected(l10n.dashboardDeviceTypePowerBank),
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ),
+    );
+
+    // ---- the watchface: which cards, in what order ------------------------
+    //
+    // NO CONTROL CARD is appended after these, and that is design 0034 §6
+    // rule 3 rather than an omission: a power bank has no protection
+    // controls, and must not grow an empty control card for the sake of
+    // looking like the pack page. An always-empty card is the same mistake as
+    // a permanent `--`.
+    //
+    // ⚠️ AMENDED 2026-08-16 (design 0065 §3.3.2). This comment used to read
+    // "NOTHING is appended after this loop", and one thing now is — the
+    // history block below. The wording had to change with it: read literally,
+    // it is an instruction to the next person to delete that block, and design
+    // 0055 §3's lesson is that a comment left describing the old shape gets
+    // obeyed. What the rule actually forbids is an empty CONTROL CARD, and
+    // that is still forbidden.
+    final cards = [
+      for (final m in order)
+        (
+          m,
+          dashboardCardFor(context, m,
+              shellClass: ProductClass.powerBank,
+              surface: CardSurface.deviceDetail,
+              tele: tele),
+        ),
+    ];
+
+    // ---- warnings (design 0080 §3.7.1) ------------------------------------
+    //
+    // ⚠️ The rule three paragraphs up bars an empty CONTROL card, not every
+    // card — and this one is neither empty nor a control: a power bank is
+    // watched for heat (Q1), so it has real thresholds to show. The screen it
+    // opens draws ONE row (§3.2.2, state D).
+    final alerts = AlertSettingsEntry(deviceId: deviceId);
+
+    // ---- this unit's own history ------------------------------------------
+    //
+    // 🔵 **Moved to the detail page's history sub-tab, 2026-08-21** (design
+    // 0079 S1) — same move, same reasons as `pack_view.dart`, which carries
+    // the fuller note.
+    //
+    // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
+
+    // Portrait: the one 560-wide column every build before design 0105 drew.
+    final single = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
           children: [
-            // ---- device-type chip (deterministic) -----------------------
-            Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // The glyph follows the flow. It used to be a hardwired
-                  // charging battery, which meant a bank being drained down
-                  // still showed a charging icon (FB-47, symptom 1).
-                  Icon(powerFlowIcon(flow),
-                      size: 14, color: const Color(0xFFF0A030)),
-                  const SizedBox(width: 6),
-                  Text(
-                    l10n.dashboardDeviceTypeDetected(
-                        l10n.dashboardDeviceTypePowerBank),
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ],
-              ),
-            ),
-
-            // ---- the watchface: which cards, in what order --------------
-            //
-            // NO CONTROL CARD is appended after this loop, and that is design
-            // 0034 §6 rule 3 rather than an omission: a power bank has no
-            // protection controls, and must not grow an empty control card for
-            // the sake of looking like the pack page. An always-empty card is
-            // the same mistake as a permanent `--`.
-            //
-            // ⚠️ AMENDED 2026-08-16 (design 0065 §3.3.2). This comment used to
-            // read "NOTHING is appended after this loop", and one thing now is
-            // — the history block below. The wording had to change with it:
-            // read literally, it is an instruction to the next person to delete
-            // that block, and design 0055 §3's lesson is that a comment left
-            // describing the old shape gets obeyed. What the rule actually
-            // forbids is an empty CONTROL CARD, and that is still forbidden.
-            for (final m in order)
-              ?dashboardCardFor(context, m,
-                  shellClass: ProductClass.powerBank,
-                  surface: CardSurface.deviceDetail,
-                  tele: tele),
-
-            // ---- warnings (design 0080 §3.7.1) --------------------------
-            //
-            // ⚠️ The rule three paragraphs up bars an empty CONTROL card, not
-            // every card — and this one is neither empty nor a control: a power
-            // bank is watched for heat (Q1), so it has real thresholds to show.
-            // The screen it opens draws ONE row (§3.2.2, state D).
-            AlertSettingsEntry(deviceId: deviceId),
-
-            // ---- this unit's own history --------------------------------
-            //
-            // 🔵 **Moved to the detail page's history sub-tab, 2026-08-21**
-            // (design 0079 S1) — same move, same reasons as `pack_view.dart`,
-            // which carries the fuller note.
-            //
-            // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
+            chip,
+            for (final (_, card) in cards) ?card,
+            alerts,
           ],
         ),
       ),
     );
-  }
 
+    // design 0105 P4: left = the charge gauge — or, as on every power bank
+    // page today (the fixed face draws no gauge), the chart in its slot;
+    // right = the energy path and the numbers grid, the warnings entry last.
+    // See `detail_columns.dart`.
+    final (left, right) =
+        DetailColumns.split(cards, DetailColumns.powerBankRight);
+    return DetailBody(
+      single: single,
+      header: [chip],
+      left: left,
+      right: [...right, alerts],
+    );
+  }
 }

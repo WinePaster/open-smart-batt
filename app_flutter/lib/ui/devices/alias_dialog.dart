@@ -111,7 +111,11 @@ class _AliasDialogState extends State<_AliasDialog> {
       insetPadding: const EdgeInsets.all(26),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 300),
-        child: Padding(
+        // design 0105 P5: scrollable. On a phone on its side with the
+        // keyboard up there is ≈ 140 dp for this dialog; where everything
+        // fits the scroll view is exactly the column's height, so a portrait
+        // phone sees no change.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(22),
           child: Column(
             mainAxisSize: MainAxisSize.min,

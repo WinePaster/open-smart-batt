@@ -1281,6 +1281,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsTextSizeSmall => '小';
 
   @override
+  String get settingsAllowLandscapeLabel => '允許橫式畫面';
+
+  @override
+  String get settingsAllowLandscapeSub =>
+      '讓手機或小尺寸車機可以橫放使用；平板與大部分車機的大螢幕本來就可以橫式。';
+
+  @override
   String get settingsAccentThemeLabel => '主題色彩';
 
   @override

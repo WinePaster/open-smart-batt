@@ -345,6 +345,8 @@
   "settingsTextSizeSub": "大：比系統字體再大一些；小：與系統字體相同",
   "settingsTextSizeLarge": "大",
   "settingsTextSizeSmall": "小",
+  "settingsAllowLandscapeLabel": "允許橫式畫面",
+  "settingsAllowLandscapeSub": "讓手機或小尺寸車機可以橫放使用；平板與大部分車機的大螢幕本來就可以橫式。",
   "settingsAccentThemeLabel": "主題色彩",
   "settingsAccentThemeSub": "一組兩色 —— 第二個顏色是圖表畫溫度用的",
   "accentThemeAmber": "琥珀",

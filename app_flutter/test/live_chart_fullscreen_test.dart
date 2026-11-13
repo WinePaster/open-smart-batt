@@ -37,6 +37,7 @@ import 'package:open_smart_batt/ui/dashboard/dashboard_cards.dart';
 import 'package:open_smart_batt/ui/dashboard/live_trend_chart.dart';
 import 'package:open_smart_batt/ui/dashboard/live_trend_chart_page.dart';
 import 'package:open_smart_batt/ui/dashboard/readouts_card.dart';
+import 'package:open_smart_batt/ui/util/orientation_policy.dart';
 
 final _en = AppLocalizationsEn();
 
@@ -262,29 +263,50 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
-  testWidgets('T8 — landscape is locked on entry and released on exit',
-      (t) async {
-    final calls = <List<String>>[];
-    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform, (call) async {
-      if (call.method == 'SystemChrome.setPreferredOrientations') {
-        calls.add(List<String>.from(call.arguments as List));
-      }
-      return null;
+  // 🔵 design 0105 P1: the exit no longer hard-codes portrait — it restores TO
+  // THE ORIENTATION POLICY. On a phone with 「允許橫式畫面」 off that is still
+  // portrait (the original T8 assertion, kept as the first case); on a wide
+  // window or with the setting on it is "any", and asking for portrait there
+  // would rotate a head unit's app away from its only orientation (0105 §4.1).
+  for (final (name, size, allow, expected) in [
+    ('phone, setting off ⇒ portrait', const Size(390, 844), false,
+        OrientationPolicy.portraitOnly),
+    ('phone, setting on ⇒ any', const Size(390, 844), true,
+        OrientationPolicy.any),
+    ('1280×720 window ⇒ any', const Size(1280, 720), false,
+        OrientationPolicy.any),
+  ]) {
+    testWidgets('T8 — landscape is locked on entry and the policy restored on '
+        'exit: $name', (t) async {
+      t.view.physicalSize = size;
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      OrientationPolicy.debugReset();
+      addTearDown(OrientationPolicy.debugReset);
+      final calls = <List<String>>[];
+      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform, (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') {
+          calls.add(List<String>.from(call.arguments as List));
+        }
+        return null;
+      });
+      addTearDown(() => t.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      await OrientationPolicy.apply(userAllowsLandscape: allow);
+      calls.clear();
+
+      await t.pumpWidget(_app(LiveTrendChartPage(
+          shellClass: ProductClass.smartBattery, tele: _tele(_seeded()))));
+      await t.pump();
+      expect(calls.single.every((o) => o.contains('landscape')), isTrue);
+
+      await t.pumpWidget(const SizedBox());
+      await t.pump();
+      expect(calls.length, 2);
+      expect(calls.last, [for (final o in expected) o.toString()]);
     });
-    addTearDown(() => t.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
-
-    await t.pumpWidget(_app(LiveTrendChartPage(
-        shellClass: ProductClass.smartBattery, tele: _tele(_seeded()))));
-    await t.pump();
-    expect(calls.single.every((o) => o.contains('landscape')), isTrue);
-
-    await t.pumpWidget(const SizedBox());
-    await t.pump();
-    expect(calls.length, 2);
-    expect(calls.last.every((o) => o.contains('portrait')), isTrue);
-  });
+  }
 
   group('T9 — the legends follow the flow, then freeze with the picture', () {
     testWidgets('a power bank names its rail from the CURRENT sample',

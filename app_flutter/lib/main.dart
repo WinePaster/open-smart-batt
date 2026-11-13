@@ -27,7 +27,10 @@ import 'ui/home/home_page.dart';
 import 'ui/home/power_bank_exclusive_dialog.dart';
 import 'ui/settings/settings_screen.dart';
 import 'ui/startup_failure.dart';
+import 'ui/util/orientation_policy.dart';
 import 'ui/util/update_check.dart';
+import 'ui/util/wide_layout.dart';
+import 'ui/widgets/landscape_max_width.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
 /// `OSB_CHANNEL` selects the distribution channel (see [AppConfig.forChannel]);
@@ -75,11 +78,12 @@ Future<void> bootstrap({
   // The outcome is held rather than logged: the log lives in a database that is
   // not open yet. It is written a few lines further down, beside `cold-start:`.
   final restoreLine = await configureBleStateRestoration();
-  // Portrait-locked (mockup: 直式鎖定).
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // design 0105 P1: the orientation comes from ONE policy. Before the
+  // settings exist it knows only the window size — portrait on a phone,
+  // exactly the lock every earlier build applied here; landscape allowed on a
+  // window whose shortest side is ≥ 600 dp (Q3 = A). The user's 「允許橫式畫面」
+  // is folded in by [_OpenSmartBattAppState] once the settings have loaded.
+  await OrientationPolicy.apply();
 
   // Composition root: open DB, build repos + BLE service, wire controllers.
   //
@@ -240,6 +244,30 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
       setAppResumed: widget.services.gforce.setAppResumed,
     );
     WidgetsBinding.instance.addObserver(this);
+    // design 0105 P1: fold the stored 「允許橫式畫面」 into the orientation
+    // policy now, and again whenever it is written. `AppServices.create` has
+    // already awaited `settings.load()`, so this is the real value.
+    widget.services.settings.addListener(_applyOrientationPolicy);
+    _applyOrientationPolicy();
+  }
+
+  /// Forward the setting to [OrientationPolicy] (design 0105 P1). Cheap and
+  /// idempotent: the policy sends nothing when the resulting set is unchanged,
+  /// so the many unrelated settings writes cost nothing here.
+  void _applyOrientationPolicy() {
+    unawaited(OrientationPolicy.apply(
+      userAllowsLandscape: widget.services.settings.allowLandscape,
+    ));
+  }
+
+  /// The window changed size — a split-screen resize, a foldable opening, or
+  /// the first real metrics arriving after `bootstrap()` saw a zero-sized view.
+  /// The policy's shortest-side test may now answer differently (design 0105
+  /// P1); a plain rotation leaves the shortest side alone and sends nothing.
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    unawaited(OrientationPolicy.apply());
   }
 
   /// Record foreground/background transitions into the diagnostic log.
@@ -307,6 +335,7 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.services.settings.removeListener(_applyOrientationPolicy);
     // Before the services go: its timer's callback drives one of them.
     _speedLifecycle.dispose();
     // Fire-and-forget teardown of streams / BLE link / DB on app exit.
@@ -576,6 +605,10 @@ class _RootShellState extends State<RootShell> {
   /// has a fourth exit: kill the app and reopen it. That is also why no DB
   /// migration and no export-header field belong to this feature (Q3 moot).
   bool _immersive = false;
+
+  /// Keeps the four pages' state when a rotation or full screen moves them to
+  /// a different parent — see [_buildContent].
+  final GlobalKey _contentKey = GlobalKey(debugLabel: 'shell-content');
 
   @override
   void initState() {
@@ -955,6 +988,23 @@ class _RootShellState extends State<RootShell> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // 🔴 Read ONCE and handed to whichever bar is built — the bottom bar in
+    // portrait, the rail in landscape (design 0105 P2). Both map index ⇄ tab
+    // through this one list; a second, slightly different list is the
+    // advanced-mode-only wrong-tab bug design 0063 §3.4 warns about.
+    final tabs = _visibleTabs;
+    // design 0105 P2: the layout follows the window's SHAPE (see
+    // `wide_layout.dart`). Full screen hides the rail exactly as it hides the
+    // bottom bar — design 0062 is about our chrome, whichever side it is on.
+    final window = MediaQuery.sizeOf(context);
+    if (!_immersive && WideLayout.useRail(window)) {
+      return _buildRailScaffold(
+        context,
+        l10n,
+        tabs,
+        compact: WideLayout.compactRail(window),
+      );
+    }
     return Scaffold(
       appBar: _immersive
           ? null
@@ -965,9 +1015,7 @@ class _RootShellState extends State<RootShell> {
               // used to sit beside it under the same rule is gone from this bar
               // — see [_BrandAppBar.onEnterFullscreen]. `_openHomeEditor` is
               // still wired, just from the grid's own row instead.
-              onEnterFullscreen: _tab == _Tab.home
-                  ? () => _setImmersive(true)
-                  : null,
+              onEnterFullscreen: _enterFullscreenAction,
             ),
       // 🔴 `top` / `bottom` FOLLOW `_immersive`, and that is the whole point of
       // this pair (design 0062 §3.2).
@@ -984,75 +1032,7 @@ class _RootShellState extends State<RootShell> {
       body: SafeArea(
         top: _immersive,
         bottom: _immersive,
-        child: _wrapExits(
-          Stack(
-            children: [
-              IndexedStack(
-                index: _tab.index,
-                children: [
-                  // 🔴 The SLOT stays, the CONTENT does not (owner ruling
-                  // 2026-08-15, amending design 0063 §3.4).
-                  //
-                  // §3.4's rule was "the children do not follow `_visibleTabs`",
-                  // and the two reasons it gave are both about REMOVING a child:
-                  // every later page's index shifts, and the preserved tab state
-                  // is thrown away. Neither applies to swapping one child's
-                  // content — the list is still four long, so `_tab.index` still
-                  // points where it always did.
-                  //
-                  // What this buys is not paint. `IndexedStack` paints only the
-                  // selected child, so the offstage home grid never repainted.
-                  // It BUILDS and LAYS OUT, and `_ModuleTile` /
-                  // `_LiveReading` hold `context.watch<TelemetryController>()`
-                  // (`home_tiles.dart`), which notifies on every sample — so in
-                  // advanced mode, with a unit connected, an unreachable page
-                  // was rebuilding at telemetry rate for as long as the app ran.
-                  //
-                  // 🔑 The state loss is real and is the point of the trade: the
-                  // grid's scroll offset resets when the user comes BACK to
-                  // personal mode. That is a rare, deliberate action, and the
-                  // page it resets is one they could not see a moment ago.
-                  // Losing it on every tab switch — what §3.4 was protecting
-                  // against — would be a different matter entirely.
-                  if (_mode == AppMode.advanced)
-                    const SizedBox.shrink()
-                  else
-                    HomePage(
-                      onOpenDevices: () => _setTab(_Tab.devices),
-                      onEdit: _openHomeEditor,
-                      onOpenDetail: _openDetailFromHome,
-                    ),
-                  // The dashboard's stale-telemetry banner links to Settings,
-                  // and the dashboard now lives inside a route this page pushes
-                  // — so the callback is threaded down rather than re-derived
-                  // there. Every tab change in this file goes through `_setTab`,
-                  // which is the only thing keeping gate condition 3 in step
-                  // with what is on screen.
-                  //
-                  // The SAME callback the shell's own push uses, because the
-                  // route it has to leave is the same one: this list pushes
-                  // [DeviceDetailPage] too, and a second copy that only did
-                  // `_setTab` would put the invisible-tab-switch defect back on
-                  // one of the two entrances. See [_openSettingsFromDetail].
-                  DevicesPage(
-                    active: _tab == _Tab.devices,
-                    onOpenSettings: _openSettingsFromDetail,
-                  ),
-                  // Re-keyed on each switch to 歷史 so it reloads the latest
-                  // records.
-                  HistoryScreen(key: ValueKey(_historyEpoch)),
-                  SettingsScreen(
-                    deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
-                  ),
-                ],
-              ),
-              // Exit route 2 of 3 (design 0062 Q1). Inside the Stack, not the
-              // ListView: a button that scrolls away is a button that is not
-              // there when the user panics.
-              if (_immersive) _FullscreenExitButton(onPressed: _leaveImmersive),
-            ],
-          ),
-        ),
+        child: _buildContent(),
       ),
       bottomNavigationBar: _immersive
           ? null
@@ -1086,10 +1066,10 @@ class _RootShellState extends State<RootShell> {
               // tapped Settings, in advanced mode only — so every existing test
               // (all personal-mode) would stay green.
               child: NavigationBar(
-                selectedIndex: _visibleTabs.indexOf(_tab),
-                onDestinationSelected: (i) => _setTab(_visibleTabs[i]),
+                selectedIndex: tabs.indexOf(_tab),
+                onDestinationSelected: (i) => _setTab(tabs[i]),
                 destinations: [
-                  for (final t in _visibleTabs)
+                  for (final t in tabs)
                     NavigationDestination(
                       icon: Icon(_navIcon(t)),
                       selectedIcon: Icon(_navSelectedIcon(t)),
@@ -1098,6 +1078,217 @@ class _RootShellState extends State<RootShell> {
                 ],
               ),
             ),
+    );
+  }
+
+  /// Enter full screen — offered on 主頁 only (design 0062 §7.1-5), from the
+  /// brand bar or, on a phone on its side, from the rail (design 0105 P2).
+  VoidCallback? get _enterFullscreenAction =>
+      _tab == _Tab.home ? () => _setImmersive(true) : null;
+
+  /// The four pages plus the full-screen exit button, shared verbatim by the
+  /// portrait and the landscape scaffold — only the chrome around it differs.
+  Widget _buildContent() {
+    // 🔴 The GlobalKey is what keeps every page's state across a rotation
+    // (design 0105 P2). Portrait and landscape put this subtree under
+    // different parents — the Scaffold body vs. the rail's Row — and without
+    // a GlobalKey Flutter would throw the four pages away and build them
+    // again: the devices page would re-run its `initState`, every list would
+    // jump to the top, and History would reload. With it the subtree is
+    // MOVED. It sits on the Stack, INSIDE `_wrapExits`, because entering full
+    // screen re-parents it too (under the exits' PopScope / GestureDetector) —
+    // which until now rebuilt every page on each entry and exit.
+    return _wrapExits(
+      Stack(
+        key: _contentKey,
+        children: [
+          IndexedStack(
+            index: _tab.index,
+            children: [
+              // 🔴 The SLOT stays, the CONTENT does not (owner ruling
+              // 2026-08-15, amending design 0063 §3.4).
+              //
+              // §3.4's rule was "the children do not follow `_visibleTabs`",
+              // and the two reasons it gave are both about REMOVING a child:
+              // every later page's index shifts, and the preserved tab state
+              // is thrown away. Neither applies to swapping one child's
+              // content — the list is still four long, so `_tab.index` still
+              // points where it always did.
+              //
+              // What this buys is not paint. `IndexedStack` paints only the
+              // selected child, so the offstage home grid never repainted.
+              // It BUILDS and LAYS OUT, and `_ModuleTile` /
+              // `_LiveReading` hold `context.watch<TelemetryController>()`
+              // (`home_tiles.dart`), which notifies on every sample — so in
+              // advanced mode, with a unit connected, an unreachable page
+              // was rebuilding at telemetry rate for as long as the app ran.
+              //
+              // 🔑 The state loss is real and is the point of the trade: the
+              // grid's scroll offset resets when the user comes BACK to
+              // personal mode. That is a rare, deliberate action, and the
+              // page it resets is one they could not see a moment ago.
+              // Losing it on every tab switch — what §3.4 was protecting
+              // against — would be a different matter entirely.
+              if (_mode == AppMode.advanced)
+                const SizedBox.shrink()
+              else
+                HomePage(
+                  onOpenDevices: () => _setTab(_Tab.devices),
+                  onEdit: _openHomeEditor,
+                  onOpenDetail: _openDetailFromHome,
+                ),
+              // The dashboard's stale-telemetry banner links to Settings,
+              // and the dashboard now lives inside a route this page pushes
+              // — so the callback is threaded down rather than re-derived
+              // there. Every tab change in this file goes through `_setTab`,
+              // which is the only thing keeping gate condition 3 in step
+              // with what is on screen.
+              //
+              // The SAME callback the shell's own push uses, because the
+              // route it has to leave is the same one: this list pushes
+              // [DeviceDetailPage] too, and a second copy that only did
+              // `_setTab` would put the invisible-tab-switch defect back on
+              // one of the two entrances. See [_openSettingsFromDetail].
+              // design 0105 P5: the three pages with no width cap of their
+              // own are centred at 560 in landscape; in portrait
+              // [LandscapeMaxWidth] passes the constraints straight through.
+              LandscapeMaxWidth(
+                child: DevicesPage(
+                  active: _tab == _Tab.devices,
+                  onOpenSettings: _openSettingsFromDetail,
+                ),
+              ),
+              // Re-keyed on each switch to 歷史 so it reloads the latest
+              // records.
+              LandscapeMaxWidth(
+                child: HistoryScreen(key: ValueKey(_historyEpoch)),
+              ),
+              LandscapeMaxWidth(
+                child: SettingsScreen(
+                  deviceInfoPanelBuilder: widget.deviceInfoPanelBuilder,
+                ),
+              ),
+            ],
+          ),
+          // Exit route 2 of 3 (design 0062 Q1). Inside the Stack, not the
+          // ListView: a button that scrolls away is a button that is not
+          // there when the user panics.
+          if (_immersive) _FullscreenExitButton(onPressed: _leaveImmersive),
+        ],
+      ),
+    );
+  }
+
+  /// The landscape shell (design 0105 P2, mock §2 / §5): a left
+  /// [NavigationRail] in place of the bottom bar, and the brand bar to the
+  /// RIGHT of it rather than above it.
+  ///
+  /// [compact] — a phone on its side, where height is what runs out: the top
+  /// bar goes away entirely and its connection pill and full-screen button
+  /// move into the rail (mock §5 right).
+  ///
+  /// Insets: the rail takes the left one (a side notch, a car's left system
+  /// bar) and the top; the right-hand side takes the rest. Neither pads the
+  /// side the other already owns.
+  Widget _buildRailScaffold(
+    BuildContext context,
+    AppLocalizations l10n,
+    List<_Tab> tabs, {
+    required bool compact,
+  }) {
+    final accent = context.accent.accent;
+    final muted = context.colors.muted;
+    final fullscreen = _enterFullscreenAction;
+    final rail = NavigationRailTheme(
+      data: NavigationRailThemeData(
+        backgroundColor: context.colors.panel,
+        indicatorColor: accent.withValues(alpha: 0.16),
+        selectedIconTheme: IconThemeData(color: accent),
+        unselectedIconTheme: IconThemeData(color: muted),
+        // The bottom bar's label style, so a rotation changes where the tabs
+        // are and nothing about how they read.
+        selectedLabelTextStyle: TextStyle(
+          fontSize: 10,
+          letterSpacing: 1,
+          fontWeight: FontWeight.w600,
+          color: accent,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          fontSize: 10,
+          letterSpacing: 1,
+          fontWeight: FontWeight.w600,
+          color: muted,
+        ),
+      ),
+      child: NavigationRail(
+        // Labels always: an icon-only rail would be the wordless control this
+        // project has been told about four times (FB-70 / 103 / 107 / 108).
+        labelType: NavigationRailLabelType.all,
+        // Scrolls rather than overflows when a short window and a large font
+        // leave too little height. On a phone on its side the pill and the
+        // full-screen button are PINNED (top / bottom) and only the tabs
+        // scroll between them: measured on an 844×390 emulator, an unpinned
+        // full-screen button — 主頁's only way in — ended up below the fold.
+        scrollable: true,
+        leadingAtTop: compact,
+        trailingAtBottom: compact,
+        groupAlignment: -1,
+        leading: _RailHeader(
+          compact: compact,
+          onOpenConnection: _openConnectionTarget,
+        ),
+        trailing: compact && fullscreen != null
+            ? _RailFullscreenButton(onPressed: fullscreen)
+            : null,
+        selectedIndex: tabs.indexOf(_tab),
+        onDestinationSelected: (i) => _setTab(tabs[i]),
+        destinations: [
+          for (final t in tabs)
+            NavigationRailDestination(
+              icon: Icon(_navIcon(t)),
+              selectedIcon: Icon(_navSelectedIcon(t)),
+              label: Text(_navLabel(l10n, t)),
+            ),
+        ],
+      ),
+    );
+    return Scaffold(
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ColoredBox(
+            color: context.colors.panel,
+            child: SafeArea(right: false, child: rail),
+          ),
+          VerticalDivider(width: 1, thickness: 1, color: context.colors.line),
+          Expanded(
+            child: MediaQuery.removePadding(
+              context: context,
+              removeLeft: true,
+              child: Column(
+                children: [
+                  if (!compact)
+                    _BrandAppBar(
+                      onOpenConnection: _openConnectionTarget,
+                      onEnterFullscreen: fullscreen,
+                      // The mark sits at the top of the rail (mock §2).
+                      showBrand: false,
+                    ),
+                  Expanded(
+                    child: SafeArea(
+                      // The bar insets the top when it is there; without it
+                      // the content does. No bottom bar either way, so the
+                      // home indicator is this side's to avoid.
+                      top: compact,
+                      child: _buildContent(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1165,7 +1356,13 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _BrandAppBar({
     required this.onOpenConnection,
     this.onEnterFullscreen,
+    this.showBrand = true,
   });
+
+  /// Draw the mark and the brand name. False only in the landscape shell,
+  /// where the mark sits at the top of the rail instead (design 0105 P2, mock
+  /// §2) — the bar then carries just the two controls.
+  final bool showBrand;
 
   /// Where the connection pill goes — see [_RootShellState._openConnectionTarget]
   /// for the rule and why design 0046 R2 survives it.
@@ -1199,7 +1396,7 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       titleSpacing: 16,
       toolbarHeight: 58,
-      title: Row(
+      title: !showBrand ? null : Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
@@ -1297,9 +1494,10 @@ class _ConnectionPill extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    final conn = context.watch<ConnectionController>();
+  /// The link state as the pill draws it: (demo, colour, label). Shared with
+  /// the rail's compact pill (design 0105 P2), so a rotation cannot change
+  /// what the status SAYS.
+  static (bool, Color, String) presentationOf(ConnectionController conn) {
     // 🔴 Four link states, four fixed status colours — never the accent. Pick
     // green as your theme and `CONNECTING` would be `CONNECTED`; the pill is
     // the app's most-read status and the two labels differ by one word.
@@ -1317,6 +1515,13 @@ class _ConnectionPill extends StatelessWidget {
       BleLinkState.disconnecting => (AppSemantics.warn, 'CLOSING'),
       BleLinkState.disconnected => (AppSemantics.danger, 'OFFLINE'),
     };
+    return (demo, color, label);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conn = context.watch<ConnectionController>();
+    final (demo, color, label) = presentationOf(conn);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
@@ -1348,6 +1553,155 @@ class _ConnectionPill extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The top of the landscape rail (design 0105 P2): the brand mark — or, on a
+/// phone on its side, where the top bar is gone, the connection status in its
+/// place (mock §5 right). The pill taps through to where the bar's pill goes.
+///
+/// ⚠️ The compact rail carries NO mark, a deliberate departure from mock §5:
+/// measured on a 844×390 dp emulator (2026-11-13) the mark, the pill, four
+/// labelled tabs and the full-screen button did not fit 390 dp less the
+/// status bar, and the button — 主頁's only way into full screen — ended up
+/// below the fold. The mark is the one item that says nothing.
+class _RailHeader extends StatelessWidget {
+  const _RailHeader({required this.compact, required this.onOpenConnection});
+
+  final bool compact;
+  final VoidCallback onOpenConnection;
+
+  @override
+  Widget build(BuildContext context) {
+    final mark = Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: context.colors.panel,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: context.accent.accent, width: 1.4),
+      ),
+      child: Icon(Icons.bolt, size: 18, color: context.accent.accent),
+    );
+    if (!compact) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 10),
+        child: mark,
+      );
+    }
+    final conn = context.watch<ConnectionController>();
+    final (demo, color, label) = _ConnectionPill.presentationOf(conn);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            key: const ValueKey('rail-connection-pill'),
+            onTap: onOpenConnection,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            child: Container(
+              width: 68,
+              constraints: const BoxConstraints(minHeight: 40),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+              decoration: BoxDecoration(
+                color: context.colors.panel,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                border: Border.all(color: context.colors.line),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(demo ? Icons.science_outlined : Icons.bluetooth,
+                          size: 13, color: color),
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration:
+                            BoxDecoration(color: color, shape: BoxShape.circle),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  // Scaled down rather than wrapped or clipped: the rail is
+                  // 80 dp wide whatever the font, and the word is the status.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 0.5,
+                        color: context.colors.text,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full screen's way in on a phone on its side, where the bar that normally
+/// carries it is gone (design 0105 P2). The bar's rules travel with it: the
+/// word with the glyph (FB-108), a 40 dp floor (FB-70), body colour not amber.
+class _RailFullscreenButton extends StatelessWidget {
+  const _RailFullscreenButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).fullscreenEnter;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
+      child: Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          key: const ValueKey('rail-fullscreen'),
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(6),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 56, minHeight: 40),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.fullscreen, size: 22, color: context.colors.text),
+                  const SizedBox(height: 2),
+                  SizedBox(
+                    width: 68,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: context.colors.text,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

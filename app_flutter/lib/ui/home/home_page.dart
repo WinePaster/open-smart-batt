@@ -26,6 +26,8 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 
 import '../../models/models.dart';
 import '../../state/state.dart';
+import '../util/wide_layout.dart';
+import '../widgets/flow_columns.dart';
 import 'home_tiles.dart';
 
 /// The home tab's body (sits inside the app shell's [Scaffold]).
@@ -75,98 +77,169 @@ class HomePage extends StatelessWidget {
               gForceAvailable: context.watch<GForceController>().available,
             );
 
+    final blocks = HomeLayout.blocksOf(layout.tiles);
+    final sections = [
+      for (final block in blocks) _section(block, layout),
+    ];
+    final editRow = onEdit != null ? _EditLayoutRow(onTap: onEdit!) : null;
+
+    // design 0105 P3 (Q4 = A): a landscape window lays the SAME sections, in
+    // the same order, into 2–3 columns. Portrait never reaches the
+    // LayoutBuilder — it renders the single-column tree below, untouched.
+    if (WideLayout.isLandscape(MediaQuery.sizeOf(context))) {
+      final largeText = WideLayout.largeText(context);
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = WideLayout.columnsFor(
+            constraints.maxWidth - 2 * _hPad,
+            largeText: largeText,
+          );
+          if (columns == 1) return _singleColumn(sections, editRow);
+          return _multiColumn(sections, editRow, columns);
+        },
+      );
+    }
+    return _singleColumn(sections, editRow);
+  }
+
+  /// Side padding of the grid, both layouts.
+  static const double _hPad = 15;
+
+  /// Today's page: one column, at most 560 wide, centred. Every portrait
+  /// window, and a landscape one too narrow for two columns.
+  Widget _singleColumn(List<Widget> sections, Widget? editRow) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(15, 10, 15, 14),
+          padding: const EdgeInsets.fromLTRB(_hPad, 10, _hPad, 14),
           children: [
-            // 🔴 COLUMNS, NOT ROWS, since design 0084 S2 — and the difference
-            // is the whole feature. A row makes both sides advance together,
-            // so the card under a short one starts where the TALLEST card of
-            // that row ends; measured on a 390 pt phone that hole is 135–190
-            // px. A column starts it where the short card itself ends.
-            //
-            // 🔴 1x1 STILL MEANS 1x1, and this does not touch that ruling.
-            //
-            // It was ruled twice. On 2026-08-07 a lone half was promoted to
-            // fill its row, because the default layout was orphaning the G
-            // meter (`speed_detection` defaults off, so its partner was
-            // filtered away) and a ragged empty column read as broken.
-            // Reported the next day from TestFlight: setting one tile to 1x1
-            // and its neighbour to 1x2 drew BOTH full width — the same control
-            // failing to work, from the other direction. The second ruling
-            // stands: an orphan made by FILTERING is not a layout the user
-            // asked for (and `_phoneTiles` is full-span now, so the default has
-            // no pair to lose), while an orphan the user MADE is drawn as
-            // asked.
-            //
-            // 🔑 In this model a lone 1x1 is simply a block whose other column
-            // is empty. The tile keeps its half width because the column keeps
-            // its half of the row — nothing has to remember to leave a gap
-            // beside it, which is what the old `Expanded(SizedBox.shrink())`
-            // was for. Same picture, one fewer thing to get wrong.
-            for (final block in HomeLayout.blocksOf(layout.tiles))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: block.full != null
-                    ? HomeTileView(
-                        tile: layout.tiles[block.full!],
-                        onOpenDevices: onOpenDevices,
-                        onOpenDetail: onOpenDetail,
-                      )
-                    : Row(
-                        // The two columns are independent, and their bottoms
-                        // are ALLOWED to disagree — owner ruled 2026-08-23
-                        // 「可以不等長」. `start` is what permits that; any
-                        // stretch here would quietly re-impose the row.
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final (c, column) in [
-                            block.left,
-                            block.right,
-                          ].indexed)
-                            Expanded(
-                              // 🔑 HALF the gap on each column's INNER edge,
-                              // never the whole gap on one of them. `Expanded`
-                              // splits the row evenly and padding comes out of
-                              // the child, so all 6 px on the right column
-                              // would leave it 6 px NARROWER than the left —
-                              // two "equal" halves that are not (caught by
-                              // `home_column_layout_test.dart` T-0084-1b).
-                              //
-                              // The outer edges stay unpadded, so the block
-                              // still starts and ends flush with the
-                              // full-width cards above and below it. See
-                              // [kHomeColumnGap] for why the editor and this
-                              // page share the value.
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                  left: c == 0 ? 0 : kHomeColumnGap / 2,
-                                  right: c == 0 ? kHomeColumnGap / 2 : 0,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    for (final i in column)
-                                      HomeTileView(
-                                        tile: layout.tiles[i],
-                                        onOpenDevices: onOpenDevices,
-                                        onOpenDetail: onOpenDetail,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-              ),
-            if (onEdit != null) _EditLayoutRow(onTap: onEdit!),
+            ...sections,
+            ?editRow,
           ],
         ),
       ),
+    );
+  }
+
+  /// design 0105 P3: [columns] columns, each at most
+  /// [WideLayout.columnMaxWidth], filled IN ORDER by [FlowColumns]. The
+  /// "edit layout" row stays the last thing on the page, under the columns,
+  /// at the single-column width.
+  Widget _multiColumn(List<Widget> sections, Widget? editRow, int columns) {
+    return ListView(
+      key: const ValueKey('home-multi-column'),
+      padding: const EdgeInsets.fromLTRB(_hPad, 10, _hPad, 14),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: WideLayout.maxWidthFor(columns),
+            ),
+            child: FlowColumns(
+              columns: columns,
+              gap: WideLayout.columnGap,
+              children: sections,
+            ),
+          ),
+        ),
+        if (editRow != null)
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: WideLayout.columnMaxWidth,
+              ),
+              child: editRow,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// One [HomeBlock] as a widget — identical in every layout. Design 0105
+  /// moves whole sections between columns and never opens one up, so design
+  /// 0084's rules below hold inside each landscape column unchanged.
+  Widget _section(HomeBlock block, HomeLayout layout) {
+    // 🔴 COLUMNS, NOT ROWS, since design 0084 S2 — and the difference
+    // is the whole feature. A row makes both sides advance together,
+    // so the card under a short one starts where the TALLEST card of
+    // that row ends; measured on a 390 pt phone that hole is 135–190
+    // px. A column starts it where the short card itself ends.
+    //
+    // 🔴 1x1 STILL MEANS 1x1, and this does not touch that ruling.
+    //
+    // It was ruled twice. On 2026-08-07 a lone half was promoted to
+    // fill its row, because the default layout was orphaning the G
+    // meter (`speed_detection` defaults off, so its partner was
+    // filtered away) and a ragged empty column read as broken.
+    // Reported the next day from TestFlight: setting one tile to 1x1
+    // and its neighbour to 1x2 drew BOTH full width — the same control
+    // failing to work, from the other direction. The second ruling
+    // stands: an orphan made by FILTERING is not a layout the user
+    // asked for (and `_phoneTiles` is full-span now, so the default has
+    // no pair to lose), while an orphan the user MADE is drawn as
+    // asked.
+    //
+    // 🔑 In this model a lone 1x1 is simply a block whose other column
+    // is empty. The tile keeps its half width because the column keeps
+    // its half of the row — nothing has to remember to leave a gap
+    // beside it, which is what the old `Expanded(SizedBox.shrink())`
+    // was for. Same picture, one fewer thing to get wrong.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: block.full != null
+          ? HomeTileView(
+              tile: layout.tiles[block.full!],
+              onOpenDevices: onOpenDevices,
+              onOpenDetail: onOpenDetail,
+            )
+          : Row(
+              // The two columns are independent, and their bottoms
+              // are ALLOWED to disagree — owner ruled 2026-08-23
+              // 「可以不等長」. `start` is what permits that; any
+              // stretch here would quietly re-impose the row.
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (c, column) in [
+                  block.left,
+                  block.right,
+                ].indexed)
+                  Expanded(
+                    // 🔑 HALF the gap on each column's INNER edge,
+                    // never the whole gap on one of them. `Expanded`
+                    // splits the row evenly and padding comes out of
+                    // the child, so all 6 px on the right column
+                    // would leave it 6 px NARROWER than the left —
+                    // two "equal" halves that are not (caught by
+                    // `home_column_layout_test.dart` T-0084-1b).
+                    //
+                    // The outer edges stay unpadded, so the block
+                    // still starts and ends flush with the
+                    // full-width cards above and below it. See
+                    // [kHomeColumnGap] for why the editor and this
+                    // page share the value.
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: c == 0 ? 0 : kHomeColumnGap / 2,
+                        right: c == 0 ? kHomeColumnGap / 2 : 0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final i in column)
+                            HomeTileView(
+                              tile: layout.tiles[i],
+                              onOpenDevices: onOpenDevices,
+                              onOpenDetail: onOpenDetail,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

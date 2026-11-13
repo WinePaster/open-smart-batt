@@ -1001,6 +1001,11 @@
   "settingsTextSizeSub": "Large: a bit bigger than your system font · Small: same as system",
   "settingsTextSizeLarge": "Large",
   "settingsTextSizeSmall": "Small",
+  "settingsAllowLandscapeLabel": "Allow landscape",
+  "@settingsAllowLandscapeLabel": {
+    "description": "Design 0105 Q2 = B: an off-by-default switch that lets a phone (or a small car head unit) turn to landscape. Windows whose shortest side is 600 dp or more allow landscape without it (Q3 = A)."
+  },
+  "settingsAllowLandscapeSub": "Lets the app turn sideways on this phone or a small car screen. Large screens (tablets, most car screens) can always turn.",
   "settingsAccentThemeLabel": "Accent colour",
   "settingsAccentThemeSub": "Two colours, not one — the second is what charts draw temperature with",
   "accentThemeAmber": "Amber",

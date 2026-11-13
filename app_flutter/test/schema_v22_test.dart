@@ -448,7 +448,7 @@ void main() {
           await _columnsOf(fresh.db, 'settings'));
     });
 
-    test('both report schema version 27', () async {
+    test('both report schema version 28', () async {
       final upgraded = await upgradeFromV22Ver();
       final fresh = await freshDatabase('v22_ver_new');
       for (final db in <AppDatabase>[upgraded, fresh]) {
@@ -462,8 +462,9 @@ void main() {
         // table, after the adversarial review found v24 was a no-op on the
         // common path), and on 2026-11-11 when v26 landed (design 0103 Q7 —
         // `saved_devices.last_soc`), and on 2026-11-13 when v27 landed
-        // (`settings.text_size`, two-level text size). Move it again when v28
-        // lands; the registry in
+        // (`settings.text_size`, two-level text size), and on 2026-11-13 again
+        // when v28 landed (design 0105 — `settings.allow_landscape`). Move it
+        // again when v29 lands; the registry in
         // `Db.schemaVersion`'s doc comment is the arbiter, and this line is what
         // makes two branches claiming one number collide here rather than on a
         // user's phone.
@@ -472,7 +473,7 @@ void main() {
         // whatever it does — this pin and `schema_v24_test.dart` are the only
         // two places that would notice it going missing. v25 DOES add a table,
         // so the parity cases cover it.
-        expect(Db.schemaVersion, 27);
+        expect(Db.schemaVersion, 28);
       }
     });
   });

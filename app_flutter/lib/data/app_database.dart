@@ -507,7 +507,20 @@ class Db {
   /// CLAIMING A NUMBER: 27 was taken after searching every local and remote
   /// ref of the public repo on 2026-11-13 for a `schemaVersion` above 26 —
   /// there was none.
-  static const int schemaVersion = 27;
+  ///
+  /// v28 — design 0105 P1 (owner ruling 2026-11-13, Q2 = B).
+  ///
+  ///   settings.allow_landscape  INTEGER NOT NULL DEFAULT 0 — 「允許橫式畫面」.
+  ///
+  /// A plain off-by-default switch, the shape of v22's `alerts_enabled`:
+  /// DEFAULT 0 states what every pre-v28 install actually had — the portrait
+  /// lock — so it invents no choice. Landscape on wide windows does not need
+  /// this column at all (`OrientationPolicy`, Q3 = A).
+  ///
+  /// CLAIMING A NUMBER: 28 was taken after reading `schemaVersion` out of every
+  /// local and remote ref of both repos on 2026-11-13 — the highest anywhere
+  /// was 27.
+  static const int schemaVersion = 28;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1123,6 +1136,14 @@ class AppDatabase {
         'ALTER TABLE ${Db.tableSettings} ADD COLUMN text_size TEXT',
       );
     }
+    if (from < 28) {
+      // design 0105 — see [Db.schemaVersion] v28. DEFAULT 0 fills every
+      // existing row with "off", the portrait lock it already had.
+      await db.execute(
+        'ALTER TABLE ${Db.tableSettings} ADD COLUMN '
+        'allow_landscape INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
@@ -1267,6 +1288,7 @@ class AppDatabase {
       app_mode TEXT,
       accent_theme TEXT,
       text_size TEXT,
+      allow_landscape INTEGER NOT NULL DEFAULT 0,
       alerts_enabled INTEGER NOT NULL DEFAULT 0,
       alert_sustain_sec INTEGER NOT NULL DEFAULT 5,
       alert_repeat_min INTEGER NOT NULL DEFAULT 15,

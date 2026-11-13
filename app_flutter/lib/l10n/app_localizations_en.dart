@@ -1362,6 +1362,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTextSizeSmall => 'Small';
 
   @override
+  String get settingsAllowLandscapeLabel => 'Allow landscape';
+
+  @override
+  String get settingsAllowLandscapeSub =>
+      'Lets the app turn sideways on this phone or a small car screen. Large screens (tablets, most car screens) can always turn.';
+
+  @override
   String get settingsAccentThemeLabel => 'Accent colour';
 
   @override

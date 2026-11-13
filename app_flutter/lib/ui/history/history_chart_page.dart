@@ -40,6 +40,7 @@ import '../../data/history_repo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../util/orientation_policy.dart';
 import 'history_chart_core.dart';
 import 'history_query.dart';
 
@@ -167,10 +168,8 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
     // 🔵 Q7 = A. Restoring happens in [dispose] and NOT in the close button's
     // callback: the system back gesture never reaches that callback, and an
     // app left locked to landscape is the worst outcome this file can produce.
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // design 0105 P1: through the one orientation policy, never directly.
+    unawaited(OrientationPolicy.enterFullScreenLandscape());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _reload();
       _loadOverview();
@@ -180,10 +179,10 @@ class _HistoryChartPageState extends State<HistoryChartPage> {
   @override
   void dispose() {
     _debounce?.cancel();
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    // design 0105 P1: restore TO THE POLICY, not to a hard-coded portrait —
+    // on a head unit or with 「允許橫式畫面」 on, leaving a chart must not ask
+    // for portrait (0105 §4.1).
+    unawaited(OrientationPolicy.exitFullScreenLandscape());
     super.dispose();
   }
 

@@ -40,6 +40,7 @@ import '../../theme/app_theme.dart';
 import '../alerts/alert_settings_page.dart';
 import '../widgets/industrial_card.dart';
 import 'dashboard_cards.dart';
+import 'detail_columns.dart';
 import 'display_modules.dart';
 import 'status_controls.dart';
 import 'watchfaces.dart';
@@ -180,90 +181,113 @@ class PackScaffold extends StatelessWidget {
     // An empty row is strictly better than a confidently wrong one.
     final serial = tele.fullSerial ?? tele.serial;
 
-    return Center(
+    // ---- cosmetic pack-class chip (TEXT ONLY) ----------------------------
+    final chip = Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 8),
+      child: _PackLabelChip(label: packLabel),
+    );
+
+    // ---- product serial / device id (shown once connected) ---------------
+    final serialRow = (serial != null && serial.isNotEmpty)
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.qr_code_2, size: 13, color: context.colors.muted),
+                const SizedBox(width: 6),
+                Text('${l10n.dashboardSerialLabel}: ',
+                    style: TextStyle(fontSize: 11, color: context.colors.muted)),
+                Flexible(
+                  child: Text(
+                    serial,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.mono(context)
+                        .copyWith(fontSize: 11, color: context.colors.text),
+                  ),
+                ),
+              ],
+            ),
+          )
+        : null;
+
+    // ---- the watchface: which cards, in what order -----------------------
+    //
+    // The protection card below is NOT in this list and cannot be: design
+    // 0034 §6 makes "controls last, always, never customisable" an invariant,
+    // and it is enforced structurally — there is no DisplayModule for it, so
+    // no watchface can name it.
+    final cards = [
+      for (final m in order)
+        (
+          m,
+          dashboardCardFor(context, m,
+              shellClass: shellClass,
+              surface: CardSurface.deviceDetail,
+              tele: tele),
+        ),
+    ];
+
+    // ---- protection status + class-specific controls ---------------------
+    final protection = IndustrialCard(
+      heading: l10n.dashboardProtectionHeading,
+      headingIcon: Icons.shield_outlined,
+      child: controls,
+    );
+
+    // ---- warnings (design 0080 §3.7.1) -----------------------------------
+    //
+    // 🔑 Below the protection card and above nothing, which is where the
+    // mockup puts it (§1.1). It is NOT a `DisplayModule` and no watchface can
+    // name it, for the protection card's reason (design 0034 §6): this is a
+    // route into a settings screen, not a readout, and a user who rearranged
+    // their dashboard must not be able to hide the only way to reach their own
+    // thresholds.
+    final alerts = AlertSettingsEntry(deviceId: deviceId);
+
+    // ---- this unit's own history -----------------------------------------
+    //
+    // 🔵 **Moved out on 2026-08-21 (design 0079 S1).** It lived here, below
+    // the protection card, from design 0065 until today; it is now the detail
+    // page's second sub-tab. Two things drove the move and neither was
+    // cosmetic: down here the block was ~5 cards deep in a scroll nobody had a
+    // reason to reach the end of, and being a child of THIS `ListView` is what
+    // kept a per-minute list off it (a thousand rows inside one child inflate
+    // ~3,030 elements, and the tab's own `CustomScrollView` gets them to ~417
+    // — design 0065 §0.8.1, whose closing paragraph licensed exactly this
+    // move).
+    //
+    // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
+
+    // Portrait: the one 560-wide column every build before design 0105 drew.
+    final single = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(15, 3, 15, 14),
           children: [
-            // ---- cosmetic pack-class chip (TEXT ONLY) --------------------
-            Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 8),
-              child: _PackLabelChip(label: packLabel),
-            ),
-
-            // ---- product serial / device id (shown once connected) -------
-            if (serial != null && serial.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.qr_code_2, size: 13, color: context.colors.muted),
-                    const SizedBox(width: 6),
-                    Text('${l10n.dashboardSerialLabel}: ',
-                        style: TextStyle(
-                            fontSize: 11, color: context.colors.muted)),
-                    Flexible(
-                      child: Text(
-                        serial,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.mono(context).copyWith(
-                            fontSize: 11, color: context.colors.text),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // ---- the watchface: which cards, in what order ---------------
-            //
-            // The protection card below is NOT in this loop and cannot be:
-            // design 0034 §6 makes "controls last, always, never customisable"
-            // an invariant, and it is enforced structurally — there is no
-            // DisplayModule for it, so no watchface can name it.
-            for (final m in order)
-              ?dashboardCardFor(context, m,
-                  shellClass: shellClass,
-                  surface: CardSurface.deviceDetail,
-                  tele: tele),
-
-            // ---- protection status + class-specific controls -------------
-            IndustrialCard(
-              heading: l10n.dashboardProtectionHeading,
-              headingIcon: Icons.shield_outlined,
-              child: controls,
-            ),
-
-            // ---- warnings (design 0080 §3.7.1) ---------------------------
-            //
-            // 🔑 Below the protection card and above nothing, which is where
-            // the mockup puts it (§1.1). It is NOT a `DisplayModule` and no
-            // watchface can name it, for the protection card's reason (design
-            // 0034 §6): this is a route into a settings screen, not a readout,
-            // and a user who rearranged their dashboard must not be able to
-            // hide the only way to reach their own thresholds.
-            AlertSettingsEntry(deviceId: deviceId),
-
-            // ---- this unit's own history ---------------------------------
-            //
-            // 🔵 **Moved out on 2026-08-21 (design 0079 S1).** It lived here,
-            // below the protection card, from design 0065 until today; it is
-            // now the detail page's second sub-tab. Two things drove the move
-            // and neither was cosmetic: down here the block was ~5 cards deep
-            // in a scroll nobody had a reason to reach the end of, and being a
-            // child of THIS `ListView` is what kept a per-minute list off it
-            // (a thousand rows inside one child inflate ~3,030 elements, and
-            // the tab's own `CustomScrollView` gets them to ~417 — design 0065
-            // §0.8.1, whose closing paragraph licensed exactly this move).
-            //
-            // ~~DeviceHistorySection(deviceId: deviceId, live: true),~~
+            chip,
+            ?serialRow,
+            for (final (_, card) in cards) ?card,
+            protection,
+            alerts,
           ],
         ),
       ),
     );
-  }
 
+    // design 0105 P4: a wide landscape window draws two columns. 🔴 The
+    // control card is LAST IN THE RIGHT COLUMN there — design 0105 Q5 = A
+    // relaxes 0034 §6's "last" to that; the warnings entry still follows it
+    // as the one shell-level append. See `detail_columns.dart`.
+    final (left, right) = DetailColumns.split(cards, DetailColumns.packRight);
+    return DetailBody(
+      single: single,
+      header: [chip, ?serialRow],
+      left: left,
+      right: [...right, protection, alerts],
+    );
+  }
 }
 
 /// Product-class chip. The picker appears ONLY when the unit is unclassified:

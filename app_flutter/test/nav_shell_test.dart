@@ -100,6 +100,11 @@ void main() {
       ble = _FakeBleService();
       services = await AppServices.create(appDatabase: appDb, ble: ble);
     });
+    // design 0105: this file pins the PORTRAIT phone shell (bottom bar). The
+    // default 800×600 test window is landscape and would now get the rail.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(OpenSmartBattApp(services: services));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));

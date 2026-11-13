@@ -40,6 +40,7 @@ import 'package:flutter/material.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
+import '../util/wide_layout.dart';
 
 /// Minimum side of every tappable thing in this dialog, in dp.
 ///
@@ -272,299 +273,348 @@ class _DeclaredModelDialogState extends State<_DeclaredModelDialog> {
         // chips rather than one field, and taller-but-narrower turns a five-way
         // choice into five lines of one.
         constraints: const BoxConstraints(maxWidth: 360),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l10n.declaredTitle,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: context.colors.text,
+        // design 0105 P5 — see [_ShortWindowScroll].
+        child: _ShortWindowScroll(
+          builder: (short) => Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        l10n.declaredTitle,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: context.colors.text,
+                        ),
                       ),
                     ),
-                  ),
-                  // Retracting everything in one tap. Without it a user who
-                  // wants to withdraw a wrong declaration has to un-tap each
-                  // chip and empty two fields, and the likely outcome is that
-                  // they leave the wrong answer in place.
-                  _TapTarget(
-                    key: const ValueKey('declared-clear'),
-                    onTap: _clearAll,
-                    child: Text(
-                      l10n.declaredClear,
-                      style: TextStyle(
-                          fontSize: 12, color: context.colors.muted),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                l10n.declaredBody,
-                style: TextStyle(
-                    fontSize: 11.5, height: 1.6, color: context.colors.muted),
-              ),
-              // §3.5's promise, said out loud. A user who suspects that picking
-              // the wrong entry will break their dashboard will not pick at all.
-              Text(
-                l10n.declaredNotDisplayed,
-                style: TextStyle(
-                    fontSize: 11, height: 1.6, color: context.colors.muted),
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _SectionLabel(l10n.declaredSectionCategory,
-                          optional: l10n.declaredOptional),
-                      Wrap(
-                        spacing: 7,
-                        runSpacing: 7,
-                        children: [
-                          for (final c in DeclaredCategory.values)
-                            _Chip(
-                              key: ValueKey('declared-category-${c.storageKey}'),
-                              label: _categoryLabel(l10n, c),
-                              selected: _category == c,
-                              onTap: () => _pickCategory(c),
-                            ),
-                        ],
+                    // Retracting everything in one tap. Without it a user who
+                    // wants to withdraw a wrong declaration has to un-tap each
+                    // chip and empty two fields, and the likely outcome is that
+                    // they leave the wrong answer in place.
+                    _TapTarget(
+                      key: const ValueKey('declared-clear'),
+                      onTap: _clearAll,
+                      child: Text(
+                        l10n.declaredClear,
+                        style: TextStyle(
+                            fontSize: 12, color: context.colors.muted),
                       ),
-                      if (mismatch != null) ...[
-                        const SizedBox(height: 9),
-                        _Hint(_mismatchText(l10n, mismatch)),
-                      ],
-                      if (groups.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionModel,
-                            optional: l10n.declaredOptional),
-                        for (final g in groups) ...[
-                          if (_groupLabel(l10n, g.id) case final heading?) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              heading,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: context.colors.muted),
-                            ),
-                            const SizedBox(height: 5),
-                          ],
-                          Wrap(
-                            spacing: 7,
-                            runSpacing: 7,
-                            children: [
-                              for (final m in g.models)
-                                _Chip(
-                                  key: ValueKey('declared-model-$m'),
-                                  label: _modelLabel(l10n, m),
-                                  selected: _model == m,
-                                  onTap: () => setState(
-                                      () => _model = _model == m ? null : m),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ],
-                      // 🔑 design 0069, and it is the whole change: the lid is
-                      // its OWN question, sitting beside the model list rather
-                      // than inside it. One chip, one column, still countable —
-                      // what it stopped being is mutually exclusive with
-                      // "which battery is this".
-                      //
-                      // Only under 機車電池 (owner ruling 2026-08-19): every lid
-                      // report to date is a bike battery (`08.08/004`, unit
-                      // 300051), and offering it under 行動電源 would collect
-                      // combinations that mean nothing.
-                      if (_category == DeclaredCategory.motorcycleBattery) ...[
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionRetrofit,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.declaredBody,
+                  style: TextStyle(
+                      fontSize: 11.5, height: 1.6, color: context.colors.muted),
+                ),
+                // §3.5's promise, said out loud. A user who suspects that picking
+                // the wrong entry will break their dashboard will not pick at all.
+                Text(
+                  l10n.declaredNotDisplayed,
+                  style: TextStyle(
+                      fontSize: 11, height: 1.6, color: context.colors.muted),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  // design 0105 P5: no flex in a short landscape window,
+                  // where the whole dialog scrolls instead (see
+                  // [_ShortWindowScroll]).
+                  flex: short ? 0 : 1,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _SectionLabel(l10n.declaredSectionCategory,
                             optional: l10n.declaredOptional),
                         Wrap(
                           spacing: 7,
                           runSpacing: 7,
                           children: [
-                            _Chip(
-                              key: const ValueKey('declared-retrofit'),
-                              label: l10n.declaredModelRetrofitLid,
-                              selected: _retrofit,
-                              onTap: () =>
-                                  setState(() => _retrofit = !_retrofit),
-                            ),
+                            for (final c in DeclaredCategory.values)
+                              _Chip(
+                                key: ValueKey('declared-category-${c.storageKey}'),
+                                label: _categoryLabel(l10n, c),
+                                selected: _category == c,
+                                onTap: () => _pickCategory(c),
+                              ),
                           ],
                         ),
-                        // 🔴 A PROMPT, NOT A SECOND BOX (owner, 2026-08-19).
-                        // 0069 Q1 answered "which battery is under the lid?" by
-                        // re-labelling the note field the moment the chip was
-                        // ticked — one box, but the section under the user's
-                        // finger changed its title and its hint mid-form, which
-                        // reads as "my note went somewhere else". The question
-                        // is still worth asking, so it is asked HERE, where the
-                        // answer that triggers it lives, and the note below is
-                        // left exactly as it was.
-                        if (_isRetrofit) ...[
-                          const SizedBox(height: 6),
+                        if (mismatch != null) ...[
+                          const SizedBox(height: 9),
+                          _Hint(_mismatchText(l10n, mismatch)),
+                        ],
+                        if (groups.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionModel,
+                              optional: l10n.declaredOptional),
+                          for (final g in groups) ...[
+                            if (_groupLabel(l10n, g.id) case final heading?) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                heading,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: context.colors.muted),
+                              ),
+                              const SizedBox(height: 5),
+                            ],
+                            Wrap(
+                              spacing: 7,
+                              runSpacing: 7,
+                              children: [
+                                for (final m in g.models)
+                                  _Chip(
+                                    key: ValueKey('declared-model-$m'),
+                                    label: _modelLabel(l10n, m),
+                                    selected: _model == m,
+                                    onTap: () => setState(
+                                        () => _model = _model == m ? null : m),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
+                        // 🔑 design 0069, and it is the whole change: the lid is
+                        // its OWN question, sitting beside the model list rather
+                        // than inside it. One chip, one column, still countable —
+                        // what it stopped being is mutually exclusive with
+                        // "which battery is this".
+                        //
+                        // Only under 機車電池 (owner ruling 2026-08-19): every lid
+                        // report to date is a bike battery (`08.08/004`, unit
+                        // 300051), and offering it under 行動電源 would collect
+                        // combinations that mean nothing.
+                        if (_category == DeclaredCategory.motorcycleBattery) ...[
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionRetrofit,
+                              optional: l10n.declaredOptional),
+                          Wrap(
+                            spacing: 7,
+                            runSpacing: 7,
+                            children: [
+                              _Chip(
+                                key: const ValueKey('declared-retrofit'),
+                                label: l10n.declaredModelRetrofitLid,
+                                selected: _retrofit,
+                                onTap: () =>
+                                    setState(() => _retrofit = !_retrofit),
+                              ),
+                            ],
+                          ),
+                          // 🔴 A PROMPT, NOT A SECOND BOX (owner, 2026-08-19).
+                          // 0069 Q1 answered "which battery is under the lid?" by
+                          // re-labelling the note field the moment the chip was
+                          // ticked — one box, but the section under the user's
+                          // finger changed its title and its hint mid-form, which
+                          // reads as "my note went somewhere else". The question
+                          // is still worth asking, so it is asked HERE, where the
+                          // answer that triggers it lives, and the note below is
+                          // left exactly as it was.
+                          if (_isRetrofit) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              l10n.declaredRetrofitNotePrompt,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  height: 1.5,
+                                  color: context.colors.muted),
+                            ),
+                          ],
+                        ],
+                        if (_isCarBattery) ...[
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionRegion,
+                              optional: l10n.declaredOptional),
+                          Wrap(
+                            spacing: 7,
+                            runSpacing: 7,
+                            children: [
+                              for (final r in kDeclaredRegions)
+                                _Chip(
+                                  key: ValueKey('declared-region-$r'),
+                                  label: r == 'jp'
+                                      ? l10n.declaredRegionJp
+                                      : l10n.declaredRegionEu,
+                                  selected: _region == r,
+                                  onTap: () => setState(
+                                      () => _region = _region == r ? null : r),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionLabel,
+                              optional: l10n.declaredOptional),
+                          Wrap(
+                            spacing: 7,
+                            runSpacing: 7,
+                            children: [
+                              for (final lb in kDeclaredLabels)
+                                _Chip(
+                                  key: ValueKey('declared-label-$lb'),
+                                  label: lb == 'orange'
+                                      ? l10n.declaredLabelOrange
+                                      : l10n.declaredLabelPurple,
+                                  selected: _label == lb,
+                                  // ⛔ Deliberately does NOT touch the capacity
+                                  // field, in either direction. `car-battery.md`
+                                  // :154-161 overturned the one-to-one mapping on
+                                  // 2026-07-30, so auto-filling 50 from 橘標 would
+                                  // manufacture the very correlation this form was
+                                  // built to measure (§3.3).
+                                  onTap: () => setState(
+                                      () => _label = _label == lb ? null : lb),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionCapacity,
+                              optional: l10n.declaredOptional),
+                          _Field(
+                            key: const ValueKey('declared-capacity'),
+                            controller: _capacity,
+                            hint: l10n.declaredCapacityHint,
+                            // 🔴 NO `keyboardType: number`, NO inputFormatters,
+                            // NO validator. `40B19L` has to be typeable — it is
+                            // the entire point of the field (§3.3).
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: 7),
+                          Wrap(
+                            spacing: 7,
+                            runSpacing: 7,
+                            children: [
+                              for (final s in kDeclaredCapacitySuggestions)
+                                _Chip(
+                                  key: ValueKey('declared-capacity-$s'),
+                                  label: s,
+                                  selected: _capacity.text.trim() == s,
+                                  onTap: () => setState(() {
+                                    _capacity.text =
+                                        _capacity.text.trim() == s ? '' : s;
+                                  }),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
                           Text(
-                            l10n.declaredRetrofitNotePrompt,
+                            l10n.declaredCapacityFreeText,
                             style: TextStyle(
                                 fontSize: 10.5,
                                 height: 1.5,
                                 color: context.colors.muted),
                           ),
                         ],
+                        // The general note. ONE box, always the same box: it
+                        // does not move, change title or change hint for any
+                        // answer above it (owner, 2026-08-19). Still one column,
+                        // still never two boxes writing it — the lid question is
+                        // a prompt beside its chip, not a second field.
+                        if (_category != null) ...[
+                          const SizedBox(height: 14),
+                          _SectionLabel(l10n.declaredSectionNote,
+                              optional: l10n.declaredOptional),
+                          _Field(
+                            key: const ValueKey('declared-note'),
+                            controller: _note,
+                            hint: l10n.declaredNoteHint,
+                          ),
+                        ],
                       ],
-                      if (_isCarBattery) ...[
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionRegion,
-                            optional: l10n.declaredOptional),
-                        Wrap(
-                          spacing: 7,
-                          runSpacing: 7,
-                          children: [
-                            for (final r in kDeclaredRegions)
-                              _Chip(
-                                key: ValueKey('declared-region-$r'),
-                                label: r == 'jp'
-                                    ? l10n.declaredRegionJp
-                                    : l10n.declaredRegionEu,
-                                selected: _region == r,
-                                onTap: () => setState(
-                                    () => _region = _region == r ? null : r),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionLabel,
-                            optional: l10n.declaredOptional),
-                        Wrap(
-                          spacing: 7,
-                          runSpacing: 7,
-                          children: [
-                            for (final lb in kDeclaredLabels)
-                              _Chip(
-                                key: ValueKey('declared-label-$lb'),
-                                label: lb == 'orange'
-                                    ? l10n.declaredLabelOrange
-                                    : l10n.declaredLabelPurple,
-                                selected: _label == lb,
-                                // ⛔ Deliberately does NOT touch the capacity
-                                // field, in either direction. `car-battery.md`
-                                // :154-161 overturned the one-to-one mapping on
-                                // 2026-07-30, so auto-filling 50 from 橘標 would
-                                // manufacture the very correlation this form was
-                                // built to measure (§3.3).
-                                onTap: () => setState(
-                                    () => _label = _label == lb ? null : lb),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionCapacity,
-                            optional: l10n.declaredOptional),
-                        _Field(
-                          key: const ValueKey('declared-capacity'),
-                          controller: _capacity,
-                          hint: l10n.declaredCapacityHint,
-                          // 🔴 NO `keyboardType: number`, NO inputFormatters,
-                          // NO validator. `40B19L` has to be typeable — it is
-                          // the entire point of the field (§3.3).
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        const SizedBox(height: 7),
-                        Wrap(
-                          spacing: 7,
-                          runSpacing: 7,
-                          children: [
-                            for (final s in kDeclaredCapacitySuggestions)
-                              _Chip(
-                                key: ValueKey('declared-capacity-$s'),
-                                label: s,
-                                selected: _capacity.text.trim() == s,
-                                onTap: () => setState(() {
-                                  _capacity.text =
-                                      _capacity.text.trim() == s ? '' : s;
-                                }),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          l10n.declaredCapacityFreeText,
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              height: 1.5,
-                              color: context.colors.muted),
-                        ),
-                      ],
-                      // The general note. ONE box, always the same box: it
-                      // does not move, change title or change hint for any
-                      // answer above it (owner, 2026-08-19). Still one column,
-                      // still never two boxes writing it — the lid question is
-                      // a prompt beside its chip, not a second field.
-                      if (_category != null) ...[
-                        const SizedBox(height: 14),
-                        _SectionLabel(l10n.declaredSectionNote,
-                            optional: l10n.declaredOptional),
-                        _Field(
-                          key: const ValueKey('declared-note'),
-                          controller: _note,
-                          hint: l10n.declaredNoteHint,
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              // §3.9, ruled 2026-08-17. PLAIN TEXT — no link, no `url_launcher`,
-              // no constant.
-              //
-              // 🔑 Not politeness: it is the third road. §3.1 lets every field be
-              // blank and §3.6 refuses to block a save, and both of those say
-              // "do not guess". This says where to go instead — which matters
-              // because the form asks users to tell 一代 from 二代 and 橘標 from
-              // 紫標, distinctions our OWN corpus only has because a dealer said
-              // so out loud. Without it we would be assuming the user knows.
-              Text(
-                l10n.declaredHelpLine,
-                style: TextStyle(
-                    fontSize: 11, height: 1.5, color: context.colors.muted),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DialogButton(
-                      label: l10n.commonCancel,
-                      filled: false,
-                      onTap: () => Navigator.of(context).pop(),
+                const SizedBox(height: 14),
+                // §3.9, ruled 2026-08-17. PLAIN TEXT — no link, no `url_launcher`,
+                // no constant.
+                //
+                // 🔑 Not politeness: it is the third road. §3.1 lets every field be
+                // blank and §3.6 refuses to block a save, and both of those say
+                // "do not guess". This says where to go instead — which matters
+                // because the form asks users to tell 一代 from 二代 and 橘標 from
+                // 紫標, distinctions our OWN corpus only has because a dealer said
+                // so out loud. Without it we would be assuming the user knows.
+                Text(
+                  l10n.declaredHelpLine,
+                  style: TextStyle(
+                      fontSize: 11, height: 1.5, color: context.colors.muted),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DialogButton(
+                        label: l10n.commonCancel,
+                        filled: false,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: _DialogButton(
-                      key: const ValueKey('declared-save'),
-                      label: l10n.devicesAliasSave,
-                      filled: true,
-                      onTap: _submit,
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: _DialogButton(
+                        key: const ValueKey('declared-save'),
+                        label: l10n.devicesAliasSave,
+                        filled: true,
+                        onTap: _submit,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// design 0105 P5: the whole dialog scrolls in a short landscape window.
+///
+/// The dialog scrolls only its middle (the chips) through a `Flexible`, which
+/// works while the title above and the buttons below fit. On a phone on its
+/// side — and worse with the keyboard up, ≈ 140 dp — they do not, and the
+/// column overflowed. There [builder] is told `short`, the middle stops
+/// flexing (flex 0) and this scroll view scrolls everything instead.
+///
+/// 🔑 One structure in every case, only the bound and the flex change — so
+/// the note field keeps its state and focus while the keyboard comes up.
+/// 🔴 Portrait is never `short`: the bound is then the window's own and the
+/// dialog lays out exactly as before, keyboard or not.
+class _ShortWindowScroll extends StatelessWidget {
+  const _ShortWindowScroll({required this.builder});
+
+  final Widget Function(bool short) builder;
+
+  /// Below this height a landscape window scrolls the dialog as a whole.
+  static const double _shortHeight = 420;
+
+  @override
+  Widget build(BuildContext context) {
+    final landscape = WideLayout.isLandscape(MediaQuery.sizeOf(context));
+    return LayoutBuilder(
+      builder: (context, c) {
+        final short = landscape &&
+            (!c.hasBoundedHeight || c.maxHeight < _shortHeight);
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: short || !c.hasBoundedHeight
+                  ? double.infinity
+                  : c.maxHeight,
+            ),
+            child: builder(short),
+          ),
+        );
+      },
     );
   }
 }
