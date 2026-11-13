@@ -7,7 +7,7 @@ name: Release APK
 #      再推 tag v*.*.*（例 git push origin v0.4.0）。版號不符會**直接失敗**。
 #   C. 只出 Play AAB — Run workflow 勾 play_aab_only（2026-11-11 擁有者裁：rc 不再發 GitHub Release）。
 #      versionName 取 pubspec 版號去掉 -rc 後綴（例 0.7.51），build number 照常由時鐘推導；
-#      **不打 tag、不發 Release、不回寫 pubspec**，AAB 只放 workflow artifact。bump 選項此時忽略。
+#      **不打 tag、不發 Release、不回寫 pubspec**，AAB 與 release 簽章 APK 只放 workflow artifact。bump 選項此時忽略。
 on:
   push:
     tags: ['v*.*.*']

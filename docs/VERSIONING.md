@@ -336,6 +336,10 @@ open-smart-batt-v<versionName>-<build>-play.aab
   `pubspec.yaml` 版號去掉 `-rc` 後綴（例 `0.7.51`），build number 照常由時鐘推導；
   **不打 tag、不發 GitHub Release、不回寫 pubspec**，iOS job 也不跑。APK 仍會建
   （用來比對簽章與檢查前景服務型別），但不發佈。artifact 名稱為 `play-aab-play-v<versionName>`。
+  2026-11-14 起，同一個 run 也把那支 **release 簽章的 APK** 存成 artifact
+  `apk-play-v<versionName>`（保留 90 天），用來側裝測試版：和 Play／GitHub 版同一把金鑰，
+  **可以直接覆蓋安裝、不必移除**（debug 簽章的本機 APK 做不到）。在分支上跑
+  （`--ref <branch>`）也可以，用來給回報者先驗證修正。
 - **自動上傳**：repo variable `PLAY_UPLOAD_ENABLED=true` 且 secret `PLAY_SERVICE_ACCOUNT_JSON`（Google Play 服務帳號金鑰）存在時，CI 會把 AAB 傳到 **內部測試軌**；推出到正式版一律在 Play Console 人工操作。未開啟時這兩步顯示為 skipped。⚠️ **新 App 的第一版必須在 Play Console 手動上傳**（API 無法建立 App），之後才能打開開關。
 - **前景服務型別**：合併後的 manifest 只能有 `connectedDevice` 一種（Play 依此要求申報）。`tool/check_fgs_types.sh` 在 CI 與 release 都會檢查；geolocator 自帶服務的 `location` 型別已在 `AndroidManifest.xml` 移除（服務本身必須保留，GPS 速度靠它）。
 
