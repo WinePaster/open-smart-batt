@@ -1225,11 +1225,13 @@ class _RootShellState extends State<RootShell> {
         // project has been told about four times (FB-70 / 103 / 107 / 108).
         labelType: NavigationRailLabelType.all,
         // Scrolls rather than overflows when a short window and a large font
-        // leave too little height — the header and the full-screen button are
-        // part of the scrolled group, not pinned.
+        // leave too little height. On a phone on its side the pill and the
+        // full-screen button are PINNED (top / bottom) and only the tabs
+        // scroll between them: measured on an 844×390 emulator, an unpinned
+        // full-screen button — 主頁's only way in — ended up below the fold.
         scrollable: true,
-        leadingAtTop: false,
-        trailingAtBottom: false,
+        leadingAtTop: compact,
+        trailingAtBottom: compact,
         groupAlignment: -1,
         leading: _RailHeader(
           compact: compact,
@@ -1557,9 +1559,15 @@ class _ConnectionPill extends StatelessWidget {
   }
 }
 
-/// The top of the landscape rail (design 0105 P2): the brand mark, and — on
-/// a phone on its side, where the top bar is gone — the connection status
-/// (mock §5 right). It taps through to the same place the bar's pill does.
+/// The top of the landscape rail (design 0105 P2): the brand mark — or, on a
+/// phone on its side, where the top bar is gone, the connection status in its
+/// place (mock §5 right). The pill taps through to where the bar's pill goes.
+///
+/// ⚠️ The compact rail carries NO mark, a deliberate departure from mock §5:
+/// measured on a 844×390 dp emulator (2026-11-13) the mark, the pill, four
+/// labelled tabs and the full-screen button did not fit 390 dp less the
+/// status bar, and the button — 主頁's only way into full screen — ended up
+/// below the fold. The mark is the one item that says nothing.
 class _RailHeader extends StatelessWidget {
   const _RailHeader({required this.compact, required this.onOpenConnection});
 
@@ -1587,12 +1595,10 @@ class _RailHeader extends StatelessWidget {
     final conn = context.watch<ConnectionController>();
     final (demo, color, label) = _ConnectionPill.presentationOf(conn);
     return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 6),
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          mark,
-          const SizedBox(height: 8),
           InkWell(
             key: const ValueKey('rail-connection-pill'),
             onTap: onOpenConnection,
@@ -1660,7 +1666,7 @@ class _RailFullscreenButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = AppLocalizations.of(context).fullscreenEnter;
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
       child: Semantics(
         button: true,
         label: label,
@@ -1671,7 +1677,7 @@ class _RailFullscreenButton extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 56, minHeight: 40),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

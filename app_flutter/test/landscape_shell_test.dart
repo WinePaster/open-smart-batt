@@ -99,6 +99,11 @@ void main() {
     for (final allow in [false, true]) {
       testWidgets('844×390, 「允許橫式畫面」 ${allow ? 'on' : 'off'}', (t) async {
         setWindow(t, Win.phoneLandscape.size);
+        // A real phone on its side: Android status bar on top, gesture bar
+        // below (the emulator check that found the full-screen button below
+        // the fold had both).
+        t.view.padding = const FakeViewPadding(top: 24, bottom: 16);
+        addTearDown(t.view.resetPadding);
         final s = await makeHarnessServices(t, allowLandscape: allow);
         await pumpShell(t, s);
         expect(_rail, findsOneWidget);
@@ -115,8 +120,30 @@ void main() {
           find.descendant(of: _railPill, matching: find.text('OFFLINE')),
           findsOneWidget,
         );
-        // The content starts at the top of the window.
-        expect(t.getRect(find.byType(HomePage)).top, 0);
+        // The content starts right under the status bar: no top bar.
+        expect(t.getRect(find.byType(HomePage)).top, 24);
+        // Everything in the rail fits the window at the default font — the
+        // full-screen button is 主頁's only way in and must not sit below the
+        // fold (measured on an 844×390 emulator: with the brand mark it did).
+        expect(
+          find.byIcon(Icons.bolt),
+          findsNothing,
+          reason: 'no brand mark in the compact rail',
+        );
+        expect(
+          t.getRect(_railFullscreen).bottom,
+          lessThanOrEqualTo(Win.phoneLandscape.size.height - 16),
+        );
+        expect(t.getRect(_railPill).top, greaterThanOrEqualTo(24));
+        // 🔴 …and they stay visible whatever the font: the pill and the
+        // full-screen button are PINNED, only the tabs scroll between them.
+        // Asserted structurally because the test font's line height is
+        // shorter than a device CJK font's — on the emulator the unpinned
+        // button was below the fold while this geometry check still passed.
+        final rail = t.widget<NavigationRail>(_rail);
+        expect(rail.leadingAtTop, isTrue);
+        expect(rail.trailingAtBottom, isTrue);
+        expect(rail.scrollable, isTrue);
         // FB-70's floor on the moved control.
         final b = t.getSize(_railFullscreen);
         expect(b.width, greaterThanOrEqualTo(40));
