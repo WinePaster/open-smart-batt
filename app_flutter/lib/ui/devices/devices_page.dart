@@ -326,13 +326,19 @@ class _DevicesPageState extends State<DevicesPage>
   }
 
   Future<void> _startScan() async {
-    if (!mounted) return;
+    if (!mounted) {
+      debugPrint('OSB scan: page._startScan skipped — not mounted');
+      return;
+    }
+    debugPrint('OSB scan: page._startScan');
     await context.read<ConnectionController>().startScan();
   }
 
   Future<void> _rescan() async {
+    debugPrint('OSB scan: page._rescan tapped');
     final conn = context.read<ConnectionController>();
     await conn.stopScan();
+    debugPrint('OSB scan: page._rescan stopped, restarting');
     await conn.startScan();
   }
 

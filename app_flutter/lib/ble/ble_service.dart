@@ -26,7 +26,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -785,10 +785,16 @@ class BleService {
       ];
 
   static Future<int?> _androidSdkInt() async {
+    // Bounded: this is a plain channel call with no user in the loop, so a
+    // reply that never comes must not be able to park every scan behind it
+    // (2026-11-14 ROG Phone 9 Pro report: a tap on 重新掃描 reached no plugin
+    // at all). Null falls back to the conservative permission list.
     try {
       return await const MethodChannel('com.winepaster.openSmartBatt/monitor')
-          .invokeMethod<int>('sdkInt');
-    } catch (_) {
+          .invokeMethod<int>('sdkInt')
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint('OSB scan: sdkInt failed: $e');
       return null;
     }
   }
@@ -799,8 +805,16 @@ class BleService {
   Future<bool> ensurePermissions() async {
     if (!Platform.isAndroid) return true; // iOS prompts on first BLE use.
 
-    final statuses =
-        await blePermissionsFor(await _androidSdkInt()).request();
+    // Every step is traced to logcat (`debugPrint` survives release builds):
+    // this is the one stretch of the scan path that reaches no BLE plugin, so
+    // a stall here used to be indistinguishable from a tap that never landed.
+    // Deliberately NO timeout on `request()` — on a first launch it waits on
+    // the system dialog, i.e. on the user, for as long as they take.
+    final sdkInt = await _androidSdkInt();
+    final wanted = blePermissionsFor(sdkInt);
+    debugPrint('OSB scan: permissions sdkInt=$sdkInt request=$wanted');
+    final statuses = await wanted.request();
+    debugPrint('OSB scan: permissions result=$statuses');
 
     final scanOk = statuses[Permission.bluetoothScan]?.isGranted ?? false;
     final connectOk =
@@ -846,12 +860,17 @@ class BleService {
   /// that DO advertise the vendor service). Results arrive on [scanResults].
   Future<void> startScan(
       {Duration timeout = const Duration(seconds: 15)}) async {
-    if (FlutterBluePlus.isScanningNow) return;
+    if (FlutterBluePlus.isScanningNow) {
+      debugPrint('OSB scan: ble.startScan skipped — plugin already scanning');
+      return;
+    }
     // D.1: on iOS the CBCentralManager transitions `.unknown` → `.poweredOn`
     // asynchronously (a few hundred ms after first init, and only once the
     // permission dialog is resolved). Calling startScan before the adapter is
     // on throws a FlutterBluePlusException — so wait (bounded) for `on` first.
     await _awaitAdapterOn(const Duration(seconds: 6));
+    debugPrint('OSB scan: adapter=${FlutterBluePlus.adapterStateNow}, '
+        'calling FlutterBluePlus.startScan');
     _scanSeen.clear();
     _emitTo(_scan, const []);
     // D.1: do NOT swallow the "Bluetooth must be turned on" / unauthorized
