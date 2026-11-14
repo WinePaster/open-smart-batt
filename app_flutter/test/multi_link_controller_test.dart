@@ -68,6 +68,23 @@ class _FakePrimary extends BleService {
 
   void emitLink(BleLinkState s) => _linkOut.add(s);
 
+  /// Opt-in: make [disconnect] behave like the real service's teardown order
+  /// — `disconnecting`, then the handle is cleared (so `connectedDeviceId`
+  /// already reads null), then [inTeardownWindow] runs, and only after that
+  /// does the `disconnected` state reach listeners. 2026.11.13/016.
+  bool realisticDisconnect = false;
+  Future<void> Function()? inTeardownWindow;
+
+  @override
+  Future<void> disconnect() async {
+    if (!realisticDisconnect || connectedId == null) return;
+    emitLink(BleLinkState.disconnecting);
+    await Future<void>.delayed(Duration.zero);
+    connectedId = null;
+    await inTeardownWindow?.call();
+    emitLink(BleLinkState.disconnected);
+  }
+
   void emitScan(Iterable<String> ids) => _scanOut.add([
         for (final id in ids) DiscoveredDevice(id: id, name: id, rssi: -60),
       ]);
@@ -483,6 +500,58 @@ void main() {
     primary.emitLink(BleLinkState.disconnected);
     await _settle();
     expect(ml.heldIds, {'B'});
+  });
+
+  // 2026.11.13/016: on Android a user disconnect was followed 10 ms later by
+  // the same unit coming back as a secondary. `_released` is written only by
+  // the primary-changed listener; these drive the real `disconnect()` and let
+  // a reconcile land between "the handle is gone" and "the state event
+  // arrives".
+  group('016: a user disconnect stays a disconnect', () {
+    Future<MultiLinkController> bootReal() async {
+      final ml = await boot([bat('A'), bat('B')], primaryId: 'A');
+      primary.realisticDisconnect = true;
+      expect(ml.heldIds, {'B'});
+      return ml;
+    }
+
+    test('plain disconnect', () async {
+      final ml = await bootReal();
+      await s.connection.disconnect();
+      await _settle();
+      expect(ml.heldIds, {'B'});
+      expect(log, isNot(contains('connect A')));
+    });
+
+    test('a presence tick lands in the teardown window', () async {
+      final ml = await bootReal();
+      primary.inTeardownWindow = () async => ml.presenceTick();
+      await s.connection.disconnect();
+      await _settle();
+      expect(ml.heldIds, {'B'});
+      expect(log, isNot(contains('connect A')));
+    });
+
+    test('a saved-device update lands in the teardown window', () async {
+      final ml = await bootReal();
+      primary.inTeardownWindow = () => s.devices.touch('A', lastSeen: now);
+      await s.connection.disconnect();
+      await _settle();
+      expect(ml.heldIds, {'B'});
+      expect(log, isNot(contains('connect A')));
+    });
+
+    test('a scan result lands in the teardown window', () async {
+      final ml = await bootReal();
+      primary.inTeardownWindow = () async {
+        primary.emitScan({'A', 'B'});
+        await _settle();
+      };
+      await s.connection.disconnect();
+      await _settle();
+      expect(ml.heldIds, {'B'});
+      expect(log, isNot(contains('connect A')));
+    });
   });
 
   // 2026.11.12/004: twelve saved units, and the three slots went to the three
