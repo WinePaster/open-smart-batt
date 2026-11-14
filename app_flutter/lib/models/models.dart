@@ -17,6 +17,7 @@ export 'display_module.dart';
 export 'g_force_calibration.dart';
 export 'home_grid_ops.dart';
 export 'home_layout.dart';
+export 'vehicle.dart';
 export 'product_class.dart';
 export 'declared_device_model.dart';
 export 'routing_decision.dart';

@@ -520,7 +520,35 @@ class Db {
   /// CLAIMING A NUMBER: 28 was taken after reading `schemaVersion` out of every
   /// local and remote ref of both repos on 2026-11-13 — the highest anywhere
   /// was 27.
-  static const int schemaVersion = 28;
+  ///
+  /// v29 — design 0106 Phase 2 (vehicle-centric home, owner rulings R1–R8,
+  /// 2026-11-14/15). Three NEW tables and nothing else:
+  ///
+  ///   vehicles          (id, kind car|personal, name, home_layout, sort,
+  ///                      last_power_bank_id)
+  ///   vehicle_devices   (vehicle_id → vehicles ON DELETE CASCADE, device_id,
+  ///                      sort; PK (vehicle_id, device_id))
+  ///   vehicle_state     (one row: current_vehicle_id)
+  ///
+  /// Purely additive, so a v28 build reading a v29 file still finds every
+  /// column it knows — `settings.home_layout` above all, which stays the home
+  /// page of anyone with no vehicle.
+  ///
+  /// 🔴 `current_vehicle_id` is its OWN table and NOT a `settings` column, for
+  /// v25's reason exactly (see [tableLogStats]): `SettingsRepo.saveSettings`
+  /// rewrites the whole settings row from `AppSettings.toMap()` with
+  /// `ConflictAlgorithm.replace`, so a column that is not a setting would be
+  /// reset by the next save of any unrelated preference. Design 0106 §3.1
+  /// sketched it as a settings column; that sketch did not survive this.
+  ///
+  /// Nothing is seeded: the personal row is created together with the first
+  /// car (§3.1), so an install that never uses vehicles carries three empty
+  /// tables and behaves exactly as v28.
+  ///
+  /// CLAIMING A NUMBER: 29 was taken after reading `schemaVersion` out of every
+  /// local and remote ref of both repos on 2026-11-15 — the highest anywhere
+  /// was 28.
+  static const int schemaVersion = 29;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -553,6 +581,15 @@ class Db {
   /// `ConnectionController._armAutoConnect` and deleted by
   /// `_cancelAutoConnectWatchdog` — those two and nothing else.
   static const String tableAutoConnectArm = 'autoconnect_arm';
+
+  /// design 0106 (v29). See [schemaVersion] v29.
+  static const String tableVehicles = 'vehicles';
+  static const String tableVehicleDevices = 'vehicle_devices';
+
+  /// design 0106 (v29): the single row naming the current vehicle. Its own
+  /// table for the reason given at [schemaVersion] v29.
+  static const String tableVehicleState = 'vehicle_state';
+  static const int vehicleStateRowId = 1;
 
   /// Fixed single-row id for the settings table.
   static const int settingsRowId = 1;
@@ -1144,7 +1181,48 @@ class AppDatabase {
         'allow_landscape INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (from < 29) {
+      // design 0106 — see [Db.schemaVersion] v29. New tables only.
+      for (final stmt in _vehicleStatements) {
+        await db.execute(stmt);
+      }
+    }
   }
+
+  /// design 0106's tables, written ONCE and used by both [_createStatements]
+  /// and the v29 branch of [_onUpgrade] (the same rule as the two below).
+  /// `IF NOT EXISTS`, like v25's `log_stats`: a file whose `user_version` was
+  /// rolled back without dropping these (the v27/v28 test fixtures do exactly
+  /// that) must still upgrade instead of failing to open.
+  static const List<String> _vehicleStatements = <String>[
+    '''
+    CREATE TABLE IF NOT EXISTS ${Db.tableVehicles} (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      home_layout TEXT,
+      sort INTEGER NOT NULL,
+      last_power_bank_id TEXT
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS ${Db.tableVehicleDevices} (
+      vehicle_id TEXT NOT NULL
+        REFERENCES ${Db.tableVehicles}(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL,
+      sort INTEGER NOT NULL,
+      PRIMARY KEY (vehicle_id, device_id)
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_vehicle_devices_device '
+        'ON ${Db.tableVehicleDevices} (device_id)',
+    '''
+    CREATE TABLE IF NOT EXISTS ${Db.tableVehicleState} (
+      id INTEGER PRIMARY KEY CHECK (id = ${Db.vehicleStateRowId}),
+      current_vehicle_id TEXT
+    )
+    ''',
+  ];
 
   /// design 0060's table, written ONCE and used by both [_createStatements] and
   /// the v16 branch of [_onUpgrade] — see the note on [_deviceFactsStatements]
@@ -1320,5 +1398,6 @@ class AppDatabase {
     'CREATE INDEX idx_diag_log_device ON ${Db.tableDiagLog} (device_id)',
     ..._deviceFactsStatements,
     ..._autoConnectArmStatements,
+    ..._vehicleStatements,
   ];
 }

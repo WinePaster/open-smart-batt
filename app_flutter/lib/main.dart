@@ -383,6 +383,9 @@ class _OpenSmartBattAppState extends State<OpenSmartBattApp>
           // per-device warning screen and the Settings card — and, unlike the two
           // above, it is also what a notification tap arrives through.
           ChangeNotifierProvider<AlertController>.value(value: s.alerts),
+          // design 0106 — the vehicles. Registered in every build: empty until
+          // a car exists, and nothing reads it before Phase 4's screens.
+          ChangeNotifierProvider<VehicleController>.value(value: s.vehicles),
           // design 0103 — registered only in a multi-link build; every reader
           // first checks `ConnectionController.multiLink != null`.
           if (s.multiLink != null)

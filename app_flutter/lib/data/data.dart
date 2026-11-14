@@ -24,6 +24,7 @@ export 'auto_connect_arm_repo.dart';
 export 'pending_writes.dart';
 export 'history_repo.dart';
 export 'device_repo.dart';
+export 'vehicle_repo.dart';
 export 'device_facts_repo.dart';
 export 'settings_repo.dart';
 export 'log_repo.dart';

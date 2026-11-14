@@ -28,3 +28,4 @@ export 'speed_estimator.dart';
 export 'speed_lifecycle_gate.dart';
 export 'telemetry_controller.dart';
 export 'telemetry_health.dart';
+export 'vehicle_controller.dart';

@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import '../demo/demo_device.dart';
 import '../models/models.dart';
 import 'app_database.dart';
+import 'vehicle_repo.dart';
 
 /// CRUD over the `saved_devices` table.
 class DeviceRepo {
@@ -182,11 +183,16 @@ class DeviceRepo {
 
   /// Delete a saved device. Returns rows affected.
   Future<int> deleteSavedDevice(String id) {
-    return _db.delete(
-      Db.tableSavedDevices,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return _db.transaction<int>((txn) async {
+      // design 0106 §3.2: a forgotten unit leaves every vehicle in the same
+      // transaction, so no vehicle can name a unit that no longer exists.
+      await VehicleRepo.forgetDevice(txn, id);
+      return txn.delete(
+        Db.tableSavedDevices,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   /// True if [id] is already saved.
@@ -268,6 +274,11 @@ class DeviceRepo {
       // The pending arm, if it names this unit. 0 or 1 rows by construction.
       await txn.update(Db.tableAutoConnectArm, {'device_id': newId},
           where: 'device_id = ?', whereArgs: [oldId]);
+
+      // design 0106 §3.3: vehicle memberships, every vehicle's home layout and
+      // the personal row's last power bank — same transaction, same reason as
+      // the home layout above.
+      await VehicleRepo.rebindDevice(txn, oldId, newId);
       return true;
     });
   }

@@ -28,6 +28,7 @@ import 'multi_link_controller.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
+import 'vehicle_controller.dart';
 
 /// Holds the long-lived services + controllers for the app.
 class AppServices {
@@ -50,6 +51,8 @@ class AppServices {
     required this.gforce,
     required this.alerts,
     required this.multiLink,
+    required this.vehicleRepo,
+    required this.vehicles,
     required this.pending,
     required this.appBuild,
     required this.platform,
@@ -109,6 +112,12 @@ class AppServices {
   /// `--dart-define=OSB_MULTILINK=true` (or a test asked for one).
   final MultiLinkController? multiLink;
 
+  /// design 0106 Phase 2 — the vehicles. Constructed unconditionally and, like
+  /// the gated controllers above, INERT until a car exists: an install that
+  /// never creates one has three empty tables and the pre-0106 home page.
+  final VehicleRepo vehicleRepo;
+  final VehicleController vehicles;
+
   /// Fire-and-forget database writes still in flight. Drained by [dispose]
   /// before the database closes; see [PendingWrites].
   final PendingWrites pending;
@@ -167,6 +176,7 @@ class AppServices {
     final settingsRepo = SettingsRepo(db.db);
     final logRepo = LogRepo(db.db);
     final autoConnectArmRepo = AutoConnectArmRepo(db.db);
+    final vehicleRepo = VehicleRepo(db.db);
     // design 0097 §2.3 ②: whatever a demo left behind — a process killed
     // mid-demo never reaches the purge on disconnect — goes before anything
     // can read or export it.
@@ -201,6 +211,8 @@ class AppServices {
     // ONE tracker shared by everything that writes without awaiting, so
     // [dispose] can drain the lot before closing the database.
     final pending = PendingWrites();
+    final vehicles =
+        VehicleController(vehicleRepo, devices: devices, pending: pending);
     final connection = ConnectionController(
       bleService,
       settings: settings,
@@ -301,7 +313,8 @@ class AppServices {
     telemetry.bindGForceEstimates(gforce.estimates);
 
     // Prime the persisted controllers before the first frame.
-    await Future.wait([settings.load(), devices.load(), facts.load()]);
+    await Future.wait(
+        [settings.load(), devices.load(), facts.load(), vehicles.load()]);
 
     // design 0103 — only in a multi-link build. Created after the saved
     // devices are loaded, so its first reconcile sees them.
@@ -343,6 +356,8 @@ class AppServices {
       gforce: gforce,
       alerts: alerts,
       multiLink: multiLink,
+      vehicleRepo: vehicleRepo,
+      vehicles: vehicles,
       pending: pending,
       appBuild: env.build,
       platform: env.platform,
@@ -406,6 +421,7 @@ class AppServices {
     // After [telemetry], which is what feeds it: a frame arriving between the
     // two would reach a disposed ChangeNotifier.
     alerts.dispose();
+    vehicles.dispose();
     devices.dispose();
     // After the drain for [devices]' reason: `record()` finishes with
     // `load()` -> `notifyListeners()`, and the connection controller queues
