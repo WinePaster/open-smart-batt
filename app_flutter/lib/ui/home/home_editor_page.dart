@@ -82,6 +82,7 @@ import '../dashboard/display_modules.dart';
 import '../widgets/dashed_border.dart';
 import '../widgets/industrial_card.dart';
 import 'home_editor_tutorial.dart';
+import 'home_plan.dart';
 import 'home_preview.dart';
 import 'home_tiles.dart';
 
@@ -238,7 +239,71 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
 
   void _remove(int index) => _apply(HomeGridOps.remove(_tiles!, index));
 
-  void _toggleSpan(int index) => _apply(HomeGridOps.toggleSpan(_tiles!, index));
+  /// 🔵 design 0106 §6.7: flips what the user SEES — an `auto` half the engine
+  /// draws full flips to half — and makes the result theirs (`sizeBy = user`).
+  void _toggleSpan(int index) {
+    final shown = _placed != null && index < _placed!.length
+        ? _placed![index].span
+        : _tiles![index].span;
+    _apply(HomeGridOps.setSpan(
+      _tiles!,
+      index,
+      shown == HomeSpan.full ? HomeSpan.half : HomeSpan.full,
+    ));
+  }
+
+  /// design 0106 §6.7: hand one card back to the engine.
+  void _resetToAuto(int index) =>
+      _apply(HomeGridOps.resetToAuto(_tiles!, index));
+
+  /// Where every card was drawn on the last build (design 0106 §6.3).
+  List<HomeTile>? _placed;
+
+  /// The widths the last build planned with — 一鍵整理 pairs by them.
+  HomePlanWidths? _planWidths;
+
+  /// 一鍵整理 (design 0106 §6.6): confirm if it takes anything back from the
+  /// user (Q-T1), then offer to undo.
+  Future<void> _tidy() async {
+    final l10n = AppLocalizations.of(context);
+    final before = List<HomeTile>.of(_tiles!);
+    final (sizes, columns) = HomeGridOps.tidyCost(before);
+    if (sizes + columns > 0) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l10n.homeEditTidyConfirmTitle),
+          content: Text(l10n.homeEditTidyConfirmBody(sizes, columns)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.homeEditTidy),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    final widths = _planWidths;
+    final heights =
+        widths == null ? null : homePlanHalfHeights(context, before, widths);
+    _apply(HomeGridOps.tidy(before, planHeights: heights));
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      content: Text(l10n.homeEditTidyDone),
+      action: SnackBarAction(
+        label: l10n.homeEditUndo,
+        onPressed: () {
+          if (mounted) _apply(before);
+        },
+      ),
+    ));
+  }
 
   void _add(HomeTile tile) => _apply(HomeGridOps.add(_tiles!, tile));
 
@@ -267,8 +332,10 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   ///
   /// Dropping into a half-width position is an unambiguous statement of what
   /// width the card should be, so it is not asked for twice (design 0049 §3.3).
-  void _onDropInColumn(int from, int at, HomeColumn column) =>
-      _apply(HomeGridOps.moveTo(_tiles!, from, at, column: column));
+  /// 🔵 design 0106 Q-A3: dropping INTO a column pins the card there.
+  void _onDropInColumn(int from, int at, HomeColumn column) => _apply(
+    HomeGridOps.moveTo(_tiles!, from, at, column: column, pin: true),
+  );
 
   // ---------------------------------------------------------------------------
   // Appearance (design 0054)
@@ -382,6 +449,18 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
         // The bar had a title and zero actions before this, so nothing had to
         // move to make room.
         actions: [
+          // An icon, not a labelled button: the bar must still fit a 320 pt
+          // phone at the largest text size (`home_editor_tutorial_test`).
+          IconButton(
+            key: const ValueKey('home-edit-tidy'),
+            tooltip: l10n.homeEditTidy,
+            onPressed: _tidy,
+            icon: Icon(
+              Icons.auto_fix_high,
+              size: 19,
+              color: context.accent.accent,
+            ),
+          ),
           IconButton(
             tooltip: l10n.homeEditTutorialTitle,
             onPressed: () => showHomeEditorTutorial(context),
@@ -449,7 +528,30 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// stored tile, and it is now the foot of a column — which is also what makes
   /// Q2's「可以不等長」 reachable, since dropping into the tail of the shorter
   /// column is how a user makes it the longer one.
-  Widget _grid(List<HomeTile> tiles, {required bool canDelete}) {
+  /// 🔵 design 0106 §6.3/§6.7: the editor draws cards where the HOME PAGE
+  /// will — same engine, same plan heights, same width (its body is the same
+  /// 560-wide single column). Operations still address [_tiles] by index;
+  /// [HomeLayout.place] keeps length and order, so the indices line up.
+  Widget _grid(List<HomeTile> stored, {required bool canDelete}) =>
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final widths = HomePlanWidths.forContent(
+            constraints.maxWidth.clamp(0.0, 560.0) - 30,
+          );
+          _planWidths = widths;
+          return HomePlanned(
+            tiles: stored,
+            widths: widths,
+            builder: (context, placed) {
+              _placed = placed;
+              return _plannedGrid(placed, stored, canDelete: canDelete);
+            },
+          );
+        },
+      );
+
+  Widget _plannedGrid(List<HomeTile> tiles, List<HomeTile> stored,
+      {required bool canDelete}) {
     final blocks = HomeLayout.blocksOf(tiles);
     // Which device tile gets the LIVE shape: the first one, because at most one
     // link is up at a time. Computed over the flat list rather than per band,
@@ -461,6 +563,10 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     Widget cell(int i) => _EditorCell(
       index: i,
       tile: tiles[i],
+      userSet: stored[i].sizeBy == TileSource.user ||
+          (stored[i].span == HomeSpan.half &&
+              stored[i].columnBy == TileSource.user),
+      onResetAuto: () => _resetToAuto(i),
       preview: _previewFor(tiles[i], live: i == firstDeviceCard),
       canDelete: canDelete,
       onDelete: () => _remove(i),
@@ -879,6 +985,8 @@ class _EditorCell extends StatefulWidget {
   const _EditorCell({
     required this.index,
     required this.tile,
+    required this.userSet,
+    required this.onResetAuto,
     required this.preview,
     required this.canDelete,
     required this.onDelete,
@@ -891,6 +999,11 @@ class _EditorCell extends StatefulWidget {
 
   final int index;
   final HomeTile tile;
+
+  /// design 0106 §6.7: the user set this card's size or column themselves, so
+  /// the engine leaves it alone until 一鍵整理 or [onResetAuto].
+  final bool userSet;
+  final VoidCallback onResetAuto;
 
   /// The fake data this cell draws with — REQUIRED, not optional. Making it
   /// nullable here would leave a route back to live cards on this page, and the
@@ -980,6 +1093,10 @@ class _EditorCellState extends State<_EditorCell> {
                     ),
                   ),
                   const Spacer(),
+                  _SourceChip(
+                    userSet: widget.userSet,
+                    onResetAuto: widget.onResetAuto,
+                  ),
                   IconButton(
                     onPressed: widget.onToggleSpan,
                     iconSize: 16,
@@ -1042,6 +1159,52 @@ class _EditorCellState extends State<_EditorCell> {
 /// the shorter column is how a user gives one column three cards and the other
 /// one. In the old model there was exactly one slot per row and it could only
 /// ever hold a pair.
+/// design 0106 §6.7: 「自動」 or 「你設定的」 on every card in the editor.
+/// Tapping 「你設定的」 hands the card back to the engine.
+class _SourceChip extends StatelessWidget {
+  const _SourceChip({required this.userSet, required this.onResetAuto});
+
+  final bool userSet;
+  final VoidCallback onResetAuto;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = context.colors;
+    final label = Text(
+      userSet ? l10n.homeTileSizeUser : l10n.homeTileSizeAuto,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 10.5,
+        color: userSet ? context.accent.accent : colors.muted,
+      ),
+    );
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: userSet ? context.accent.accent : colors.line,
+        ),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: label,
+    );
+    if (!userSet) return Flexible(child: chip);
+    return Flexible(
+      child: Tooltip(
+        message: l10n.homeTileResetAuto,
+        child: InkWell(
+          key: const ValueKey('home-edit-reset-auto'),
+          onTap: onResetAuto,
+          borderRadius: BorderRadius.circular(9),
+          child: chip,
+        ),
+      ),
+    );
+  }
+}
+
 class _ColumnTail extends StatefulWidget {
   const _ColumnTail({
     required this.at,

@@ -721,6 +721,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeEditRestoreDefaults => 'Restore default layout';
 
   @override
+  String get homeEditTidy => 'Tidy up';
+
+  @override
+  String get homeEditTidyConfirmTitle => 'Tidy up the layout?';
+
+  @override
+  String homeEditTidyConfirmBody(int sizes, int columns) {
+    return 'This hands the size of $sizes cards and the column of $columns cards you set back to automatic. You can undo it right after.';
+  }
+
+  @override
+  String get homeEditTidyDone => 'Layout tidied';
+
+  @override
+  String get homeEditUndo => 'Undo';
+
+  @override
+  String get homeTileSizeAuto => 'Auto';
+
+  @override
+  String get homeTileSizeUser => 'Set by you';
+
+  @override
+  String get homeTileResetAuto => 'Back to automatic';
+
+  @override
   String get homeModuleClock => 'Clock';
 
   @override

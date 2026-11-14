@@ -481,8 +481,15 @@ void main() {
   // the RENDERING of the state was, in two places at once.
   // ===========================================================================
   group('the shape button', () {
+    // 🔵 design 0106: the generated default is half-width device cards now,
+    // so these two store a hand-made full-width layout to have a full tile.
+    final fullPair = const HomeLayout([
+      HomeTile.device('DEV-0'),
+      HomeTile.device('DEV-1'),
+    ]).encode();
+
     testWidgets('🔴 halving a tile halves its preview', (tester) async {
-      final s = await boot(tester, devices: 2);
+      final s = await boot(tester, devices: 2, stored: fullPair);
       addTearDown(() => teardown(tester, s));
       await pumpEditor(tester, s);
 
@@ -505,7 +512,7 @@ void main() {
     });
 
     testWidgets('and the change is written, not just drawn', (tester) async {
-      final s = await boot(tester, devices: 2);
+      final s = await boot(tester, devices: 2, stored: fullPair);
       addTearDown(() => teardown(tester, s));
       await pumpEditor(tester, s);
 

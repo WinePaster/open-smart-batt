@@ -28,6 +28,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../util/wide_layout.dart';
 import '../widgets/flow_columns.dart';
+import 'home_plan.dart';
 import 'home_tiles.dart';
 
 /// The home tab's body (sits inside the app shell's [Scaffold]).
@@ -77,29 +78,49 @@ class HomePage extends StatelessWidget {
               gForceAvailable: context.watch<GForceController>().available,
             );
 
-    final blocks = HomeLayout.blocksOf(layout.tiles);
-    final sections = [
-      for (final block in blocks) _section(block, layout),
-    ];
     final editRow = onEdit != null ? _EditLayoutRow(onTap: onEdit!) : null;
+    final largeText = WideLayout.largeText(context);
 
     // design 0105 P3 (Q4 = A): a landscape window lays the SAME sections, in
-    // the same order, into 2–3 columns. Portrait never reaches the
-    // LayoutBuilder — it renders the single-column tree below, untouched.
-    if (WideLayout.isLandscape(MediaQuery.sizeOf(context))) {
-      final largeText = WideLayout.largeText(context);
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = WideLayout.columnsFor(
-            constraints.maxWidth - 2 * _hPad,
-            largeText: largeText,
-          );
-          if (columns == 1) return _singleColumn(sections, editRow);
-          return _multiColumn(sections, editRow, columns);
-        },
-      );
+    // the same order, into 2–3 columns. 🔵 design 0106 §6.4 (Q-S1): so does a
+    // PORTRAIT window wide enough for two columns (a tablet) — a phone in
+    // portrait is far narrower than that and keeps the single column exactly.
+    final size = MediaQuery.sizeOf(context);
+    final multi = WideLayout.isLandscape(size) || WideLayout.wideEnough(size);
+
+    Widget planned(int columns, double content) => HomePlanned(
+          tiles: layout.tiles,
+          widths: HomePlanWidths.forContent(content),
+          builder: (context, placed) {
+            final sections = [
+              for (final block in HomeLayout.blocksOf(placed))
+                _section(block, placed),
+            ];
+            return columns == 1
+                ? _singleColumn(sections, editRow)
+                : _multiColumn(sections, editRow, columns);
+          },
+        );
+
+    // A phone in portrait never reaches the LayoutBuilder (design 0105's
+    // "portrait is today"): it fills the window, so the window IS its width.
+    if (!multi) {
+      return planned(1, size.width.clamp(0.0, 560.0) - 2 * _hPad);
     }
-    return _singleColumn(sections, editRow);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final avail = constraints.maxWidth - 2 * _hPad;
+        final columns = WideLayout.columnsFor(avail, largeText: largeText);
+        // The width a full-width card is drawn at — what the plan heights of
+        // design 0106 §6.3 are measured against.
+        final content = columns == 1
+            ? (constraints.maxWidth.clamp(0.0, 560.0) - 2 * _hPad)
+            : (avail.clamp(0.0, WideLayout.maxWidthFor(columns)) -
+                    (columns - 1) * WideLayout.columnGap) /
+                columns;
+        return planned(columns, content);
+      },
+    );
   }
 
   /// Side padding of the grid, both layouts.
@@ -159,7 +180,7 @@ class HomePage extends StatelessWidget {
   /// One [HomeBlock] as a widget — identical in every layout. Design 0105
   /// moves whole sections between columns and never opens one up, so design
   /// 0084's rules below hold inside each landscape column unchanged.
-  Widget _section(HomeBlock block, HomeLayout layout) {
+  Widget _section(HomeBlock block, List<HomeTile> tiles) {
     // 🔴 COLUMNS, NOT ROWS, since design 0084 S2 — and the difference
     // is the whole feature. A row makes both sides advance together,
     // so the card under a short one starts where the TALLEST card of
@@ -189,7 +210,7 @@ class HomePage extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 2),
       child: block.full != null
           ? HomeTileView(
-              tile: layout.tiles[block.full!],
+              tile: tiles[block.full!],
               onOpenDevices: onOpenDevices,
               onOpenDetail: onOpenDetail,
             )
@@ -230,7 +251,7 @@ class HomePage extends StatelessWidget {
                         children: [
                           for (final i in column)
                             HomeTileView(
-                              tile: layout.tiles[i],
+                              tile: tiles[i],
                               onOpenDevices: onOpenDevices,
                               onOpenDetail: onOpenDetail,
                             ),

@@ -472,6 +472,24 @@
   "homeEditTitle": "Edit home",
   "homeEditAddCard": "Add card",
   "homeEditRestoreDefaults": "Restore default layout",
+  "homeEditTidy": "Tidy up",
+  "homeEditTidyConfirmTitle": "Tidy up the layout?",
+  "homeEditTidyConfirmBody": "This hands the size of {sizes} cards and the column of {columns} cards you set back to automatic. You can undo it right after.",
+  "@homeEditTidyConfirmBody": {
+    "placeholders": {
+      "sizes": {
+        "type": "int"
+      },
+      "columns": {
+        "type": "int"
+      }
+    }
+  },
+  "homeEditTidyDone": "Layout tidied",
+  "homeEditUndo": "Undo",
+  "homeTileSizeAuto": "Auto",
+  "homeTileSizeUser": "Set by you",
+  "homeTileResetAuto": "Back to automatic",
   "homeModuleClock": "Clock",
   "homeStyleTitle": "Card appearance",
   "homeStyleShellSection": "Frame",

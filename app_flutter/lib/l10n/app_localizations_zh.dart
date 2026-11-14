@@ -685,6 +685,32 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeEditRestoreDefaults => '回復預設版面';
 
   @override
+  String get homeEditTidy => '一鍵整理';
+
+  @override
+  String get homeEditTidyConfirmTitle => '要一鍵整理嗎？';
+
+  @override
+  String homeEditTidyConfirmBody(int sizes, int columns) {
+    return '你自己設定過的 $sizes 張卡的大小、$columns 張卡的位置，會改回自動。整理完可以馬上復原。';
+  }
+
+  @override
+  String get homeEditTidyDone => '已整理';
+
+  @override
+  String get homeEditUndo => '復原';
+
+  @override
+  String get homeTileSizeAuto => '自動';
+
+  @override
+  String get homeTileSizeUser => '你設定的';
+
+  @override
+  String get homeTileResetAuto => '改回自動';
+
+  @override
   String get homeModuleClock => '時鐘';
 
   @override

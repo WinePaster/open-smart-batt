@@ -215,12 +215,15 @@ void main() {
     });
   });
 
+  // 🔵 design 0106 §6.4 (Q-S1, owner 2026-11-15「可以了」): a portrait window
+  // at least two minimum columns wide (800×1280, a tablet) now uses the
+  // multi-column grid — pinned in group 3b. Every PHONE portrait below is
+  // still today, to the pixel.
   group('3. 🔴 portrait is today, to the pixel', () {
     for (final size in [
       const Size(390, 844),
       const Size(360, 800),
       const Size(320, 700),
-      const Size(800, 1280),
     ]) {
       for (final text in AppTextSize.values) {
         for (final os in [1.0, 1.3]) {
@@ -254,6 +257,25 @@ void main() {
         }
       }
     }
+  });
+
+  group('3b. 🔵 a tablet in portrait gets columns (design 0106 Q-S1)', () {
+    testWidgets('800×1280 portrait ⇒ FlowColumns with 2 columns', (t) async {
+      setWindow(t, const Size(800, 1280));
+      final s = await makeHarnessServices(t);
+      await t.runAsync(() => s.settings.setHomeLayout(_layout.encode()));
+      await _pumpPage(t, s, const HomePage(), AppTextSize.small);
+      expect(find.byType(FlowColumns), findsOneWidget);
+      expect(t.widget<FlowColumns>(find.byType(FlowColumns)).columns, 2);
+    });
+
+    testWidgets('a phone in portrait never does (412×915)', (t) async {
+      setWindow(t, const Size(412, 915));
+      final s = await makeHarnessServices(t);
+      await t.runAsync(() => s.settings.setHomeLayout(_layout.encode()));
+      await _pumpPage(t, s, const HomePage(), AppTextSize.small);
+      expect(find.byType(FlowColumns), findsNothing);
+    });
   });
 
   group('4. the real shell', () {

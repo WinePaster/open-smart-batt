@@ -58,6 +58,12 @@ abstract final class WideLayout {
   static bool isLandscape(Size window) => window.width > window.height;
 
   /// Left [NavigationRail] instead of the bottom bar.
+  /// design 0106 §6.4 (Q-S1): a PORTRAIT window at least two minimum columns
+  /// wide (a tablet) may use the multi-column home grid too. Every phone in
+  /// portrait is narrower, so "portrait is never touched" still holds there.
+  static bool wideEnough(Size window) =>
+      window.width >= 2 * columnMinWidth + columnGap;
+
   static bool useRail(Size window) =>
       isLandscape(window) && window.width >= railMinWidth;
 

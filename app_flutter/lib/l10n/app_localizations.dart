@@ -1232,6 +1232,54 @@ abstract class AppLocalizations {
   /// **'Restore default layout'**
   String get homeEditRestoreDefaults;
 
+  /// No description provided for @homeEditTidy.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidy up'**
+  String get homeEditTidy;
+
+  /// No description provided for @homeEditTidyConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidy up the layout?'**
+  String get homeEditTidyConfirmTitle;
+
+  /// No description provided for @homeEditTidyConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This hands the size of {sizes} cards and the column of {columns} cards you set back to automatic. You can undo it right after.'**
+  String homeEditTidyConfirmBody(int sizes, int columns);
+
+  /// No description provided for @homeEditTidyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Layout tidied'**
+  String get homeEditTidyDone;
+
+  /// No description provided for @homeEditUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get homeEditUndo;
+
+  /// No description provided for @homeTileSizeAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get homeTileSizeAuto;
+
+  /// No description provided for @homeTileSizeUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Set by you'**
+  String get homeTileSizeUser;
+
+  /// No description provided for @homeTileResetAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to automatic'**
+  String get homeTileResetAuto;
+
   /// Heading for the clock card (design 0052), used both on the card itself and in the home editor's add menu — the card reads this same key, so there is exactly one name for the module. No AM/PM or 12/24-hour wording belongs here: the day-period abbreviation comes from Flutter's own MaterialLocalizations, and the hour format follows the operating system.
   ///
   /// In en, this message translates to:
