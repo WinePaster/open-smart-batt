@@ -366,20 +366,7 @@ class MultiLinkController extends ChangeNotifier {
   void _onPrimaryChanged() {
     if (_disposed) return;
     _notePresence();
-    final p = _conn.connectedDeviceId;
-    // The hand-off has landed: from here on the target is excluded as the
-    // primary itself, which is the rule that should hold it.
-    if (p != null && p == _handoffTarget) _handoffTarget = null;
-    if (p != _lastPrimary) {
-      final gone = _lastPrimary;
-      // A → null is the user letting go (only `disconnect()` clears the
-      // desired id; a radio drop keeps it while the ladder runs). A → B is a
-      // hand-off, and A becomes eligible as a secondary.
-      if (gone != null && p == null) _released.add(gone);
-      // A → B: A was the live primary until just now.
-      if (gone != null && p != null) _seenAt[gone] = _now();
-      _lastPrimary = p;
-    }
+    _trackPrimary();
     if (!_enabled) return;
     if (_primaryIsPowerBank()) {
       _holdForPowerBank();
@@ -388,6 +375,32 @@ class MultiLinkController extends ChangeNotifier {
     }
     _reconcile();
     _logReadyIfChanged();
+  }
+
+  /// Fold a change of primary into [_released] / [_seenAt] / [_handoffTarget].
+  ///
+  /// Called from the primary's listener AND at the top of [_reconcile]. The
+  /// listener alone is not enough (2026.11.13/016): the primary's handle is
+  /// cleared during teardown a few awaits before its `disconnected` event
+  /// reaches [ConnectionController], so `connectedDeviceId` already reads null
+  /// while no notification has fired. A reconcile entered from another path in
+  /// that window — the presence tick, or a saved-device update — saw the unit
+  /// as an ordinary nearby candidate and adopted it as a secondary 10 ms after
+  /// the user pressed disconnect.
+  void _trackPrimary() {
+    final p = _conn.connectedDeviceId;
+    // The hand-off has landed: from here on the target is excluded as the
+    // primary itself, which is the rule that should hold it.
+    if (p != null && p == _handoffTarget) _handoffTarget = null;
+    if (p == _lastPrimary) return;
+    final gone = _lastPrimary;
+    // A → null is the user letting go (only `disconnect()` clears the desired
+    // id; a radio drop keeps it while the ladder runs). A → B is a hand-off,
+    // and A becomes eligible as a secondary.
+    if (gone != null && p == null) _released.add(gone);
+    // A → B: A was the live primary until just now.
+    if (gone != null && p != null) _seenAt[gone] = _now();
+    _lastPrimary = p;
   }
 
   void _holdForPowerBank() {
@@ -461,6 +474,7 @@ class MultiLinkController extends ChangeNotifier {
 
   void _reconcile() {
     if (_disposed) return;
+    _trackPrimary();
     if (!_enabled || _stoppedByUser) {
       if (_links.isNotEmpty && (!_enabled || _stoppedByUser)) {
         for (final id in _links.keys.toList()) {
