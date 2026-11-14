@@ -53,6 +53,9 @@ String? reportNoteText({
   required AppEdition edition,
   required String scope,
   required DateTime at,
+  // design 0106 Phase 5: the export header's `vehicle:` value, or null (no
+  // line). Never a name.
+  String? vehicle,
 }) {
   final body = note.trim();
   if (body.isEmpty) return null;
@@ -62,6 +65,7 @@ String? reportNoteText({
     '# edition: ${edition.name}',
     '# exported: ${at.toIso8601String()}',
     '# scope: $scope',
+    if (vehicle != null) '# vehicle: $vehicle',
     '',
     body,
     '',

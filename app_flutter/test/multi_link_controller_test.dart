@@ -27,6 +27,7 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
+import 'package:open_smart_batt/ui/util/report_bundle.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// The primary link: driven by hand, never touches a radio.
@@ -616,7 +617,7 @@ void main() {
     test('A → B: a and b released as vehicle-switch, c and d connected',
         () async {
       final ml = await bootCars();
-      await vehicles.select(carB);
+      await vehicles.select(carB, source: 'home');
       await _settle();
       expect(ml.heldIds, {'c', 'd'});
       expect(log, containsAll(['disconnect a', 'disconnect b']));
@@ -628,7 +629,24 @@ void main() {
             isTrue,
             reason: id);
       }
-      expect(n, contains('vehicle: switch car1→car2'));
+      // design 0106 Phase 5: where the switch came from.
+      expect(n, contains('vehicle: switch car1→car2 source=home'));
+    });
+
+    // design 0106 Phase 5: the export header's `vehicle:` value.
+    test('Phase 5: vehicle header names the group by position, never by name',
+        () async {
+      final ml = await bootCars();
+      await vehicles.rename(carA, 'ABC-1234');
+      await _settle();
+      expect(ml.vehicleHeaderValue, 'current=car1/2 devices=2');
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      expect(ml.vehicleHeaderValue, 'current=personal/2 devices=1');
+      expect(ml.vehicleHeaderValue, isNot(contains('ABC')));
+      await ml.setEnabled(false);
+      await _settle();
+      expect(ml.vehicleHeaderValue, isNull, reason: 'no line while off');
     });
 
     test('personal: every secondary goes, e connects as the PRIMARY', () async {
@@ -863,5 +881,47 @@ void main() {
     expect(ml.exportHeaderValue, isNull);
     expect(header(ml.exportHeaderValue).any((l) => l.startsWith('multilink')),
         isFalse);
+  });
+
+  // design 0106 Phase 5: the `vehicle:` line rides with `multilink:` — and
+  // reaches the problem report's note.txt as well.
+  test('0106 Phase 5: export header and report note carry vehicle:',
+      () async {
+    await boot([bat('A')]); // the file's tearDown disposes the services
+    List<String> header(String? v) => exportHeaderLines(
+          title: 't',
+          exportedAt: DateTime(2026),
+          appBuild: 'x',
+          platform: 'p',
+          edition: AppEdition.community,
+          scope: 'all',
+          layout: '-',
+          home: '-',
+          mode: AppMode.personal,
+          themeMode: AppThemeMode.dark,
+          accent: AccentTheme.amber,
+          speedDetection: false,
+          gMeter: false,
+          resolution: ExportResolution.none,
+          multiLink: v == null ? null : 'on max=3',
+          vehicle: v,
+          devices: const [],
+        );
+    expect(header('current=car1/2 devices=2'),
+        contains('vehicle: current=car1/2 devices=2'));
+    expect(header(null).any((l) => l.startsWith('vehicle')), isFalse);
+    String? note(String? v) => reportNoteText(
+          note: 'it drops',
+          appName: 'OSB',
+          appBuild: 'x',
+          platform: 'p',
+          edition: AppEdition.community,
+          scope: 'all',
+          at: DateTime(2026),
+          vehicle: v,
+        );
+    expect(note('current=personal/1 devices=1'),
+        contains('# vehicle: current=personal/1 devices=1'));
+    expect(note(null), isNot(contains('vehicle')));
   });
 }

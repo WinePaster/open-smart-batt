@@ -73,10 +73,25 @@ class VehicleController extends ChangeNotifier {
   }
 
   /// Select the current vehicle (null = none). Rejects an unknown id.
-  Future<void> select(String? id) async {
+  ///
+  /// [source] (design 0106 Phase 5) names where the choice came from — `home`
+  /// (the picker), `device-page` (F3, opening a unit that belongs to one
+  /// vehicle) or `editor` — for the `vehicle: switch … source=` event line,
+  /// which [MultiLinkController] writes when it sees the change.
+  Future<void> select(String? id, {String? source}) async {
     if (id == _currentId) return;
+    _selectSource = source;
     await _repo.setCurrent(id);
     await load();
+  }
+
+  String? _selectSource;
+
+  /// The [select] source for the switch being applied right now, once.
+  String? takeSelectSource() {
+    final s = _selectSource;
+    _selectSource = null;
+    return s;
   }
 
   Future<Vehicle> createCar(String name) async {

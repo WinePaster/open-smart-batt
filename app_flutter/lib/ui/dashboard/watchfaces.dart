@@ -699,6 +699,13 @@ String exportHomeValue(HomeLayout? layout) {
 /// Reads with `context.read` for [currentExportLayoutValue]'s reason: every
 /// caller is an export handler responding to a tap, and must capture this
 /// BEFORE its first `await`.
-String currentExportHomeValue(BuildContext context) =>
-    exportHomeValue(
-        HomeLayout.decode(context.read<SettingsController>().homeLayout));
+///
+/// design 0106 Phase 5: in vehicle mode it is the CURRENT vehicle's layout —
+/// the grid the user was actually looking at (`vehicle:` says which one).
+String currentExportHomeValue(BuildContext context) {
+  final ml = context.read<MultiLinkController?>();
+  final v = ml?.activeVehicle;
+  if (v != null) return exportHomeValue(v.homeLayout);
+  return exportHomeValue(
+      HomeLayout.decode(context.read<SettingsController>().homeLayout));
+}

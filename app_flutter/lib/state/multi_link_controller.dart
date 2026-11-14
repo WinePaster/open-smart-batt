@@ -269,6 +269,24 @@ class MultiLinkController extends ChangeNotifier {
   /// Whether [deviceId] is live on a SECONDARY link.
   bool isOnlineFor(String deviceId) => _links[deviceId]?.online ?? false;
 
+  /// design 0106 Phase 4: in range by the same rule auto-connect uses — live on
+  /// a secondary link, or seen within [presenceWindow]. Drives the vehicle
+  /// picker's "nearby" dot and the offline-car banner (Q3).
+  bool isNearby(String deviceId) => _isPresent(deviceId);
+
+  /// design 0106 Phase 5: the export header's `vehicle:` value, or null (no
+  /// line) while the switch is off — the same rule as `multilink:`.
+  /// `current=<car n|personal|none>/<cars> devices=<k>`. ⛔ Never a name: a car
+  /// name may be a plate number (§4.3).
+  String? get vehicleHeaderValue {
+    if (!_enabled) return null;
+    final cars = _vehicles?.cars.length ?? 0;
+    final cur = activeVehicle;
+    if (cur == null) return 'current=none/$cars devices=0';
+    return 'current=${_vehicleLabel(cur.id)}/$cars '
+        'devices=${cur.deviceIds.length}';
+  }
+
   /// Whether [deviceId]'s secondary link is paused (power bank or demotion).
   bool isPausedFor(String deviceId) => _links[deviceId]?.paused ?? false;
 
@@ -802,7 +820,8 @@ class MultiLinkController extends ChangeNotifier {
   void _applyVehicleSwitch(String? prevId, Vehicle? next) {
     _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
         note: 'vehicle: switch ${_vehicleLabel(prevId)}'
-            '→${_vehicleLabel(next?.id)}'));
+            '→${_vehicleLabel(next?.id)}'
+            ' source=${_vehicles?.takeSelectSource() ?? 'other'}'));
     if (next == null) return; // no vehicle any more ⇒ the 0103 rule
     final primary = _conn.connectedDeviceId;
     if (next.isCar) {

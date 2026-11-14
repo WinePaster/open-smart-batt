@@ -56,6 +56,7 @@ class ExportCapture {
     required this.gMeterOn,
     required this.rawPacketLog,
     required this.multiLink,
+    required this.vehicle,
   });
 
   /// Reads [context] NOW. Call it before any await in the handler.
@@ -91,6 +92,9 @@ class ExportCapture {
       // design 0103 §3.6 — null (no header line) unless the experiment is on.
       multiLink:
           context.read<ConnectionController>().multiLink?.exportHeaderValue,
+      // design 0106 Phase 5 — null (no line) under the same rule.
+      vehicle:
+          context.read<ConnectionController>().multiLink?.vehicleHeaderValue,
     );
   }
 
@@ -113,6 +117,7 @@ class ExportCapture {
   final bool gMeterOn;
   final bool rawPacketLog;
   final String? multiLink;
+  final String? vehicle;
 
   String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
 
@@ -182,6 +187,7 @@ Future<int> writeAllDataCsv(ExportCapture c, File file) async {
       platform: c.services.platform,
       edition: c.edition,
       multiLink: c.multiLink,
+      vehicle: c.vehicle,
       scope: exportScopeLabel(target),
       // FB-60. Unconditional here and always `all`: this export has no range
       // picker, so the file has to say so rather than leave the recipient to
@@ -233,6 +239,7 @@ Future<String> buildDiagnosticLog(ExportCapture c) async {
     platform: c.services.platform,
     edition: c.edition,
     multiLink: c.multiLink,
+    vehicle: c.vehicle,
     scope: exportScopeLabel(target),
     layout: layout,
     home: c.home,

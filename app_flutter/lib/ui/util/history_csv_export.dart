@@ -65,6 +65,8 @@ Future<void> exportHistoryCsv(
   // the header it always did.
   final multiLink =
       context.read<ConnectionController?>()?.multiLink?.exportHeaderValue;
+  final vehicle =
+      context.read<ConnectionController?>()?.multiLink?.vehicleHeaderValue;
   final messenger = ScaffoldMessenger.of(context);
   // Captured now: every lookup below runs after an await, when the screen that
   // started this may already be gone.
@@ -151,6 +153,7 @@ Future<void> exportHistoryCsv(
         platform: services.platform,
         edition: edition,
         multiLink: multiLink,
+        vehicle: vehicle,
         scope: exportScopeLabel(target),
         window: window,
         resolution: resolution,

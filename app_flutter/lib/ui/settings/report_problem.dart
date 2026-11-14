@@ -98,6 +98,7 @@ Future<void> reportProblem(
       edition: capture.edition,
       scope: exportScopeLabel(target),
       at: DateTime.now(),
+      vehicle: capture.vehicle,
     );
     // A note alone is still a report ("it will not connect" may come with no
     // rows at all); only a bundle with nothing in it is refused.

@@ -192,6 +192,10 @@ List<String> exportHeaderLines({
   // here: every build that predates the experiment, and every build that
   // never had it, recorded single-link — which is what "no line" means.
   String? multiLink,
+  // design 0106 Phase 5: `current=<car n|personal|none>/<cars> devices=<k>`
+  // beside `multilink:` and under the same rule — no line while the switch is
+  // off. ⛔ Never a vehicle NAME: a name may be a plate number (§4.3).
+  String? vehicle,
   // design 0070 stage two. NO DEFAULT, on purpose.
   //
   // This parameter used to be `= const []`, and that default is the whole
@@ -237,6 +241,7 @@ List<String> exportHeaderLines({
     // mean both "community" and "a build older than this line".
     'edition: ${edition.name}',
     if (multiLink != null) 'multilink: $multiLink',
+    if (vehicle != null) 'vehicle: $vehicle',
     // FB-60. WHICH TIME RANGE THE USER ASKED FOR — distinct from the
     // `range: A .. B` the repo computes, and the distinction is the whole
     // point. `range:` says what the data happens to span; `window:` says what
