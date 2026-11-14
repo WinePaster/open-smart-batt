@@ -75,6 +75,24 @@ class _FakePrimary extends BleService {
   bool realisticDisconnect = false;
   Future<void> Function()? inTeardownWindow;
 
+  /// design 0106 Phase 3: what the PRIMARY was asked to connect (the personal
+  /// group's power bank goes through here). Off unless a test opts in.
+  bool acceptConnects = false;
+  final List<String> primaryConnects = <String>[];
+
+  @override
+  Future<bool> ensurePermissions() async => true;
+
+  @override
+  Future<void> connect(String deviceId,
+      {Duration? timeout, bool autoConnect = false}) async {
+    primaryConnects.add(deviceId);
+    if (!acceptConnects) return;
+    connectedId = deviceId;
+    emitLink(BleLinkState.connecting);
+    emitLink(BleLinkState.ready);
+  }
+
   @override
   Future<void> disconnect() async {
     if (!realisticDisconnect || connectedId == null) return;
@@ -551,6 +569,184 @@ void main() {
       await _settle();
       expect(ml.heldIds, {'B'});
       expect(log, isNot(contains('connect A')));
+    });
+  });
+
+  // design 0106 Phase 3 — the owner's example: car A = a + b, car B = c + d,
+  // the personal group = power bank e. All five in range unless a test says
+  // otherwise.
+  group('0106: auto-connect by vehicle', () {
+    late VehicleController vehicles;
+    late String carA;
+    late String carB;
+
+    Future<MultiLinkController> bootCars({Set<String>? nearby}) async {
+      final ml = await boot(
+          [bat('a'), bat('b'), bat('c'), bat('d'), pb('e')],
+          nearby: nearby,
+          adapterOn: true);
+      primary.realisticDisconnect = true;
+      primary.acceptConnects = true;
+      vehicles = s.vehicles;
+      carA = (await vehicles.createCar('A')).id;
+      await vehicles.setDevices(carA, ['a', 'b']);
+      carB = (await vehicles.createCar('B')).id;
+      await vehicles.setDevices(carB, ['c', 'd']);
+      await vehicles.setDevices(VehicleRepo.personalId, ['e']);
+      await _settle();
+      return ml;
+    }
+
+    Future<List<String>> notes() async {
+      await s.pending.drain();
+      return [for (final e in await s.logRepo.queryLog()) e.note ?? ''];
+    }
+
+    test('the first car becomes current; only its units are connected',
+        () async {
+      final ml = await bootCars();
+      expect(vehicles.current?.id, carA);
+      // Before the first car existed the 0103 rule had taken a, b, c; the
+      // car let c go and never touches d.
+      expect(ml.heldIds, {'a', 'b'});
+      expect(log, contains('disconnect c'));
+      expect(log, isNot(contains('connect d')));
+    });
+
+    test('A → B: a and b released as vehicle-switch, c and d connected',
+        () async {
+      final ml = await bootCars();
+      await vehicles.select(carB);
+      await _settle();
+      expect(ml.heldIds, {'c', 'd'});
+      expect(log, containsAll(['disconnect a', 'disconnect b']));
+      final n = await notes();
+      for (final id in ['a', 'b']) {
+        expect(
+            n.contains('multilink: release id=${shortDeviceHash(id)} '
+                'reason=vehicle-switch'),
+            isTrue,
+            reason: id);
+      }
+      expect(n, contains('vehicle: switch car1→car2'));
+    });
+
+    test('personal: every secondary goes, e connects as the PRIMARY', () async {
+      final ml = await bootCars();
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(primary.primaryConnects, ['e']);
+      expect(s.connection.connectedDeviceId, 'e');
+      expect(vehicles.personal?.lastPowerBankId, 'e',
+          reason: 'PQ2: the one connected becomes the default');
+    });
+
+    test('personal → A: e let go (not as the user\'s release), a and b back',
+        () async {
+      final ml = await bootCars();
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      await vehicles.select(carA);
+      await _settle();
+      expect(s.connection.connectedDeviceId, isNull);
+      expect(ml.heldIds, {'a', 'b'});
+      // Back to personal: e must be connectable again — it was never put in
+      // `_released` by the switch.
+      primary.primaryConnects.clear();
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      expect(primary.primaryConnects, ['e']);
+    });
+
+    test('Q3: A selected but a, b absent ⇒ nothing connected, still A',
+        () async {
+      final ml = await bootCars(nearby: {'c', 'd', 'e'});
+      expect(vehicles.current?.id, carA);
+      expect(ml.heldIds, isEmpty);
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(vehicles.current?.id, carA, reason: 'no switching behind the back');
+    });
+
+    test('Q4: a non-member primary stays on switch, goes when its page closes',
+        () async {
+      final ml = await bootCars();
+      primary.connectedId = 'c';
+      primary.emitLink(BleLinkState.ready);
+      await _settle();
+      expect(s.connection.connectedDeviceId, 'c');
+      expect(ml.heldIds, {'a', 'b'});
+      ml.onDetailClosed('c');
+      await _settle();
+      expect(s.connection.connectedDeviceId, isNull);
+      final n = await notes();
+      expect(n.any((x) => x.contains('release-primary') &&
+          x.contains('reason=vehicle-switch')), isTrue);
+    });
+
+    test('V1: a unit the user disconnected comes back after B → A', () async {
+      final ml = await bootCars();
+      // The user takes a as the primary, then disconnects it.
+      await ml.beforePrimaryConnect('a');
+      primary.connectedId = 'a';
+      primary.emitLink(BleLinkState.ready);
+      await _settle();
+      await s.connection.disconnect();
+      await _settle();
+      expect(ml.heldIds, {'b'}, reason: 'a is released by the user');
+      await vehicles.select(carB);
+      await _settle();
+      await vehicles.select(carA);
+      await _settle();
+      expect(ml.heldIds, {'a', 'b'});
+    });
+
+    test('a power bank primary is let go when a car is picked', () async {
+      final ml = await bootCars();
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      expect(s.connection.connectedDeviceId, 'e');
+      await vehicles.select(carB);
+      await _settle();
+      expect(s.connection.connectedDeviceId, isNull);
+      expect(ml.heldIds, {'c', 'd'});
+    });
+
+    test('forgetting a member: the car follows and its link goes', () async {
+      final ml = await bootCars();
+      await s.devices.remove('a');
+      await s.pending.drain();
+      await _settle();
+      expect(vehicles.vehicleFor(carA)?.deviceIds, ['b']);
+      expect(ml.heldIds, {'b'});
+    });
+
+    test('switch off: picking a vehicle changes nothing at all', () async {
+      final ml = await bootCars();
+      await ml.setEnabled(false);
+      await _settle();
+      log.clear();
+      await vehicles.select(carB);
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(log, isEmpty);
+      expect(primary.primaryConnects, isEmpty);
+    });
+
+    test('no car ⇒ the 0103 rule exactly (the personal row alone is inert)',
+        () async {
+      final ml = await boot([bat('a'), bat('b'), bat('c'), pb('e')]);
+      final v = s.vehicles;
+      final id = (await v.createCar('A')).id;
+      await v.delete(id);
+      await _settle();
+      expect(v.hasCars, isFalse);
+      expect(ml.activeVehicle, isNull);
+      expect(ml.heldIds, {'a', 'b', 'c'},
+          reason: 'all three batteries, never the power bank — 0103 as before');
     });
   });
 

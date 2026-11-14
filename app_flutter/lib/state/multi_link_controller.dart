@@ -49,6 +49,7 @@ import 'device_live_source.dart';
 import 'live_trend_buffer.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
+import 'vehicle_controller.dart';
 
 /// Formats the notification's reading line for N live links.
 typedef MultiLinkBodyFormat = String Function(int count, String reading);
@@ -113,7 +114,9 @@ class MultiLinkController extends ChangeNotifier {
     this.presenceScanTimeout = MultiLinkConfig.presenceScanTimeout,
     this.stallThreshold = BleService.telemetryStallThreshold,
     this.stallCheckEvery = const Duration(seconds: 2),
+    this.personalRetryEvery = const Duration(seconds: 30),
     DateTime Function()? clock,
+    VehicleController? vehicles,
   // Private fields from public named parameters: the `this._x` form the lint
   // suggests does not compile for named parameters (see SettingsController).
   })  : _conn = connection,
@@ -128,10 +131,14 @@ class MultiLinkController extends ChangeNotifier {
         _enabledMarker = enabledMarker,
         // ignore: prefer_initializing_formals
         _skipPromptMarker = skipPromptMarker,
-        _now = clock ?? DateTime.now {
+        _now = clock ?? DateTime.now,
+        // ignore: prefer_initializing_formals
+        _vehicles = vehicles {
     _conn.addListener(_onPrimaryChanged);
     _devices.addListener(_reconcile);
+    _vehicles?.addListener(_onVehiclesChanged);
     _lastPrimary = _conn.connectedDeviceId;
+    _lastVehicleId = _vehicleIdNow();
   }
 
   final ConnectionController _conn;
@@ -157,7 +164,27 @@ class MultiLinkController extends ChangeNotifier {
   /// the same silence.
   final Duration stallThreshold;
   final Duration stallCheckEvery;
+
+  /// design 0106 Phase 3: how long the personal group waits before trying its
+  /// power bank again after a connect that did not take.
+  final Duration personalRetryEvery;
   final DateTime Function() _now;
+
+  /// design 0106 Phase 3 — the vehicles, or null (tests that predate them). A
+  /// vehicle narrows who may be a candidate; with no car it changes nothing.
+  final VehicleController? _vehicles;
+
+  /// The vehicle the last [_onVehiclesChanged] saw as current (null = none,
+  /// or no car exists).
+  String? _lastVehicleId;
+
+  /// The primary this controller is letting go of for a vehicle switch. Its
+  /// A → null is NOT the user letting go, so [_trackPrimary] must not put it in
+  /// [_released] — otherwise picking that group again could never reconnect it.
+  String? _vehicleDropped;
+
+  /// When the personal group last asked the primary to connect a power bank.
+  DateTime? _personalAttemptAt;
 
   /// When each unit was last known to be in range: seen in a scan, or live on
   /// the primary or a secondary link (2026.11.12/004, option a). Only a unit
@@ -228,6 +255,16 @@ class MultiLinkController extends ChangeNotifier {
 
   /// Ids this controller is holding a secondary link for, up or not.
   Set<String> get heldIds => _links.keys.toSet();
+
+  /// design 0106: the vehicle that decides who is a candidate, or null when
+  /// vehicle mode is not in force (switch off, no car, or nothing selected) —
+  /// in which case everything behaves exactly as before 0106.
+  Vehicle? get activeVehicle {
+    if (!_enabled) return null;
+    final v = _vehicles;
+    if (v == null || !v.hasCars) return null;
+    return v.current;
+  }
 
   /// Whether [deviceId] is live on a SECONDARY link.
   bool isOnlineFor(String deviceId) => _links[deviceId]?.online ?? false;
@@ -346,9 +383,21 @@ class MultiLinkController extends ChangeNotifier {
   /// disconnects it and gives the others their polling back (D1 / 0046a
   /// §5.6.3's navigation rule) — but only when there ARE others: a lone power
   /// bank keeps today's behaviour exactly (0103 G4).
+  ///
+  /// design 0106 §4.1: with a vehicle in force, a primary that is not a member
+  /// of it — left alone by the switch itself (Q4: picking a vehicle never takes
+  /// away the unit being looked at) — is let go when its page closes.
   void onDetailClosed(String deviceId) {
-    if (!_enabled || _links.isEmpty) return;
+    if (!_enabled) return;
     if (_conn.connectedDeviceId != deviceId) return;
+    final vehicle = activeVehicle;
+    if (vehicle != null && !vehicle.contains(deviceId)) {
+      unawaited(_dropPrimaryForVehicle(deviceId).then((_) {
+        if (vehicle.isPersonal) _connectPersonalIfNeeded(force: true);
+      }));
+      return;
+    }
+    if (_links.isEmpty) return;
     if (!_primaryIsPowerBank()) return;
     unawaited(_conn.disconnect());
   }
@@ -438,9 +487,21 @@ class MultiLinkController extends ChangeNotifier {
     // A → null is the user letting go (only `disconnect()` clears the desired
     // id; a radio drop keeps it while the ladder runs). A → B is a hand-off,
     // and A becomes eligible as a secondary.
-    if (gone != null && p == null) _released.add(gone);
+    if (gone != null && p == null) {
+      // …unless WE let it go for a vehicle switch (design 0106 §4.1).
+      if (gone == _vehicleDropped) {
+        _vehicleDropped = null;
+      } else {
+        _released.add(gone);
+      }
+    }
     // A → B: A was the live primary until just now.
     if (gone != null && p != null) _seenAt[gone] = _now();
+    // design 0106 PQ2: a power bank on the primary becomes the personal
+    // group's default (ignored unless it is a member).
+    if (p != null && classFor(p) == ProductClass.powerBank) {
+      _vehicles?.notePowerBank(p);
+    }
     _lastPrimary = p;
   }
 
@@ -500,9 +561,17 @@ class MultiLinkController extends ChangeNotifier {
   /// Saved units that could hold a secondary link, in range or not.
   List<String> _eligible() {
     final primary = _conn.connectedDeviceId;
+    // design 0106 §4.1: a car narrows the candidates to its own units; the
+    // personal group has no secondaries at all (its power bank is the
+    // primary). No vehicle ⇒ null ⇒ the 0103 rule, unchanged.
+    final vehicle = activeVehicle;
+    final scope = vehicle == null
+        ? null
+        : (vehicle.isCar ? vehicle.deviceIds.toSet() : const <String>{});
     return [
       for (final d in _devices.devices)
-        if (d.id != primary &&
+        if ((scope == null || scope.contains(d.id)) &&
+            d.id != primary &&
             d.id != _handoffTarget &&
             d.productClass != ProductClass.powerBank &&
             !isDemoDeviceId(d.id) &&
@@ -626,6 +695,15 @@ class MultiLinkController extends ChangeNotifier {
     if (s.isPowerBank) {
       _leftOut.add(l.id);
       unawaited(_release(l.id, reason: 'is-power-bank'));
+      // design 0106 §3.2: and out of every car, into the personal group.
+      final v = _vehicles;
+      if (v != null && v.vehiclesOf(l.id).any((x) => x.isCar)) {
+        _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+            note: 'vehicle: moved power bank to personal '
+                'id=${shortDeviceHash(l.id)}',
+            deviceId: l.id));
+        unawaited(v.movePowerBankToPersonal(l.id));
+      }
       return;
     }
     _seenAt[l.id] = _now();
@@ -666,15 +744,154 @@ class MultiLinkController extends ChangeNotifier {
     if (_disposed || !_enabled || _stoppedByUser) return;
     _reconcile();
     if (_powerBankHeld) return;
+    final vehicle = activeVehicle;
+    final personal = vehicle != null && vehicle.isPersonal;
+    if (personal) _connectPersonalIfNeeded();
     final budget = maxLinks - (_conn.connectedDeviceId != null ? 1 : 0);
     if (_links.length >= budget) return;
     final now = _now();
     final last = _lastPresenceScanAt;
     if (last != null && now.difference(last) < presenceScanEvery) return;
     if (_conn.inBackground || _conn.detailVisible || _conn.isScanning) return;
-    if (!_eligible().any((id) => !_isPresent(id))) return;
+    // The personal group looks for its power banks; everyone else for the
+    // units that could take a secondary slot.
+    final lookFor = personal
+        ? [
+            for (final id in vehicle.deviceIds)
+              if (!_released.contains(id)) id
+          ]
+        : _eligible();
+    if (personal && _conn.connectedDeviceId != null) return;
+    if (!lookFor.any((id) => !_isPresent(id))) return;
     _lastPresenceScanAt = now;
     unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
+  }
+
+  // ---- design 0106 Phase 3: vehicles ---------------------------------------
+
+  String? _vehicleIdNow() {
+    final v = _vehicles;
+    if (v == null || !v.hasCars) return null;
+    return v.current?.id;
+  }
+
+  /// `none` / `personal` / `car<n>` (1-based, in the user's order). ⛔ Never
+  /// the name — it may be a plate number (design 0106 §4.3).
+  String _vehicleLabel(String? id) {
+    final v = _vehicles;
+    if (id == null || v == null) return 'none';
+    final veh = v.vehicleFor(id);
+    if (veh == null) return 'none';
+    if (veh.isPersonal) return 'personal';
+    final i = v.cars.indexWhere((c) => c.id == id);
+    return 'car${i + 1}';
+  }
+
+  void _onVehiclesChanged() {
+    if (_disposed) return;
+    final id = _vehicleIdNow();
+    final prev = _lastVehicleId;
+    _lastVehicleId = id;
+    if (!_enabled || _stoppedByUser) return;
+    if (id != prev) _applyVehicleSwitch(prev, _vehicles?.vehicleFor(id));
+    _reconcile();
+    _logReadyIfChanged();
+  }
+
+  /// §4.1: the user picked another group.
+  void _applyVehicleSwitch(String? prevId, Vehicle? next) {
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: 'vehicle: switch ${_vehicleLabel(prevId)}'
+            '→${_vehicleLabel(next?.id)}'));
+    if (next == null) return; // no vehicle any more ⇒ the 0103 rule
+    final primary = _conn.connectedDeviceId;
+    if (next.isCar) {
+      // V1 (owner 2026-11-14 「V1: OK」): choosing this car means wanting its
+      // units, including one the user disconnected earlier.
+      _released.removeAll(next.deviceIds);
+      for (final id in _links.keys.toList()) {
+        if (!next.contains(id)) {
+          unawaited(_release(id, reason: 'vehicle-switch'));
+        }
+      }
+      // A power bank never stays beside a car's units (R6). Any other
+      // non-member primary is left until its page closes (Q4).
+      if (primary != null && _primaryIsPowerBank()) {
+        unawaited(_dropPrimaryForVehicle(primary));
+      }
+      presenceTick();
+      return;
+    }
+    // Personal: every secondary goes; the power bank comes in as the primary.
+    for (final id in _links.keys.toList()) {
+      unawaited(_release(id, reason: 'vehicle-switch'));
+    }
+    _personalAttemptAt = null;
+    if (primary != null && !next.contains(primary)) {
+      // Q4's spirit: not out from under an open page — that is let go when
+      // the page closes (onDetailClosed). Otherwise make room now.
+      if (_conn.detailVisible) return;
+      unawaited(_dropPrimaryForVehicle(primary)
+          .then((_) => _connectPersonalIfNeeded(force: true)));
+      return;
+    }
+    _connectPersonalIfNeeded(force: true);
+    presenceTick();
+  }
+
+  /// Let the primary go because of a vehicle switch: logged as such and kept
+  /// OUT of [_released] (see [_vehicleDropped]).
+  Future<void> _dropPrimaryForVehicle(String id) async {
+    _vehicleDropped = id;
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: 'multilink: release-primary id=${shortDeviceHash(id)} '
+            'reason=vehicle-switch',
+        deviceId: id));
+    try {
+      await _conn.disconnect();
+    } catch (_) {
+      // Nothing to undo: the link is going either way.
+    }
+  }
+
+  /// PQ2: the personal group connects ONE power bank, as the primary — the
+  /// last one used if it is in range, else the first member in range. None in
+  /// range ⇒ stay offline (no switching groups behind the user's back, Q3).
+  void _connectPersonalIfNeeded({bool force = false}) {
+    final vehicle = activeVehicle;
+    if (_disposed || vehicle == null || !vehicle.isPersonal) return;
+    if (_conn.connectedDeviceId != null) return; // already on, or coming up
+    if (!force && _conn.inBackground) return;
+    final now = _now();
+    final lastTry = _personalAttemptAt;
+    if (!force &&
+        lastTry != null &&
+        now.difference(lastTry) < personalRetryEvery) {
+      return;
+    }
+    final ids = [
+      for (final id in vehicle.deviceIds)
+        if (!_released.contains(id) && !isDemoDeviceId(id)) id
+    ];
+    String? target;
+    final lastPb = vehicle.lastPowerBankId;
+    if (lastPb != null && ids.contains(lastPb) && _isPresent(lastPb)) {
+      target = lastPb;
+    }
+    if (target == null) {
+      for (final id in ids) {
+        if (_isPresent(id)) {
+          target = id;
+          break;
+        }
+      }
+    }
+    if (target == null) return;
+    _personalAttemptAt = now;
+    unawaited(_conn
+        .connect(target,
+            seedClass: ProductClass.powerBank, autoTrigger: 'vehicle-personal')
+        .catchError((Object _) {}));
   }
 
   /// design 0106 Phase 1: re-evaluate each secondary link's stall flag, and
@@ -778,6 +995,7 @@ class MultiLinkController extends ChangeNotifier {
     _disposed = true;
     _conn.removeListener(_onPrimaryChanged);
     _devices.removeListener(_reconcile);
+    _vehicles?.removeListener(_onVehiclesChanged);
     _demoteTimer?.cancel();
     _stallTimer?.cancel();
     for (final l in _links.values) {

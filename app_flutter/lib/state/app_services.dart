@@ -251,6 +251,7 @@ class AppServices {
             bleFactory: multiLinkBleFactory ??
                 () => BleService(parser: parser, profiles: profiles),
             clock: multiLinkClock,
+            vehicles: vehicles,
           )
         : null;
     // design 0080 P3. Thresholds arrive as a CLOSURE rather than as a set of
