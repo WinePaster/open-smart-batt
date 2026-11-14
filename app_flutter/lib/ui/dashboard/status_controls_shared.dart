@@ -29,6 +29,7 @@ import '../../protocol/protocol.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import 'release_cutoff_dialog.dart';
+import 'device_live_scope.dart';
 
 // ---------------------------------------------------------------------------
 // Status interpretation (pure helpers, shared by every control body).
@@ -173,7 +174,7 @@ CapacitorHealth? capacitorHealthOf(int? mode) => switch (mode) {
 /// comparators disagreeing on the boundary would put the advisory line and the
 /// notification one hundredth of a volt apart.
 bool readingBreachesThreshold(
-  TelemetryController tele,
+  PackReadings tele,
   AlertThresholds thresholds,
 ) {
   // One comparison for the screen and the notification: [AlertKind.breaches].
@@ -338,6 +339,10 @@ enum CapacitorSelfCheckOutcome {
 /// rule 3.
 Future<CapacitorSelfCheckOutcome> capacitorSelfCheck(
     BuildContext context, TelemetryController tele) async {
+  // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
+  // handed over to the primary first — writes go through the primary only.
+  if (!await ensurePrimaryFor(context, action: 'capacitor-self-check')) return CapacitorSelfCheckOutcome.notSent;
+  if (!context.mounted) return CapacitorSelfCheckOutcome.notSent;
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
@@ -533,6 +538,10 @@ Future<bool> _restoreOnce(
 /// credential in [releaseAuthPlan], stopping at the first that works.
 Future<bool> capacitorRestoreOutput(
     BuildContext context, TelemetryController tele) async {
+  // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
+  // handed over to the primary first — writes go through the primary only.
+  if (!await ensurePrimaryFor(context, action: 'capacitor-restore-output')) return false;
+  if (!context.mounted) return false;
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
@@ -799,6 +808,10 @@ Future<({ModeWatch result, int writes})> runReleasePlan(
 /// hence the control is no longer named after cut-off alone.
 Future<void> releaseCutOff(
     BuildContext context, TelemetryController tele) async {
+  // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
+  // handed over to the primary first — writes go through the primary only.
+  if (!await ensurePrimaryFor(context, action: 'release-cut-off')) return;
+  if (!context.mounted) return;
   final l10n = AppLocalizations.of(context);
   final action = l10n.commonReleaseCutOff;
   final before = tele.mode;
@@ -962,6 +975,10 @@ bool cutOffGenerationAllowed(String? dealerCode) {
 /// the first write — the engineering app itself saw about one write in ten
 /// draw no response — and a cut-off holds across a disconnect.
 Future<void> cutOff(BuildContext context, TelemetryController tele) async {
+  // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
+  // handed over to the primary first — writes go through the primary only.
+  if (!await ensurePrimaryFor(context, action: 'cut-off')) return;
+  if (!context.mounted) return;
   final l10n = AppLocalizations.of(context);
   final action = l10n.commonCutOffAction;
   final before = tele.mode;
@@ -1008,6 +1025,10 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
 /// 防盜 — NOT a documented-safe path: require explicit confirmation and the same
 /// per-device auth before sending a gated mode code.
 Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
+  // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
+  // handed over to the primary first — writes go through the primary only.
+  if (!await ensurePrimaryFor(context, action: 'anti-theft')) return;
+  if (!context.mounted) return;
   final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);

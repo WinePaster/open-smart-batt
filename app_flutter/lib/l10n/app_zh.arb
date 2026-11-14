@@ -753,5 +753,11 @@
   "multiLinkPowerBankDialogBodyDisconnect": "行動電源需要單獨連線。進入後，其他裝置會暫時斷開，離開後自動重連。",
   "multiLinkPowerBankDialogEnter": "進入",
   "multiLinkPowerBankDialogDontAsk": "不再提示",
-  "monitorBodyMultiLink": "監看中 {count} 台 · {reading}"
+  "monitorBodyMultiLink": "監看中 {count} 台 · {reading}",
+  "liveSecondaryPaused": "暫停中 · 顯示最後收到的數值",
+  "liveSecondaryHandingOff": "切換中 · 正在把這台切成主連線",
+  "ensurePrimaryTitle": "要先切換連線",
+  "ensurePrimaryBody": "這個動作只能在主連線上執行。要先把這台切成主連線（約 2–4 秒），完成後才會送出。",
+  "ensurePrimarySwitch": "切換並執行",
+  "ensurePrimaryFailed": "沒有切換成功，動作未送出。請再試一次。"
 }

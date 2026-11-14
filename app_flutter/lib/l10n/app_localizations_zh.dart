@@ -2609,4 +2609,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String monitorBodyMultiLink(int count, String reading) {
     return '監看中 $count 台 · $reading';
   }
+
+  @override
+  String get liveSecondaryPaused => '暫停中 · 顯示最後收到的數值';
+
+  @override
+  String get liveSecondaryHandingOff => '切換中 · 正在把這台切成主連線';
+
+  @override
+  String get ensurePrimaryTitle => '要先切換連線';
+
+  @override
+  String get ensurePrimaryBody => '這個動作只能在主連線上執行。要先把這台切成主連線（約 2–4 秒），完成後才會送出。';
+
+  @override
+  String get ensurePrimarySwitch => '切換並執行';
+
+  @override
+  String get ensurePrimaryFailed => '沒有切換成功，動作未送出。請再試一次。';
 }

@@ -29,6 +29,7 @@ import '../../theme/app_theme.dart';
 import '../alerts/alert_event_banner.dart';
 import '../alerts/alert_settings_page.dart';
 import '../dashboard/dashboard_page.dart';
+import '../dashboard/device_live_scope.dart';
 import '../demo/demo_ui.dart';
 import '../history/device_history_tab.dart';
 import '../widgets/one_screen_report.dart';
@@ -342,6 +343,12 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// as the screen denying what they just did.
   bool _attemptSeen = false;
 
+  /// design 0106 Phase 1 §2.5: the secondary link's last values, frozen while a
+  /// control hands this unit over to the primary. Non-null only for those
+  /// 2–4 s; the page keeps drawing the dashboard (「切換中」) instead of
+  /// flashing the offline body between the release and `ready`.
+  HandoffLiveSource? _handoff;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -429,6 +436,22 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     if (_autoConnectTried) return;
     final conn = _conn;
     if (conn == null) return;
+    final id = widget.deviceId;
+    final onSecondary = conn.multiLink?.liveSourceFor(id) != null;
+    // design 0106 Phase 1: the unit is already live on a SECONDARY link — the
+    // page reads that link (see `build`), so there is nothing to connect, and
+    // connecting it as the primary is exactly the release-and-reconnect that
+    // dropped both links for 2.9–4.1 s (2026.11.13/009, /011, /016). The
+    // one-shot is spent: if that link later drops, the page offers the same
+    // manual connect as any offline unit, rather than racing the secondary's
+    // own retry with a primary connect nobody asked for. Ruling T2 falls out
+    // of this too: opening it never touches whichever unit is the primary.
+    if (onSecondary) {
+      _autoConnectTried = true;
+      _skipNotice = null;
+      conn.noteAutoConnectSkipped('live on secondary', deviceId: id);
+      return;
+    }
     final disconnectsAtOpen =
         _disconnectsAtOpen ??= conn.manualDisconnectCount;
 
@@ -527,6 +550,101 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     });
   }
 
+  /// design 0106 Phase 1 §2.5 / ruling T1 — the [DeviceLiveScope] hook every
+  /// control awaits before it writes ([ensurePrimaryFor]).
+  ///
+  /// Writes go through the primary link only: iOS keeps one physical link per
+  /// unit, and two Dart links driving it cancel each other (2026.11.12/001
+  /// §3.1). So a control pressed on a unit drawn from its secondary link asks
+  /// first, then runs the existing hand-over — `connectToSaved` →
+  /// `beforePrimaryConnect` releases the secondary → the primary connects —
+  /// and returns true only once the primary is `ready` on THIS unit and has
+  /// reported its run mode (`0x23`), which the controls read before they send.
+  Future<bool> _ensurePrimary(BuildContext _, String action) async {
+    final conn = context.read<ConnectionController>();
+    final id = widget.deviceId;
+    if (conn.isOnline && conn.connectedDeviceId == id) return true;
+    if (_handoff != null) return false; // one hand-over at a time
+    final src = conn.multiLink?.liveSourceFor(id);
+    if (src == null) return false;
+    final l10n = AppLocalizations.of(context);
+    final hash = shortDeviceHash(id);
+    conn.noteDetailEvent('detail: control needs primary id=$hash action=$action',
+        deviceId: id);
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.ensurePrimaryTitle),
+        content: Text(l10n.ensurePrimaryBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.ensurePrimarySwitch),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return false;
+    final tele = context.read<TelemetryController>();
+    final saved = context.read<DeviceController>().deviceFor(id);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _handoff = HandoffLiveSource.freeze(src));
+    final watch = Stopwatch()..start();
+    var ok = false;
+    try {
+      final connecting = saved != null ? conn.connectToSaved(saved) : conn.connect(id);
+      unawaited(connecting.catchError((Object _) {}));
+      ok = await _waitUntil(
+          conn, () => conn.isOnline && conn.connectedDeviceId == id,
+          handoffReadyTimeout);
+      // The controls read the run mode before sending; give the new session's
+      // first `0x23` (≈ 1 Hz) a moment rather than sending on an empty sample.
+      // Not a failure if it is late — the action re-reads it itself.
+      if (ok) {
+        await _waitUntil(tele, () => tele.mode != null, handoffModeTimeout);
+      }
+    } finally {
+      if (mounted) setState(() => _handoff = null);
+    }
+    conn.noteDetailEvent(
+        'detail: handoff for control ms=${watch.elapsedMilliseconds} '
+        'ok=$ok id=$hash',
+        deviceId: id);
+    if (!ok) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.ensurePrimaryFailed)));
+    }
+    return ok && mounted;
+  }
+
+  /// How long a control waits for the hand-over to reach `ready` (the field
+  /// range is 1.1–4.1 s; FB-50 setups that never finish must not hang the
+  /// button forever).
+  static const Duration handoffReadyTimeout = Duration(seconds: 20);
+  static const Duration handoffModeTimeout = Duration(seconds: 6);
+
+  static Future<bool> _waitUntil(
+      Listenable on, bool Function() done, Duration timeout) {
+    if (done()) return Future<bool>.value(true);
+    final c = Completer<bool>();
+    late final Timer timer;
+    void check() {
+      if (c.isCompleted || !done()) return;
+      timer.cancel();
+      on.removeListener(check);
+      c.complete(true);
+    }
+    timer = Timer(timeout, () {
+      on.removeListener(check);
+      if (!c.isCompleted) c.complete(false);
+    });
+    on.addListener(check);
+    return c.future;
+  }
+
   @override
   void dispose() {
     _setVisible(false);
@@ -612,7 +730,16 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // "This unit's live page" is `online AND it is this unit`. Reading only
     // `isOnline` would draw another device's telemetry under this one's name —
     // the same class of mistake as FB-41's session attribution.
-    final live = conn.isOnline && conn.connectedDeviceId == deviceId;
+    final primaryLive = conn.isOnline && conn.connectedDeviceId == deviceId;
+    // design 0106 Phase 1: …or the unit is live on a SECONDARY link, whose own
+    // values the dashboard then reads through [DeviceLiveScope]. Nullable
+    // lookup for `home_tiles.dart`'s reason: subscribe when the shell provides
+    // the controller, never throw when a surface is mounted without it.
+    final ml = conn.multiLink;
+    if (ml != null) context.watch<MultiLinkController?>();
+    final DeviceLiveSource? scopeSource =
+        primaryLive ? null : (_handoff ?? ml?.liveSourceFor(deviceId));
+    final live = primaryLive || scopeSource != null;
 
     // The second line, best-first (design 0055 §4.2 / §7 Q2):
     //
@@ -625,7 +752,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     //
     // 🔴 `live` gates the MAC — it is the CONNECTED unit's address, and this
     // page can be open on a unit that is not the connected one.
-    final wireMac = live ? conn.liveMac : null;
+    final wireMac = primaryLive ? conn.liveMac : scopeSource?.liveMac;
     final subtitle = isDemoDeviceId(deviceId)
         ? l10n.demoRowMeta
         : wireMac != null && wireMac.isNotEmpty
@@ -763,6 +890,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 live: live,
                 saved: saved,
                 deviceId: deviceId,
+                scopeSource: scopeSource,
               ),
             ),
           ),
@@ -793,46 +921,55 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     required bool live,
     required SavedDevice? saved,
     required String deviceId,
+    required DeviceLiveSource? scopeSource,
   }) {
+    // design 0106 Phase 1: the scope is ALWAYS in the tree on the live side,
+    // its source null on the primary path. Keeping the widget in place means a
+    // hand-over (secondary → frozen → primary) changes values, not structure,
+    // so the control that asked for it is still mounted when `ready` arrives.
     return live
-          ? Column(
-              children: [
-                // 🔵 design 0080 P3 — the event banner (§5, 「詳情頁事件橫幅」).
-                //
-                // 🔴 ABOVE the dashboard and OUTSIDE its ListView, and drawn for
-                // an unsaved unit exactly as for a saved one (ruling Q3 /
-                // §0.2.1). Outside because a raised warning must not be
-                // something the user has to scroll to find — the whole premise
-                // of design 0080 is that people are not looking at the screen —
-                // and one level up from the four dashboard bodies because
-                // `pack_view`, `power_bank_view`, `unidentified_view` and
-                // `class_pending_view` would otherwise each need their own copy
-                // of it. It renders nothing when nothing is raised, which is
-                // what makes one placement serve all four.
-                //
-                // ⚠️ Not in the OFFLINE branch below: with no link there are no
-                // frames, the evaluator was cleared on disconnect (§3.3.2), and
-                // a banner there could only be re-stating something we stopped
-                // observing.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(15, 3, 15, 0),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: AlertEventBanner(deviceId: deviceId),
+          ? DeviceLiveScope(
+              source: scopeSource,
+              ensurePrimary: _ensurePrimary,
+              child: Column(
+                children: [
+                  // 🔵 design 0080 P3 — the event banner (§5, 「詳情頁事件橫幅」).
+                  //
+                  // 🔴 ABOVE the dashboard and OUTSIDE its ListView, and drawn for
+                  // an unsaved unit exactly as for a saved one (ruling Q3 /
+                  // §0.2.1). Outside because a raised warning must not be
+                  // something the user has to scroll to find — the whole premise
+                  // of design 0080 is that people are not looking at the screen —
+                  // and one level up from the four dashboard bodies because
+                  // `pack_view`, `power_bank_view`, `unidentified_view` and
+                  // `class_pending_view` would otherwise each need their own copy
+                  // of it. It renders nothing when nothing is raised, which is
+                  // what makes one placement serve all four.
+                  //
+                  // ⚠️ Not in the OFFLINE branch below: with no link there are no
+                  // frames, the evaluator was cleared on disconnect (§3.3.2), and
+                  // a banner there could only be re-stating something we stopped
+                  // observing.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 3, 15, 0),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: AlertEventBanner(deviceId: deviceId),
+                      ),
                     ),
                   ),
-                ),
-                // A demo unit cannot be saved (design 0097), so no nudge to.
-                if (saved == null && !isDemoDeviceId(deviceId))
-                  _UnsavedNotice(deviceId: deviceId),
-                Expanded(
-                  child: DashboardPage(
-                    deviceId: deviceId,
-                    onOpenSettings: widget.onOpenSettings,
+                  // A demo unit cannot be saved (design 0097), so no nudge to.
+                  if (saved == null && !isDemoDeviceId(deviceId))
+                    _UnsavedNotice(deviceId: deviceId),
+                  Expanded(
+                    child: DashboardPage(
+                      deviceId: deviceId,
+                      onOpenSettings: widget.onOpenSettings,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             )
           : _OfflineBody(
               deviceId: deviceId,

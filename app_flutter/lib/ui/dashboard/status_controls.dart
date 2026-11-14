@@ -28,6 +28,7 @@ import '../../models/models.dart';
 import '../../state/state.dart';
 import '../util/alert_thresholds_lookup.dart';
 import 'status_controls_shared.dart';
+import 'device_live_scope.dart';
 
 // ---------------------------------------------------------------------------
 // Capacitor body: health badge + 檢測電容 (read-only).
@@ -92,8 +93,15 @@ class _CapacitorControlsState extends State<CapacitorControls> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final online = context.select<ConnectionController, bool>((c) => c.isOnline);
+    // design 0106 Phase 1: a unit live on a secondary link is judged from its
+    // own link (the scope). Actions still go to the primary — each one asks
+    // for the hand-over first ([ensurePrimaryFor]) and then reads the
+    // controllers, so they are passed `context.read`, not this.
+    final src = DeviceLiveScope.sourceOf(context);
+    final PackReadings tele = src ?? context.watch<TelemetryController>();
+    final online = src != null
+        ? src.isOnline && !src.handingOff
+        : context.select<ConnectionController, bool>((c) => c.isOnline);
 
     // A capacitor has no cut-off and no anti-theft (see the device capability
     // matrix in [DeviceCapabilities]). The badge that used to sit
@@ -163,7 +171,7 @@ class _CapacitorControlsState extends State<CapacitorControls> {
                   !_selfCheckBusy &&
                   !selfChecking &&
                   health != CapacitorHealth.selfCheckFailed
-              ? () => _runSelfCheck(tele)
+              ? () => _runSelfCheck(context.read<TelemetryController>())
               : null,
         ),
         // 🔵 Owner's ruling 2026-11-10, case B: a unit found holding a failed
@@ -174,7 +182,8 @@ class _CapacitorControlsState extends State<CapacitorControls> {
             variant: ControlButtonVariant.ghost,
             icon: Icons.power_outlined,
             label: l10n.controlRestoreCapacitorOutput,
-            onPressed: online && !_selfCheckBusy ? () => _runRestore(tele) : null,
+            onPressed: online && !_selfCheckBusy ? () => _runRestore(context.read<TelemetryController>())
+                : null,
           ),
         ],
         // The permanent "this unit is a super-capacitor…" note was removed on
@@ -230,15 +239,23 @@ class BatteryControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final online = context.select<ConnectionController, bool>((c) => c.isOnline);
+    // design 0106 Phase 1: a unit live on a secondary link is judged from its
+    // own link (the scope). Actions still go to the primary — each one asks
+    // for the hand-over first ([ensurePrimaryFor]) and then reads the
+    // controllers, so they are passed `context.read`, not this.
+    final src = DeviceLiveScope.sourceOf(context);
+    final PackReadings tele = src ?? context.watch<TelemetryController>();
+    final online = src != null
+        ? src.isOnline && !src.handingOff
+        : context.select<ConnectionController, bool>((c) => c.isOnline);
     // Anti-theft is genuinely model-gated — some battery models have the
     // hardware and some do not, and nothing on the wire says which. It is the
     // only caps.* bit this body still consults; everything else about which
     // controls belong here is already decided by WHICH body the pack shell
     // built.
-    final hasAntiTheft = context
-        .select<ConnectionController, bool>((c) => c.capabilities.hasAntiTheft);
+    final hasAntiTheft = src?.capabilities.hasAntiTheft ??
+        context.select<ConnectionController, bool>(
+            (c) => c.capabilities.hasAntiTheft);
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
@@ -316,7 +333,7 @@ class BatteryControls extends StatelessWidget {
                   icon: Icons.power_off,
                   label: l10n.commonCutOffAction,
                   onPressed: online && cutOffModeOk && cutOffGenOk
-                      ? () => cutOff(context, tele)
+                      ? () => cutOff(context, context.read<TelemetryController>())
                       : null,
                 ),
               ),
@@ -328,7 +345,7 @@ class BatteryControls extends StatelessWidget {
                 icon: Icons.power_settings_new,
                 label: l10n.commonReleaseCutOff,
                 onPressed: online && canRelease
-                    ? () => releaseCutOff(context, tele)
+                    ? () => releaseCutOff(context, context.read<TelemetryController>())
                     : null,
               ),
             ),
@@ -341,7 +358,8 @@ class BatteryControls extends StatelessWidget {
                   variant: ControlButtonVariant.ghost,
                   icon: Icons.shield_outlined,
                   label: l10n.commonAntiTheft,
-                  onPressed: online ? () => antiTheft(context, tele) : null,
+                  onPressed: online ? () => antiTheft(context, context.read<TelemetryController>())
+                      : null,
                 ),
               ),
             ],
@@ -415,10 +433,18 @@ class PackControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final online = context.select<ConnectionController, bool>((c) => c.isOnline);
-    final hasCutOff = context
-        .select<ConnectionController, bool>((c) => c.capabilities.hasCutOff);
+    // design 0106 Phase 1: a unit live on a secondary link is judged from its
+    // own link (the scope). Actions still go to the primary — each one asks
+    // for the hand-over first ([ensurePrimaryFor]) and then reads the
+    // controllers, so they are passed `context.read`, not this.
+    final src = DeviceLiveScope.sourceOf(context);
+    final PackReadings tele = src ?? context.watch<TelemetryController>();
+    final online = src != null
+        ? src.isOnline && !src.handingOff
+        : context.select<ConnectionController, bool>((c) => c.isOnline);
+    final hasCutOff = src?.capabilities.hasCutOff ??
+        context.select<ConnectionController, bool>(
+            (c) => c.capabilities.hasCutOff);
 
     final runStatus = runStatusOf(l10n, tele.mode);
     final known = packRunModeOf(tele.mode) != null;
@@ -475,7 +501,7 @@ class PackControls extends StatelessWidget {
                   icon: Icons.power_settings_new,
                   label: l10n.commonReleaseCutOff,
                   onPressed: online && canRelease
-                      ? () => releaseCutOff(context, tele)
+                      ? () => releaseCutOff(context, context.read<TelemetryController>())
                       : null,
                 ),
               ),

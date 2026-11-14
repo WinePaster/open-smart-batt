@@ -67,6 +67,7 @@ import '../devices/save_device_flow.dart';
 import '../util/alert_thresholds_lookup.dart';
 import '../util/alert_watch_state.dart';
 import '../widgets/industrial.dart';
+import '../dashboard/device_live_scope.dart';
 
 // The two value formatters moved to the models layer in P3 (see the note at the
 // foot of this file); re-exported so the four call sites that already import
@@ -243,10 +244,18 @@ class _EntryBadge extends StatelessWidget {
     // The stall watch already flips only on transitions
     // (`TelemetryController._evaluateStall`), so the selected record is stable
     // between them.
-    final health = context.select<TelemetryController, (bool, bool)>(
-        (c) => (c.hasTelemetry, c.telemetryStalled));
-    final connectedId = context
-        .select<ConnectionController, String?>((c) => c.connectedDeviceId);
+    //
+    // design 0106 Phase 1: on a unit drawn from its SECONDARY link that link is
+    // the one being watched — its frames reach the evaluator through
+    // `recordExtraSample` — so its own freshness answers, not the primary's.
+    final src = DeviceLiveScope.sourceOf(context);
+    final (bool, bool) health = src != null
+        ? (src.hasTelemetry, src.telemetryStalled)
+        : context.select<TelemetryController, (bool, bool)>(
+            (c) => (c.hasTelemetry, c.telemetryStalled));
+    final connectedId = src?.deviceId ??
+        context.select<ConnectionController, String?>(
+            (c) => c.connectedDeviceId);
     final alertsEnabled =
         context.select<SettingsController, bool>((c) => c.alertsEnabled);
 

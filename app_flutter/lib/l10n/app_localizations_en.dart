@@ -2762,4 +2762,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String monitorBodyMultiLink(int count, String reading) {
     return 'Monitoring $count · $reading';
   }
+
+  @override
+  String get liveSecondaryPaused => 'Paused · showing the last values received';
+
+  @override
+  String get liveSecondaryHandingOff =>
+      'Switching · making this the main connection';
+
+  @override
+  String get ensurePrimaryTitle => 'Switch connection first';
+
+  @override
+  String get ensurePrimaryBody =>
+      'This action only runs on the main connection. The unit will be switched to the main connection first (about 2–4 s), then the command is sent.';
+
+  @override
+  String get ensurePrimarySwitch => 'Switch and run';
+
+  @override
+  String get ensurePrimaryFailed =>
+      'Could not switch; nothing was sent. Please try again.';
 }

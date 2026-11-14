@@ -41,6 +41,7 @@ import '../alerts/alert_settings_page.dart';
 import '../widgets/industrial_card.dart';
 import 'dashboard_cards.dart';
 import 'detail_columns.dart';
+import 'device_live_scope.dart';
 import 'display_modules.dart';
 import 'status_controls.dart';
 import 'watchfaces.dart';
@@ -56,7 +57,7 @@ class PackView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label =
+    final label = DeviceLiveScope.sourceOf(context)?.packLabel ??
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
     switch (label) {
       case ProductClass.supercapacitor:
@@ -123,8 +124,12 @@ class PackScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
-    final packLabel =
+    // design 0106 Phase 1: a unit live on a secondary link reads its own link
+    // (the scope); otherwise the primary, exactly as before.
+    final src = DeviceLiveScope.sourceOf(context);
+    final CardTelemetry tele = src ?? context.watch<TelemetryController>();
+    final PackReadings readings = src ?? context.read<TelemetryController>();
+    final packLabel = src?.packLabel ??
         context.select<ConnectionController, ProductClass>((c) => c.packLabel);
     // Everything this shell does differently per class comes from here.
     // NOTE the lookup is by `packShellClass`, not the raw label: a stray
@@ -146,7 +151,9 @@ class PackScaffold extends StatelessWidget {
     // in force", a property of the LINK; `widget`-level `deviceId` is "whose
     // page is this".
     final layoutOwnerId =
-        context.select<ConnectionController, String?>((c) => c.connectedDeviceId);
+        src?.deviceId ??
+            context.select<ConnectionController, String?>(
+                (c) => c.connectedDeviceId);
     final stored = context.watch<DeviceController>().layoutFor(layoutOwnerId);
     // The two master switches reach the LAYOUT, not just their own cards: with
     // both off a stored `riding` renders as `standard` rather than as a copy of
@@ -179,7 +186,7 @@ class PackScaffold extends StatelessWidget {
     // it on the main screen under a serial-number label undoes that, in a
     // project whose whole feedback loop runs on users sending screenshots.
     // An empty row is strictly better than a confidently wrong one.
-    final serial = tele.fullSerial ?? tele.serial;
+    final serial = readings.fullSerial ?? readings.serial;
 
     // ---- cosmetic pack-class chip (TEXT ONLY) ----------------------------
     final chip = Padding(

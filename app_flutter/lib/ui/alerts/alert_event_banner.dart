@@ -32,10 +32,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/industrial.dart';
 import 'alert_settings_page.dart';
+import '../dashboard/device_live_scope.dart';
 
 /// The raised-warning block for one unit, or nothing at all.
 ///
@@ -56,7 +58,12 @@ class AlertEventBanner extends StatelessWidget {
     if (events.isEmpty) return const SizedBox.shrink();
 
     final l10n = AppLocalizations.of(context);
-    final tele = context.watch<TelemetryController>();
+    // design 0106 Phase 1: on a unit drawn from its secondary link the live
+    // number is that link's, not the primary's — `TelemetryController` only
+    // ever holds the primary unit's sample.
+    final src = DeviceLiveScope.sourceOf(context);
+    final TelemetrySample tele =
+        src?.sample ?? context.watch<TelemetryController>().sample;
     final devices = context.watch<DeviceController>();
     final settings = context.watch<SettingsController>();
     final saved = devices.deviceFor(deviceId);
@@ -185,7 +192,7 @@ class AlertEventBanner extends StatelessWidget {
   Widget _collapsed(
     BuildContext context,
     AppLocalizations l10n,
-    TelemetryController tele,
+    TelemetrySample tele,
     List<AlertEvent> events,
     AlertController alerts,
   ) {
@@ -253,7 +260,7 @@ class AlertEventBanner extends StatelessWidget {
   String _row(
     AppLocalizations l10n,
     AlertEvent e,
-    TelemetryController tele,
+    TelemetrySample tele,
   ) {
     final label = kindLabel(l10n, e.kind);
     // The live reading, through the SAME extractor the state machine stepped on
@@ -261,7 +268,7 @@ class AlertEventBanner extends StatelessWidget {
     // the quantity: the event is still raised (a `0x21` frame carrying no PVLT
     // does not clear an under-voltage), and inventing a number for the gap
     // would be the one thing worse than an empty field.
-    final reading = e.kind.readingIn(tele.sample);
+    final reading = e.kind.readingIn(tele);
     final now = reading == null
         ? '--'
         : (e.kind.isVoltage ? formatVolts(reading) : formatCelsius(reading));

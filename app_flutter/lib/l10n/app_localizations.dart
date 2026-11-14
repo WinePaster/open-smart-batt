@@ -4599,6 +4599,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Monitoring {count} · {reading}'**
   String monitorBodyMultiLink(int count, String reading);
+
+  /// design 0106 Phase 1 (ruling T3). Device page line for a unit live on a secondary link whose polling is paused (slow writer, or a power bank holds the primary).
+  ///
+  /// In en, this message translates to:
+  /// **'Paused · showing the last values received'**
+  String get liveSecondaryPaused;
+
+  /// design 0106 Phase 1 §2.5. Shown while a control hands the unit over from its secondary link to the primary; the readings are frozen meanwhile.
+  ///
+  /// In en, this message translates to:
+  /// **'Switching · making this the main connection'**
+  String get liveSecondaryHandingOff;
+
+  /// design 0106 Phase 1 (ruling T1). Title of the confirmation shown when a control is pressed on a unit that is live on a secondary link.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch connection first'**
+  String get ensurePrimaryTitle;
+
+  /// design 0106 Phase 1 (ruling T1). Body of the confirmation before handing a unit over to the primary link for a control.
+  ///
+  /// In en, this message translates to:
+  /// **'This action only runs on the main connection. The unit will be switched to the main connection first (about 2–4 s), then the command is sent.'**
+  String get ensurePrimaryBody;
+
+  /// design 0106 Phase 1. Confirm button: hand the unit over to the primary link, then send the command.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch and run'**
+  String get ensurePrimarySwitch;
+
+  /// design 0106 Phase 1. Snackbar when the hand-over to the primary did not reach ready in time or failed; the command was not sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch; nothing was sent. Please try again.'**
+  String get ensurePrimaryFailed;
 }
 
 class _AppLocalizationsDelegate

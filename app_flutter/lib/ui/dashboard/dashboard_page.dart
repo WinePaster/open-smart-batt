@@ -29,6 +29,7 @@ import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 import 'capture_mark_bar.dart';
 import 'class_pending_view.dart';
+import 'device_live_scope.dart';
 import 'pack_view.dart';
 import 'unidentified_view.dart';
 import 'power_bank_view.dart';
@@ -74,8 +75,14 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     // A stall is not a disconnect: the link stays ready while Android suspends
     // the app, so the readouts below would otherwise sit frozen with no hint.
-    final stalled =
-        context.select<TelemetryController, bool>((c) => c.telemetryStalled);
+    //
+    // design 0106 Phase 1: a unit live on a SECONDARY link brings its own
+    // freshness, its own paused / hand-over state, and no capture-mark bar —
+    // a mark labels the primary's recording session, which is another unit.
+    final src = DeviceLiveScope.sourceOf(context);
+    final stalled = src != null
+        ? src.telemetryStalled
+        : context.select<TelemetryController, bool>((c) => c.telemetryStalled);
     // The banner no longer branches on `monitorRunning`. It said one of two
     // things depending on whether the foreground service was up — and BOTH
     // pointed at Android-only remedies, while `_monitorRunning` has no platform
@@ -84,12 +91,14 @@ class DashboardPage extends StatelessWidget {
     // (FB-26). Platform differences now live in exactly one place: Settings.
     return Column(
       children: [
+        if (src != null && (src.handingOff || src.paused))
+          _SecondaryStateBanner(handingOff: src.handingOff),
         if (stalled) _StaleBanner(onOpenSettings: onOpenSettings),
         Expanded(child: DashboardRouter(deviceId: deviceId)),
         // Renders only while raw packet logging is on: it stamps user-supplied
         // ground truth into the capture, and a mark with no packets beside it
         // correlates with nothing. Rationale for the gate is in the widget.
-        const CaptureMarkBar(),
+        if (src == null) const CaptureMarkBar(),
       ],
     );
   }
@@ -151,7 +160,8 @@ class _StaleBannerState extends State<_StaleBanner> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = context.colors;
-    final age = context.read<TelemetryController>().telemetryAge;
+    final age = DeviceLiveScope.sourceOf(context, listen: false)?.telemetryAge ??
+        context.read<TelemetryController>().telemetryAge;
     return Material(
       color: colors.panel2,
       child: InkWell(
@@ -184,6 +194,43 @@ class _StaleBannerState extends State<_StaleBanner> {
   }
 }
 
+/// design 0106 Phase 1: one line above the dashboard of a unit drawn from its
+/// secondary link — 「暫停中」 while its polling is paused (ruling T3: the
+/// values shown are the last ones received), 「切換中」 while a control is
+/// handing it over to the primary (§2.5).
+class _SecondaryStateBanner extends StatelessWidget {
+  const _SecondaryStateBanner({required this.handingOff});
+
+  final bool handingOff;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = context.colors;
+    return Material(
+      color: colors.panel2,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        child: Row(
+          children: [
+            Icon(handingOff ? Icons.sync : Icons.pause_circle_outline,
+                size: 18, color: AppSemantics.warn),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                handingOff
+                    ? l10n.liveSecondaryHandingOff
+                    : l10n.liveSecondaryPaused,
+                style: TextStyle(fontSize: 11.5, color: colors.muted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Picks the live view from the deterministic routing decision. Reads
 /// [ConnectionController.routing] — derived from the SAME resolver that drives
 /// persistence and capability gating, so the product class has exactly one
@@ -204,7 +251,7 @@ class DashboardRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final routing =
+    final routing = DeviceLiveScope.sourceOf(context)?.routing ??
         context.select<ConnectionController, RoutingDecision>((c) => c.routing);
     // Exhaustive on purpose, and that is why [RoutingDecision] is an enum: when
     // the pack shell is split into battery and capacitor, this switch stops
