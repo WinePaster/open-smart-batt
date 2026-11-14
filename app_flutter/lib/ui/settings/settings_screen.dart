@@ -28,6 +28,7 @@ import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/export_writers.dart';
 import '../util/update_check.dart';
+import '../vehicles/vehicles_page.dart';
 import '../widgets/industrial.dart';
 import 'g_calibration_wizard.dart';
 import 'measurement_explainer.dart';
@@ -1398,6 +1399,25 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
                 builder: (_, _) =>
                     _Toggle(value: ml.enabled, onChanged: ml.setEnabled),
               ),
+            ),
+          // design 0106 Phase 4 (mock ⑨): the vehicle list, directly under the
+          // switch it depends on — and only while that switch is on, so a user
+          // who never turned the experiment on sees no new row (mock ⑧).
+          if (context.watch<ConnectionController>().multiLink case final ml?)
+            ListenableBuilder(
+              listenable: ml,
+              builder: (context, _) => !ml.enabled
+                  ? const SizedBox.shrink()
+                  : SettingsLinkRow(
+                      key: const ValueKey('settings-vehicles'),
+                      icon: Icons.directions_car_outlined,
+                      label: l10n.vehicleSettingsLabel,
+                      sub: l10n.vehicleSettingsSub,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => const VehiclesPage()),
+                      ),
+                    ),
             ),
           // The guided capture run lives in Diagnostics rather than on the
           // dashboard because it is a deliberate procedure, not a quick action —

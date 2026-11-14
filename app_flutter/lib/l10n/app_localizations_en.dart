@@ -2809,4 +2809,132 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get ensurePrimaryFailed =>
       'Could not switch; nothing was sent. Please try again.';
+
+  @override
+  String get vehiclePersonal => 'Personal devices';
+
+  @override
+  String get vehicleUnnamed => 'Unnamed vehicle';
+
+  @override
+  String get vehicleOffline => 'offline';
+
+  @override
+  String vehicleOfflineBanner(String vehicle) {
+    return 'None of $vehicle\'s devices are nearby. The app won\'t switch vehicles by itself — tap the title above to pick another one.';
+  }
+
+  @override
+  String get vehiclePickerTitle => 'Choose a vehicle';
+
+  @override
+  String get vehiclePickerNearby => 'nearby';
+
+  @override
+  String vehiclePickerAdd(int count, int max) {
+    return 'Add vehicle ($count/$max)';
+  }
+
+  @override
+  String get vehiclePickerManage => 'Manage vehicles…';
+
+  @override
+  String get vehicleSettingsLabel => 'Vehicles';
+
+  @override
+  String get vehicleSettingsSub =>
+      'Group devices by vehicle: the home page shows and connects one vehicle at a time (up to 5 vehicles, 3 devices each).';
+
+  @override
+  String get vehiclesPageTitle => 'Vehicles';
+
+  @override
+  String get vehiclesPageEmpty =>
+      'No vehicles yet. Without vehicles the home page works exactly as before.';
+
+  @override
+  String get vehicleEditorNewTitle => 'New vehicle';
+
+  @override
+  String get vehicleEditorTitle => 'Edit vehicle';
+
+  @override
+  String get vehicleEditorDone => 'Done';
+
+  @override
+  String get vehicleEditorName => 'Name';
+
+  @override
+  String get vehicleEditorNameHint => 'e.g. Car A';
+
+  @override
+  String get vehicleEditorNameNote =>
+      'The name stays on this phone. It is never written to exports or problem reports.';
+
+  @override
+  String vehicleEditorDevices(int count, int max) {
+    return 'Devices in this vehicle ($count/$max)';
+  }
+
+  @override
+  String get vehicleEditorPowerBanks => 'Power banks';
+
+  @override
+  String vehicleEditorAlsoIn(String vehicle) {
+    return 'also in $vehicle';
+  }
+
+  @override
+  String get vehicleEditorNoDevices => 'No saved devices can be added here.';
+
+  @override
+  String get vehicleEditorPowerBankNote =>
+      'Power banks go in Personal devices, not in a vehicle.';
+
+  @override
+  String get vehicleEditorEditLayout => 'Edit this vehicle\'s home layout';
+
+  @override
+  String get vehicleEditorDelete => 'Delete this vehicle';
+
+  @override
+  String vehicleEditorDeleteConfirm(String vehicle) {
+    return 'Delete “$vehicle”? The devices themselves are kept.';
+  }
+
+  @override
+  String get vehicleEditorDeleteAction => 'Delete';
+
+  @override
+  String vehicleSwitchedToast(String vehicle, String device) {
+    return 'Home switched to $vehicle ($device belongs to it)';
+  }
+
+  @override
+  String get devicesGroupUnassigned => 'No vehicle';
+
+  @override
+  String get vehicleErrorLimit => 'At most 5 vehicles.';
+
+  @override
+  String get vehicleErrorDeviceLimit => 'A vehicle holds at most 3 devices.';
+
+  @override
+  String get vehicleErrorPowerBankInCar =>
+      'Power banks can only go in Personal devices.';
+
+  @override
+  String get vehicleErrorPersonalOnlyPowerBanks =>
+      'Personal devices holds power banks only.';
+
+  @override
+  String get vehicleErrorUnknownClass =>
+      'This device\'s type isn\'t known yet. Connect to it once, then add it.';
+
+  @override
+  String get vehicleErrorPersonalFixed =>
+      'Personal devices can\'t be renamed or deleted.';
+
+  @override
+  String get vehicleErrorNotFound => 'That vehicle no longer exists.';
 }

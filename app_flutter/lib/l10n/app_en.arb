@@ -1876,5 +1876,188 @@
   "ensurePrimaryFailed": "Could not switch; nothing was sent. Please try again.",
   "@ensurePrimaryFailed": {
     "description": "design 0106 Phase 1. Snackbar when the hand-over to the primary did not reach ready in time or failed; the command was not sent."
+  },
+  "vehiclePersonal": "Personal devices",
+  "@vehiclePersonal": {
+    "description": "design 0106. The fixed group that holds power banks (rulings R6, PQ4). Never renamed."
+  },
+  "vehicleUnnamed": "Unnamed vehicle",
+  "@vehicleUnnamed": {
+    "description": "design 0106. Shown when a car's name is empty."
+  },
+  "vehicleOffline": "offline",
+  "@vehicleOffline": {
+    "description": "design 0106 (Q3). Small tag beside the vehicle title when none of its devices is nearby."
+  },
+  "vehicleOfflineBanner": "None of {vehicle}'s devices are nearby. The app won't switch vehicles by itself — tap the title above to pick another one.",
+  "@vehicleOfflineBanner": {
+    "description": "design 0106 (Q3). Banner on the home page when the selected vehicle's devices are all away.",
+    "placeholders": {
+      "vehicle": {
+        "type": "String"
+      }
+    }
+  },
+  "vehiclePickerTitle": "Choose a vehicle",
+  "@vehiclePickerTitle": {
+    "description": "design 0106. Title of the vehicle picker opened from the home title."
+  },
+  "vehiclePickerNearby": "nearby",
+  "@vehiclePickerNearby": {
+    "description": "design 0106. Tag in the vehicle picker: a device of this vehicle is in range."
+  },
+  "vehiclePickerAdd": "Add vehicle ({count}/{max})",
+  "@vehiclePickerAdd": {
+    "description": "design 0106 (Q8). Picker row that creates a car; shows how many of the five are used.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "vehiclePickerManage": "Manage vehicles…",
+  "@vehiclePickerManage": {
+    "description": "design 0106. Picker row that opens the vehicle list."
+  },
+  "vehicleSettingsLabel": "Vehicles",
+  "@vehicleSettingsLabel": {
+    "description": "design 0106. Settings row under the multi-device switch; opens the vehicle list. Only shown while the switch is on."
+  },
+  "vehicleSettingsSub": "Group devices by vehicle: the home page shows and connects one vehicle at a time (up to 5 vehicles, 3 devices each).",
+  "@vehicleSettingsSub": {
+    "description": "design 0106. Subtitle of the Vehicles settings row."
+  },
+  "vehiclesPageTitle": "Vehicles",
+  "@vehiclesPageTitle": {
+    "description": "design 0106. Title of the vehicle list page."
+  },
+  "vehiclesPageEmpty": "No vehicles yet. Without vehicles the home page works exactly as before.",
+  "@vehiclesPageEmpty": {
+    "description": "design 0106. Vehicle list page with no cars."
+  },
+  "vehicleEditorNewTitle": "New vehicle",
+  "@vehicleEditorNewTitle": {
+    "description": "design 0106. Title of the editor when creating a car."
+  },
+  "vehicleEditorTitle": "Edit vehicle",
+  "@vehicleEditorTitle": {
+    "description": "design 0106. Title of the editor for an existing car."
+  },
+  "vehicleEditorDone": "Done",
+  "@vehicleEditorDone": {
+    "description": "design 0106. Save button of the vehicle editor."
+  },
+  "vehicleEditorName": "Name",
+  "@vehicleEditorName": {
+    "description": "design 0106. Label of the vehicle name field."
+  },
+  "vehicleEditorNameHint": "e.g. Car A",
+  "@vehicleEditorNameHint": {
+    "description": "design 0106. Hint in the vehicle name field."
+  },
+  "vehicleEditorNameNote": "The name stays on this phone. It is never written to exports or problem reports.",
+  "@vehicleEditorNameNote": {
+    "description": "design 0106 §4.3. Under the name field: a name may be a plate number, so it never leaves the phone."
+  },
+  "vehicleEditorDevices": "Devices in this vehicle ({count}/{max})",
+  "@vehicleEditorDevices": {
+    "description": "design 0106 (Q6). Header of the device checklist; a car holds at most three.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "vehicleEditorPowerBanks": "Power banks",
+  "@vehicleEditorPowerBanks": {
+    "description": "design 0106 (R6). Header of the checklist when editing the personal group."
+  },
+  "vehicleEditorAlsoIn": "also in {vehicle}",
+  "@vehicleEditorAlsoIn": {
+    "description": "design 0106 (Q2). Note on a device that already belongs to another car.",
+    "placeholders": {
+      "vehicle": {
+        "type": "String"
+      }
+    }
+  },
+  "vehicleEditorNoDevices": "No saved devices can be added here.",
+  "@vehicleEditorNoDevices": {
+    "description": "design 0106. Checklist with nothing to offer."
+  },
+  "vehicleEditorPowerBankNote": "Power banks go in Personal devices, not in a vehicle.",
+  "@vehicleEditorPowerBankNote": {
+    "description": "design 0106 (R6). Note under a car's checklist."
+  },
+  "vehicleEditorEditLayout": "Edit this vehicle's home layout",
+  "@vehicleEditorEditLayout": {
+    "description": "design 0106. Button that opens the home layout editor for this vehicle."
+  },
+  "vehicleEditorDelete": "Delete this vehicle",
+  "@vehicleEditorDelete": {
+    "description": "design 0106. Delete button in the vehicle editor."
+  },
+  "vehicleEditorDeleteConfirm": "Delete “{vehicle}”? The devices themselves are kept.",
+  "@vehicleEditorDeleteConfirm": {
+    "description": "design 0106. Confirmation before deleting a car.",
+    "placeholders": {
+      "vehicle": {
+        "type": "String"
+      }
+    }
+  },
+  "vehicleEditorDeleteAction": "Delete",
+  "@vehicleEditorDeleteAction": {
+    "description": "design 0106. Confirm button of the delete dialog."
+  },
+  "vehicleSwitchedToast": "Home switched to {vehicle} ({device} belongs to it)",
+  "@vehicleSwitchedToast": {
+    "description": "design 0106 (F3). One-time snackbar when opening a device switches the home page to its vehicle.",
+    "placeholders": {
+      "vehicle": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "devicesGroupUnassigned": "No vehicle",
+  "@devicesGroupUnassigned": {
+    "description": "design 0106. Section of the saved list for devices that belong to no vehicle."
+  },
+  "vehicleErrorLimit": "At most 5 vehicles.",
+  "@vehicleErrorLimit": {
+    "description": "design 0106 rule vehicle_limit (Q8)."
+  },
+  "vehicleErrorDeviceLimit": "A vehicle holds at most 3 devices.",
+  "@vehicleErrorDeviceLimit": {
+    "description": "design 0106 rule vehicle_device_limit (Q6)."
+  },
+  "vehicleErrorPowerBankInCar": "Power banks can only go in Personal devices.",
+  "@vehicleErrorPowerBankInCar": {
+    "description": "design 0106 rule power_bank_in_car (R6)."
+  },
+  "vehicleErrorPersonalOnlyPowerBanks": "Personal devices holds power banks only.",
+  "@vehicleErrorPersonalOnlyPowerBanks": {
+    "description": "design 0106 rule personal_only_power_banks (PQ3)."
+  },
+  "vehicleErrorUnknownClass": "This device's type isn't known yet. Connect to it once, then add it.",
+  "@vehicleErrorUnknownClass": {
+    "description": "design 0106 rule unknown_class."
+  },
+  "vehicleErrorPersonalFixed": "Personal devices can't be renamed or deleted.",
+  "@vehicleErrorPersonalFixed": {
+    "description": "design 0106 rule personal_fixed (PQ1/PQ4)."
+  },
+  "vehicleErrorNotFound": "That vehicle no longer exists.",
+  "@vehicleErrorNotFound": {
+    "description": "design 0106 rule not_found."
   }
 }

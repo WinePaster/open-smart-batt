@@ -98,6 +98,7 @@ import 'connection_failure.dart';
 import 'device_detail_page.dart';
 import 'save_device_flow.dart';
 import 'signal_bars.dart';
+import '../vehicles/vehicle_ui.dart';
 
 /// The devices tab's body (sits inside the app shell's [Scaffold]).
 class DevicesPage extends StatefulWidget {
@@ -938,6 +939,12 @@ class _DevicesPageState extends State<DevicesPage>
     // name — and [ConnectionController.setDetailVisible] pauses and resumes the
     // scan off that. `_wantScan` carries this tab's intent across the gap, so
     // the list comes back scanning without this method saying anything.
+    // design 0106 F3 (Q2): opening a unit that belongs to exactly one vehicle
+    // switches the home page to it (a power bank ⇒ 「個人裝置」). Inert outside
+    // vehicle mode.
+    followDeviceToVehicle(context, deviceId,
+        alias: context.read<DeviceController>().deviceFor(deviceId)?.alias ??
+            fallbackName);
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => DeviceDetailPage(
         deviceId: deviceId,
@@ -1064,46 +1071,76 @@ class _DevicesPageState extends State<DevicesPage>
     bool working,
     AppLocalizations l10n,
   ) {
+    Widget row(SavedDevice d) =>
+      _DeviceRow(
+        alias: d.alias.isEmpty ? l10n.devicesUnnamed : d.alias,
+        aliasMuted: false,
+        meta: _savedMeta(d, rssiById[d.id], l10n),
+        signalLevel: rssiById.containsKey(d.id)
+            ? signalLevelFromRssi(rssiById[d.id]!)
+            : 0,
+        isConnected: conn.isOnline && connectedId == d.id,
+        isConnecting: _connectingId == d.id,
+        // One word of status, and it is a link. See the library comment:
+        // a badge that only changes colour is the FB-53 failure again.
+        badge: connectionBadgeFor(
+          isCurrentDevice: connectedId == d.id,
+          isOnline: conn.isOnline,
+          working: working || _connectingId == d.id,
+          setupStalled: conn.isSetupStalledFor(d.id),
+          // FB-86: this row's OWN error, not whatever the controller last
+          // recorded. `isCurrentDevice` above already returns 未連線 for
+          // a row that is not the current unit, so nothing on screen
+          // changes — but the value reaching this badge is now scoped by
+          // the controller rather than by the guard beside it.
+          lastError: conn.lastErrorFor(d.id),
+        ),
+        onOpenDetail: () =>
+            unawaited(_openDetail(d.id, fallbackName: d.name)),
+        onEdit: () => _rename(d),
+        onDeclare: () => _declareModel(d),
+        onDelete: () => _removeDevice(d),
+        onDisconnect: _disconnect,
+        onConnect: () => _connectSaved(d),
+      );
+    // design 0106 Phase 4 (mock ④): in vehicle mode the same list is cut into
+    // one section per car, then 「個人裝置」, then 未分車. A unit shared by two
+    // cars (Q2) is listed under each. Outside vehicle mode: today's flat list.
+    final vc = visibleVehicles(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
       children: [
         if (saved.isEmpty)
           _EmptyHint(l10n.devicesNoSaved)
+        else if (vc == null)
+          for (final d in saved) row(d)
         else
-          for (final d in saved)
-            _DeviceRow(
-              alias: d.alias.isEmpty ? l10n.devicesUnnamed : d.alias,
-              aliasMuted: false,
-              meta: _savedMeta(d, rssiById[d.id], l10n),
-              signalLevel: rssiById.containsKey(d.id)
-                  ? signalLevelFromRssi(rssiById[d.id]!)
-                  : 0,
-              isConnected: conn.isOnline && connectedId == d.id,
-              isConnecting: _connectingId == d.id,
-              // One word of status, and it is a link. See the library comment:
-              // a badge that only changes colour is the FB-53 failure again.
-              badge: connectionBadgeFor(
-                isCurrentDevice: connectedId == d.id,
-                isOnline: conn.isOnline,
-                working: working || _connectingId == d.id,
-                setupStalled: conn.isSetupStalledFor(d.id),
-                // FB-86: this row's OWN error, not whatever the controller last
-                // recorded. `isCurrentDevice` above already returns 未連線 for
-                // a row that is not the current unit, so nothing on screen
-                // changes — but the value reaching this badge is now scoped by
-                // the controller rather than by the guard beside it.
-                lastError: conn.lastErrorFor(d.id),
-              ),
-              onOpenDetail: () =>
-                  unawaited(_openDetail(d.id, fallbackName: d.name)),
-              onEdit: () => _rename(d),
-              onDeclare: () => _declareModel(d),
-              onDelete: () => _removeDevice(d),
-              onDisconnect: _disconnect,
-              onConnect: () => _connectSaved(d),
-            ),
+          ..._groupedSaved(saved, vc, l10n, row),
       ],
     );
+  }
+
+  List<Widget> _groupedSaved(List<SavedDevice> saved, VehicleController vc,
+      AppLocalizations l10n, Widget Function(SavedDevice) row) {
+    final out = <Widget>[];
+    final placed = <String>{};
+    void section(String key, String title, Iterable<SavedDevice> members) {
+      final list = members.toList();
+      if (list.isEmpty) return;
+      out.add(_GroupHeader(key: ValueKey('saved-group-$key'), title: title));
+      for (final d in list) {
+        placed.add(d.id);
+        out.add(row(d));
+      }
+    }
+
+    for (final v in vc.vehicles) {
+      section(v.id, vehicleDisplayName(l10n, v),
+          [for (final d in saved) if (v.contains(d.id)) d]);
+    }
+    section('none', l10n.devicesGroupUnassigned,
+        [for (final d in saved) if (!placed.contains(d.id)) d]);
+    return out;
   }
 
   Widget _scanList(
@@ -1252,6 +1289,31 @@ class _DevicesPageState extends State<DevicesPage>
 ///
 /// The counts are not decoration: they are what makes "there is nothing here"
 /// legible from the OTHER tab, which is the whole hazard a split introduces.
+/// design 0106 Phase 4: a section title in the grouped saved list (mock ④).
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+          color: context.colors.muted,
+        ),
+      ),
+    );
+  }
+}
+
 class _SubTabs extends StatelessWidget {
   const _SubTabs({
     required this.controller,

@@ -88,7 +88,12 @@ import 'home_tiles.dart';
 
 /// Edit the home grid. Writes on every change; "done" is just a way back.
 class HomeEditorPage extends StatefulWidget {
-  const HomeEditorPage({super.key});
+  const HomeEditorPage({super.key, this.vehicleId});
+
+  /// design 0106 Phase 4: edit THIS vehicle's own layout (its `home_layout`
+  /// row, over its member units only). Null edits the single pre-0106 layout
+  /// in settings — every user who never created a vehicle.
+  final String? vehicleId;
 
   @override
   State<HomeEditorPage> createState() => _HomeEditorPageState();
@@ -202,12 +207,27 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     _tiles ??= _initial();
   }
 
+  /// design 0106: the vehicle being edited, or null for the settings layout.
+  Vehicle? get _vehicle => widget.vehicleId == null
+      ? null
+      : context.read<VehicleController?>()?.vehicleFor(widget.vehicleId);
+
+  /// The units this layout may name: a vehicle's members, or every saved unit.
+  List<SavedDevice> _pool() {
+    final all = context.read<DeviceController>().devices;
+    final v = _vehicle;
+    if (v == null) return all;
+    return [for (final d in all) if (v.contains(d.id)) d];
+  }
+
   List<HomeTile> _initial() {
     final settings = context.read<SettingsController>();
-    final devices = context.read<DeviceController>();
+    final pool = _pool();
+    final v = _vehicle;
+    final stored =
+        v != null ? v.homeLayout : HomeLayout.decode(settings.homeLayout);
     return List<HomeTile>.of(
-      (HomeLayout.decode(settings.homeLayout) ??
-              HomeLayout.defaultFor(devices.devices))
+      (stored ?? HomeLayout.defaultFor(pool))
           // Same view the home page draws — editing a list that still holds
           // tiles the user cannot see would let them reorder invisible cards,
           // and would write those tiles straight back on save.
@@ -220,7 +240,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
           // so the menu has to be the way back. Losing the tile's POSITION is
           // acceptable; losing the tile is not.
           .renderedFor(
-            devices.devices,
+            pool,
             settings.settings,
             gForceAvailable: context.read<GForceController>().available,
           )
@@ -228,9 +248,17 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
     );
   }
 
-  Future<void> _persist() => context.read<SettingsController>().setHomeLayout(
-    HomeLayout(_tiles!).encode(),
-  );
+  Future<void> _persist() {
+    final v = _vehicle;
+    if (v != null) {
+      return context
+          .read<VehicleController>()
+          .setHomeLayout(v.id, HomeLayout(_tiles!));
+    }
+    return context.read<SettingsController>().setHomeLayout(
+      HomeLayout(_tiles!).encode(),
+    );
+  }
 
   void _apply(List<HomeTile> next) {
     setState(() => _tiles = next);
@@ -412,7 +440,12 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
   /// The escape hatch (§4.9). NULL, not a snapshot — so a device saved next
   /// week still appears by itself.
   Future<void> _restoreDefaults() async {
-    await context.read<SettingsController>().setHomeLayout(null);
+    final v = _vehicle;
+    if (v != null) {
+      await context.read<VehicleController>().setHomeLayout(v.id, null);
+    } else {
+      await context.read<SettingsController>().setHomeLayout(null);
+    }
     if (!mounted) return;
     setState(() => _tiles = _initial());
   }
@@ -834,7 +867,7 @@ class _HomeEditorPageState extends State<HomeEditorPage> {
 
   void _showAddSheet(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final devices = context.read<DeviceController>().devices;
+    final devices = _pool();
     final settings = context.read<SettingsController>().settings;
     final gForceAvailable = context.read<GForceController>().available;
 

@@ -2653,4 +2653,124 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get ensurePrimaryFailed => '沒有切換成功，動作未送出。請再試一次。';
+
+  @override
+  String get vehiclePersonal => '個人裝置';
+
+  @override
+  String get vehicleUnnamed => '未命名車輛';
+
+  @override
+  String get vehicleOffline => '離線';
+
+  @override
+  String vehicleOfflineBanner(String vehicle) {
+    return '$vehicle的裝置都不在附近。App 不會自己換車；要看其他車請點上方標題選車。';
+  }
+
+  @override
+  String get vehiclePickerTitle => '選擇車輛';
+
+  @override
+  String get vehiclePickerNearby => '附近';
+
+  @override
+  String vehiclePickerAdd(int count, int max) {
+    return '新增車輛（$count／$max）';
+  }
+
+  @override
+  String get vehiclePickerManage => '管理車輛…';
+
+  @override
+  String get vehicleSettingsLabel => '車輛';
+
+  @override
+  String get vehicleSettingsSub => '把裝置分到車輛：主頁一次顯示並連線一台車（最多 5 台車、每台 3 個裝置）。';
+
+  @override
+  String get vehiclesPageTitle => '車輛';
+
+  @override
+  String get vehiclesPageEmpty => '還沒有車輛。沒有建車時，主頁和以前完全一樣。';
+
+  @override
+  String get vehicleEditorNewTitle => '新增車輛';
+
+  @override
+  String get vehicleEditorTitle => '編輯車輛';
+
+  @override
+  String get vehicleEditorDone => '完成';
+
+  @override
+  String get vehicleEditorName => '名稱';
+
+  @override
+  String get vehicleEditorNameHint => '例如：A 車';
+
+  @override
+  String get vehicleEditorNameNote => '名稱只存在這支手機，不會出現在匯出或回報。';
+
+  @override
+  String vehicleEditorDevices(int count, int max) {
+    return '這台車的裝置（$count／$max）';
+  }
+
+  @override
+  String get vehicleEditorPowerBanks => '行動電源';
+
+  @override
+  String vehicleEditorAlsoIn(String vehicle) {
+    return '也在 $vehicle';
+  }
+
+  @override
+  String get vehicleEditorNoDevices => '沒有可以加入的已存裝置。';
+
+  @override
+  String get vehicleEditorPowerBankNote => '行動電源放在「個人裝置」，不放進車輛。';
+
+  @override
+  String get vehicleEditorEditLayout => '編輯這台車的主頁版面';
+
+  @override
+  String get vehicleEditorDelete => '刪除這台車';
+
+  @override
+  String vehicleEditorDeleteConfirm(String vehicle) {
+    return '刪除「$vehicle」？裝置本身不會被刪除。';
+  }
+
+  @override
+  String get vehicleEditorDeleteAction => '刪除';
+
+  @override
+  String vehicleSwitchedToast(String vehicle, String device) {
+    return '主頁已切到 $vehicle（$device 屬於 $vehicle）';
+  }
+
+  @override
+  String get devicesGroupUnassigned => '未分車';
+
+  @override
+  String get vehicleErrorLimit => '最多只能建 5 台車。';
+
+  @override
+  String get vehicleErrorDeviceLimit => '一台車最多 3 個裝置。';
+
+  @override
+  String get vehicleErrorPowerBankInCar => '行動電源只能放在「個人裝置」。';
+
+  @override
+  String get vehicleErrorPersonalOnlyPowerBanks => '「個人裝置」只能放行動電源。';
+
+  @override
+  String get vehicleErrorUnknownClass => '這台裝置還沒認出類型，請先連上一次再加入。';
+
+  @override
+  String get vehicleErrorPersonalFixed => '「個人裝置」不能改名或刪除。';
+
+  @override
+  String get vehicleErrorNotFound => '這台車已經不存在。';
 }

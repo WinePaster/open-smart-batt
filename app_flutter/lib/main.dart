@@ -30,6 +30,7 @@ import 'ui/startup_failure.dart';
 import 'ui/util/orientation_policy.dart';
 import 'ui/util/update_check.dart';
 import 'ui/util/wide_layout.dart';
+import 'ui/vehicles/vehicle_ui.dart';
 import 'ui/widgets/landscape_max_width.dart';
 
 /// Open-build entry point: boots with the default no-op metadata seam.
@@ -820,9 +821,13 @@ class _RootShellState extends State<RootShell> {
   /// Two entry points, one route: the app-bar action and the row at the foot of
   /// the grid. The row exists because the action alone was not findable —
   /// see [HomePage.onEdit].
-  void _openHomeEditor() => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const HomeEditorPage()));
+  /// design 0106: in vehicle mode the grid's edit row edits the CURRENT
+  /// vehicle's layout; otherwise the single settings layout, as before.
+  void _openHomeEditor() {
+    final vehicleId = readVisibleVehicles(context)?.current?.id;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => HomeEditorPage(vehicleId: vehicleId)));
+  }
 
   /// One unit's page, pushed from the shell (home tile, or the pill below).
   ///

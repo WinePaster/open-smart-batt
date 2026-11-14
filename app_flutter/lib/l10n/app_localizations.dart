@@ -4683,6 +4683,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not switch; nothing was sent. Please try again.'**
   String get ensurePrimaryFailed;
+
+  /// design 0106. The fixed group that holds power banks (rulings R6, PQ4). Never renamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal devices'**
+  String get vehiclePersonal;
+
+  /// design 0106. Shown when a car's name is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Unnamed vehicle'**
+  String get vehicleUnnamed;
+
+  /// design 0106 (Q3). Small tag beside the vehicle title when none of its devices is nearby.
+  ///
+  /// In en, this message translates to:
+  /// **'offline'**
+  String get vehicleOffline;
+
+  /// design 0106 (Q3). Banner on the home page when the selected vehicle's devices are all away.
+  ///
+  /// In en, this message translates to:
+  /// **'None of {vehicle}\'s devices are nearby. The app won\'t switch vehicles by itself — tap the title above to pick another one.'**
+  String vehicleOfflineBanner(String vehicle);
+
+  /// design 0106. Title of the vehicle picker opened from the home title.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a vehicle'**
+  String get vehiclePickerTitle;
+
+  /// design 0106. Tag in the vehicle picker: a device of this vehicle is in range.
+  ///
+  /// In en, this message translates to:
+  /// **'nearby'**
+  String get vehiclePickerNearby;
+
+  /// design 0106 (Q8). Picker row that creates a car; shows how many of the five are used.
+  ///
+  /// In en, this message translates to:
+  /// **'Add vehicle ({count}/{max})'**
+  String vehiclePickerAdd(int count, int max);
+
+  /// design 0106. Picker row that opens the vehicle list.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage vehicles…'**
+  String get vehiclePickerManage;
+
+  /// design 0106. Settings row under the multi-device switch; opens the vehicle list. Only shown while the switch is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Vehicles'**
+  String get vehicleSettingsLabel;
+
+  /// design 0106. Subtitle of the Vehicles settings row.
+  ///
+  /// In en, this message translates to:
+  /// **'Group devices by vehicle: the home page shows and connects one vehicle at a time (up to 5 vehicles, 3 devices each).'**
+  String get vehicleSettingsSub;
+
+  /// design 0106. Title of the vehicle list page.
+  ///
+  /// In en, this message translates to:
+  /// **'Vehicles'**
+  String get vehiclesPageTitle;
+
+  /// design 0106. Vehicle list page with no cars.
+  ///
+  /// In en, this message translates to:
+  /// **'No vehicles yet. Without vehicles the home page works exactly as before.'**
+  String get vehiclesPageEmpty;
+
+  /// design 0106. Title of the editor when creating a car.
+  ///
+  /// In en, this message translates to:
+  /// **'New vehicle'**
+  String get vehicleEditorNewTitle;
+
+  /// design 0106. Title of the editor for an existing car.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit vehicle'**
+  String get vehicleEditorTitle;
+
+  /// design 0106. Save button of the vehicle editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get vehicleEditorDone;
+
+  /// design 0106. Label of the vehicle name field.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get vehicleEditorName;
+
+  /// design 0106. Hint in the vehicle name field.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Car A'**
+  String get vehicleEditorNameHint;
+
+  /// design 0106 §4.3. Under the name field: a name may be a plate number, so it never leaves the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'The name stays on this phone. It is never written to exports or problem reports.'**
+  String get vehicleEditorNameNote;
+
+  /// design 0106 (Q6). Header of the device checklist; a car holds at most three.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices in this vehicle ({count}/{max})'**
+  String vehicleEditorDevices(int count, int max);
+
+  /// design 0106 (R6). Header of the checklist when editing the personal group.
+  ///
+  /// In en, this message translates to:
+  /// **'Power banks'**
+  String get vehicleEditorPowerBanks;
+
+  /// design 0106 (Q2). Note on a device that already belongs to another car.
+  ///
+  /// In en, this message translates to:
+  /// **'also in {vehicle}'**
+  String vehicleEditorAlsoIn(String vehicle);
+
+  /// design 0106. Checklist with nothing to offer.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved devices can be added here.'**
+  String get vehicleEditorNoDevices;
+
+  /// design 0106 (R6). Note under a car's checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'Power banks go in Personal devices, not in a vehicle.'**
+  String get vehicleEditorPowerBankNote;
+
+  /// design 0106. Button that opens the home layout editor for this vehicle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit this vehicle\'s home layout'**
+  String get vehicleEditorEditLayout;
+
+  /// design 0106. Delete button in the vehicle editor.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this vehicle'**
+  String get vehicleEditorDelete;
+
+  /// design 0106. Confirmation before deleting a car.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete “{vehicle}”? The devices themselves are kept.'**
+  String vehicleEditorDeleteConfirm(String vehicle);
+
+  /// design 0106. Confirm button of the delete dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get vehicleEditorDeleteAction;
+
+  /// design 0106 (F3). One-time snackbar when opening a device switches the home page to its vehicle.
+  ///
+  /// In en, this message translates to:
+  /// **'Home switched to {vehicle} ({device} belongs to it)'**
+  String vehicleSwitchedToast(String vehicle, String device);
+
+  /// design 0106. Section of the saved list for devices that belong to no vehicle.
+  ///
+  /// In en, this message translates to:
+  /// **'No vehicle'**
+  String get devicesGroupUnassigned;
+
+  /// design 0106 rule vehicle_limit (Q8).
+  ///
+  /// In en, this message translates to:
+  /// **'At most 5 vehicles.'**
+  String get vehicleErrorLimit;
+
+  /// design 0106 rule vehicle_device_limit (Q6).
+  ///
+  /// In en, this message translates to:
+  /// **'A vehicle holds at most 3 devices.'**
+  String get vehicleErrorDeviceLimit;
+
+  /// design 0106 rule power_bank_in_car (R6).
+  ///
+  /// In en, this message translates to:
+  /// **'Power banks can only go in Personal devices.'**
+  String get vehicleErrorPowerBankInCar;
+
+  /// design 0106 rule personal_only_power_banks (PQ3).
+  ///
+  /// In en, this message translates to:
+  /// **'Personal devices holds power banks only.'**
+  String get vehicleErrorPersonalOnlyPowerBanks;
+
+  /// design 0106 rule unknown_class.
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s type isn\'t known yet. Connect to it once, then add it.'**
+  String get vehicleErrorUnknownClass;
+
+  /// design 0106 rule personal_fixed (PQ1/PQ4).
+  ///
+  /// In en, this message translates to:
+  /// **'Personal devices can\'t be renamed or deleted.'**
+  String get vehicleErrorPersonalFixed;
+
+  /// design 0106 rule not_found.
+  ///
+  /// In en, this message translates to:
+  /// **'That vehicle no longer exists.'**
+  String get vehicleErrorNotFound;
 }
 
 class _AppLocalizationsDelegate

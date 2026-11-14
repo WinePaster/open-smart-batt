@@ -27,6 +27,7 @@ import 'package:open_smart_batt/l10n/app_localizations.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../util/wide_layout.dart';
+import '../vehicles/vehicle_ui.dart';
 import '../widgets/flow_columns.dart';
 import 'home_plan.dart';
 import 'home_tiles.dart';
@@ -65,18 +66,31 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final devices = context.watch<DeviceController>();
+    // design 0106 Phase 4: in vehicle mode (switch on AND a car exists) the
+    // page is the CURRENT vehicle's — its own layout over its member units,
+    // under a 「A 車 ▾」 title. Otherwise [vehicles] is null and everything
+    // below is exactly the pre-0106 page (mock ⑦ / ⑧).
+    final vehicles = visibleVehicles(context);
+    final current = vehicles?.current;
+    final pool = current == null
+        ? devices.devices
+        : [for (final d in devices.devices) if (current.contains(d.id)) d];
+    final stored = current == null
+        ? HomeLayout.decode(settings.homeLayout)
+        : current.homeLayout;
     // `renderedFor` is the home surface's own resolver — the twin of
     // `renderedModules`, not a user of it (ruled 2026-08-07: the two surfaces
     // stay separate). It drops ghosts and phone modules whose switch is off,
     // and it does both WITHOUT rewriting storage. See its doc.
     final layout =
-        (HomeLayout.decode(settings.homeLayout) ??
-                HomeLayout.defaultFor(devices.devices))
+        (stored ?? HomeLayout.defaultFor(pool))
             .renderedFor(
-              devices.devices,
+              pool,
               settings.settings,
               gForceAvailable: context.watch<GForceController>().available,
             );
+    final header =
+        vehicles == null ? null : VehicleHeader(vehicles: vehicles);
 
     final editRow = onEdit != null ? _EditLayoutRow(onTap: onEdit!) : null;
     final largeText = WideLayout.largeText(context);
@@ -96,9 +110,13 @@ class HomePage extends StatelessWidget {
               for (final block in HomeLayout.blocksOf(placed))
                 _section(block, placed),
             ];
-            return columns == 1
+            final body = columns == 1
                 ? _singleColumn(sections, editRow)
                 : _multiColumn(sections, editRow, columns);
+            if (header == null) return body;
+            return Column(
+              children: [header, Expanded(child: body)],
+            );
           },
         );
 
