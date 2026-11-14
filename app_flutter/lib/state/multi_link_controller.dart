@@ -45,6 +45,7 @@ import '../models/models.dart';
 import 'card_telemetry.dart';
 import 'connection_controller.dart';
 import 'device_controller.dart';
+import 'device_live_source.dart';
 import 'live_trend_buffer.dart';
 import 'settings_controller.dart';
 import 'telemetry_controller.dart';
@@ -79,6 +80,14 @@ class _Secondary {
   /// the `disconnected` it causes does not schedule a retry.
   bool releasing = false;
 
+  // design 0106 Phase 1 — what the device page needs to draw this unit from
+  // its own link rather than switching the primary over to it.
+  DateTime? readyAt;
+  DateTime? lastSampleAt;
+  int samples = 0;
+  bool stalled = false;
+  String? liveMac;
+
   bool get online => state == BleLinkState.ready;
   bool get paused => pausedForPowerBank || demoted;
 }
@@ -102,6 +111,8 @@ class MultiLinkController extends ChangeNotifier {
     this.presenceWindow = MultiLinkConfig.presenceWindow,
     this.presenceScanEvery = MultiLinkConfig.presenceScanEvery,
     this.presenceScanTimeout = MultiLinkConfig.presenceScanTimeout,
+    this.stallThreshold = BleService.telemetryStallThreshold,
+    this.stallCheckEvery = const Duration(seconds: 2),
     DateTime Function()? clock,
   // Private fields from public named parameters: the `this._x` form the lint
   // suggests does not compile for named parameters (see SettingsController).
@@ -140,6 +151,12 @@ class MultiLinkController extends ChangeNotifier {
   final Duration presenceWindow;
   final Duration presenceScanEvery;
   final Duration presenceScanTimeout;
+
+  /// design 0106 Phase 1: a secondary link counts as stalled after this long
+  /// without a frame — the primary's threshold, so both pages say 「暫停」 for
+  /// the same silence.
+  final Duration stallThreshold;
+  final Duration stallCheckEvery;
   final DateTime Function() _now;
 
   /// When each unit was last known to be in range: seen in a scan, or live on
@@ -185,6 +202,7 @@ class MultiLinkController extends ChangeNotifier {
   String? _lastPrimary;
   bool _powerBankHeld = false;
   Timer? _demoteTimer;
+  Timer? _stallTimer;
   String _lastReadyLine = '';
   MultiLinkBodyFormat _bodyFormat = (n, r) => '$n · $r';
 
@@ -230,6 +248,25 @@ class MultiLinkController extends ChangeNotifier {
 
   /// The class a secondary link's cards draw with: its saved class (only
   /// non-power-bank units are ever adopted, see [_candidates]).
+  /// design 0106 Phase 1: the device page's view of a unit live on a
+  /// SECONDARY link, or null when it is not (offline, releasing, or a class
+  /// the secondary dashboard cannot draw from the saved record alone).
+  ///
+  /// Only a battery or capacitor gets one: those are the only classes a
+  /// secondary link ever carries (power banks are never adopted, D1), and a
+  /// unit saved without a class has no record to route its dashboard by —
+  /// that page keeps the pre-Phase-1 behaviour of connecting it as the
+  /// primary, where the wire byte resolves the class.
+  DeviceLiveSource? liveSourceFor(String deviceId) {
+    final l = _links[deviceId];
+    if (l == null || !l.online || l.releasing) return null;
+    final cls = classFor(deviceId);
+    if (cls != ProductClass.smartBattery && cls != ProductClass.supercapacitor) {
+      return null;
+    }
+    return _SecondaryLiveSource(this, l, cls);
+  }
+
   ProductClass classFor(String deviceId) =>
       _devices.deviceFor(deviceId)?.productClass ?? ProductClass.unknown;
 
@@ -341,6 +378,8 @@ class MultiLinkController extends ChangeNotifier {
       checkDemotions();
       presenceTick();
     });
+    _stallTimer?.cancel();
+    _stallTimer = Timer.periodic(stallCheckEvery, (_) => checkStalls());
     _reconcile();
     presenceTick();
   }
@@ -350,6 +389,8 @@ class MultiLinkController extends ChangeNotifier {
     _lastPresenceScanAt = null;
     _demoteTimer?.cancel();
     _demoteTimer = null;
+    _stallTimer?.cancel();
+    _stallTimer = null;
     _powerBankHeld = false;
     for (final id in _links.keys.toList()) {
       unawaited(_release(id, reason: 'switch-off'));
@@ -538,6 +579,12 @@ class MultiLinkController extends ChangeNotifier {
     l.state = s;
     if (s == BleLinkState.ready) {
       l.retryAttempts = 0;
+      l.readyAt = _now();
+      // Seeded like the primary's stall watch: the first frame gets the full
+      // threshold as grace, while [samples] still says nothing has arrived.
+      l.lastSampleAt = l.readyAt;
+      l.samples = 0;
+      l.stalled = false;
       // A link that comes up while a power bank holds the primary joins the
       // pause straight away.
       if (_powerBankHeld && powerBankOthers == PowerBankOthersMode.pause) {
@@ -583,6 +630,11 @@ class MultiLinkController extends ChangeNotifier {
     }
     _seenAt[l.id] = _now();
     l.last = s;
+    l.lastSampleAt = _now();
+    l.samples++;
+    l.stalled = false;
+    final mac = s.mac;
+    if (mac != null && mac.isNotEmpty) l.liveMac = mac;
     l.trend.add(s);
     _tele.recordExtraSample(l.id, s);
     final now = DateTime.now();
@@ -623,6 +675,23 @@ class MultiLinkController extends ChangeNotifier {
     if (!_eligible().any((id) => !_isPresent(id))) return;
     _lastPresenceScanAt = now;
     unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
+  }
+
+  /// design 0106 Phase 1: re-evaluate each secondary link's stall flag, and
+  /// notify only when one changes. Public for tests; the periodic timer started
+  /// by [_start] is the only production caller.
+  @visibleForTesting
+  void checkStalls() {
+    final now = _now();
+    var changed = false;
+    for (final l in _links.values) {
+      final at = l.lastSampleAt;
+      final next = l.online && at != null && now.difference(at) > stallThreshold;
+      if (next == l.stalled) continue;
+      l.stalled = next;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   /// D5: evaluate the slow-writer rule once. Public for tests; the periodic
@@ -710,6 +779,7 @@ class MultiLinkController extends ChangeNotifier {
     _conn.removeListener(_onPrimaryChanged);
     _devices.removeListener(_reconcile);
     _demoteTimer?.cancel();
+    _stallTimer?.cancel();
     for (final l in _links.values) {
       l.releasing = true;
       l.retryTimer?.cancel();
@@ -723,4 +793,114 @@ class MultiLinkController extends ChangeNotifier {
     _links.clear();
     super.dispose();
   }
+}
+
+/// design 0106 Phase 1 — a live SECONDARY link as a [DeviceLiveSource].
+///
+/// A view, not a copy: every getter reads the link's current state, and the
+/// controller's own notifications are the change signal (it notifies on every
+/// sample, on link state changes and on stall transitions).
+class _SecondaryLiveSource implements DeviceLiveSource {
+  _SecondaryLiveSource(this._ml, this._l, this._cls);
+
+  final MultiLinkController _ml;
+  final _Secondary _l;
+  final ProductClass _cls;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SecondaryLiveSource && identical(other._l, _l);
+
+  @override
+  int get hashCode => identityHashCode(_l);
+
+  TelemetrySample get _s => _l.last ?? TelemetrySample.empty();
+  TempUnit get _unit => _ml._settings.settings.tempUnit;
+
+  @override
+  void addListener(VoidCallback listener) => _ml.addListener(listener);
+  @override
+  void removeListener(VoidCallback listener) => _ml.removeListener(listener);
+
+  @override
+  String get deviceId => _l.id;
+  @override
+  bool get isOnline => _l.online && !_l.releasing;
+  @override
+  bool get isPrimary => false;
+  @override
+  bool get paused => _l.paused;
+  @override
+  bool get handingOff => false;
+  @override
+  bool get hasTelemetry => _l.samples > 0;
+  @override
+  bool get telemetryStalled => _l.stalled;
+  @override
+  DateTime? get lastTelemetryAt => _l.lastSampleAt;
+  @override
+  Duration? get telemetryAge {
+    final at = _l.lastSampleAt;
+    return at == null ? null : _ml._now().difference(at);
+  }
+
+  @override
+  Duration? get onlineFor {
+    final at = _l.readyAt;
+    return at == null ? null : _ml._now().difference(at);
+  }
+
+  @override
+  ProductClass get packLabel => _cls;
+  @override
+  RoutingDecision get routing => routingForClass(_cls);
+  @override
+  DeviceCapabilities get capabilities => capabilitiesForClass(_cls);
+  @override
+  String? get liveMac => _l.liveMac;
+
+  // ---- CardTelemetry / PackReadings: the link's latest sample ------------
+
+  @override
+  TelemetrySample get sample => _s;
+  @override
+  LiveTrendBuffer get trend => _l.trend;
+  @override
+  double? get pvlt => _s.pvlt;
+  @override
+  double? get svlt => _s.svlt;
+  @override
+  double? get current => _s.current;
+  @override
+  List<double>? get dvol => _s.dvol;
+  @override
+  bool get dvolPending => _s.dvolPending;
+  @override
+  int? get sohBucket => _s.sohBucket;
+  @override
+  int? get socPercent => _s.socPercent;
+  @override
+  double? get temperatureDisplay => displayTemperature(_s.temperatureC, _unit);
+  @override
+  String get temperatureUnitLabel => temperatureUnitLabelOf(_unit);
+  @override
+  UsbPort? get usbPort => _s.usbPort;
+  @override
+  bool? get isRailOff => _s.isRailOff;
+  @override
+  bool? get isPdIn => _s.isPdIn;
+  @override
+  bool? get isPdOut => _s.isPdOut;
+  @override
+  int? get portFlagsRaw => _s.portFlagsRaw;
+  @override
+  int? get mode => _s.mode;
+  @override
+  String? get dealerCode => _s.dealerCode;
+  @override
+  String? get serial => _s.serial;
+  @override
+  String? get fullSerial => _s.fullSerial;
+  @override
+  int? get temperatureC => _s.temperatureC;
 }

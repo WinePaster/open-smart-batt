@@ -17,6 +17,7 @@ import '../data/data.dart';
 import '../demo/demo.dart';
 import '../models/models.dart';
 import 'card_telemetry.dart';
+import 'device_live_source.dart' show PackReadings;
 import 'live_trend_buffer.dart';
 import 'session_context.dart';
 import 'settings_controller.dart';
@@ -154,7 +155,7 @@ abstract class TelemetryAlertSink {
 }
 
 class TelemetryController extends ChangeNotifier
-    implements TelemetryHealth, CardTelemetry {
+    implements TelemetryHealth, CardTelemetry, PackReadings {
   TelemetryController(
     this._ble, {
     required SettingsController settings,
@@ -320,6 +321,7 @@ class TelemetryController extends ChangeNotifier
   int? get portFlagsRaw => _sample.portFlagsRaw;
 
   /// Reported mode/status code (selector 0x23).
+  @override
   int? get mode => _sample.mode;
 
   /// Raw function-flag register (selector 0x3A), or null until one arrives.
@@ -332,11 +334,14 @@ class TelemetryController extends ChangeNotifier
 
 
   /// Battery serial (selector 0x26, tail only).
+  @override
   String? get serial => _sample.serial;
 
   /// Full product serial = dealer code (0x27) + product serial (0x26); null
   /// until both arrive (connect burst). See [TelemetrySample.fullSerial].
+  @override
   String? get fullSerial => _sample.fullSerial;
+  @override
   String? get dealerCode => _sample.dealerCode;
 
   /// The device's own BLE address (selector 0x38), as an upper-case
@@ -351,6 +356,7 @@ class TelemetryController extends ChangeNotifier
   // decoded values still live on `TelemetrySample` for the protocol tests.
 
   /// Raw temperature (°C).
+  @override
   int? get temperatureC => _sample.temperatureC;
 
   /// Temperature converted to the user's chosen display unit.

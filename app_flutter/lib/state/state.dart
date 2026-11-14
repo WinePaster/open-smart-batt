@@ -15,6 +15,7 @@ export 'card_telemetry.dart';
 export 'connection_controller.dart';
 export 'device_controller.dart';
 export 'device_facts_controller.dart';
+export 'device_live_source.dart';
 export 'g_force_config.dart';
 export 'g_force_controller.dart';
 export 'g_force_estimator.dart';

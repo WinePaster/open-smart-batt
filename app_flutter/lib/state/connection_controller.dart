@@ -605,6 +605,14 @@ class ConnectionController extends ChangeNotifier {
   void noteAutoConnectSkipped(String reason, {String? deviceId}) =>
       _event('detail auto-connect skipped: $reason', deviceId: deviceId);
 
+  /// design 0106 Phase 1 §2.6: the device page's two hand-over lines
+  /// (`detail: control needs primary …`, `detail: handoff for control …`),
+  /// attributed to the page's unit. Same narrowness as
+  /// [noteAutoConnectSkipped]: both fire only on a user's press, never from a
+  /// build.
+  void noteDetailEvent(String message, {String? deviceId}) =>
+      _event(message, deviceId: deviceId);
+
   /// Build that is RECORDING, stamped on every row.
   ///
   /// Per row, not per export: `diag_log` and `history` accumulate for months
