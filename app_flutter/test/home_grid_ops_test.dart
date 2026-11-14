@@ -191,9 +191,21 @@ void main() {
   });
 
   group('add', () {
-    test('appends full width', () {
+    // 🔵 design 0106 §6.5: a newly added card is the ENGINE's — auto size
+    // and column, whatever span it was built with. A device card's auto size
+    // is half (Q-Z1), so it joins the half beside it.
+    test('hands the new card to the engine (auto size and column)', () {
       final out = HomeGridOps.add([l('A')], f('B'));
-      expect(shape(out), '[A|] [B]');
+      expect(shape(out), '[A|B]');
+      expect(out.last.sizeBy, TileSource.auto);
+      expect(out.last.columnBy, TileSource.auto);
+      expect(out.first.sizeBy, TileSource.user, reason: 'A is untouched');
+    });
+
+    test('an auto chart stays full width', () {
+      final out = HomeGridOps.add(
+          [l('A')], const HomeTile.module(DisplayModule.chart, deviceId: 'B'));
+      expect(out.last.span, HomeSpan.full);
       expect(out.last.column, isNull);
     });
   });

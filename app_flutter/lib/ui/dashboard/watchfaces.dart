@@ -665,9 +665,14 @@ String exportHomeValue(HomeLayout? layout) {
   // `export_layout_header_test.dart` — an alphabet with no `=` in it, which
   // exists to protect the ingest side's greedy `sed`. Widening a guard to fit a
   // nicer syntax is not a trade this line gets to make (design 0054 Q3).
+  // design 0106 §6.5: `:as` = size decided by the engine, `:ac` = column
+  // decided by the engine (the stored `:l`/`:r` is then only a fallback).
+  // Absent on cards the user set — every layout written before 版 1b.
   String style(HomeTile t) =>
       '${t.storedView == null ? '' : ':v${t.storedView}'}'
-      '${t.shell == CardShell.standard ? '' : ':s${t.shell.slug}'}';
+      '${t.shell == CardShell.standard ? '' : ':s${t.shell.slug}'}'
+      '${t.sizeBy == TileSource.auto ? ':as' : ''}'
+      '${t.span == HomeSpan.half && t.columnBy == TileSource.auto ? ':ac' : ''}';
   final parts = <String>[
     for (final t in layout.tiles)
       switch (t.kind) {

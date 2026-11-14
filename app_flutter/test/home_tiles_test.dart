@@ -623,24 +623,34 @@ void main() {
         reason: 'the 1x1 the user asked for must be drawn at 1x1');
   });
 
-  testWidgets('🔴 and the default layout never produces a lone half',
+  // 🔵 design 0106 §6.5 (Q-Z1): the generated default DOES hold halves now —
+  // device cards, gauges, speed, G — because every generated tile is `auto`.
+  // What keeps the 2026-08-08 ruling true is [HomeLayout.place]'s orphan rule:
+  // an `auto` half that filtering leaves alone is DRAWN full. So the invariant
+  // moves from "no halves generated" to "no lone auto half drawn".
+  testWidgets('🔴 and the default layout never DRAWS a lone half',
       (tester) async {
-    // The other half of the ruling, and the one that makes it safe. If a
-    // default ever pairs two halves again, one of them will be filtered away
-    // on most phones and the orphan is back — with the rule above, drawn as a
-    // ragged empty column. So: no half tiles in a generated layout at all.
     final s = await boot(tester, devices: [
       SavedDevice(id: 'A', productClass: ProductClass.smartBattery, alias: 'Cap #1', lastValue: 12.6,
           lastSeen: DateTime.now()),
     ]);
     addTearDown(() => teardown(tester, s));
-    for (final n in [0, 1, 2, 4]) {
-      final generated = HomeLayout.defaultFor(
-          [for (var i = 0; i < n; i++)
-            SavedDevice(id: 'D$i', alias: 'u$i')]);
-      expect(generated.tiles.where((t) => t.span == HomeSpan.half), isEmpty,
-          reason: 'with $n device(s): a generated pair can be broken by '
-              '`renderedFor`, and nobody chose the result');
+    for (final n in [0, 1, 2, 3, 4]) {
+      final devices = [
+        for (var i = 0; i < n; i++)
+          SavedDevice(id: 'D$i', alias: 'u$i',
+              productClass: ProductClass.smartBattery),
+      ];
+      // speed detection off (the default) filters the speed tile away and
+      // leaves the G meter — the exact orphan of 2026-08-07.
+      final rendered = HomeLayout.defaultFor(devices).renderedFor(
+          devices, const AppSettings(), gForceAvailable: true);
+      final placed = HomeLayout.place(rendered.tiles);
+      for (final b in HomeLayout.blocksOf(placed)) {
+        if (b.full != null) continue;
+        expect(b.left.length + b.right.length, greaterThan(1),
+            reason: 'with $n device(s): a lone half is a layout nobody chose');
+      }
     }
   });
 

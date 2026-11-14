@@ -94,6 +94,14 @@ enum HomeSpan {
 /// anything read it; S2 made the home page read it; S4 removed the stored
 /// placeholder that was the other half of the old representation. A stored
 /// column is now honoured and never recomputed — see [HomeLayout.seated].
+///
+/// 🔴 **design 0106 Q-A1 (owner 2026-11-15「可以了」) overturned 0084 Q1 for
+/// cards the ENGINE owns.** A card with `columnBy == user` is still exactly
+/// this: stored and honoured. A card with `columnBy == auto` keeps a stored
+/// column only as the fallback an older build reads; where it is drawn is
+/// decided by [HomeLayout.place] from PLAN heights — sample data at the real
+/// width — which answers both objections above: live data cannot move it, and
+/// the editor plans with the same heights, so it shows where the card lands.
 enum HomeColumn {
   left,
   right;
@@ -107,6 +115,26 @@ enum HomeColumn {
     }
     return null;
   }
+}
+
+/// Who decided a tile's size or column (design 0106 §6.5, 版 1b).
+///
+/// `auto` ⇒ the layout engine decides: the size from [autoSpanFor], the column
+/// from [HomeLayout.place]. `user` ⇒ the user set it in the editor, and nothing
+/// but 一鍵整理 (`HomeGridOps.tidy`) may change it again (owner 2026-11-14:
+/// 「如果user自己改了我們就不自動改回去 除非他按一鍵整理」).
+///
+/// 🔴 Stored as ABSENCE = `user`, the inverse of the plan's first sketch, and
+/// that inversion IS the migration (Q-A2): every layout written before this
+/// field existed carries no key, so every card in it reads back as the user's
+/// own choice and not one of them moves. An older build ignores the key and
+/// reads `span`/`column`, which are always concrete — so downgrading is safe
+/// too. Only tiles the ENGINE owns carry `"sizeBy":"auto"` / `"columnBy":"auto"`.
+enum TileSource {
+  auto,
+  user;
+
+  String get slug => name;
 }
 
 /// What a tile draws.
@@ -142,6 +170,35 @@ enum HomeTileKind {
   }
 }
 
+/// The width a tile gets when its size is `auto` (design 0106 §6.5, Q-Z1):
+/// graphs and multi-line cards full, single values half.
+///
+/// A module this table has not heard of is full — a later module drawn at half
+/// width by default would be a guess about its content, and full is the shape
+/// every card is known to fit.
+HomeSpan autoSpanFor(HomeTile t) {
+  switch (t.kind) {
+    case HomeTileKind.addDevice:
+      return HomeSpan.full;
+    case HomeTileKind.deviceCard:
+      return HomeSpan.half;
+    case HomeTileKind.module:
+      switch (t.module!) {
+        case DisplayModule.chart:
+        case DisplayModule.readouts:
+        case DisplayModule.cells:
+        case DisplayModule.energyPath:
+          return HomeSpan.full;
+        case DisplayModule.gaugeVoltage:
+        case DisplayModule.gaugeSoc:
+        case DisplayModule.speed:
+        case DisplayModule.gForce:
+        case DisplayModule.clock:
+          return HomeSpan.half;
+      }
+  }
+}
+
 /// One cell of the home grid.
 class HomeTile {
   const HomeTile({
@@ -152,6 +209,8 @@ class HomeTile {
     this.shell = CardShell.standard,
     this.view,
     this.column,
+    this.sizeBy = TileSource.user,
+    this.columnBy = TileSource.user,
   });
 
   /// A [DisplayModule] tile.
@@ -229,6 +288,33 @@ class HomeTile {
   /// ordering could express, and it is the arrangement Q2 exists to allow.
   final HomeColumn? column;
 
+  /// Who set [span] (design 0106 §6.5). `auto` ⇒ [span] always equals
+  /// [autoSpanFor] (enforced by [HomeLayout.autoSized]); `user` ⇒ [span] is the
+  /// user's own answer. See [TileSource] for why the default is `user`.
+  final TileSource sizeBy;
+
+  /// Who set [column]. `auto` ⇒ [column] is only the stored fallback and
+  /// [HomeLayout.place] decides where the card is drawn; `user` ⇒ the card is
+  /// pinned to [column] (the user dragged it there — Q-A3).
+  final TileSource columnBy;
+
+  /// Both sources at once.
+  HomeTile withSources({TileSource? sizeBy, TileSource? columnBy}) => HomeTile(
+        kind: kind,
+        module: module,
+        deviceId: deviceId,
+        span: span,
+        shell: shell,
+        view: view,
+        column: column,
+        sizeBy: sizeBy ?? this.sizeBy,
+        columnBy: columnBy ?? this.columnBy,
+      );
+
+  /// This tile handed back to the engine (size and column both `auto`).
+  HomeTile get asAuto =>
+      withSources(sizeBy: TileSource.auto, columnBy: TileSource.auto);
+
   /// [view] resolved against [module] — null for "this card's default".
   ///
   /// [HomeTile.fromJson] and [withStyle] already normalise, so this is only ever
@@ -257,6 +343,8 @@ class HomeTile {
         // column. Since S4 nothing re-derives it afterwards, so carrying it is
         // the difference between keeping the user's arrangement and losing it.
         column: column ?? this.column,
+        sizeBy: sizeBy,
+        columnBy: columnBy,
       );
 
   /// This tile, seated in [column] — and `null` IS a value here (a full tile
@@ -270,6 +358,8 @@ class HomeTile {
         shell: shell,
         view: view,
         column: column,
+        sizeBy: sizeBy,
+        columnBy: columnBy,
       );
 
   /// Both style axes at once — the editor's style sheet writes them together.
@@ -287,6 +377,8 @@ class HomeTile {
         column: column,
         shell: shell,
         view: normaliseCardView(module, view),
+        sizeBy: sizeBy,
+        columnBy: columnBy,
       );
 
   Map<String, Object?> toJson() => {
@@ -305,6 +397,9 @@ class HomeTile {
         // in — [HomeLayout.seated] fills it from the position, so absence is a
         // migration, not a loss (design 0084 §4.2).
         if (column != null) 'column': column!.slug,
+        // design 0106 §6.5: absence = user (see [TileSource]).
+        if (sizeBy == TileSource.auto) 'sizeBy': 'auto',
+        if (columnBy == TileSource.auto) 'columnBy': 'auto',
       };
 
   /// Read one stored tile. Returns null for anything this build cannot make
@@ -327,6 +422,18 @@ class HomeTile {
     // Same rule as shell and view one line up: a value this build cannot read
     // must not cost the user a card.
     final column = HomeColumn.fromSlug(raw['column'] as String?);
+    // design 0106 §6.5: only the literal "auto" hands a tile to the engine;
+    // absent or anything else is the user's own value (Q-A2).
+    final sizeBy =
+        raw['sizeBy'] == 'auto' ? TileSource.auto : TileSource.user;
+    final columnBy =
+        raw['columnBy'] == 'auto' ? TileSource.auto : TileSource.user;
+    final tile = _tileFromJson(raw, kind, span, device, shell, storedView, column);
+    return tile?.withSources(sizeBy: sizeBy, columnBy: columnBy);
+  }
+
+  static HomeTile? _tileFromJson(Map raw, HomeTileKind kind, HomeSpan span,
+      String? device, CardShell shell, String? storedView, HomeColumn? column) {
     switch (kind) {
       case HomeTileKind.addDevice:
         return const HomeTile.addDevice();
@@ -367,11 +474,13 @@ class HomeTile {
       other.span == span &&
       other.shell == shell &&
       other.view == view &&
-      other.column == column;
+      other.column == column &&
+      other.sizeBy == sizeBy &&
+      other.columnBy == columnBy;
 
   @override
-  int get hashCode =>
-      Object.hash(kind, module, deviceId, span, shell, view, column);
+  int get hashCode => Object.hash(
+      kind, module, deviceId, span, shell, view, column, sizeBy, columnBy);
 
   @override
   String toString() =>
@@ -379,7 +488,9 @@ class HomeTile {
       '${deviceId == null ? '' : '@$deviceId'}, ${span.slug}'
       '${shell == CardShell.standard ? '' : ', ${shell.slug}'}'
       '${view == null ? '' : ', $view'}'
-      '${column == null ? '' : ', ${column!.slug}'})';
+      '${column == null ? '' : ', ${column!.slug}'}'
+      '${sizeBy == TileSource.auto ? ', autoSize' : ''}'
+      '${columnBy == TileSource.auto ? ', autoColumn' : ''})';
 }
 
 /// One horizontal band of the home grid: either a single full-width tile, or a
@@ -472,7 +583,15 @@ class HomeLayout {
     HomeTile.module(DisplayModule.gForce),
   ];
 
-  static HomeLayout defaultFor(List<SavedDevice> devices) {
+  /// 🔵 design 0106 §6.5 (版 1b): every generated tile is `auto` — sized from
+  /// [autoSpanFor] and placed by [place] — so a user who never opened the
+  /// editor gets half-width device cards and gauges side by side. A lone half
+  /// that filtering leaves behind (the G meter when speed detection is off) is
+  /// drawn full by [place]'s orphan rule, which keeps the 2026-08-08 ruling.
+  static HomeLayout defaultFor(List<SavedDevice> devices) => HomeLayout(
+      seated(autoSized([for (final t in _generated(devices).tiles) t.asAuto])));
+
+  static HomeLayout _generated(List<SavedDevice> devices) {
     if (devices.isEmpty) {
       return const HomeLayout([HomeTile.addDevice(), ..._phoneTiles]);
     }
@@ -662,7 +781,7 @@ class HomeLayout {
         else
           ?HomeTile.fromJson(t),
     ];
-    final tiles = seated(walked);
+    final tiles = seated(autoSizedNullable(walked));
     if (tiles.isEmpty) return null;
     // 🔴 THE MIGRATION (design 0084 §4.2 / Q3, ruled "無損轉換").
     //
@@ -718,6 +837,114 @@ class HomeLayout {
       final side = t.column ?? (slot.isEven ? HomeColumn.left : HomeColumn.right);
       slot += 1;
       out.add(t.column == side ? t : t.withColumn(side));
+    }
+    return out;
+  }
+
+  /// Make every `sizeBy == auto` tile's [HomeTile.span] equal [autoSpanFor]
+  /// (design 0106 §6.5). A tile that becomes full loses its column; one that
+  /// becomes half keeps whatever column it had and [seated] fills a missing one.
+  static List<HomeTile> autoSized(List<HomeTile> tiles) =>
+      [for (final t in tiles) _autoSize(t)];
+
+  /// [autoSized] for [decode]'s walk, which still carries pre-S4 gaps as null.
+  static List<HomeTile?> autoSizedNullable(List<HomeTile?> tiles) =>
+      [for (final t in tiles) t == null ? null : _autoSize(t)];
+
+  static HomeTile _autoSize(HomeTile t) {
+    if (t.sizeBy != TileSource.auto) return t;
+    final want = autoSpanFor(t);
+    if (want == t.span) return t;
+    return want == HomeSpan.full
+        ? t.copyWith(span: HomeSpan.full).withColumn(null)
+        : t.copyWith(span: HomeSpan.half);
+  }
+
+  /// How much taller a half must be than the same card at full width before
+  /// an `auto`-sized half is drawn full instead (design 0106 §6.4, Q-S2).
+  static const double narrowColumnRatio = 1.3;
+
+  /// Where every card is DRAWN (design 0106 §6.3, 版 1b) — the auto-fill engine.
+  ///
+  /// Returns a list the same length and order as [tiles] with only [span] and
+  /// [column] resolved; indices stay valid for the editor's operations. Three
+  /// steps, all pure:
+  ///
+  /// 1. **Narrow column (Q-S2).** An `auto`-sized half whose plan height at half
+  ///    width exceeds [narrowColumnRatio] × its height at full width is drawn
+  ///    full. A `user` half is drawn as asked.
+  /// 2. **Orphan.** An `auto`-sized half left alone in its run (its partner
+  ///    filtered away, or a full card on each side) is drawn full — an orphan
+  ///    made by the engine is not a layout anybody chose (the 2026-08-08 ruling
+  ///    in `home_page.dart`, kept).
+  /// 3. **Auto-fill (Q-A1).** Inside each run of halves, pinned cards
+  ///    (`columnBy == user`) stay in their column and count towards its
+  ///    height first; every `auto` card, in list order, goes to the column that
+  ///    is currently shorter (left on a tie).
+  ///
+  /// [halfHeight] / [fullHeight] are PLAN heights: the card measured with the
+  /// editor's sample data at the real column width and text scale (algorithm
+  /// (c)). They never depend on live data, which is why a unit connecting or a
+  /// reading changing can never move a card — the hazard design 0084 Q1 was
+  /// ruled to prevent. A null height (not measured yet) counts as 1, which
+  /// degrades to plain alternation.
+  ///
+  /// [narrow] ⇒ the half column is too narrow for ANY card at this text size
+  /// (see `HomePlanWidths.narrowFor`): every `auto`-sized half is drawn full.
+  /// The height ratio cannot see that case — a card that overflows sideways
+  /// does not get taller.
+  static List<HomeTile> place(
+    List<HomeTile> tiles, {
+    double? Function(int index)? halfHeight,
+    double? Function(int index)? fullHeight,
+    bool narrow = false,
+  }) {
+    double hh(int i) => halfHeight?.call(i) ?? 1;
+    final out = List<HomeTile>.of(tiles);
+    // 1. narrow column
+    for (var i = 0; i < out.length; i++) {
+      final t = out[i];
+      if (t.span != HomeSpan.half || t.sizeBy != TileSource.auto) continue;
+      final h = halfHeight?.call(i);
+      final f = fullHeight?.call(i);
+      if (narrow || (h != null && f != null && h > narrowColumnRatio * f)) {
+        out[i] = t.copyWith(span: HomeSpan.full).withColumn(null);
+      }
+    }
+    // 2. orphans, then 3. seating, run by run
+    var i = 0;
+    while (i < out.length) {
+      if (out[i].span != HomeSpan.half) {
+        i++;
+        continue;
+      }
+      var j = i;
+      while (j < out.length && out[j].span == HomeSpan.half) {
+        j++;
+      }
+      if (j - i == 1 && out[i].sizeBy == TileSource.auto) {
+        out[i] = out[i].copyWith(span: HomeSpan.full).withColumn(null);
+        i = j;
+        continue;
+      }
+      final colH = [0.0, 0.0];
+      for (var k = i; k < j; k++) {
+        if (out[k].columnBy == TileSource.user) {
+          colH[out[k].column == HomeColumn.right ? 1 : 0] += hh(k);
+        }
+      }
+      for (var k = i; k < j; k++) {
+        if (out[k].columnBy == TileSource.user) {
+          if (out[k].column == null) {
+            out[k] = out[k].withColumn(HomeColumn.left);
+          }
+          continue;
+        }
+        final side = colH[0] <= colH[1] ? 0 : 1;
+        colH[side] += hh(k);
+        out[k] = out[k].withColumn(side == 0 ? HomeColumn.left : HomeColumn.right);
+      }
+      i = j;
     }
     return out;
   }

@@ -35,7 +35,7 @@ abstract final class HomeGridOps {
   /// honours a column that is already set and only fills in one that is
   /// missing, which after S4 can only happen to a tile some code just built.
   static List<HomeTile> normalise(List<HomeTile> tiles) =>
-      HomeLayout.seated(tiles);
+      HomeLayout.seated(HomeLayout.autoSized(tiles));
 
   /// Two tiles change places — **each keeps its own span** (design 0049 Q1),
   /// and since S4 each also takes the other's COLUMN.
@@ -80,19 +80,127 @@ abstract final class HomeGridOps {
   /// All three existed to keep the placeholder arrangement intact across a
   /// removal; with the side stored on the tile, taking a card out cannot
   /// disturb where any other card sits.
+  ///
+  /// 🔵 design 0106 §6.7: [pin] ⇒ the user dropped the card INTO [column], so
+  /// it is pinned there (`columnBy = user`, Q-A3). A move that changes the
+  /// card's width is a size the user chose (`sizeBy = user`); a move that
+  /// keeps it leaves the size wherever it came from.
   static List<HomeTile> moveTo(List<HomeTile> tiles, int from, int at,
-      {HomeColumn? column}) {
+      {HomeColumn? column, bool pin = false}) {
     if (!_inRange(tiles, from)) return List<HomeTile>.of(tiles);
     final out = List<HomeTile>.of(tiles);
     final moving = out.removeAt(from);
     final into = from < at ? at - 1 : at;
+    final span = column == null ? HomeSpan.full : HomeSpan.half;
     out.insert(
       into.clamp(0, out.length),
-      moving.copyWith(
-          span: column == null ? HomeSpan.full : HomeSpan.half)
-        .withColumn(column),
+      moving
+          .copyWith(span: span)
+          .withColumn(column)
+          .withSources(
+            sizeBy: span != moving.span ? TileSource.user : null,
+            columnBy: pin ? TileSource.user : null,
+          ),
     );
     return normalise(out);
+  }
+
+  /// Set one tile's width — the user's own answer (`sizeBy = user`,
+  /// design 0106 §6.7). The editor passes the width it wants rather than
+  /// asking for a flip, because what the user SAW may be an engine decision
+  /// (an `auto` half drawn full) that the stored span does not record.
+  static List<HomeTile> setSpan(
+      List<HomeTile> tiles, int index, HomeSpan span) {
+    if (!_inRange(tiles, index)) return List<HomeTile>.of(tiles);
+    final t = tiles[index];
+    final out = List<HomeTile>.of(tiles);
+    out[index] = t
+        .copyWith(span: span)
+        .withColumn(span == HomeSpan.half ? (t.column ?? HomeColumn.left) : null)
+        .withSources(sizeBy: TileSource.user);
+    return normalise(out);
+  }
+
+  /// Hand one tile's size and column back to the engine (design 0106 §6.7).
+  static List<HomeTile> resetToAuto(List<HomeTile> tiles, int index) {
+    if (!_inRange(tiles, index)) return List<HomeTile>.of(tiles);
+    final out = List<HomeTile>.of(tiles);
+    out[index] = out[index].asAuto;
+    return normalise(out);
+  }
+
+  /// How many cards 一鍵整理 would take back from the user: `(sizes, columns)`
+  /// currently set by hand (design 0106 §6.6, Q-T1 — the confirm dialog).
+  static (int, int) tidyCost(List<HomeTile> tiles) => (
+        tiles.where((t) => t.sizeBy == TileSource.user).length,
+        tiles
+            .where((t) =>
+                t.span == HomeSpan.half && t.columnBy == TileSource.user)
+            .length,
+      );
+
+  /// 一鍵整理 (design 0106 §6.6, Q-T2). Never adds or removes a card.
+  ///
+  /// 1. Group by device, in the order each device first appears.
+  /// 2. Inside a group: the device card, then the group's half-width cards
+  ///    (tallest plan height first, so the shortest-column fill pairs similar
+  ///    heights), then its full-width cards.
+  /// 3. The phone's own modules (no device) last; the add-device card first.
+  /// 4. Every card back to `auto` size and column.
+  ///
+  /// ⚠️ Deviation from the plan's literal order「裝置卡 → 全寬圖表 → 半寬」:
+  /// the device card is half since Q-Z1, so putting a full chart right after it
+  /// would leave it alone in its run and the orphan rule would draw it full.
+  /// Keeping it with the group's halves pairs it instead.
+  static List<HomeTile> tidy(List<HomeTile> tiles,
+      {List<double?>? planHeights}) {
+    final auto = HomeLayout.autoSized([for (final t in tiles) t.asAuto]);
+    double h(int i) =>
+        (planHeights != null && i < planHeights.length ? planHeights[i] : null) ??
+        0;
+    final head = <int>[];
+    final tail = <int>[];
+    final order = <String>[];
+    final groups = <String, List<int>>{};
+    for (var i = 0; i < auto.length; i++) {
+      final t = auto[i];
+      final id = t.deviceId;
+      if (t.kind == HomeTileKind.addDevice) {
+        head.add(i);
+      } else if (id == null) {
+        tail.add(i);
+      } else {
+        if (!groups.containsKey(id)) order.add(id);
+        groups.putIfAbsent(id, () => []).add(i);
+      }
+    }
+    final picked = <int>[...head];
+    for (final id in order) {
+      final g = groups[id]!;
+      final cards = [
+        for (final i in g)
+          if (auto[i].kind == HomeTileKind.deviceCard) i,
+      ];
+      // Tallest first; equal heights keep their list order (stable).
+      final halves = [
+        for (final i in g)
+          if (auto[i].kind != HomeTileKind.deviceCard &&
+              auto[i].span == HomeSpan.half)
+            i,
+      ]..sort((a, b) {
+          final c = h(b).compareTo(h(a));
+          return c != 0 ? c : a.compareTo(b);
+        });
+      final fulls = [
+        for (final i in g)
+          if (auto[i].kind != HomeTileKind.deviceCard &&
+              auto[i].span == HomeSpan.full)
+            i,
+      ];
+      picked..addAll(cards)..addAll(halves)..addAll(fulls);
+    }
+    picked.addAll(tail);
+    return normalise([for (final i in picked) auto[i]]);
   }
 
   /// Flip one tile between full and half (the shape button).
@@ -124,8 +232,11 @@ abstract final class HomeGridOps {
   }
 
   /// Append a tile as a full-width row of its own.
+  ///
+  /// 🔵 design 0106 §6.5: a newly added card is the engine's — `auto` size and
+  /// column — whatever span the caller built it with.
   static List<HomeTile> add(List<HomeTile> tiles, HomeTile tile) =>
-      normalise([...tiles, tile]);
+      normalise([...tiles, tile.asAuto]);
 
   static bool _inRange(List<HomeTile> tiles, int i) =>
       i >= 0 && i < tiles.length;
