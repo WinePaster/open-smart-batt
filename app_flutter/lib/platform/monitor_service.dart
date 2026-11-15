@@ -89,10 +89,12 @@ abstract class MonitorService {
   ///
   /// Android: the service is what keeps the process schedulable. Stopping it
   /// the moment the link drops let the OS freeze a backgrounded app, and the
-  /// reconnect ladder's timers — and each attempt's 8 s connect timeout —
+  /// reconnect ladder's timers — and each attempt's connect window (3 tries ×
+  /// 20 s timeout + 2 × 600 ms ≈ 61.2 s nominal; 8 s is the iOS value) —
   /// then ran whenever the process happened to thaw: `2026.11.12/005`, a
   /// scooter ride, 6 min 33 s without data, attempts stretched to 82 s and
-  /// 249 s by `exec gap`s of 20–120 s, and the third attempt, once it really
+  /// 249 s by `exec gap`s of 30–120 s (the ~20 s ones are the per-try connect
+  /// timeouts themselves, not stalls), and the third attempt, once it really
   /// ran, connected in 0.7 s.
   ///
   /// iOS answers false: it reconnects through CoreBluetooth's autoConnect,
