@@ -55,14 +55,27 @@ const permissions = <String, ({String macro, bool usedOnIos, String? plistKey})>
     usedOnIos: false,
     plistKey: null,
   ),
-  // POST_NOTIFICATIONS for the Android foreground service.
-  // `ensureNotificationPermission` also returns early on `!Platform.isAndroid`.
+  // 🔴 Two callers, and the table once recorded only the first.
+  // `ensureNotificationPermission` (the Android foreground service) returns
+  // early on `!Platform.isAndroid` — but design 0080's alerts
+  // (`LocalAlertNotifier.ensurePermission`, built on iOS too) request it with
+  // no platform guard. The entry kept saying `usedOnIos: false` from the
+  // foreground-service days, the macro stayed 0, and iOS alerts shipped dead
+  // from 2026-08-22 until 2026-11-15: no dialog, no 通知 row in 設定, so a
+  // refusal had no way back either (owner report, 2026-11-15).
+  //
+  // No Info.plist key: iOS has no usage-description string for
+  // notifications, so `plistKey` is null ON PURPOSE (see [noUsageString]).
   'notification': (
     macro: 'PERMISSION_NOTIFICATIONS',
-    usedOnIos: false,
+    usedOnIos: true,
     plistKey: null,
   ),
 };
+
+/// iOS-used permissions that genuinely have no Info.plist usage string.
+/// Listed by name so a null `plistKey` is a recorded decision, not an omission.
+const noUsageString = {'notification'};
 
 /// `PERMISSION_X=N` as the Podfile actually spells it.
 Map<String, String> podfileMacros() {
@@ -108,6 +121,10 @@ void main() {
     for (final e in permissions.entries) {
       if (!e.value.usedOnIos) continue;
       final key = e.value.plistKey;
+      if (noUsageString.contains(e.key)) {
+        expect(key, isNull);
+        continue;
+      }
       expect(key, isNotNull,
           reason: 'an iOS-used permission needs a usage description key');
       expect(plist, contains('<key>$key</key>'),
@@ -126,6 +143,31 @@ void main() {
           reason: 'Permission.${e.key} is Android-only (its caller returns '
               'early on !Platform.isAndroid), so ${e.value.macro} should stay '
               'off');
+    }
+  });
+
+  test('🔴 a permission requested from a file that runs on iOS is marked used on iOS', () {
+    // The 2026-11-15 gap: the name-only scan below passed because
+    // `notification` already HAD an entry — written for an Android-only caller.
+    // A second caller in a file that also says `Platform.isIOS` should have
+    // forced the question again. Heuristic, deliberately: a file that names
+    // `Platform.isIOS` and has no `!Platform.isAndroid` early return is a file
+    // that can ask on iOS. (`BleService` has that guard on both its
+    // permission paths, which is why its Android-only entries pass.)
+    for (final f in Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))) {
+      final src = f.readAsStringSync();
+      if (!src.contains('Platform.isIOS')) continue;
+      if (src.contains('!Platform.isAndroid')) continue;
+      for (final m in RegExp(r'\bPermission\.([a-zA-Z]+)').allMatches(src)) {
+        final entry = permissions[m.group(1)!];
+        if (entry == null) continue; // the last test reports it
+        expect(entry.usedOnIos, isTrue,
+            reason: '${f.path} requests Permission.${m.group(1)} and runs on '
+                'iOS, so ${entry.macro} must be compiled in');
+      }
     }
   });
 

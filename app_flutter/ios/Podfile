@@ -95,7 +95,12 @@ post_install do |installer|
         # deliberately does not have (design 0042 N1, foreground only).
         'PERMISSION_LOCATION=0',
         'PERMISSION_LOCATION_WHENINUSE=1',
-        'PERMISSION_NOTIFICATIONS=0',
+        # ON since 2026-11-15: design 0080's alerts request
+        # `Permission.notification` on iOS too (`LocalAlertNotifier`). At 0
+        # the request returned permanentlyDenied without a dialog and the
+        # app's page in 設定 had no 通知 row — the v0.7.7 location dead end
+        # again. Notifications need no Info.plist usage string.
+        'PERMISSION_NOTIFICATIONS=1',
         'PERMISSION_MEDIA_LIBRARY=0',
         'PERMISSION_SENSORS=0',
         'PERMISSION_BLUETOOTH=0',
