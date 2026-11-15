@@ -2647,7 +2647,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get multiLinkSettingLabel => '多裝置同時連線（實驗）';
 
   @override
-  String get multiLinkSettingSub => '最多同時連 3 台；行動電源會單獨連線。';
+  String get multiLinkSettingSub => '最多同時連 3 台；行動電源會單獨連線。開啟後可在下方「車輛」把裝置分到各台車。';
 
   @override
   String get multiLinkPowerBankDialogTitle => '行動電源單獨連線';
@@ -2727,6 +2727,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String vehicleSettingsSummary(String names, int count) {
     return '$names · $count 台';
   }
+
+  @override
+  String get vehicleHintTitle => '可以把裝置分到車輛';
+
+  @override
+  String get vehicleHintBodyOff => '在設定開啟「多裝置同時連線」，就能把每台車的裝置分在一起，主頁一次顯示一台車。';
+
+  @override
+  String get vehicleHintBodyOn => '把每台車的裝置分在一起，主頁一次顯示一台車。';
+
+  @override
+  String get vehicleHintOpenSettings => '前往設定';
+
+  @override
+  String get vehicleHintSetUp => '設定車輛';
+
+  @override
+  String get vehicleHintDismiss => '關閉';
 
   @override
   String get vehiclesPageTitle => '車輛';

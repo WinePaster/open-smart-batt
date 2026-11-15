@@ -2806,7 +2806,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get multiLinkSettingSub =>
-      'Up to 3 devices at once; a power bank connects on its own.';
+      'Up to 3 devices at once; a power bank connects on its own. Once on, use “Vehicles” below to group devices by vehicle.';
 
   @override
   String get multiLinkPowerBankDialogTitle => 'Power bank connects on its own';
@@ -2890,6 +2890,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String vehicleSettingsSummary(String names, int count) {
     return '$names · $count vehicles';
   }
+
+  @override
+  String get vehicleHintTitle => 'Group your devices by vehicle';
+
+  @override
+  String get vehicleHintBodyOff =>
+      'Turn on “Multiple devices at once” in Settings to keep each vehicle\'s devices together; the home page then shows one vehicle at a time.';
+
+  @override
+  String get vehicleHintBodyOn =>
+      'Keep each vehicle\'s devices together; the home page then shows one vehicle at a time.';
+
+  @override
+  String get vehicleHintOpenSettings => 'Open Settings';
+
+  @override
+  String get vehicleHintSetUp => 'Set up vehicles';
+
+  @override
+  String get vehicleHintDismiss => 'Dismiss';
 
   @override
   String get vehiclesPageTitle => 'Vehicles';

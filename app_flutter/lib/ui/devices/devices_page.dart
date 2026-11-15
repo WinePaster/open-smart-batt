@@ -1121,10 +1121,15 @@ class _DevicesPageState extends State<DevicesPage>
       children: [
         if (saved.isEmpty)
           _EmptyHint(l10n.devicesNoSaved)
-        else if (vc == null)
-          for (final d in saved) row(d)
-        else
-          ..._groupedSaved(saved, vc, l10n, row),
+        else ...[
+          // Tells existing users that vehicles exist; renders nothing once
+          // seen, with a car, or outside a multi-device build.
+          VehicleDiscoveryHint(onOpenSettings: widget.onOpenSettings),
+          if (vc == null)
+            for (final d in saved) row(d)
+          else
+            ..._groupedSaved(saved, vc, l10n, row),
+        ],
       ],
     );
   }

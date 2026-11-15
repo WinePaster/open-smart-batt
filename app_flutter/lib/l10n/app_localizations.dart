@@ -4645,7 +4645,7 @@ abstract class AppLocalizations {
   /// design 0103. Subtitle of the multi-link switch. Never say a power bank is 'not supported' (0046a §5.5).
   ///
   /// In en, this message translates to:
-  /// **'Up to 3 devices at once; a power bank connects on its own.'**
+  /// **'Up to 3 devices at once; a power bank connects on its own. Once on, use “Vehicles” below to group devices by vehicle.'**
   String get multiLinkSettingSub;
 
   /// design 0103 D2. Title of the prompt shown before opening a power bank's page while other devices are connected.
@@ -4785,6 +4785,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{names} · {count} vehicles'**
   String vehicleSettingsSummary(String names, int count);
+
+  /// One-time hint at the top of the Saved devices list, telling existing users about vehicles. Shown once, only with 2+ non-power-bank devices saved and no vehicle yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Group your devices by vehicle'**
+  String get vehicleHintTitle;
+
+  /// Body of the vehicle hint while the multi-device switch is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on “Multiple devices at once” in Settings to keep each vehicle\'s devices together; the home page then shows one vehicle at a time.'**
+  String get vehicleHintBodyOff;
+
+  /// Body of the vehicle hint while the multi-device switch is already on.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep each vehicle\'s devices together; the home page then shows one vehicle at a time.'**
+  String get vehicleHintBodyOn;
+
+  /// Vehicle hint action while the switch is off: goes to the Settings tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get vehicleHintOpenSettings;
+
+  /// Vehicle hint action while the switch is on: opens the vehicle list.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up vehicles'**
+  String get vehicleHintSetUp;
+
+  /// Tooltip of the close button on the vehicle hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get vehicleHintDismiss;
 
   /// design 0106. Title of the vehicle list page.
   ///

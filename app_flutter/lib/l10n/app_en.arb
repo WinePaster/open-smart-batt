@@ -1850,7 +1850,7 @@
   "@multiLinkSettingLabel": {
     "description": "design 0103. Settings switch for the multi-link experiment. Exists only in a build made with --dart-define=OSB_MULTILINK=true (internal testers)."
   },
-  "multiLinkSettingSub": "Up to 3 devices at once; a power bank connects on its own.",
+  "multiLinkSettingSub": "Up to 3 devices at once; a power bank connects on its own. Once on, use “Vehicles” below to group devices by vehicle.",
   "@multiLinkSettingSub": {
     "description": "design 0103. Subtitle of the multi-link switch. Never say a power bank is 'not supported' (0046a \u00a75.5)."
   },
@@ -1974,6 +1974,30 @@
         "type": "int"
       }
     }
+  },
+  "vehicleHintTitle": "Group your devices by vehicle",
+  "@vehicleHintTitle": {
+    "description": "One-time hint at the top of the Saved devices list, telling existing users about vehicles. Shown once, only with 2+ non-power-bank devices saved and no vehicle yet."
+  },
+  "vehicleHintBodyOff": "Turn on “Multiple devices at once” in Settings to keep each vehicle's devices together; the home page then shows one vehicle at a time.",
+  "@vehicleHintBodyOff": {
+    "description": "Body of the vehicle hint while the multi-device switch is off."
+  },
+  "vehicleHintBodyOn": "Keep each vehicle's devices together; the home page then shows one vehicle at a time.",
+  "@vehicleHintBodyOn": {
+    "description": "Body of the vehicle hint while the multi-device switch is already on."
+  },
+  "vehicleHintOpenSettings": "Open Settings",
+  "@vehicleHintOpenSettings": {
+    "description": "Vehicle hint action while the switch is off: goes to the Settings tab."
+  },
+  "vehicleHintSetUp": "Set up vehicles",
+  "@vehicleHintSetUp": {
+    "description": "Vehicle hint action while the switch is on: opens the vehicle list."
+  },
+  "vehicleHintDismiss": "Dismiss",
+  "@vehicleHintDismiss": {
+    "description": "Tooltip of the close button on the vehicle hint."
   },
   "vehiclesPageTitle": "Vehicles",
   "@vehiclesPageTitle": {

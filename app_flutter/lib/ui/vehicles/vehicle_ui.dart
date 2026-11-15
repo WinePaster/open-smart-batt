@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
 
+import '../../data/ack_marker.dart';
 import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
@@ -252,6 +253,145 @@ class VehicleNoticeBanner extends StatelessWidget {
             style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.45),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// One-time hint that vehicles exist, at the top of the Saved devices list
+/// (owner, 2026-11-15: existing users had no way to learn about the feature —
+/// it sits behind an experimental switch that defaults off).
+///
+/// Not on the home page: that page carries no explanatory text (design 0046
+/// R11, 0053). Shown only while all of these hold, so it reaches the users the
+/// feature is for and nobody else:
+///  * the build carries the multi-device switch (a [VehicleController] and a
+///    [MultiLinkController] are provided);
+///  * no car exists yet;
+///  * at least two saved units that could go in a car (power banks, demo and
+///    unknown units do not count — [vehicleCandidates]);
+///  * the user has not tapped it or closed it ([vehicleHintMarker]).
+///
+/// Tapping the action also counts as seen: with the switch off it goes to
+/// Settings (the user still has to turn the switch on themselves — the hint
+/// never flips an experimental switch on their behalf); with it on, straight
+/// to the vehicle list.
+class VehicleDiscoveryHint extends StatefulWidget {
+  const VehicleDiscoveryHint({super.key, this.onOpenSettings});
+
+  /// Show the Settings tab (the shell's entry point, as [DevicesPage] has it).
+  /// Null ⇒ with the switch off there is no action, only the close button.
+  final VoidCallback? onOpenSettings;
+
+  @override
+  State<VehicleDiscoveryHint> createState() => _VehicleDiscoveryHintState();
+}
+
+/// `<feature>_ack_v<N>`; bump the version to show a rewritten hint again.
+const AckMarker vehicleHintMarker = AckMarker('vehicle_hint_ack_v1');
+
+class _VehicleDiscoveryHintState extends State<VehicleDiscoveryHint> {
+  /// Null until the marker has been read: never flash the hint for a frame to
+  /// a user who already closed it.
+  bool? _seen;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(vehicleHintMarker.acknowledged().then((v) {
+      if (mounted) setState(() => _seen = v);
+    }));
+  }
+
+  void _dismiss() {
+    setState(() => _seen = true);
+    unawaited(vehicleHintMarker.markAcknowledged());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vc = context.watch<VehicleController?>();
+    final on = context.select<MultiLinkController?, bool?>((m) => m?.enabled);
+    final devices = context.watch<DeviceController>();
+    if (_seen != false || vc == null || on == null || vc.hasCars) {
+      return const SizedBox.shrink();
+    }
+    if (vehicleCandidates(devices.devices, VehicleKind.car).length < 2) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final c = context.colors;
+    final VoidCallback? go = on
+        ? () {
+            _dismiss();
+            unawaited(Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const VehiclesPage())));
+          }
+        : widget.onOpenSettings == null
+            ? null
+            : () {
+                _dismiss();
+                widget.onOpenSettings!();
+              };
+    return Container(
+      key: const ValueKey('vehicle-hint'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      decoration: BoxDecoration(
+        color: c.panel2,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: c.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(Icons.directions_car_outlined,
+                size: 18, color: context.accent.accent),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.vehicleHintTitle,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: c.text)),
+                const SizedBox(height: 3),
+                Text(on ? l10n.vehicleHintBodyOn : l10n.vehicleHintBodyOff,
+                    style: TextStyle(
+                        fontSize: 11.5, height: 1.45, color: c.muted)),
+                if (go != null)
+                  InkWell(
+                    key: const ValueKey('vehicle-hint-go'),
+                    onTap: go,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 2),
+                      child: Text(
+                        '${on ? l10n.vehicleHintSetUp : l10n.vehicleHintOpenSettings} →',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: context.accent.accentSecondary),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('vehicle-hint-close'),
+            tooltip: l10n.vehicleHintDismiss,
+            visualDensity: VisualDensity.compact,
+            iconSize: 16,
+            color: c.muted,
+            onPressed: _dismiss,
+            icon: const Icon(Icons.close),
+          ),
+        ],
       ),
     );
   }

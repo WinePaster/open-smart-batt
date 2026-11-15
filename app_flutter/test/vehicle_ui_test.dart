@@ -330,6 +330,83 @@ void main() {
     await done(tester, s);
   });
 
+  group('discovery hint (owner 2026-11-15: tell existing users)', () {
+    final hint = find.byKey(const ValueKey('vehicle-hint'));
+    final go = find.byKey(const ValueKey('vehicle-hint-go'));
+    final close = find.byKey(const ValueKey('vehicle-hint-close'));
+
+    testWidgets('switch OFF, no car, 4 units: shown; action opens Settings '
+        'and never shows again', (tester) async {
+      final s = await boot(tester, cars: false, enable: false);
+      var opened = 0;
+      await pump(tester, s, DevicesPage(active: true, onOpenSettings: () {
+        opened++;
+      }));
+      await settle(tester);
+      expect(hint, findsOneWidget);
+      expect(find.text('Open Settings →'), findsOneWidget);
+      await tester.tap(go);
+      await settle(tester);
+      expect(opened, 1);
+      expect(hint, findsNothing);
+      expect(s.multiLink!.enabled, isFalse,
+          reason: 'the hint never turns the experiment on by itself');
+      expect(await tester.runAsync(vehicleHintMarker.acknowledged), isTrue);
+      await pump(tester, s, const SizedBox());
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(hint, findsNothing, reason: 'once only');
+      await done(tester, s);
+    });
+
+    testWidgets('close button dismisses for good', (tester) async {
+      final s = await boot(tester, cars: false, enable: false);
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(go, findsNothing, reason: 'no Settings entry handed down');
+      await tester.tap(close);
+      await settle(tester);
+      expect(hint, findsNothing);
+      expect(await tester.runAsync(vehicleHintMarker.acknowledged), isTrue);
+      await done(tester, s);
+    });
+
+    testWidgets('switch ON, no car: action opens the vehicle list',
+        (tester) async {
+      final s = await boot(tester, cars: false);
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(find.text('Set up vehicles →'), findsOneWidget);
+      await tester.tap(go);
+      await settle(tester);
+      expect(find.byKey(const ValueKey('vehicles-add')), findsOneWidget);
+      await done(tester, s);
+    });
+
+    testWidgets('not shown once a car exists', (tester) async {
+      final s = await boot(tester, enable: false);
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(hint, findsNothing);
+      await done(tester, s);
+    });
+
+    testWidgets('not shown with fewer than two car-able units (power bank '
+        'does not count)', (tester) async {
+      final s = await boot(tester, cars: false, enable: false);
+      await tester.runAsync(() async {
+        for (final id in ['b', 'c', 'd']) {
+          await s.devices.remove(id);
+        }
+      });
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(find.text('Bank e'), findsOneWidget);
+      expect(hint, findsNothing);
+      await done(tester, s);
+    });
+  });
+
   group('⑤ F3', () {
     Future<void> open(WidgetTester tester, String id, String alias) async {
       final ctx = tester.element(find.byType(HomePage));
