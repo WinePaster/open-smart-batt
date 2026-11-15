@@ -191,6 +191,23 @@ class MultiLinkController extends ChangeNotifier {
   /// seen within [presenceWindow] is a candidate — see [_isPresent].
   final Map<String, DateTime> _seenAt = <String, DateTime>{};
 
+  /// Per primary: the units that have been live on a secondary link while it
+  /// was the live primary — its "companions" (2026.11.15/003).
+  ///
+  /// The presence rule (2026.11.12/004) releases a secondary not seen for
+  /// [presenceWindow], and presence scans never run in the background. So
+  /// when the user walked away from the car and came back with the app in the
+  /// background, the primary reconnected by itself and the other unit — which
+  /// had been released meanwhile — stayed down for two hours, until the app
+  /// was next opened. When the primary comes back, its companions are taken
+  /// as present again ([_bringBackCompanions]); one that really is not there
+  /// gives its slot back after [presenceWindow], exactly as before.
+  final Map<String, Set<String>> _companions = <String, Set<String>>{};
+
+  /// Whether the primary was live at the last [_notePresence] — the edge
+  /// that [_bringBackCompanions] fires on.
+  bool _primaryWasOnline = false;
+
   /// The scan list last harvested into [_seenAt]. A finished scan's list stays
   /// on the controller; comparing identity keeps it from re-stamping forever.
   List<DiscoveredDevice>? _lastScan;
@@ -561,7 +578,40 @@ class MultiLinkController extends ChangeNotifier {
       }
     }
     final p = _conn.connectedDeviceId;
-    if (p != null && _conn.isOnline) _seenAt[p] = now;
+    final online = p != null && _conn.isOnline;
+    if (online) {
+      _seenAt[p] = now;
+      if (!_primaryWasOnline) _bringBackCompanions(p);
+    }
+    _primaryWasOnline = online;
+  }
+
+  /// The primary [p] has just come (back) online: the units that belong with
+  /// it are taken as in range now. With a car in force those are the car's
+  /// other units (design 0106 — a car holds at most [Vehicle.maxDevicesPerCar]
+  /// = the link budget, so they never crowd out anyone); otherwise the units
+  /// seen live beside it before ([_companions]). See [_companions] for the
+  /// report this answers.
+  void _bringBackCompanions(String p) {
+    final vehicle = activeVehicle;
+    final ids = <String>{
+      if (vehicle != null && vehicle.isCar && vehicle.contains(p))
+        ...vehicle.deviceIds
+      else
+        ...?_companions[p],
+    }..remove(p);
+    final now = _now();
+    final back = <String>[
+      for (final id in ids)
+        if (!_isPresent(id)) id,
+    ];
+    if (back.isEmpty) return;
+    for (final id in back) {
+      _seenAt[id] = now;
+    }
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: 'multilink: companions back with=${shortDeviceHash(p)} '
+            'ids=${back.map(shortDeviceHash).join(',')}'));
   }
 
   /// In range: live on a secondary link, or seen within [presenceWindow].
@@ -997,11 +1047,15 @@ class MultiLinkController extends ChangeNotifier {
   /// (primary included) changes — 0103 §4 ①.
   void _logReadyIfChanged() {
     if (!_enabled) return;
+    final primary = _conn.isOnline ? _conn.connectedDeviceId : null;
     final ids = <String>[
-      if (_conn.isOnline && _conn.connectedDeviceId != null)
-        _conn.connectedDeviceId!,
+      ?primary,
       ...onlineIds,
     ];
+    // Remember who was live beside the primary (see [_companions]).
+    if (primary != null && onlineIds.isNotEmpty) {
+      (_companions[primary] ??= <String>{}).addAll(onlineIds);
+    }
     final line = 'multilink: ready=${ids.length} '
         'ids=${ids.map(shortDeviceHash).join(',')}';
     if (line == _lastReadyLine) return;

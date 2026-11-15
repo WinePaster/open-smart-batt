@@ -688,6 +688,17 @@ void main() {
       expect(vehicles.current?.id, carA, reason: 'no switching behind the back');
     });
 
+    test('2026.11.15/003: a car member comes online ⇒ the car\'s other units '
+        'are taken as present (no scan in the background)', () async {
+      final ml = await bootCars(nearby: {'c', 'd', 'e'});
+      expect(ml.heldIds, isEmpty);
+      s.connection.setDetailVisible(true); // no presence scan either
+      primary.connectedId = 'a';
+      primary.emitLink(BleLinkState.ready);
+      await _settle();
+      expect(ml.heldIds, {'b'}, reason: 'only car A; B\'s units untouched');
+    });
+
     test('Q4: a non-member primary stays on switch, goes when its page closes',
         () async {
       final ml = await bootCars();
@@ -824,6 +835,58 @@ void main() {
     primary.emitLink(BleLinkState.ready);
     await _settle();
     expect(ml.heldIds, {'A'});
+  });
+
+  group('2026.11.15/003: units live beside the primary come back with it', () {
+    // Walk away from the car: both links drop; the secondary is released
+    // after the presence window; no scan runs in the background. Come back:
+    // the primary reconnects on its own — the secondary must follow.
+    Future<MultiLinkController> walkAwayAndBack(
+        {required Set<String> nearby}) async {
+      final ml = await boot([bat('A'), bat('B'), bat('C')],
+          nearby: nearby, primaryId: 'A');
+      primary.emitLink(BleLinkState.disconnected); // radio drop: id kept
+      for (final b in secondaries.where((b) => b.id != null).toList()) {
+        await b.disconnect();
+      }
+      await _settle();
+      now = now.add(MultiLinkConfig.presenceWindow + const Duration(seconds: 1));
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty, reason: 'released while away');
+      now = now.add(const Duration(hours: 1));
+      primary.emitLink(BleLinkState.ready); // back, primary reconnects
+      await _settle();
+      return ml;
+    }
+
+    test('a unit that was live beside it is taken as present again', () async {
+      final ml = await walkAwayAndBack(nearby: {'B'});
+      expect(ml.heldIds, {'B'});
+      await s.pending.drain();
+      final notes = [for (final e in await s.logRepo.queryLog()) e.note ?? ''];
+      expect(
+          notes,
+          contains('multilink: companions back with=${shortDeviceHash('A')} '
+              'ids=${shortDeviceHash('B')}'));
+    });
+
+    test('a unit never live beside it is not', () async {
+      // C is saved but was never seen, so it was never a companion of A.
+      final ml = await walkAwayAndBack(nearby: {'B'});
+      expect(ml.heldIds.contains('C'), isFalse);
+    });
+
+    test('a companion that really is not there gives its slot back after '
+        'the window, as before', () async {
+      final ml = await walkAwayAndBack(nearby: {'B'});
+      await sec('B').disconnect(); // B is not actually in range
+      await _settle();
+      now = now.add(MultiLinkConfig.presenceWindow + const Duration(seconds: 1));
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+    });
   });
 
   test('004: with a slot free and a unit unaccounted for, the controller scans',
