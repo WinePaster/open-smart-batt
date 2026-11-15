@@ -24,7 +24,7 @@ class MainActivity : FlutterActivity() {
 
     private var channel: MethodChannel? = null
 
-    /** Fires when the service goes away, including via the stop action. */
+    /** Fires when the service goes away by the stop action or the system, not by Dart's own stop. */
     private val stopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             channel?.invokeMethod("onStopRequested", null)
@@ -46,6 +46,9 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "stop" -> {
+                        // The app's own stop: not to be echoed back to Dart as
+                        // a user stop (MonitorService.stoppedByApp).
+                        MonitorService.stoppedByApp = true
                         stopService(Intent(this@MainActivity, MonitorService::class.java))
                         result.success(true)
                     }

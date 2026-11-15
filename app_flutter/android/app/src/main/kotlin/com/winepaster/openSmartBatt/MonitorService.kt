@@ -56,6 +56,25 @@ class MonitorService : Service() {
          */
         const val ACTION_STOP_REQUESTED =
             "com.winepaster.openSmartBatt.action.STOP_REQUESTED"
+
+        /**
+         * Set by [MainActivity] just before Dart's own `stop()` reaches
+         * `stopService`: that teardown is the app's decision, so [onDestroy]
+         * must NOT report it back as a stop request.
+         *
+         * 2026.11.15/001: it used to, and since `2e7c999` (the service stays up
+         * through an auto-reconnect) the late broadcast from a device switch
+         * landed after the new link had started — Dart read it as the user
+         * pressing "stop", tore the new link down and released every secondary
+         * (`multilink: release … reason=monitor-stopped`), so each Android
+         * switch cost one wasted connection (1.6–2.5 s ⇒ 4.9–8.7 s).
+         *
+         * Cleared on every start: a `stopService` that found no running service
+         * never reaches [onDestroy], and a stale `true` would then swallow the
+         * user's next real stop.
+         */
+        @Volatile
+        var stoppedByApp = false
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -67,6 +86,7 @@ class MonitorService : Service() {
                 stopSelf()
             }
             ACTION_START, ACTION_UPDATE -> {
+                stoppedByApp = false
                 startForegroundCompat(buildNotification(intent))
             }
             else -> {
@@ -178,9 +198,13 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
-        // Tell Dart the watch ended, whichever way we got here (notification
-        // action, or the system reclaiming us).
-        sendBroadcast(Intent(ACTION_STOP_REQUESTED).setPackage(packageName))
+        // Tell Dart the watch ended when it was NOT Dart's own doing
+        // (notification action, or the system reclaiming us) — see
+        // [stoppedByApp].
+        if (!stoppedByApp) {
+            sendBroadcast(Intent(ACTION_STOP_REQUESTED).setPackage(packageName))
+        }
+        stoppedByApp = false
         super.onDestroy()
     }
 }
