@@ -210,6 +210,25 @@ class AppSettings {
   /// landscape layout follows the window's shape, not this switch.
   final bool allowLandscape;
 
+  /// 「搜尋訊號門檻」— the weakest RSSI (dBm) the 搜尋裝置 list still shows
+  /// (schema v30). NULL = 不限制 (no limit), the DEFAULT.
+  ///
+  /// 何先生 request 2026-11-15; owner ruling: it filters the SCAN LIST ONLY.
+  /// Saved devices, auto-connect, the multi-link presence scan and the pinned
+  /// linked-but-unsaved row never read it — a threshold that could stop the
+  /// user's own unit from reconnecting would fail silently, and that is the
+  /// failure the ruling ruled out.
+  ///
+  /// 🔴 NULL is MEANING ("no limit"), like [accentThemeId]: `copyWith` cannot
+  /// express going back to it — [clearScanRssiMin] is how 不限制 does it.
+  /// Only the values in [scanRssiMinOptions] are ever stored; `fromMap` reads
+  /// anything else as no limit, because the safe failure of a filter is to
+  /// show everything.
+  final int? scanRssiMin;
+
+  /// The choices the settings row steps through, weakest first (after 不限制).
+  static const List<int> scanRssiMinOptions = <int>[-90, -85, -80, -75, -70, -65];
+
   /// The chosen accent set's id (design 0064), or NULL for "never chose".
   ///
   /// 🔴 The CHOICE is stored, never the colours. Storing the three hex values
@@ -457,6 +476,8 @@ class AppSettings {
     this.textSize = AppTextSize.large,
     // Off: an upgraded install keeps exactly the portrait lock it had.
     this.allowLandscape = false,
+    // NULL = 不限制: an upgraded install keeps the unfiltered list it had.
+    this.scanRssiMin,
     this.accentThemeId,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
@@ -493,6 +514,10 @@ class AppSettings {
     AppThemeMode? themeMode,
     AppTextSize? textSize,
     bool? allowLandscape,
+    // 🔴 Nullable AND meaningful (null = 不限制) — [clearScanRssiMin] is the
+    // only way back to no limit.
+    int? scanRssiMin,
+    bool clearScanRssiMin = false,
     AppLang? lang,
     TempUnit? tempUnit,
     bool? speedDetection,
@@ -534,6 +559,8 @@ class AppSettings {
         themeMode: themeMode ?? this.themeMode,
         textSize: textSize ?? this.textSize,
         allowLandscape: allowLandscape ?? this.allowLandscape,
+        scanRssiMin:
+            clearScanRssiMin ? null : (scanRssiMin ?? this.scanRssiMin),
         accentThemeId: clearAccentTheme
             ? null
             : (accentThemeId ?? this.accentThemeId),
@@ -590,6 +617,9 @@ class AppSettings {
         // schema v28 (design 0105). Written on every save for the INSERT OR
         // REPLACE reason at the head of this map.
         'allow_landscape': allowLandscape ? 1 : 0,
+        // schema v30. NULL = 不限制 — written on every save (NULL included) for
+        // the INSERT OR REPLACE reason at the head of this map.
+        'scan_rssi_min': scanRssiMin,
         // schema v19. NULL when never chosen — the column's own meaning; see
         // the field. Written on every save for the reason stated above: this
         // map REPLACES the row. The `theme:` prefix is added HERE and stripped
@@ -641,6 +671,13 @@ class AppSettings {
         allowLandscape: switch (m['allow_landscape']) {
           final num v => v.toInt() == 1,
           _ => false,
+        },
+        // A pre-v30 row has no column: no limit, the list it always had. Any
+        // value outside the offered choices also reads as no limit — never
+        // throws, and never hides a device by accident.
+        scanRssiMin: switch (m['scan_rssi_min']) {
+          final num v when scanRssiMinOptions.contains(v.toInt()) => v.toInt(),
+          _ => null,
         },
         accentThemeId: _accentThemeFromMap(m),
         lang: AppLang.values.firstWhere(

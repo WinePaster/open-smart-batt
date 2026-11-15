@@ -1478,6 +1478,18 @@ abstract class AppLocalizations {
   /// **'Show all BLE devices'**
   String get devicesShowAll;
 
+  /// No description provided for @devicesHiddenWeak.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 device weaker than {dbm} dBm hidden (Settings → Search signal threshold)} other{{count} devices weaker than {dbm} dBm hidden (Settings → Search signal threshold)}}'**
+  String devicesHiddenWeak(int count, String dbm);
+
+  /// No description provided for @devicesNearbyAllWeak.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 device is nearby, but its signal is weaker than {dbm} dBm. Move closer, or relax Settings → Search signal threshold.} other{{count} devices are nearby, but every signal is weaker than {dbm} dBm. Move closer, or relax Settings → Search signal threshold.}}'**
+  String devicesNearbyAllWeak(int count, String dbm);
+
   /// No description provided for @devicesMetaLastSeen.
   ///
   /// In en, this message translates to:
@@ -2089,6 +2101,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)'**
   String get settingsKeepAwakeSub;
+
+  /// No description provided for @settingsScanRssiLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Search signal threshold'**
+  String get settingsScanRssiLabel;
+
+  /// No description provided for @settingsScanRssiSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Only affects the Search list: devices weaker than this are not shown. Saved devices and auto-connect are not affected. The closer to 0, the stronger the signal.'**
+  String get settingsScanRssiSub;
+
+  /// No description provided for @settingsScanRssiOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Any'**
+  String get settingsScanRssiOff;
+
+  /// No description provided for @settingsScanRssiValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{dbm} dBm'**
+  String settingsScanRssiValue(String dbm);
 
   /// design 0092 — the app name is injected so both editions share one string.
   ///

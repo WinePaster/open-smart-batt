@@ -57,6 +57,7 @@ class ExportCapture {
     required this.rawPacketLog,
     required this.multiLink,
     required this.vehicle,
+    required this.scanRssiMin,
   });
 
   /// Reads [context] NOW. Call it before any await in the handler.
@@ -95,6 +96,7 @@ class ExportCapture {
       // design 0106 Phase 5 — null (no line) under the same rule.
       vehicle:
           context.read<ConnectionController>().multiLink?.vehicleHeaderValue,
+      scanRssiMin: settings.scanRssiMin,
     );
   }
 
@@ -118,6 +120,8 @@ class ExportCapture {
   final bool rawPacketLog;
   final String? multiLink;
   final String? vehicle;
+  /// 「搜尋訊號門檻」(dBm), or null for 不限制.
+  final int? scanRssiMin;
 
   String labelFor(String? id) => deviceLabelFor(devices, id, facts: facts);
 
@@ -253,6 +257,7 @@ Future<String> buildDiagnosticLog(ExportCapture c) async {
     resolution: ExportResolution.none,
     connections: sessions,
     rawPacketLog: c.rawPacketLog,
+    scanRssiMin: c.scanRssiMin == null ? 'off' : '${c.scanRssiMin}',
     devices: identities,
   );
   return c.tele.exportLog(

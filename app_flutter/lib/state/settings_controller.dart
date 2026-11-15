@@ -74,6 +74,10 @@ class SettingsController extends ChangeNotifier {
   /// 「允許橫式畫面」 (design 0105 Q2 = B). `main.dart` forwards it to
   /// `OrientationPolicy`.
   bool get allowLandscape => _settings.allowLandscape;
+
+  /// 「搜尋訊號門檻」(dBm), or null for 不限制. Scan list only — see
+  /// [AppSettings.scanRssiMin].
+  int? get scanRssiMin => _settings.scanRssiMin;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
   /// 🔴 **The STORED switch — what the user said, not whether the feature is
@@ -147,6 +151,11 @@ class SettingsController extends ChangeNotifier {
       update(_settings.copyWith(textSize: v));
   Future<void> setAllowLandscape(bool v) =>
       update(_settings.copyWith(allowLandscape: v));
+
+  /// null = 不限制.
+  Future<void> setScanRssiMin(int? v) => update(v == null
+      ? _settings.copyWith(clearScanRssiMin: true)
+      : _settings.copyWith(scanRssiMin: v));
 
   /// Choose an accent set (design 0064), or null to go back to "never chose".
   ///

@@ -69,7 +69,8 @@ void main() {
       final db = await AppDatabase.open(path: path, factory: databaseFactoryFfi);
       addTearDown(db.close);
       final v = (await db.db.rawQuery('PRAGMA user_version')).single;
-      expect(v['user_version'], 29);
+      // The current version, not 29: later migrations run in the same open.
+      expect(v['user_version'], Db.schemaVersion);
       expect(await _tablesOf(db.db),
           containsAll([Db.tableVehicles, Db.tableVehicleDevices, Db.tableVehicleState]));
       for (final t in [Db.tableVehicles, Db.tableVehicleDevices, Db.tableVehicleState]) {

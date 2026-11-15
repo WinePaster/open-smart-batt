@@ -872,6 +872,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesShowAll => 'Show all BLE devices';
 
   @override
+  String devicesHiddenWeak(int count, String dbm) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count devices weaker than $dbm dBm hidden (Settings → Search signal threshold)',
+      one:
+          '1 device weaker than $dbm dBm hidden (Settings → Search signal threshold)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String devicesNearbyAllWeak(int count, String dbm) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count devices are nearby, but every signal is weaker than $dbm dBm. Move closer, or relax Settings → Search signal threshold.',
+      one:
+          '1 device is nearby, but its signal is weaker than $dbm dBm. Move closer, or relax Settings → Search signal threshold.',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String devicesMetaLastSeen(String time) {
     return 'Last $time';
   }
@@ -1313,6 +1339,21 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsKeepAwakeSub =>
       'Screen won\'t turn off automatically, handy for viewing while riding (active when connected)';
+
+  @override
+  String get settingsScanRssiLabel => 'Search signal threshold';
+
+  @override
+  String get settingsScanRssiSub =>
+      'Only affects the Search list: devices weaker than this are not shown. Saved devices and auto-connect are not affected. The closer to 0, the stronger the signal.';
+
+  @override
+  String get settingsScanRssiOff => 'Any';
+
+  @override
+  String settingsScanRssiValue(String dbm) {
+    return '$dbm dBm';
+  }
 
   @override
   String monitorNotificationTitle(String appName) {

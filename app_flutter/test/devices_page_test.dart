@@ -2382,4 +2382,81 @@ void main() {
       );
     });
   });
+
+  // 「搜尋訊號門檻」(何先生 request 2026-11-15; owner ruling: scan list only,
+  // default no limit). The pure filter is pinned in `scan_rssi_min_test.dart`;
+  // these pin what the PAGE draws with it.
+  group('scan RSSI threshold', () {
+    Future<void> emit(WidgetTester tester, List<DiscoveredDevice> hits) async {
+      await tester.runAsync(() async {
+        ble._scanOut.add(hits);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+    }
+
+    const strong = DiscoveredDevice(
+        id: 'DEV-NEAR', name: 'RCE-CarBatt', rssi: -60, isVendor: true);
+    const weak = DiscoveredDevice(
+        id: 'DEV-FAR', name: 'RCE-BikeBatt', rssi: -95, isVendor: true);
+    // The SAVED unit, weak too — the threshold must not touch it.
+    const savedWeak = DiscoveredDevice(
+        id: 'DEV-A', name: 'RCE-SCAP_II', rssi: -97, isVendor: true);
+
+    testWidgets('default (no limit) lists every hit and says nothing',
+        (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      expect(s.settings.scanRssiMin, isNull);
+      await pumpPage(tester, s);
+      await settle(tester);
+      await emit(tester, const [strong, weak]);
+      await openScanTab(tester);
+      expect(find.text('RCE-CarBatt'), findsOneWidget);
+      expect(find.text('RCE-BikeBatt'), findsOneWidget);
+      expect(find.byKey(const ValueKey('scan-weak-hidden')), findsNothing);
+    });
+
+    testWidgets('-80 hides the weak hit and names how many', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setScanRssiMin(-80));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await emit(tester, const [strong, weak, savedWeak]);
+      await openScanTab(tester);
+      expect(find.text('RCE-CarBatt'), findsOneWidget);
+      expect(find.text('RCE-BikeBatt'), findsNothing);
+      // One, not two: the saved unit is never a scan-list row, so it is never
+      // counted as hidden by the threshold either.
+      expect(find.text('1 device weaker than -80 dBm hidden '
+          '(Settings → Search signal threshold)'), findsOneWidget);
+    });
+
+    testWidgets('all hits weak: the empty hint says so instead of '
+        '"not found", and the note is not repeated', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setScanRssiMin(-80));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await emit(tester, const [weak]);
+      await openScanTab(tester);
+      expect(find.text('RCE-BikeBatt'), findsNothing);
+      expect(find.textContaining('its signal is weaker than -80 dBm'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('scan-weak-hidden')), findsNothing);
+    });
+
+    testWidgets('the saved list is untouched by the threshold', (tester) async {
+      final s = await makeServices(tester);
+      addTearDown(() => teardown(tester, s));
+      await tester.runAsync(() => s.settings.setScanRssiMin(-65));
+      await pumpPage(tester, s);
+      await settle(tester);
+      await emit(tester, const [savedWeak]);
+      // Saved tab is the default tab.
+      expect(find.text('Cap #1'), findsOneWidget);
+    });
+  });
 }

@@ -828,6 +828,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get devicesShowAll => '顯示全部 BLE 裝置';
 
   @override
+  String devicesHiddenWeak(int count, String dbm) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已隱藏 $count 個訊號弱於 $dbm dBm 的裝置（設定 → 搜尋訊號門檻）',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String devicesNearbyAllWeak(int count, String dbm) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '附近有 $count 個裝置，但訊號都弱於 $dbm dBm。請靠近一點，或到「設定 → 搜尋訊號門檻」放寬。',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String devicesMetaLastSeen(String time) {
     return '上次 $time';
   }
@@ -1236,6 +1256,21 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsKeepAwakeSub => '螢幕不自動關閉，方便邊騎邊看（連線時生效）';
+
+  @override
+  String get settingsScanRssiLabel => '搜尋訊號門檻';
+
+  @override
+  String get settingsScanRssiSub =>
+      '只影響「搜尋裝置」清單：訊號比門檻弱的裝置不顯示。已存裝置與自動連線不受影響。數字越接近 0，訊號越強。';
+
+  @override
+  String get settingsScanRssiOff => '不限制';
+
+  @override
+  String settingsScanRssiValue(String dbm) {
+    return '$dbm dBm';
+  }
 
   @override
   String monitorNotificationTitle(String appName) {

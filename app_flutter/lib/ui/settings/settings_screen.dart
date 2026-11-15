@@ -127,13 +127,43 @@ class _ConnectionCard extends StatelessWidget {
           SettingsRow(
             label: l10n.settingsKeepAwakeLabel,
             sub: l10n.settingsKeepAwakeSub,
-            last: true,
             trailing: _Toggle(
               value: s.keepScreenAwake,
               onChanged: s.setKeepScreenAwake,
             ),
           ),
+          const _ScanRssiRow(),
         ],
+      ),
+    );
+  }
+}
+
+/// 「搜尋訊號門檻」(何先生 request 2026-11-15; owner ruling: scan list only,
+/// default no limit). A stepper rather than a segmented control: seven
+/// choices do not fit one row on a phone, and the order (不限制 → weakest →
+/// strongest) is itself the meaning — minus relaxes, plus tightens.
+class _ScanRssiRow extends StatelessWidget {
+  const _ScanRssiRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<SettingsController>();
+    final l10n = AppLocalizations.of(context);
+    // Index 0 is 不限制 (null); then the stored choices, weakest first.
+    final steps = <int?>[null, ...AppSettings.scanRssiMinOptions];
+    final i = steps.indexOf(s.scanRssiMin);
+    final at = i < 0 ? 0 : i;
+    final v = steps[at];
+    return KeyedSubtree(
+      key: const ValueKey('settings-scan-rssi'),
+      child: _StepperRow(
+        label: l10n.settingsScanRssiLabel,
+        sub: l10n.settingsScanRssiSub,
+        value: v == null ? l10n.settingsScanRssiOff : l10n.settingsScanRssiValue('$v'),
+        last: true,
+        onDown: at > 0 ? () => s.setScanRssiMin(steps[at - 1]) : null,
+        onUp: at < steps.length - 1 ? () => s.setScanRssiMin(steps[at + 1]) : null,
       ),
     );
   }

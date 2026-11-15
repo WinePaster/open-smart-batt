@@ -612,6 +612,28 @@
     }
   },
   "devicesShowAll": "Show all BLE devices",
+  "devicesHiddenWeak": "{count, plural, =1{1 device weaker than {dbm} dBm hidden (Settings → Search signal threshold)} other{{count} devices weaker than {dbm} dBm hidden (Settings → Search signal threshold)}}",
+  "@devicesHiddenWeak": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "dbm": {
+        "type": "String"
+      }
+    }
+  },
+  "devicesNearbyAllWeak": "{count, plural, =1{1 device is nearby, but its signal is weaker than {dbm} dBm. Move closer, or relax Settings → Search signal threshold.} other{{count} devices are nearby, but every signal is weaker than {dbm} dBm. Move closer, or relax Settings → Search signal threshold.}}",
+  "@devicesNearbyAllWeak": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "dbm": {
+        "type": "String"
+      }
+    }
+  },
   "devicesMetaLastSeen": "Last {time}",
   "@devicesMetaLastSeen": {
     "placeholders": {
@@ -959,6 +981,17 @@
   "settingsBackgroundMonitorSubIos": "While the app is in the background or the screen is off, recording continues for as long as the connection can be maintained. Background execution is subject to iOS scheduling and Low Power Mode, so the link is not guaranteed to stay up; periods where it is down are not recorded. Enabling this increases battery use.",
   "settingsKeepAwakeLabel": "Keep screen awake while connected",
   "settingsKeepAwakeSub": "Screen won't turn off automatically, handy for viewing while riding (active when connected)",
+  "settingsScanRssiLabel": "Search signal threshold",
+  "settingsScanRssiSub": "Only affects the Search list: devices weaker than this are not shown. Saved devices and auto-connect are not affected. The closer to 0, the stronger the signal.",
+  "settingsScanRssiOff": "Any",
+  "settingsScanRssiValue": "{dbm} dBm",
+  "@settingsScanRssiValue": {
+    "placeholders": {
+      "dbm": {
+        "type": "String"
+      }
+    }
+  },
   "monitorNotificationTitle": "{appName} · monitoring",
   "@monitorNotificationTitle": {
     "description": "design 0092 \u2014 the app name is injected so both editions share one string.",

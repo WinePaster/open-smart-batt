@@ -1067,7 +1067,11 @@ void main() {
       await pump(tester);
       await tester.scrollUntilVisible(find.text('5 s'), 200);
 
-      await tester.tap(find.byTooltip('Increase').first);
+      // Scoped to the row showing '5 s': since 2026-11-15 the Connection card
+      // above has a stepper too (搜尋訊號門檻), so `.first` is no longer this one.
+      await tester.tap(find.descendant(
+          of: find.ancestor(of: find.text('5 s'), matching: find.byType(Row)).first,
+          matching: find.byTooltip('Increase')));
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 40)));
       await tester.pump();
@@ -1076,6 +1080,29 @@ void main() {
       final reloaded = await tester
           .runAsync(() => SettingsRepo(services.appDb.db).loadSettings());
       expect(reloaded!.alertSustainSec, 6);
+    });
+
+    // 「搜尋訊號門檻」(何先生 request 2026-11-15): starts at 不限制 ('Any'),
+    // plus steps to the weakest floor, and the choice is persisted.
+    testWidgets('the scan RSSI stepper starts at no limit and persists',
+        (tester) async {
+      await boot(tester);
+      await pump(tester);
+      final row = find.byKey(const ValueKey('settings-scan-rssi'));
+      await tester.scrollUntilVisible(row, 200);
+      expect(find.descendant(of: row, matching: find.text('Any')),
+          findsOneWidget);
+      await tester.tap(
+          find.descendant(of: row, matching: find.byTooltip('Increase')));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await tester.pump();
+      expect(services.settings.scanRssiMin, -90);
+      expect(find.descendant(of: row, matching: find.text('-90 dBm')),
+          findsOneWidget);
+      final reloaded = await tester
+          .runAsync(() => SettingsRepo(services.appDb.db).loadSettings());
+      expect(reloaded!.scanRssiMin, -90);
     });
   });
 }

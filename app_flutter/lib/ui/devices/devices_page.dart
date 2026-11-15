@@ -97,6 +97,7 @@ import '../../demo/demo.dart';
 import 'connection_failure.dart';
 import 'device_detail_page.dart';
 import 'save_device_flow.dart';
+import 'scan_list_filter.dart';
 import 'signal_bars.dart';
 import '../vehicles/vehicle_ui.dart';
 
@@ -970,6 +971,9 @@ class _DevicesPageState extends State<DevicesPage>
 
     final saved = devices.devices;
     final scan = conn.scanResults;
+    // 「搜尋訊號門檻」— nullable lookup so a harness without settings still
+    // builds (and shows everything, the default).
+    final rssiMin = context.watch<SettingsController?>()?.scanRssiMin;
     final connectedId = conn.connectedDeviceId;
 
     // RSSI lookup so saved rows can show live signal when nearby.
@@ -980,11 +984,15 @@ class _DevicesPageState extends State<DevicesPage>
       for (final r in scan)
         if (!devices.isSaved(r.id)) r,
     ];
-    // Default: only RCE devices; toggle reveals everything.
-    final nearby = _showAllNearby
-        ? nearbyAll
-        : [for (final r in nearbyAll) if (r.isVendor) r];
-    final hiddenCount = nearbyAll.length - nearby.length;
+    // Default: only RCE devices; toggle reveals everything. The signal
+    // threshold (何先生 request 2026-11-15; owner ruling: scan list only,
+    // default no limit) acts HERE and nowhere else: `rssiById` above, the
+    // saved list and the pinned row below never see it. How its hidden count
+    // and the vendor toggle's stay disjoint: see `scan_list_filter.dart`.
+    final view = filterScanList(
+        nearby: nearbyAll, showAll: _showAllNearby, rssiMin: rssiMin);
+    final nearby = view.shown;
+    final hiddenCount = view.nonVendorHidden;
 
     final working = conn.isBusy || conn.isRetrying;
 
@@ -1055,7 +1063,8 @@ class _DevicesPageState extends State<DevicesPage>
               _savedList(saved, rssiById, conn, connectedId, working, l10n),
               _scanList(
                   nearby, hiddenCount, pinnedId, conn, connectedId, working,
-                  l10n),
+                  l10n,
+                  weakHidden: view.weakHidden, rssiMin: rssiMin),
             ],
           ),
         ),
@@ -1150,8 +1159,19 @@ class _DevicesPageState extends State<DevicesPage>
     ConnectionController conn,
     String? connectedId,
     bool working,
-    AppLocalizations l10n,
-  ) {
+    AppLocalizations l10n, {
+    int weakHidden = 0,
+    int? rssiMin,
+  }) {
+    final dbm = '${rssiMin ?? ''}';
+    // The empty hint takes the threshold's message when it is the ONLY reason
+    // the list is empty — "nothing nearby" would be false — and then the note
+    // below the toggle is not repeated.
+    final weakInHint = nearby.isEmpty &&
+        pinnedId == null &&
+        !conn.isScanning &&
+        hiddenCount == 0 &&
+        weakHidden > 0;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
       children: [
@@ -1174,6 +1194,19 @@ class _DevicesPageState extends State<DevicesPage>
             ),
           ),
         ),
+        // 「搜尋訊號門檻」: say how many rows the threshold is hiding, so a
+        // unit that is missing from the list is never a mystery. Not a button —
+        // the control lives in 設定, and the note names where.
+        if (weakHidden > 0 && !weakInHint)
+          Padding(
+            key: const ValueKey('scan-weak-hidden'),
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              l10n.devicesHiddenWeak(weakHidden, dbm),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11.5, color: context.colors.muted),
+            ),
+          ),
         // The linked-but-unsaved unit, ABOVE the scan and outside every filter
         // that applies to it (see `pinnedId` in [build] for the report). It is
         // not a scan hit — it is the reason there is no scan hit — so the
@@ -1225,7 +1258,9 @@ class _DevicesPageState extends State<DevicesPage>
                 ? l10n.devicesScanning
                 : (hiddenCount > 0
                     ? l10n.devicesNearbyNoneVendor(hiddenCount)
-                    : l10n.devicesNearbyNotFound),
+                    : (weakInHint
+                        ? l10n.devicesNearbyAllWeak(weakHidden, dbm)
+                        : l10n.devicesNearbyNotFound)),
           )
         else
           for (final r in nearby)

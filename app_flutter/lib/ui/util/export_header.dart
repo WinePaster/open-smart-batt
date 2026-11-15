@@ -196,6 +196,11 @@ List<String> exportHeaderLines({
   // beside `multilink:` and under the same rule — no line while the switch is
   // off. ⛔ Never a vehicle NAME: a name may be a plate number (§4.3).
   String? vehicle,
+  // 「搜尋訊號門檻」(何先生 request 2026-11-15): `off` (不限制) or the dBm
+  // floor, e.g. `-80`. Only the diagnostic log passes it — that is the file
+  // with a scan roster, and the one a "my device does not show up" report
+  // arrives with. Always passed there, `off` included (FB-32's rule).
+  String? scanRssiMin,
   // design 0070 stage two. NO DEFAULT, on purpose.
   //
   // This parameter used to be `= const []`, and that default is the whole
@@ -308,6 +313,9 @@ List<String> exportHeaderLines({
     // fact.
     if (rawPacketLog != null)
       'raw packet log: ${rawPacketLog ? 'on' : 'off'}',
+    // Beside the scan-roster note's subject: a roster that lists a unit the
+    // 搜尋裝置 list did not show is explained by this line.
+    if (scanRssiMin != null) 'scan rssi min: $scanRssiMin',
     // FB-37, ruled 2026-07-30: disclose rather than redact. Whoever RECEIVES
     // the file needs this as much as whoever sent it — a reader deciding
     // whether to attach a capture to a public issue is not the same person who

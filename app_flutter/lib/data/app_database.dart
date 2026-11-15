@@ -548,7 +548,20 @@ class Db {
   /// CLAIMING A NUMBER: 29 was taken after reading `schemaVersion` out of every
   /// local and remote ref of both repos on 2026-11-15 — the highest anywhere
   /// was 28.
-  static const int schemaVersion = 29;
+  ///
+  /// v30 — 「搜尋訊號門檻」(何先生 request 2026-11-15; owner ruling: scan list
+  /// only, default no limit).
+  ///
+  ///   settings.scan_rssi_min  INTEGER, **nullable, NO DEFAULT** — the weakest
+  ///     RSSI (dBm) the 搜尋裝置 list shows; NULL = 不限制.
+  ///
+  /// NULL is the answer rather than a gap, v27's shape: every pre-v30 row
+  /// reads as no limit, which is exactly the list every earlier build showed.
+  ///
+  /// CLAIMING A NUMBER: 30 was taken after reading `schemaVersion` out of every
+  /// local and remote ref of the public repo on 2026-11-15 — the highest
+  /// anywhere was 29.
+  static const int schemaVersion = 30;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1187,6 +1200,20 @@ class AppDatabase {
         await db.execute(stmt);
       }
     }
+    if (from < 30) {
+      // 搜尋訊號門檻 — see [Db.schemaVersion] v30. Nullable, NO DEFAULT:
+      // NULL = no limit, the unfiltered list every earlier build showed.
+      // Guarded, for the reason the vehicle tables are `IF NOT EXISTS`: a
+      // file whose `user_version` was rolled back without dropping this
+      // column (the v27/v28 test fixtures rebuild from a CURRENT database)
+      // must still upgrade instead of failing on a duplicate column.
+      final cols = await db.rawQuery('PRAGMA table_info(${Db.tableSettings})');
+      if (!cols.any((r) => r['name'] == 'scan_rssi_min')) {
+        await db.execute(
+          'ALTER TABLE ${Db.tableSettings} ADD COLUMN scan_rssi_min INTEGER',
+        );
+      }
+    }
   }
 
   /// design 0106's tables, written ONCE and used by both [_createStatements]
@@ -1367,6 +1394,7 @@ class AppDatabase {
       accent_theme TEXT,
       text_size TEXT,
       allow_landscape INTEGER NOT NULL DEFAULT 0,
+      scan_rssi_min INTEGER,
       alerts_enabled INTEGER NOT NULL DEFAULT 0,
       alert_sustain_sec INTEGER NOT NULL DEFAULT 5,
       alert_repeat_min INTEGER NOT NULL DEFAULT 15,
