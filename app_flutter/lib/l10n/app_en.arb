@@ -1963,6 +1963,18 @@
   "@vehicleSettingsSub": {
     "description": "design 0106. Subtitle of the Vehicles settings row."
   },
+  "vehicleSettingsSummary": "{names} · {count} vehicles",
+  "@vehicleSettingsSummary": {
+    "description": "design 0106 mock ⑨. Subtitle of the Vehicles settings row once a car exists: the car names, then how many.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "vehiclesPageTitle": "Vehicles",
   "@vehiclesPageTitle": {
     "description": "design 0106. Title of the vehicle list page."
@@ -2010,15 +2022,6 @@
   "vehicleEditorPowerBanks": "Power banks",
   "@vehicleEditorPowerBanks": {
     "description": "design 0106 (R6). Header of the checklist when editing the personal group."
-  },
-  "vehicleEditorAlsoIn": "also in {vehicle}",
-  "@vehicleEditorAlsoIn": {
-    "description": "design 0106 (Q2). Note on a device that already belongs to another car.",
-    "placeholders": {
-      "vehicle": {
-        "type": "String"
-      }
-    }
   },
   "vehicleEditorNoDevices": "No saved devices can be added here.",
   "@vehicleEditorNoDevices": {

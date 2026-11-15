@@ -1332,20 +1332,9 @@ class _GroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-      child: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
-          color: context.colors.muted,
-        ),
-      ),
-    );
+    // Same label as the vehicle pages (mock ④ `.gh`), so a group reads the
+    // same wherever a vehicle's name heads a list.
+    return VehicleSectionLabel(title);
   }
 }
 

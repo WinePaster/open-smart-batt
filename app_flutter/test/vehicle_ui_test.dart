@@ -392,7 +392,7 @@ void main() {
         await tester.tap(find.byKey(ValueKey('vehicle-device-$id')));
         await tester.pump();
       }
-      final fourth = tester.widget<CheckboxListTile>(
+      final fourth = tester.widget<VehicleCheckRow>(
           find.byKey(const ValueKey('vehicle-device-d')));
       expect(fourth.onChanged, isNull, reason: 'Q6: at most 3');
       expect(find.text('Devices in this vehicle (3/3)'), findsOneWidget);

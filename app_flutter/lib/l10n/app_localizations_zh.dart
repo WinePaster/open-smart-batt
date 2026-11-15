@@ -2724,6 +2724,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get vehicleSettingsSub => '把裝置分到車輛：主頁一次顯示並連線一台車（最多 5 台車、每台 3 個裝置）。';
 
   @override
+  String vehicleSettingsSummary(String names, int count) {
+    return '$names · $count 台';
+  }
+
+  @override
   String get vehiclesPageTitle => '車輛';
 
   @override
@@ -2754,11 +2759,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get vehicleEditorPowerBanks => '行動電源';
-
-  @override
-  String vehicleEditorAlsoIn(String vehicle) {
-    return '也在 $vehicle';
-  }
 
   @override
   String get vehicleEditorNoDevices => '沒有可以加入的已存裝置。';

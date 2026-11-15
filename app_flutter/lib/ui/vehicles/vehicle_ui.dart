@@ -20,6 +20,7 @@ import '../../demo/demo.dart';
 import '../../models/models.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/dashed_border.dart';
 import 'vehicle_editor_page.dart';
 import 'vehicles_page.dart';
 
@@ -136,8 +137,9 @@ void followDeviceToVehicle(BuildContext context, String deviceId,
   ));
 }
 
-/// The home title in vehicle mode: 「A 車 ▾」, a 離線 tag when none of its
-/// devices is nearby (Q3), and the offline banner under it.
+/// The home title in vehicle mode (mock ①): 「A 車 ▾」 at the size of a page
+/// title, a 離線 tag when none of its devices is nearby (Q3), and the offline
+/// banner under it.
 class VehicleHeader extends StatelessWidget {
   const VehicleHeader({super.key, required this.vehicles});
 
@@ -156,68 +158,191 @@ class VehicleHeader extends StatelessWidget {
     final offline = cur != null &&
         cur.deviceIds.isNotEmpty &&
         !vehicleNearby(cur, ml, conn);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 8, 15, 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Semantics(
-            button: true,
-            label: name,
-            child: InkWell(
-              key: const ValueKey('vehicle-title'),
-              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-              onTap: () => showVehiclePicker(context),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: c.text,
+    // Left-aligned like a page title (mock ①), inside the same 560 column the
+    // grid under it uses — `Center` alone would shrink-wrap and centre it.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(15, 8, 15, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                button: true,
+                label: name,
+                child: InkWell(
+                  key: const ValueKey('vehicle-title'),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  onTap: () => showVehiclePicker(context),
+                  child: Padding(
+                    // 40 px tall target (FB-70) around a 15 px title.
+                    padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: c.text,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.expand_more,
+                            size: 18, color: context.accent.accent),
+                        if (offline) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            l10n.vehicleOffline,
+                            maxLines: 1,
+                            style: TextStyle(fontSize: 11, color: c.muted),
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.expand_more,
-                        size: 22, color: context.accent.accent),
-                    if (offline) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        l10n.vehicleOffline,
-                        maxLines: 1,
-                        style: TextStyle(fontSize: 12, color: c.muted),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
+              if (offline && cur.isCar)
+                VehicleNoticeBanner(
+                  key: const ValueKey('vehicle-offline-banner'),
+                  text: l10n.vehicleOfflineBanner(name),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The mock's dashed notice box (`.banner`): panel2 fill, dashed line2 frame,
+/// small muted text. For a state the user should know about but need not act
+/// on — a warning colour would overstate it.
+class VehicleNoticeBanner extends StatelessWidget {
+  const VehicleNoticeBanner({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
+      child: CustomPaint(
+        foregroundPainter:
+            DashedBorderPainter(color: c.line2, radius: AppTheme.radiusMd),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: c.panel2,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.45),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A group label above a card (mock `.gh`): small, muted, slightly spaced.
+class VehicleSectionLabel extends StatelessWidget {
+  const VehicleSectionLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.5,
+          color: context.colors.muted,
+        ),
+      ),
+    );
+  }
+}
+
+/// A full-width outlined button (mock `.btn` / `.btn.dz`): accent frame and
+/// text, or — [danger] — a quiet frame with red text, so a destructive action
+/// is legible without shouting louder than the page's main one.
+class VehicleOutlineButton extends StatelessWidget {
+  const VehicleOutlineButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.danger = false,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final off = onTap == null;
+    final fg = off
+        ? c.muted
+        : (danger ? AppSemantics.danger : context.accent.accent);
+    final frame = off || danger ? c.line2 : context.accent.accent;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 42),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              border: Border.all(color: frame),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: fg),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: fg,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          if (offline && cur.isCar)
-            Container(
-              key: const ValueKey('vehicle-offline-banner'),
-              width: double.infinity,
-              margin: const EdgeInsets.only(top: 4, bottom: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: c.panel2,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                border: Border.all(color: c.line2),
-              ),
-              child: Text(
-                l10n.vehicleOfflineBanner(name),
-                style: TextStyle(fontSize: 12.5, color: c.muted, height: 1.4),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -229,10 +354,17 @@ Future<void> showVehiclePicker(BuildContext context) async {
   final vc = readVisibleVehicles(context);
   if (vc == null) return;
   final nav = Navigator.of(context);
+  final c = context.colors;
   final picked = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
+    backgroundColor: c.panel,
+    shape: RoundedRectangleBorder(
+      borderRadius:
+          const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusLg)),
+      side: BorderSide(color: c.line2),
+    ),
     builder: (ctx) => _VehiclePickerSheet(vehicles: vc),
   );
   if (picked == null) return;
@@ -250,6 +382,17 @@ Future<void> showVehiclePicker(BuildContext context) async {
 const String _addKey = '\u0000add';
 const String _manageKey = '\u0000manage';
 
+/// The member names of [v], joined the way every vehicle surface lists them.
+String vehicleMemberNames(
+    AppLocalizations l10n, DeviceController devices, Vehicle v) {
+  final names = <String>[];
+  for (final id in v.deviceIds) {
+    final d = devices.deviceFor(id);
+    if (d != null) names.add(d.alias.isEmpty ? l10n.devicesUnnamed : d.alias);
+  }
+  return names.join('、');
+}
+
 class _VehiclePickerSheet extends StatelessWidget {
   const _VehiclePickerSheet({required this.vehicles});
 
@@ -262,56 +405,109 @@ class _VehiclePickerSheet extends StatelessWidget {
     final ml = context.watch<MultiLinkController?>();
     final conn = context.watch<ConnectionController?>();
     final devices = context.watch<DeviceController>();
-    String members(Vehicle v) {
-      final names = <String>[];
-      for (final id in v.deviceIds) {
-        final d = devices.deviceFor(id);
-        if (d != null) names.add(d.alias.isEmpty ? l10n.devicesUnnamed : d.alias);
-      }
-      return names.join('、');
-    }
+
+    Widget sep() => Divider(height: 9, thickness: 1, color: c.line);
 
     Widget option(Vehicle v) {
       final on = vehicles.current?.id == v.id;
       final near = vehicleNearby(v, ml, conn);
-      return ListTile(
+      final members = vehicleMemberNames(l10n, devices, v);
+      final detail = [
+        if (members.isNotEmpty) members,
+        if (near) l10n.vehiclePickerNearby,
+      ].join(' · ');
+      return InkWell(
         key: ValueKey('vehicle-option-${v.id}'),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                vehicleDisplayName(l10n, v),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: on ? FontWeight.w800 : FontWeight.w500,
-                  color: on ? context.accent.accent : c.text,
+        onTap: () => Navigator.of(context).pop(v.id),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 46),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            // spaceBetween, both sides loose: the members sit at the right edge
+            // (mock ①b) and the name keeps whatever it needs first.
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          vehicleDisplayName(l10n, v),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                on ? FontWeight.w700 : FontWeight.w400,
+                            color: on ? context.accent.accent : c.text,
+                          ),
+                        ),
+                      ),
+                      if (near) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                              color: AppSemantics.good,
+                              shape: BoxShape.circle),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 11.5, color: c.muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget action(
+            {required Key key,
+            required String label,
+            IconData? icon,
+            required VoidCallback? onTap}) {
+      final fg = onTap == null ? c.muted : context.accent.accentSecondary;
+      return
+        InkWell(
+          key: key,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16, color: fg),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13.5, color: fg),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (near) ...[
-              const SizedBox(width: 6),
-              Container(
-                width: 7,
-                height: 7,
-                decoration:
-                    BoxDecoration(color: AppSemantics.good, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 4),
-              Text(l10n.vehiclePickerNearby,
-                  style: TextStyle(fontSize: 11, color: c.muted)),
-            ],
-          ],
-        ),
-        subtitle: v.deviceIds.isEmpty
-            ? null
-            : Text(members(v),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: c.muted)),
-        trailing: on ? Icon(Icons.check, color: context.accent.accent) : null,
-        onTap: () => Navigator.of(context).pop(v.id),
-      );
+          ),
+        );
     }
 
     final cars = vehicles.cars;
@@ -327,25 +523,26 @@ class _VehiclePickerSheet extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
               child: Text(l10n.vehiclePickerTitle,
                   style: TextStyle(
-                      fontSize: 13, color: c.muted, fontWeight: FontWeight.w600)),
+                      fontSize: 11.5,
+                      letterSpacing: 0.5,
+                      color: c.muted,
+                      fontWeight: FontWeight.w600)),
             ),
             for (final v in cars) option(v),
             if (personal != null) ...[
-              const Divider(height: 8),
+              sep(),
               option(personal),
             ],
-            const Divider(height: 8),
-            ListTile(
+            sep(),
+            action(
               key: const ValueKey('vehicle-option-add'),
-              enabled: canAdd,
-              leading: const Icon(Icons.add),
-              title: Text(l10n.vehiclePickerAdd(cars.length, Vehicle.maxCars)),
+              icon: Icons.add,
+              label: l10n.vehiclePickerAdd(cars.length, Vehicle.maxCars),
               onTap: canAdd ? () => Navigator.of(context).pop(_addKey) : null,
             ),
-            ListTile(
+            action(
               key: const ValueKey('vehicle-option-manage'),
-              leading: const Icon(Icons.tune),
-              title: Text(l10n.vehiclePickerManage),
+              label: l10n.vehiclePickerManage,
               onTap: () => Navigator.of(context).pop(_manageKey),
             ),
             const SizedBox(height: 8),

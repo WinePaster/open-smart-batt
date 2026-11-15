@@ -28,6 +28,7 @@ import '../util/export_scope.dart';
 import '../util/export_share.dart';
 import '../util/export_writers.dart';
 import '../util/update_check.dart';
+import '../vehicles/vehicle_ui.dart';
 import '../vehicles/vehicles_page.dart';
 import '../widgets/industrial.dart';
 import 'g_calibration_wizard.dart';
@@ -1438,15 +1439,33 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
               listenable: ml,
               builder: (context, _) => !ml.enabled
                   ? const SizedBox.shrink()
-                  : SettingsLinkRow(
+                  // Mock ⑨: a plain settings row (it belongs to the switch
+                  // above it, not to the cyan tool links below), whose caption
+                  // turns into 「A 車、B 車 · 2 台」 once a car exists.
+                  : InkWell(
                       key: const ValueKey('settings-vehicles'),
-                      icon: Icons.directions_car_outlined,
-                      label: l10n.vehicleSettingsLabel,
-                      sub: l10n.vehicleSettingsSub,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                             builder: (_) => const VehiclesPage()),
                       ),
+                      child: Builder(builder: (context) {
+                        final cars =
+                            context.watch<VehicleController?>()?.cars ??
+                                const <Vehicle>[];
+                        return SettingsRow(
+                          label: l10n.vehicleSettingsLabel,
+                          sub: cars.isEmpty
+                              ? l10n.vehicleSettingsSub
+                              : l10n.vehicleSettingsSummary(
+                                  [
+                                    for (final v in cars)
+                                      vehicleDisplayName(l10n, v),
+                                  ].join('、'),
+                                  cars.length),
+                          trailing: Icon(Icons.chevron_right,
+                              size: 16, color: context.colors.muted),
+                        );
+                      }),
                     ),
             ),
           // The guided capture run lives in Diagnostics rather than on the

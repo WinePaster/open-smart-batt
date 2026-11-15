@@ -2887,6 +2887,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Group devices by vehicle: the home page shows and connects one vehicle at a time (up to 5 vehicles, 3 devices each).';
 
   @override
+  String vehicleSettingsSummary(String names, int count) {
+    return '$names · $count vehicles';
+  }
+
+  @override
   String get vehiclesPageTitle => 'Vehicles';
 
   @override
@@ -2919,11 +2924,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vehicleEditorPowerBanks => 'Power banks';
-
-  @override
-  String vehicleEditorAlsoIn(String vehicle) {
-    return 'also in $vehicle';
-  }
 
   @override
   String get vehicleEditorNoDevices => 'No saved devices can be added here.';

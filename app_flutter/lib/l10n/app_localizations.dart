@@ -4780,6 +4780,12 @@ abstract class AppLocalizations {
   /// **'Group devices by vehicle: the home page shows and connects one vehicle at a time (up to 5 vehicles, 3 devices each).'**
   String get vehicleSettingsSub;
 
+  /// design 0106 mock ⑨. Subtitle of the Vehicles settings row once a car exists: the car names, then how many.
+  ///
+  /// In en, this message translates to:
+  /// **'{names} · {count} vehicles'**
+  String vehicleSettingsSummary(String names, int count);
+
   /// design 0106. Title of the vehicle list page.
   ///
   /// In en, this message translates to:
@@ -4839,12 +4845,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Power banks'**
   String get vehicleEditorPowerBanks;
-
-  /// design 0106 (Q2). Note on a device that already belongs to another car.
-  ///
-  /// In en, this message translates to:
-  /// **'also in {vehicle}'**
-  String vehicleEditorAlsoIn(String vehicle);
 
   /// design 0106. Checklist with nothing to offer.
   ///
