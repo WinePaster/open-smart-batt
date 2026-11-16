@@ -435,7 +435,13 @@ class AppSettings {
   /// matches on `==`), which reads as a broken screen rather than a stale
   /// preference. That same normalisation is what retires the old 20 MB tier
   /// (offered 2026-07-29 → 2026-08-11): a stored 20 reads back as the default.
+  ///
+  /// 50 MB added 2026-11-16 (owner ruling, after a realme 9 Pro+ user whose
+  /// export of a near-cap log hung): a smaller tier for whoever wants one.
+  /// The default stays 100 MB — the hang itself is fixed by streaming the
+  /// export, not by the cap.
   static const List<int> logMaxBytesOptions = [
+    50 * 1024 * 1024,
     100 * 1024 * 1024,
     unlimitedLogBytes,
   ];

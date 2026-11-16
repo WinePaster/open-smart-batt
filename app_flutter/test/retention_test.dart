@@ -231,10 +231,14 @@ void main() {
 // no longer offered leaves the control with nothing selected — which reads as a
 // broken screen, not a stale preference. These pin the normalisation.
 void _logBudgetTests() {
-  group('log budget options (100 MB / unlimited)', () {
-    test('the offered set is exactly 100 MB and unlimited', () {
-      expect(AppSettings.logMaxBytesOptions,
-          [100 * 1024 * 1024, AppSettings.unlimitedLogBytes]);
+  group('log budget options (50 MB / 100 MB / unlimited)', () {
+    test('the offered set is exactly 50 MB, 100 MB and unlimited', () {
+      // 50 MB added 2026-11-16 (owner ruling); the default did not move.
+      expect(AppSettings.logMaxBytesOptions, [
+        50 * 1024 * 1024,
+        100 * 1024 * 1024,
+        AppSettings.unlimitedLogBytes,
+      ]);
       // Default raised 20 → 100 MB on 2026-08-11: a 20 MB cap rotated away a
       // field device's ten oldest sessions before they could be exported.
       // Unlimited replaced 20 the same day, but the DEFAULT stays finite —
@@ -250,6 +254,12 @@ void _logBudgetTests() {
         expect(s.logMaxBytes, AppSettings.defaultLogMaxBytes);
         expect(AppSettings.logMaxBytesOptions.contains(s.logMaxBytes), isTrue);
       }
+    });
+
+    test('50 MB round-trips and trims to 50 MB', () {
+      final s = AppSettings.fromMap({'log_max_bytes': 50 * 1024 * 1024});
+      expect(s.logMaxBytes, 50 * 1024 * 1024);
+      expect(s.logTrimBudget, 50 * 1024 * 1024);
     });
 
     test('100 MB round-trips', () {

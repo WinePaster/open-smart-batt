@@ -1407,6 +1407,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
               selected: s.logMaxBytes,
               onChanged: s.setLogMaxBytes,
               options: [
+                (value: 50 * 1024 * 1024, label: '50 MB'),
                 (value: 100 * 1024 * 1024, label: '100 MB'),
                 (
                   value: AppSettings.unlimitedLogBytes,
