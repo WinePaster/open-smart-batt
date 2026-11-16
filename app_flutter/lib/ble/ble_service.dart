@@ -26,11 +26,13 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../config/multi_link_config.dart';
 import '../demo/demo.dart';
 import '../models/device_ident.dart' show shortDeviceHash;
 import '../models/log_entry.dart' show LogDirection;
@@ -110,10 +112,16 @@ class _LinkState {
   int keepAliveFailures = 0;
 
   /// design 0103 (multi-link experiment): when non-null the poll is
-  /// deliberately suspended on this link — the keep-alive timer keeps ticking
-  /// (so the exec-gap heartbeat is unchanged), only the write is skipped, and
-  /// the notify subscription stays up. Never set outside the experiment.
+  /// deliberately throttled on this link — the keep-alive timer keeps ticking
+  /// (so the exec-gap heartbeat is unchanged), only one write per
+  /// [MultiLinkConfig.pausedKeepAliveEvery] goes out, and the notify
+  /// subscription stays up. Never set outside the experiment.
   DateTime? pollPausedAt;
+
+  /// When the last sparse keep-alive went out during the current pause (see
+  /// [MultiLinkConfig.pausedKeepAliveEvery]); null until the first one. Reset
+  /// by [BleService.pausePolling].
+  DateTime? pausedKeepAliveAt;
 
   /// Notification chunks received while [pollPausedAt] was set — the
   /// "autonomous push kept flowing" half of 0103 §4 ②.
@@ -1598,9 +1606,9 @@ class BleService {
   /// whole session, which is what an offline reader wants. Reading two lines
   /// and subtracting is still possible; reconstructing a total from windows
   /// that a disconnect may have truncated is not.
-  void _recordWriteDuration(_LinkState link, int ms) {
+  void _recordWriteDuration(_LinkState link, int ms, {bool intoWindow = true}) {
     final window = link.writeWindow;
-    if (window != null) {
+    if (window != null && intoWindow) {
       window.add(ms);
       if (window.length > writeWindowSize) window.removeAt(0);
     }
@@ -1662,7 +1670,7 @@ class BleService {
     if (pausedAt != null) {
       _emitEvent(
           'link lost while paused id=${shortDeviceHash(link.deviceId)} '
-          'paused_ms=${DateTime.now().difference(pausedAt).inMilliseconds} '
+          'paused_ms=${clock.now().difference(pausedAt).inMilliseconds} '
           'rx_during_pause=${link.rxDuringPause}',
           link: link);
       link.pollPausedAt = null;
@@ -1738,9 +1746,22 @@ class BleService {
     // isolate ran.
     _execGap.tick(DateTime.now());
     if (link.writeChar == null && link.peer == null) return;
-    // design 0103: a paused link writes nothing. Null on every link the
-    // multi-link experiment never touched, i.e. always in a normal build.
-    if (link.pollPausedAt != null) return;
+    // design 0103: a paused link writes only a sparse keep-alive, one poll per
+    // [MultiLinkConfig.pausedKeepAliveEvery] (2026.11.16/006: zero writes let
+    // a capacitor drop the link at ~240 s). `pollPausedAt` is null on every
+    // link the multi-link experiment never touched, i.e. always in a normal
+    // build, so this whole branch is inert there. Wall clock (`clock.now()`),
+    // not a tick count: when the OS freezes the isolate and the ticks bunch
+    // up, the first tick after the gap must still write.
+    final pausedAt = link.pollPausedAt;
+    if (pausedAt != null) {
+      if (link.keepAliveInFlight) return;
+      final since = link.pausedKeepAliveAt ?? pausedAt;
+      if (clock.now().difference(since) < MultiLinkConfig.pausedKeepAliveEvery) {
+        return;
+      }
+      link.pausedKeepAliveAt = clock.now();
+    }
     // Re-entrancy guard. The timer fires every second but a write can hang far
     // longer — when Android suspends the app (screen off / background) BOTH
     // directions stall for minutes, then everything resumes at once. Without
@@ -1769,7 +1790,12 @@ class BleService {
       // Debounce zero point for the notify-driven pacer (design 0047 Phase 1).
       // Stamped on success only — see [_LinkState.lastKeepAliveOkAt].
       link.lastKeepAliveOkAt = DateTime.now();
-      _recordWriteDuration(link, sw.elapsedMilliseconds);
+      // A sparse write during a pause stays out of the D5 window: it says
+      // nothing about the 1 Hz load the rule judges, and one slow write a
+      // minute must not decide the link's fate on resume (the D5 retry clears
+      // the window anyway; the D1 resume does not).
+      _recordWriteDuration(link, sw.elapsedMilliseconds,
+          intoWindow: pausedAt == null);
       // Recovery is as diagnostic as the failure: it bounds how long the app
       // was actually unable to poll, which a lone failure line cannot.
       if (link.keepAliveWriteFailed) {
@@ -1853,8 +1879,10 @@ class BleService {
   /// When the current link's poll was paused, or null.
   DateTime? get pollPausedAt => _current?.pollPausedAt;
 
-  /// Stop writing the poll on the current link; keep the link and its notify
-  /// subscription. Returns false when there is no live link or it is already
+  /// Stop writing the 1 Hz poll on the current link; keep the link and its
+  /// notify subscription. A sparse poll still goes out every
+  /// [MultiLinkConfig.pausedKeepAliveEvery] (2026.11.16/006) so the unit's own
+  /// idle timer never fires. Returns false when there is no live link or it is already
   /// paused. [reason] goes into the `link paused` diagnostic line.
   bool pausePolling({required String reason}) {
     final link = _current;
@@ -1863,7 +1891,8 @@ class BleService {
         link.pollPausedAt != null) {
       return false;
     }
-    link.pollPausedAt = DateTime.now();
+    link.pollPausedAt = clock.now();
+    link.pausedKeepAliveAt = null;
     link.rxDuringPause = 0;
     _emitEvent('link paused id=${shortDeviceHash(link.deviceId)} reason=$reason',
         link: link);
@@ -1879,7 +1908,7 @@ class BleService {
     link.pollPausedAt = null;
     _emitEvent(
         'link resumed id=${shortDeviceHash(link.deviceId)} '
-        'paused_ms=${DateTime.now().difference(pausedAt).inMilliseconds} '
+        'paused_ms=${clock.now().difference(pausedAt).inMilliseconds} '
         'rx_during_pause=${link.rxDuringPause}',
         link: link);
     unawaited(_sendKeepAlive(link));

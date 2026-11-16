@@ -7,7 +7,8 @@
 //   —   hand-off: a secondary is released BEFORE the primary connects to it
 //   D1  power bank as primary ⇒ the others pause, and resume when it is gone
 //   D5  slow-writer demotion: ≥ 500 ms with ≥ 2 links; never with one;
-//       third demotion leaves the unit out
+//       third demotion leaves the unit out; never while the primary is just
+//       as slow (2026.11.16/006)
 //   D7  notification line counts every live link
 //   D2  prompt only for a power bank, only while other links are live
 //   §3.6 / FB-41  two links interleaving samples never cross-attribute
@@ -39,6 +40,11 @@ class _FakePrimary extends BleService {
   final _teleOut = StreamController<TelemetrySample>.broadcast();
   final _scanOut = StreamController<List<DiscoveredDevice>>.broadcast();
   String? connectedId;
+
+  /// The primary's own D5 window mean (2026.11.16/006 phone-slow guard).
+  int? avg;
+  @override
+  int? get recentWriteAvgMs => avg;
 
   /// What a scan finds: [startScan] reports exactly these ids.
   Set<String> nearby = <String>{};
@@ -382,6 +388,57 @@ void main() {
         events.any((e) =>
             (e.note ?? '').startsWith('link demoted') && e.deviceId == 'A'),
         isTrue);
+  });
+
+  group('2026.11.16/006: a slow phone is not a slow unit', () {
+    Future<List<String>> skipNotes() async {
+      await s.pending.drain();
+      final events = await s.logRepo.queryLog();
+      return [
+        for (final e in events)
+          if ((e.note ?? '').startsWith('link demote skipped')) e.note!,
+      ];
+    }
+
+    test('the primary just as slow ⇒ nobody is demoted, logged once',
+        () async {
+      final ml = await boot([bat('P'), bat('A')], primaryId: 'P');
+      primary.avg = 900;
+      sec('A').avg = 600;
+      ml.checkDemotions();
+      ml.checkDemotions();
+      expect(log.where((l) => l.contains('slow-writer')), isEmpty);
+      expect(ml.isPausedFor('A'), isFalse);
+      final notes = await skipNotes();
+      expect(notes, hasLength(1), reason: 'deduped across evaluations');
+      expect(notes.single, contains('reason=phone-slow'));
+      expect(notes.single, contains('primaryAvg=900'));
+    });
+
+    test('the primary fast ⇒ the slow secondary is still demoted', () async {
+      final ml = await boot([bat('P'), bat('A')], primaryId: 'P');
+      primary.avg = 120;
+      sec('A').avg = 600;
+      ml.checkDemotions();
+      expect(log, contains('pause A slow-writer'));
+      expect(await skipNotes(), isEmpty);
+    });
+
+    test('the primary window not full yet ⇒ the 0103 rule as before',
+        () async {
+      final ml = await boot([bat('P'), bat('A')], primaryId: 'P');
+      primary.avg = null;
+      sec('A').avg = 600;
+      ml.checkDemotions();
+      expect(log, contains('pause A slow-writer'));
+    });
+
+    test('the switch turns the primary\'s window on, and off again', () async {
+      final ml = await boot([bat('P'), bat('A')], primaryId: 'P');
+      expect(primary.trackWriteWindow, isTrue);
+      await ml.setEnabled(false);
+      expect(primary.trackWriteWindow, isFalse);
+    });
   });
 
   test('D5 ⑥: never demoted when it is the only link online', () async {

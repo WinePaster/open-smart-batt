@@ -63,6 +63,16 @@ abstract final class MultiLinkConfig {
   /// How often the demotion rule is evaluated.
   static const Duration demoteCheckEvery = Duration(seconds: 10);
 
+  /// A paused link (D5 demotion or D1 power-bank pause) still writes one poll
+  /// this often, instead of going silent. 2026.11.16/006 §3.1: a 0169
+  /// capacitor (016902170000262) on iOS dropped the link 3/3 at ~240 s after
+  /// the last write, while still pushing ~600 samples/min — so "pause the
+  /// poll" with zero writes was really "disconnect, reconnect ~30 s later".
+  /// 60 s keeps a 4× margin under that 240 s; one write a minute is nothing
+  /// next to the 1 Hz the pause exists to take off the shared GATT queue.
+  /// Owner ruling 2026-11-16 (「先保守處理」).
+  static const Duration pausedKeepAliveEvery = Duration(seconds: 60);
+
   /// Backoff for a secondary link that failed to connect or dropped.
   static const Duration secondaryRetryBase = Duration(seconds: 30);
   static const Duration secondaryRetryCap = Duration(minutes: 5);

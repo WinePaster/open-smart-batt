@@ -28,7 +28,9 @@
 ///   * D2 — the pre-entry prompt is the UI's ([shouldPromptForPowerBank]).
 ///   * D5 — slow-writer demotion: mean of the last 60 writes ≥ 500 ms pauses
 ///     that link for 5 min; the third demotion leaves it out for the session;
-///     never with a single link online.
+///     never with a single link online; never while the primary is just as
+///     slow (2026.11.16/006 — the phone, not the unit). A paused link still
+///     writes one poll a minute ([MultiLinkConfig.pausedKeepAliveEvery]).
 ///   * D6 — at most 3 links, primary included.
 ///   * D7 — 「監看中 N 台」, alerts for every link, all links kept in background.
 library;
@@ -74,6 +76,10 @@ class _Secondary {
   int demotions = 0;
   Timer? demoteTimer;
 
+  /// D5 phone-slow guard: whether the current run of "slow, but the primary
+  /// is just as slow" has already been logged. Dedupes the 10 s evaluation.
+  bool demoteSkipLogged = false;
+
   Timer? retryTimer;
   int retryAttempts = 0;
 
@@ -117,6 +123,7 @@ class MultiLinkController extends ChangeNotifier {
     this.personalRetryEvery = const Duration(seconds: 30),
     DateTime Function()? clock,
     VehicleController? vehicles,
+    BleService? primaryBle,
   // Private fields from public named parameters: the `this._x` form the lint
   // suggests does not compile for named parameters (see SettingsController).
   })  : _conn = connection,
@@ -133,7 +140,9 @@ class MultiLinkController extends ChangeNotifier {
         _skipPromptMarker = skipPromptMarker,
         _now = clock ?? DateTime.now,
         // ignore: prefer_initializing_formals
-        _vehicles = vehicles {
+        _vehicles = vehicles,
+        // ignore: prefer_initializing_formals
+        _primaryBle = primaryBle {
     _conn.addListener(_onPrimaryChanged);
     _devices.addListener(_reconcile);
     _vehicles?.addListener(_onVehiclesChanged);
@@ -173,6 +182,12 @@ class MultiLinkController extends ChangeNotifier {
   /// design 0106 Phase 3 — the vehicles, or null (tests that predate them). A
   /// vehicle narrows who may be a candidate; with no car it changes nothing.
   final VehicleController? _vehicles;
+
+  /// The primary link's transport, for the D5 phone-slow guard only: while the
+  /// experiment runs it keeps a write window too ([BleService.trackWriteWindow];
+  /// the primary is never paused, so the window is all that changes for it).
+  /// Null in tests that predate the guard ⇒ the 0103 rule exactly.
+  final BleService? _primaryBle;
 
   /// The vehicle the last [_onVehiclesChanged] saw as current (null = none,
   /// or no car exists).
@@ -457,6 +472,7 @@ class MultiLinkController extends ChangeNotifier {
   // ---- lifecycle -----------------------------------------------------------
 
   void _start() {
+    _primaryBle?.trackWriteWindow = true;
     _demoteTimer?.cancel();
     _demoteTimer = Timer.periodic(demoteCheckEvery, (_) {
       checkDemotions();
@@ -469,6 +485,7 @@ class MultiLinkController extends ChangeNotifier {
   }
 
   void _stop() {
+    _primaryBle?.trackWriteWindow = false;
     _handoffTarget = null;
     _lastPresenceScanAt = null;
     _demoteTimer?.cancel();
@@ -989,9 +1006,37 @@ class MultiLinkController extends ChangeNotifier {
     final total = active.length + (_conn.isOnline ? 1 : 0);
     // D5 ⑥: one link online has nobody to protect.
     if (total < 2) return;
+    // 2026.11.16/006 §3.2 (owner ruling 2026-11-16, 「先保守處理」): all three
+    // field demotions came while the PRIMARY was as slow or slower (3–5 s
+    // writes, 5 s timeouts) — the phone was slow, and D5, which only ever
+    // judged the secondaries, punished the unit that happened to be one. So:
+    // if the primary's own window is also over the line, nobody is demoted.
+    // Known cost, accepted as the conservative side: flutter_blue_plus holds
+    // ONE global GATT mutex, so a truly slow secondary can drag the primary's
+    // measured writes over the line too and then escapes demotion. With the
+    // sparse paused keep-alive a wrong pause no longer drops a link, but a
+    // wrong skip only costs what D5 cost before it existed.
+    final primaryAvg = _conn.isOnline ? _primaryBle?.recentWriteAvgMs : null;
+    final phoneSlow =
+        primaryAvg != null && primaryAvg >= MultiLinkConfig.demoteAvgMs;
     for (final l in active) {
       final avg = l.ble.recentWriteAvgMs;
-      if (avg == null || avg < MultiLinkConfig.demoteAvgMs) continue;
+      if (avg == null || avg < MultiLinkConfig.demoteAvgMs) {
+        l.demoteSkipLogged = false;
+        continue;
+      }
+      if (phoneSlow) {
+        if (!l.demoteSkipLogged) {
+          l.demoteSkipLogged = true;
+          _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+              note: 'link demote skipped id=${shortDeviceHash(l.id)} '
+                  'reason=phone-slow avg=$avg primaryAvg=$primaryAvg '
+                  'n=${BleService.writeWindowSize}',
+              deviceId: l.id));
+        }
+        continue;
+      }
+      l.demoteSkipLogged = false;
       l.demoted = true;
       l.demotions++;
       l.ble.pausePolling(reason: 'slow-writer');
