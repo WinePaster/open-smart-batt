@@ -213,8 +213,13 @@ Future<int> writeAllDataCsv(ExportCapture c, File file) async {
   );
 }
 
-/// The diagnostic log for [c]'s target, preamble included. Blank (after trim)
-/// when the log table holds nothing in scope.
+/// Writes the diagnostic log for [c]'s target, preamble included, into
+/// [file]; returns the number of lines written (0 = nothing in scope, and the
+/// file is then left empty).
+///
+/// Streamed page by page, never held whole (realme 9 Pro+, 2026-11-16: a log
+/// near the 100 MiB cap built as one string hung the export and the app was
+/// killed) — the same reason the history CSV is streamed (design 0030 T4b).
 ///
 /// The preamble tells whoever receives the file which unit it covers, which
 /// app build produced it, how many connections it spans and whether raw
@@ -222,7 +227,7 @@ Future<int> writeAllDataCsv(ExportCapture c, File file) async {
 /// genuinely quiet capture from one the app never wrote, and has to guess at
 /// the version — which is how an app-side bug once got read as a hardware
 /// limitation.
-Future<String> buildDiagnosticLog(ExportCapture c) async {
+Future<int> writeDiagnosticLog(ExportCapture c, File file) async {
   final target = c.target;
   // 🔴 FB-68: batch 2026.08.13-001's log carried `layout: face=- modules=-`
   // beside a CSV from 17 s earlier that said `face=fixed`, because this line
@@ -260,10 +265,16 @@ Future<String> buildDiagnosticLog(ExportCapture c) async {
     scanRssiMin: c.scanRssiMin == null ? 'off' : '${c.scanRssiMin}',
     devices: identities,
   );
-  return c.tele.exportLog(
-    deviceId: target.deviceId,
-    sessionId: target.sessionId,
-    header: header,
-    labelFor: c.labelFor,
-  );
+  final sink = file.openWrite();
+  try {
+    return await c.tele.exportLogTo(
+      sink,
+      deviceId: target.deviceId,
+      sessionId: target.sessionId,
+      header: header,
+      labelFor: c.labelFor,
+    );
+  } finally {
+    await sink.close();
+  }
 }

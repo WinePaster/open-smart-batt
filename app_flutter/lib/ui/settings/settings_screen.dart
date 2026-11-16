@@ -1258,14 +1258,15 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     // iPad popover anchor (D.7): capture before any await invalidates context.
     final origin = sharePositionFromContext(context);
     try {
-      final log = await buildDiagnosticLog(capture);
-      if (log.trim().isEmpty) {
+      final filename = diagnosticLogFileName(target);
+      final file = await exportTempFile(filename);
+      if (await writeDiagnosticLog(capture, file) == 0) {
         messenger.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1600), content: Text(l10n.settingsLogEmpty)));
         return;
       }
-      await shareTextAsFile(
-        content: log,
-        filename: diagnosticLogFileName(target),
+      await shareExportFile(
+        file: file,
+        filename: filename,
         mimeType: 'text/plain',
         subject: l10n.settingsExportSubjectDiagLog(capture.appName),
         sharePositionOrigin: origin,

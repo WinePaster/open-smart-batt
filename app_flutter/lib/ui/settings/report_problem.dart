@@ -85,11 +85,10 @@ Future<void> reportProblem(
     final csvName = allDataCsvFileName(target, stamp: stamp);
     final csvFile = await exportTempFile(csvName);
     final rows = await writeAllDataCsv(capture, csvFile);
-    final log = await buildDiagnosticLog(capture);
     final logName = diagnosticLogFileName(target, stamp: stamp);
     final logFile = await exportTempFile(logName);
-    final hasLog = log.trim().isNotEmpty;
-    if (hasLog) await logFile.writeAsString(log);
+    final hasLog = await writeDiagnosticLog(capture, logFile) > 0;
+    if (!hasLog) await logFile.delete().catchError((_) => logFile);
     final noteText = reportNoteText(
       note: decision.note,
       appName: capture.appName,

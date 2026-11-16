@@ -20,6 +20,7 @@
 library;
 
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 
@@ -78,22 +79,41 @@ String? reportNoteText({
 /// Members are added from disk one at a time, so a large CSV never has to sit
 /// in memory whole (the same reason it is streamed into its file — design
 /// 0030 T4b).
+///
+/// 🔴 On a background isolate (realme 9 Pro+, 2026-11-16). `archive`'s
+/// encoder deflates each member synchronously — `addFile` is `async` only for
+/// its two `stat` calls — so a log near the 100 MiB cap froze the UI isolate
+/// for the whole compression, long enough for Android's not-responding
+/// dialog. Files, paths and strings are all sendable.
 Future<File> writeReportBundle({
   required File zip,
   required List<({File file, String name})> members,
   String? noteText,
-}) async {
-  if (await zip.exists()) await zip.delete();
-  final enc = ZipFileEncoder()..create(zip.path);
+}) {
+  final zipPath = zip.path;
+  final parts = [for (final m in members) (path: m.file.path, name: m.name)];
+  return Isolate.run(() {
+    _writeReportBundleSync(zipPath, parts, noteText);
+    return File(zipPath);
+  });
+}
+
+void _writeReportBundleSync(
+  String zipPath,
+  List<({String path, String name})> parts,
+  String? noteText,
+) {
+  final zip = File(zipPath);
+  if (zip.existsSync()) zip.deleteSync();
+  final enc = ZipFileEncoder()..create(zipPath);
   try {
-    for (final m in members) {
-      await enc.addFile(m.file, m.name);
+    for (final m in parts) {
+      enc.addFileSync(File(m.path), m.name);
     }
     if (noteText != null) {
       enc.addArchiveFile(ArchiveFile.string(kReportNoteFileName, noteText));
     }
   } finally {
-    await enc.close();
+    enc.closeSync();
   }
-  return zip;
 }

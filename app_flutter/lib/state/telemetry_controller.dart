@@ -662,6 +662,23 @@ class TelemetryController extends ChangeNotifier
         labelFor: labelFor,
       );
 
+  /// [exportLog] streamed into [sink] page by page (see [LogRepo.exportLogTo]);
+  /// returns the number of lines written.
+  Future<int> exportLogTo(
+    StringSink sink, {
+    String? deviceId,
+    int? sessionId,
+    List<String> header = const [],
+    String Function(String? deviceId)? labelFor,
+  }) =>
+      _logs.exportLogTo(
+        sink,
+        deviceId: deviceId,
+        sessionId: sessionId,
+        header: header,
+        labelFor: labelFor,
+      );
+
   /// How many distinct connections the log holds for a scope (header line).
   Future<int> logSessionCount({String? deviceId}) =>
       _logs.sessionCount(deviceId: deviceId);

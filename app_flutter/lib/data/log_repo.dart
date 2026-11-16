@@ -13,6 +13,8 @@
 /// reached its cap. See `_lowWaterFraction` and `_estimatedBytes`.
 library;
 
+import 'dart:io' show IOSink;
+
 import 'package:sqflite/sqflite.dart';
 
 import '../demo/demo_device.dart';
@@ -210,15 +212,63 @@ class LogRepo {
     List<String> header = const [],
     String Function(String? deviceId)? labelFor,
   }) async {
+    final buf = StringBuffer();
+    await exportLogTo(buf,
+        deviceId: deviceId,
+        sessionId: sessionId,
+        header: header,
+        labelFor: labelFor);
+    return buf.toString();
+  }
+
+  /// Rows read per query by [exportLogTo].
+  static const int exportPageRows = 5000;
+
+  /// [exportLog], written into [sink] page by page; returns the number of
+  /// lines written (0 ⇔ [exportLog] would have returned an empty string).
+  ///
+  /// 🔴 realme 9 Pro+ (2026-11-16): the export used to read the WHOLE table
+  /// in one query, render every line into a list and join it into one string
+  /// — all on the UI isolate. Near the 100 MiB default cap that is ~1.7 M
+  /// rows held three times over; the export spun and Android killed the app.
+  /// Now at most [pageRows] rows exist in memory at once, and an [IOSink] is
+  /// flushed after each page so the file side does not buffer it all either.
+  /// The text is byte-identical to the old join: `\n` between lines, none
+  /// after the last.
+  Future<int> exportLogTo(
+    StringSink sink, {
+    String? deviceId,
+    int? sessionId,
+    List<String> header = const [],
+    String Function(String? deviceId)? labelFor,
+    int pageRows = exportPageRows,
+  }) async {
     final (scoped, args) = _scope(deviceId: deviceId, sessionId: sessionId);
     // Belt and braces for [insertLog]'s gate (design 0097 §2.3 ①).
     final where = scoped == null ? kNotDemoRowSql : '$scoped AND $kNotDemoRowSql';
-    final rows = await _db.query(
-      Db.tableDiagLog,
-      where: where,
-      whereArgs: args,
-      orderBy: 'id ASC',
-    );
+    final scopeArgs = <Object?>[...?args];
+    var lines = 0;
+    void line(String l) {
+      if (lines > 0) sink.write('\n');
+      sink.write(l);
+      lines++;
+    }
+
+    final total = header.isEmpty
+        ? 0
+        : ((await _db.rawQuery(
+                    'SELECT COUNT(*) AS n FROM ${Db.tableDiagLog} WHERE $where',
+                    scopeArgs))
+                .first['n'] as num?)
+            ?.toInt() ?? 0;
+    // Only the mark rows, not the table: [_markSummary] reads nothing else.
+    final marks = header.isEmpty
+        ? const <Map<String, Object?>>[]
+        : await _db.query(Db.tableDiagLog,
+            columns: ['note'],
+            where: '$where AND note LIKE ?',
+            whereArgs: [...scopeArgs, '$markNotePrefix%'],
+            orderBy: 'id ASC');
     // The log export long had no content summary at all, while the CSV did.
     // Without one a recipient cannot tell a short capture from a truncated one,
     // and cannot see that a per-device scope dropped the connect-time block
@@ -249,9 +299,9 @@ class LogRepo {
     // makes its absence mean both "nothing was dropped" and "an older build
     // wrote this", which is the same rule `marks:` already follows.
     final dropped = await droppedByRotation();
-    final out = <String>[
+    final preamble = <String>[
       ...header.map((h) => '# $h'),
-      if (header.isNotEmpty) '# rows: ${rows.length}',
+      if (header.isNotEmpty) '# rows: $total',
       if (header.isNotEmpty)
         // ⚠️ WHOLE-LOG, even in a device-scoped export — `# rows:` above it is
         // scoped and this is not, and a reader who took them as the same scope
@@ -264,7 +314,7 @@ class LogRepo {
       // Say up front whether this file carries user-declared ground truth (the
       // capture marks), and which states it covers. Whoever receives it should
       // not have to scan ten thousand lines to find out that it has none.
-      if (header.isNotEmpty) '# marks: ${_markSummary(rows)}',
+      if (header.isNotEmpty) '# marks: ${_markSummary(marks)}',
       if (header.isNotEmpty && excluded > 0)
         '# excluded: $excluded unattributed rows',
       // Omitted at zero, like every other optional preamble field: an empty
@@ -272,25 +322,39 @@ class LogRepo {
       if (header.isNotEmpty && fromOthers > 0)
         '# excluded: $fromOthers rows from other devices',
     ];
+    preamble.forEach(line);
     String? lastKey;
     var first = true;
-    for (final row in rows) {
-      final e = LogEntry.fromMap(row);
-      // The build is part of the key: an app update between two connections
-      // that happen to share a device must start a new section, or the label
-      // would claim rows for a build that did not write them.
-      final key = '${e.deviceId}/${e.sessionId}/${e.appBuild}';
-      if (key != lastKey) {
-        lastKey = key;
-        // No separator before the very first block when there is no header —
-        // it would just be a stray line at the top of the file.
-        if (!first || header.isNotEmpty) out.add('');
-        out.add('# ---- ${_sectionLabel(e, labelFor)} ----');
+    var afterId = -1;
+    while (true) {
+      final page = await _db.query(
+        Db.tableDiagLog,
+        where: '$where AND id > ?',
+        whereArgs: [...scopeArgs, afterId],
+        orderBy: 'id ASC',
+        limit: pageRows,
+      );
+      for (final row in page) {
+        final e = LogEntry.fromMap(row);
+        // The build is part of the key: an app update between two connections
+        // that happen to share a device must start a new section, or the label
+        // would claim rows for a build that did not write them.
+        final key = '${e.deviceId}/${e.sessionId}/${e.appBuild}';
+        if (key != lastKey) {
+          lastKey = key;
+          // No separator before the very first block when there is no header —
+          // it would just be a stray line at the top of the file.
+          if (!first || header.isNotEmpty) line('');
+          line('# ---- ${_sectionLabel(e, labelFor)} ----');
+        }
+        line(e.toLogLine());
+        first = false;
       }
-      out.add(e.toLogLine());
-      first = false;
+      if (sink is IOSink) await sink.flush();
+      if (page.length < pageRows) break;
+      afterId = (page.last['id'] as num).toInt();
     }
-    return out.join('\n');
+    return lines;
   }
 
   static String _sectionLabel(
