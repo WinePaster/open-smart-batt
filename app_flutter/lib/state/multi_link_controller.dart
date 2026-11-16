@@ -452,6 +452,20 @@ class MultiLinkController extends ChangeNotifier {
     unawaited(_conn.disconnect());
   }
 
+  /// The user pressed 中斷 on a unit that is live on a SECONDARY link
+  /// (feedback 2026.11.16/009, owner ruling (a)): let go of that one link and
+  /// nothing else — the primary and the other secondaries stay up.
+  ///
+  /// Recorded in [_released] exactly like a primary the user disconnected, so
+  /// [_reconcile] does not adopt it again behind their back (PR #43's rule).
+  /// Cleared the same way too: connecting it by hand ([beforePrimaryConnect])
+  /// or picking a vehicle that holds it.
+  Future<void> releaseByUser(String deviceId) async {
+    if (!_links.containsKey(deviceId)) return;
+    _released.add(deviceId);
+    await _release(deviceId, reason: 'user');
+  }
+
   /// The user pressed "stop" on the ongoing notification.
   void onMonitorStopped() {
     _stoppedByUser = true;

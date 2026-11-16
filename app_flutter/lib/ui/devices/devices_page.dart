@@ -818,6 +818,19 @@ class _DevicesPageState extends State<DevicesPage>
     await context.read<ConnectionController>().disconnect();
   }
 
+  /// 中斷 on a row that is live on a multi-link SECONDARY (feedback
+  /// 2026.11.16/009, owner ruling (a)): only that link goes. [_disconnect]
+  /// would drop the primary — a different unit than the row pressed.
+  Future<void> _disconnectSecondary(String deviceId) async {
+    await context.read<ConnectionController>().multiLink
+        ?.releaseByUser(deviceId);
+  }
+
+  /// Whether [deviceId] is live on a multi-link secondary (never the primary).
+  bool _secondaryLive(ConnectionController conn, String deviceId) =>
+      conn.connectedDeviceId != deviceId &&
+      (conn.multiLink?.isOnlineFor(deviceId) ?? false);
+
   /// Remove a saved device after confirmation (also disconnects if it's live).
   Future<void> _removeDevice(SavedDevice d) async {
     final l10n = AppLocalizations.of(context);
@@ -975,6 +988,10 @@ class _DevicesPageState extends State<DevicesPage>
     // builds (and shows everything, the default).
     final rssiMin = context.watch<SettingsController?>()?.scanRssiMin;
     final connectedId = conn.connectedDeviceId;
+    // design 0103 / feedback 2026.11.16/009: secondary links come and go
+    // without the ConnectionController notifying. Nullable lookup, as on the
+    // home tiles: subscribe when the shell provides it, never throw without.
+    if (conn.multiLink != null) context.watch<MultiLinkController?>();
 
     // RSSI lookup so saved rows can show live signal when nearby.
     final rssiById = <String, int>{for (final r in scan) r.id: r.rssi};
@@ -1080,21 +1097,26 @@ class _DevicesPageState extends State<DevicesPage>
     bool working,
     AppLocalizations l10n,
   ) {
-    Widget row(SavedDevice d) =>
-      _DeviceRow(
+    Widget row(SavedDevice d) {
+      // feedback 2026.11.16/009: with the multi-link experiment on, up to
+      // three rows can be live at once. Reading only the primary drew every
+      // secondary as 未連線 with a 連線 button — and that button hands the
+      // primary over, so "connect this one too" dropped the other unit.
+      final secondary = _secondaryLive(conn, d.id);
+      return _DeviceRow(
         alias: d.alias.isEmpty ? l10n.devicesUnnamed : d.alias,
         aliasMuted: false,
         meta: _savedMeta(d, rssiById[d.id], l10n),
         signalLevel: rssiById.containsKey(d.id)
             ? signalLevelFromRssi(rssiById[d.id]!)
             : 0,
-        isConnected: conn.isOnline && connectedId == d.id,
+        isConnected: conn.isOnlineFor(d.id),
         isConnecting: _connectingId == d.id,
         // One word of status, and it is a link. See the library comment:
         // a badge that only changes colour is the FB-53 failure again.
         badge: connectionBadgeFor(
-          isCurrentDevice: connectedId == d.id,
-          isOnline: conn.isOnline,
+          isCurrentDevice: connectedId == d.id || secondary,
+          isOnline: secondary || conn.isOnline,
           working: working || _connectingId == d.id,
           setupStalled: conn.isSetupStalledFor(d.id),
           // FB-86: this row's OWN error, not whatever the controller last
@@ -1109,9 +1131,12 @@ class _DevicesPageState extends State<DevicesPage>
         onEdit: () => _rename(d),
         onDeclare: () => _declareModel(d),
         onDelete: () => _removeDevice(d),
-        onDisconnect: _disconnect,
+        onDisconnect:
+            secondary ? () => _disconnectSecondary(d.id) : _disconnect,
         onConnect: () => _connectSaved(d),
       );
+    }
+
     // design 0106 Phase 4 (mock ④): in vehicle mode the same list is cut into
     // one section per car, then 「個人裝置」, then 未分車. A unit shared by two
     // cars (Q2) is listed under each. Outside vehicle mode: today's flat list.
