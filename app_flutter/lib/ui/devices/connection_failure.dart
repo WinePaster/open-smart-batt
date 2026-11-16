@@ -13,6 +13,8 @@
 /// extraction was done as its own commit with the test count unchanged.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -329,7 +331,20 @@ String connectionBadgeLabel(AppLocalizations l10n, ConnectionBadge b) =>
 /// evidence behind it — it is what the reporter did, unprompted, and it worked.
 /// Telling them to wait would be worse than saying nothing, because waiting is
 /// precisely what was already tried for forty minutes.
-class ConnectionAdviceCard extends StatelessWidget {
+///
+/// 🔴 ONE TAP, ONE ATTEMPT (feedback `2026.11.16/003`, ruled 2026-11-16).
+/// A Redmi Pad 2 turned single presses of this button into two `connect →`
+/// lines 15–19 ms apart, three times in two days; the second connect cancelled
+/// the first (`connection canceled`) and only the second one ran. The callers'
+/// own busy gate cannot catch that: both taps land inside one frame, before
+/// `working` has had a chance to rebuild the page, and this card is only on
+/// screen while `!working` anyway. So the card itself holds a latch — the
+/// first tap fires, every tap inside [retryLockout] is dropped. The latch is
+/// time-based rather than "until the link state moves" on purpose: a retry
+/// that is refused synchronously (Bluetooth off) leaves this card mounted with
+/// the same State, and a latch waiting for a state change would then disable
+/// the only way out for good.
+class ConnectionAdviceCard extends StatefulWidget {
   const ConnectionAdviceCard({
     super.key,
     required this.hint,
@@ -341,8 +356,36 @@ class ConnectionAdviceCard extends StatelessWidget {
   final String retryLabel;
   final VoidCallback onRetry;
 
+  /// How long after a retry further taps are ignored. Long enough to swallow
+  /// a duplicated touch event (field: 15–19 ms) and an impatient second press;
+  /// short enough that a retry refused on the spot can be pressed again.
+  static const Duration retryLockout = Duration(milliseconds: 1500);
+
+  @override
+  State<ConnectionAdviceCard> createState() => _ConnectionAdviceCardState();
+}
+
+class _ConnectionAdviceCardState extends State<ConnectionAdviceCard> {
+  Timer? _lockout;
+
+  void _onTap() {
+    if (_lockout != null) return;
+    _lockout = Timer(ConnectionAdviceCard.retryLockout, () {
+      _lockout = null;
+    });
+    widget.onRetry();
+  }
+
+  @override
+  void dispose() {
+    _lockout?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hint = widget.hint;
+    final retryLabel = widget.retryLabel;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
       child: Container(
@@ -365,7 +408,7 @@ class ConnectionAdviceCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             InkWell(
-              onTap: onRetry,
+              onTap: _onTap,
               borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
