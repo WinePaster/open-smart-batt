@@ -248,10 +248,23 @@ class LogRepo {
     final where = scoped == null ? kNotDemoRowSql : '$scoped AND $kNotDemoRowSql';
     final scopeArgs = <Object?>[...?args];
     var lines = 0;
+    // Lines are gathered per page and handed to [sink] in one write: an
+    // IOSink turns every write into its own encoded chunk, and one write per
+    // line made a 1.6 M-row export take ~10 min on an emulator, against ~8 s
+    // for the reads and formatting themselves (2026-11-16 measurement).
+    final pending = StringBuffer();
     void line(String l) {
-      if (lines > 0) sink.write('\n');
-      sink.write(l);
+      if (lines > 0) pending.write('\n');
+      pending.write(l);
       lines++;
+    }
+
+    Future<void> drain() async {
+      if (pending.isNotEmpty) {
+        sink.write(pending.toString());
+        pending.clear();
+      }
+      if (sink is IOSink) await sink.flush();
     }
 
     final total = header.isEmpty
@@ -323,6 +336,7 @@ class LogRepo {
         '# excluded: $fromOthers rows from other devices',
     ];
     preamble.forEach(line);
+    await drain();
     String? lastKey;
     var first = true;
     var afterId = -1;
@@ -350,7 +364,7 @@ class LogRepo {
         line(e.toLogLine());
         first = false;
       }
-      if (sink is IOSink) await sink.flush();
+      await drain();
       if (page.length < pageRows) break;
       afterId = (page.last['id'] as num).toInt();
     }
