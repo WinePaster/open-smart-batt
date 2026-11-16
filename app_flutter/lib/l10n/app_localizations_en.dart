@@ -1806,6 +1806,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogEmpty => 'Diagnostic log is empty';
 
   @override
+  String get settingsConnPriorityTitle => 'Link pace (experiment)';
+
+  @override
+  String settingsConnPriorityRow(String value) {
+    return 'Link pace (experiment): $value';
+  }
+
+  @override
+  String get settingsConnPriorityNone => 'Don\'t ask (default)';
+
+  @override
+  String get settingsConnPriorityLowPower => 'Low power (slower)';
+
+  @override
+  String get settingsConnPriorityBalanced => 'Balanced';
+
+  @override
+  String get settingsConnPriorityHigh => 'High (faster)';
+
+  @override
+  String settingsConnPrioritySet(String value) {
+    return 'Set to \"$value\". Connected units use it now and on every reconnect; restarting the app returns to \"Don\'t ask\".';
+  }
+
+  @override
   String settingsExportSubjectDiagLog(String appName) {
     return '$appName diagnostic log';
   }

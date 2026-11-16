@@ -31,6 +31,8 @@ import '../util/update_check.dart';
 import '../vehicles/vehicle_ui.dart';
 import '../vehicles/vehicles_page.dart';
 import '../widgets/industrial.dart';
+import '../../ble/ble.dart' show BleService;
+import 'conn_priority.dart';
 import 'g_calibration_wizard.dart';
 import 'measurement_explainer.dart';
 import 'report_problem.dart';
@@ -1173,6 +1175,41 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
   /// Requires a live connection: the marks describe states of a device we are
   /// recording, and running it disconnected would write ground truth for
   /// nothing.
+  /// 連線節奏（實驗）: pick a connection priority and apply it to every live
+  /// link now. Not persisted — see [BleService.connectionPriority].
+  Future<void> _pickConnectionPriority() async {
+    final l10n = AppLocalizations.of(context);
+    final conn = context.read<ConnectionController>();
+    final messenger = ScaffoldMessenger.of(context);
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: ctx.colors.panel,
+        title: Text(l10n.settingsConnPriorityTitle,
+            style: TextStyle(color: ctx.colors.text, fontSize: 16)),
+        children: [
+          for (var i = 0; i < connectionPriorityOptions.length; i++)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(i),
+              child: Text(
+                connectionPriorityLabel(l10n, connectionPriorityOptions[i]),
+                style: TextStyle(color: ctx.colors.text),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final p = connectionPriorityOptions[picked];
+    setState(() => BleService.connectionPriority = p);
+    await conn.applyConnectionPriorityNow();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(milliseconds: 3200),
+      content: Text(
+          l10n.settingsConnPrioritySet(connectionPriorityLabel(l10n, p))),
+    ));
+  }
+
   Future<void> _runCaptureWizard() async {
     final l10n = AppLocalizations.of(context);
     final conn = context.read<ConnectionController>();
@@ -1478,6 +1515,13 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
             label: l10n.captureWizardTitle,
             onTap: _runCaptureWizard,
           ),
+          if (showConnectionPriorityRow)
+            SettingsLinkRow(
+              icon: Icons.speed_outlined,
+              label: l10n.settingsConnPriorityRow(connectionPriorityLabel(
+                  l10n, BleService.connectionPriority)),
+              onTap: _pickConnectionPriority,
+            ),
           SettingsLinkRow(
             icon: Icons.file_download_outlined,
             label: l10n.settingsExportLogLabel,

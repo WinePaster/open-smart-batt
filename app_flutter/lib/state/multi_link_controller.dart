@@ -466,6 +466,14 @@ class MultiLinkController extends ChangeNotifier {
     await _release(deviceId, reason: 'user');
   }
 
+  /// [BleService.connectionPriority] changed: apply it to every secondary now
+  /// (each also applies it by itself on its next `ready`).
+  Future<void> applyConnectionPriorityNow() async {
+    for (final l in _links.values.toList()) {
+      await l.ble.applyConnectionPriorityNow();
+    }
+  }
+
   /// The user pressed "stop" on the ongoing notification.
   void onMonitorStopped() {
     _stoppedByUser = true;

@@ -1638,6 +1638,13 @@ class ConnectionController extends ChangeNotifier {
   /// hands it to the UI.
   int get keepAliveFailures => _ble.keepAliveFailures;
 
+  /// Apply [BleService.connectionPriority] to every live link now — the
+  /// primary and, in a multi-link build, each secondary.
+  Future<void> applyConnectionPriorityNow() async {
+    await _ble.applyConnectionPriorityNow();
+    await _multiLink?.applyConnectionPriorityNow();
+  }
+
   /// Per-class capabilities that gate the pack dashboard controls (檢測電容 /
   /// 解除斷電 / 防盜).
   ///

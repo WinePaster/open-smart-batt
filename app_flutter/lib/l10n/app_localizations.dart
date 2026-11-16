@@ -2924,6 +2924,48 @@ abstract class AppLocalizations {
   /// **'Diagnostic log is empty'**
   String get settingsLogEmpty;
 
+  /// No description provided for @settingsConnPriorityTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Link pace (experiment)'**
+  String get settingsConnPriorityTitle;
+
+  /// Android only. Asks the phone for a Bluetooth connection priority; ROG Phone 9 Pro drop experiment (2026-11-16).
+  ///
+  /// In en, this message translates to:
+  /// **'Link pace (experiment): {value}'**
+  String settingsConnPriorityRow(String value);
+
+  /// No description provided for @settingsConnPriorityNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t ask (default)'**
+  String get settingsConnPriorityNone;
+
+  /// No description provided for @settingsConnPriorityLowPower.
+  ///
+  /// In en, this message translates to:
+  /// **'Low power (slower)'**
+  String get settingsConnPriorityLowPower;
+
+  /// No description provided for @settingsConnPriorityBalanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get settingsConnPriorityBalanced;
+
+  /// No description provided for @settingsConnPriorityHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High (faster)'**
+  String get settingsConnPriorityHigh;
+
+  /// No description provided for @settingsConnPrioritySet.
+  ///
+  /// In en, this message translates to:
+  /// **'Set to \"{value}\". Connected units use it now and on every reconnect; restarting the app returns to \"Don\'t ask\".'**
+  String settingsConnPrioritySet(String value);
+
   /// design 0092 — the app name is injected so both editions share one string.
   ///
   /// In en, this message translates to:

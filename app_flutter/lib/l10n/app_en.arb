@@ -1348,6 +1348,28 @@
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
+  "settingsConnPriorityTitle": "Link pace (experiment)",
+  "settingsConnPriorityRow": "Link pace (experiment): {value}",
+  "@settingsConnPriorityRow": {
+    "description": "Android only. Asks the phone for a Bluetooth connection priority; ROG Phone 9 Pro drop experiment (2026-11-16).",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsConnPriorityNone": "Don't ask (default)",
+  "settingsConnPriorityLowPower": "Low power (slower)",
+  "settingsConnPriorityBalanced": "Balanced",
+  "settingsConnPriorityHigh": "High (faster)",
+  "settingsConnPrioritySet": "Set to \"{value}\". Connected units use it now and on every reconnect; restarting the app returns to \"Don't ask\".",
+  "@settingsConnPrioritySet": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "settingsExportSubjectDiagLog": "{appName} diagnostic log",
   "@settingsExportSubjectDiagLog": {
     "description": "design 0092 \u2014 the app name is injected so both editions share one string.",

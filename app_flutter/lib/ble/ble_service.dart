@@ -1320,6 +1320,45 @@ class BleService {
                 link: link),
       );
 
+  /// The connection priority asked of Android after every `ready`, or null to
+  /// ask nothing — the default, and the behaviour of every build before this.
+  ///
+  /// Process-wide and NOT persisted: an app restart returns to null, so an
+  /// experiment cannot outlive the session it was chosen in. Android only
+  /// (iOS has no such request). Merged from the `test/conn-priority` side
+  /// build (`26111490`) on owner ruling 2026-11-16 — ROG Phone 9 Pro drops and
+  /// battery reboots (feedback 2026.11.13/018, 2026.11.16/008, /012): the
+  /// open question is whether a slower link pace stops them.
+  static ConnectionPriority? connectionPriority;
+
+  /// Ask Android for [connectionPriority] on [link] and log the outcome as
+  /// `conn-priority: requested=…`. The line is written for null too, so an
+  /// export always says which pace was in force.
+  Future<void> _applyConnectionPriority(
+      _LinkState link, BluetoothDevice device) async {
+    if (!Platform.isAndroid) return;
+    final p = connectionPriority;
+    if (p == null) {
+      _emitEvent('conn-priority: requested=none', link: link);
+      return;
+    }
+    try {
+      await device.requestConnectionPriority(connectionPriorityRequest: p);
+      _emitEvent('conn-priority: requested=${p.name} ok', link: link);
+    } catch (e) {
+      _emitEvent('conn-priority: requested=${p.name} failed: $e', link: link);
+    }
+  }
+
+  /// Re-apply [connectionPriority] to the live link now (after the user picks
+  /// a new value). No-op without a real live link.
+  Future<void> applyConnectionPriorityNow() async {
+    final link = _current;
+    final device = link?.device;
+    if (link == null || device == null || _state != BleLinkState.ready) return;
+    await _applyConnectionPriority(link, device);
+  }
+
   Future<void> _setupConnection(_LinkState link) async {
     final device = link.device;
     if (device == null || link.settingUp || _state == BleLinkState.ready) {
@@ -1393,6 +1432,7 @@ class BleService {
 
       _startKeepAlive(link);
       _setState(BleLinkState.ready);
+      unawaited(_applyConnectionPriority(link, device));
     } catch (e) {
       // FB-23: do NOT rethrow. The only caller is a `connectionState` stream
       // listener, so a rethrow reaches no handler — it just becomes an
