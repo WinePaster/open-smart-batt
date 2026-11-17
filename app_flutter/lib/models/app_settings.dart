@@ -134,6 +134,12 @@ enum RetentionPolicy {
       };
 }
 
+/// 「連線節奏」— the connection priority asked of Android after every link
+/// comes up (schema v31). NULL on [AppSettings.linkPace] = ask nothing, the
+/// default. Names match flutter_blue_plus `ConnectionPriority`; the mapping
+/// lives in `ble_service.dart` so this file stays free of plugin imports.
+enum LinkPace { lowPower, balanced, high }
+
 /// All user-configurable settings. Defaults match the mockup's shown state
 /// (raw-packet diagnostics OFF by default).
 class AppSettings {
@@ -228,6 +234,16 @@ class AppSettings {
 
   /// The choices the settings row steps through, weakest first (after 不限制).
   static const List<int> scanRssiMinOptions = <int>[-90, -85, -80, -75, -70, -65];
+
+  /// 「連線節奏」(schema v31), or NULL for 預設 (ask nothing — every build
+  /// before 26111701 behaved this way). Android only; iOS ignores it.
+  ///
+  /// Remembered since owner ruling 2026-11-17 (feedback 2026.11.17/002: a ROG
+  /// Phone 9 Pro that dropped a 0169 battery 49 times in 39 min held it for
+  /// 50 min once 低功耗 was chosen — and the choice used to reset on every
+  /// app restart). 🔴 NULL is MEANING, like [scanRssiMin]: [clearLinkPace] is
+  /// the way back to 預設; unknown stored names read as 預設.
+  final LinkPace? linkPace;
 
   /// The chosen accent set's id (design 0064), or NULL for "never chose".
   ///
@@ -484,6 +500,8 @@ class AppSettings {
     this.allowLandscape = false,
     // NULL = 不限制: an upgraded install keeps the unfiltered list it had.
     this.scanRssiMin,
+    // NULL = 預設: an upgraded install asks nothing, exactly as before.
+    this.linkPace,
     this.accentThemeId,
     this.lang = AppLang.zhHant,
     this.tempUnit = TempUnit.celsius,
@@ -524,6 +542,9 @@ class AppSettings {
     // only way back to no limit.
     int? scanRssiMin,
     bool clearScanRssiMin = false,
+    // 🔴 Nullable AND meaningful (null = 預設) — [clearLinkPace] goes back.
+    LinkPace? linkPace,
+    bool clearLinkPace = false,
     AppLang? lang,
     TempUnit? tempUnit,
     bool? speedDetection,
@@ -567,6 +588,7 @@ class AppSettings {
         allowLandscape: allowLandscape ?? this.allowLandscape,
         scanRssiMin:
             clearScanRssiMin ? null : (scanRssiMin ?? this.scanRssiMin),
+        linkPace: clearLinkPace ? null : (linkPace ?? this.linkPace),
         accentThemeId: clearAccentTheme
             ? null
             : (accentThemeId ?? this.accentThemeId),
@@ -626,6 +648,9 @@ class AppSettings {
         // schema v30. NULL = 不限制 — written on every save (NULL included) for
         // the INSERT OR REPLACE reason at the head of this map.
         'scan_rssi_min': scanRssiMin,
+        // schema v31. NULL = 預設 — written on every save (NULL included), same
+        // INSERT OR REPLACE reason.
+        'conn_priority': linkPace?.name,
         // schema v19. NULL when never chosen — the column's own meaning; see
         // the field. Written on every save for the reason stated above: this
         // map REPLACES the row. The `theme:` prefix is added HERE and stripped
@@ -685,6 +710,11 @@ class AppSettings {
           final num v when scanRssiMinOptions.contains(v.toInt()) => v.toInt(),
           _ => null,
         },
+        // A pre-v31 row has no column, and an unknown name is not a choice:
+        // both read as 預設 (ask nothing), the behaviour of every older build.
+        linkPace: LinkPace.values
+            .where((e) => e.name == m['conn_priority'])
+            .firstOrNull,
         accentThemeId: _accentThemeFromMap(m),
         lang: AppLang.values.firstWhere(
           (e) => e.name == m['lang'],

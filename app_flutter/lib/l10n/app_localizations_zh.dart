@@ -1698,28 +1698,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLogEmpty => '診斷日誌為空';
 
   @override
-  String get settingsConnPriorityTitle => '連線節奏（實驗）';
+  String get settingsConnPriorityTitle => '連線節奏';
 
   @override
   String settingsConnPriorityRow(String value) {
-    return '連線節奏（實驗）：$value';
+    return '連線節奏：$value';
   }
 
   @override
-  String get settingsConnPriorityNone => '不要求（預設）';
+  String get settingsConnPriorityNone => '預設';
 
   @override
-  String get settingsConnPriorityLowPower => '低功耗（放慢）';
+  String get settingsConnPriorityLowPower => '放慢（常斷線時用）';
 
   @override
   String get settingsConnPriorityBalanced => '平衡';
 
   @override
-  String get settingsConnPriorityHigh => '高（加快）';
+  String get settingsConnPriorityHigh => '加快';
 
   @override
   String settingsConnPrioritySet(String value) {
-    return '已設為「$value」。連著的裝置立即套用，之後每次連上也會套用；App 重開後回到「不要求」。';
+    return '已設為「$value」，會記住。';
   }
 
   @override

@@ -317,6 +317,8 @@ class AppServices {
     // Prime the persisted controllers before the first frame.
     await Future.wait(
         [settings.load(), devices.load(), facts.load(), vehicles.load()]);
+    // 連線節奏 (schema v31): in force before the first link comes up.
+    BleService.connectionPriority = BleService.priorityFor(settings.linkPace);
 
     // design 0103 — only in a multi-link build. Created after the saved
     // devices are loaded, so its first reconcile sees them.

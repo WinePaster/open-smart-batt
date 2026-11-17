@@ -78,6 +78,9 @@ class SettingsController extends ChangeNotifier {
   /// 「搜尋訊號門檻」(dBm), or null for 不限制. Scan list only — see
   /// [AppSettings.scanRssiMin].
   int? get scanRssiMin => _settings.scanRssiMin;
+
+  /// 「連線節奏」, or null for 預設 — see [AppSettings.linkPace].
+  LinkPace? get linkPace => _settings.linkPace;
   AppLang get lang => _settings.lang;
   TempUnit get tempUnit => _settings.tempUnit;
   /// 🔴 **The STORED switch — what the user said, not whether the feature is
@@ -156,6 +159,11 @@ class SettingsController extends ChangeNotifier {
   Future<void> setScanRssiMin(int? v) => update(v == null
       ? _settings.copyWith(clearScanRssiMin: true)
       : _settings.copyWith(scanRssiMin: v));
+
+  /// null = 預設. Only stores it; the caller pushes it to [BleService].
+  Future<void> setLinkPace(LinkPace? v) => update(v == null
+      ? _settings.copyWith(clearLinkPace: true)
+      : _settings.copyWith(linkPace: v));
 
   /// Choose an accent set (design 0064), or null to go back to "never chose".
   ///

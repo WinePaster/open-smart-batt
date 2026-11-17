@@ -561,7 +561,20 @@ class Db {
   /// CLAIMING A NUMBER: 30 was taken after reading `schemaVersion` out of every
   /// local and remote ref of the public repo on 2026-11-15 — the highest
   /// anywhere was 29.
-  static const int schemaVersion = 30;
+  ///
+  /// v31 — 「連線節奏」remembered (owner ruling 2026-11-17, feedback
+  /// 2026.11.17/002; the 26111701 switch reset on every app restart).
+  ///
+  ///   settings.conn_priority  TEXT, **nullable, NO DEFAULT** — a
+  ///     `LinkPace` name; NULL = 預設 (ask Android nothing).
+  ///
+  /// Same shape as v30: every pre-v31 row reads as 預設, which is what every
+  /// earlier build did after a restart.
+  ///
+  /// CLAIMING A NUMBER: 31 was taken after reading `schemaVersion` out of every
+  /// local ref of the public (244 refs) and pro (40 refs) repos on 2026-11-17
+  /// — the highest anywhere was 30.
+  static const int schemaVersion = 31;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1214,6 +1227,16 @@ class AppDatabase {
         );
       }
     }
+    if (from < 31) {
+      // 連線節奏 — see [Db.schemaVersion] v31. Nullable, NO DEFAULT: NULL =
+      // 預設. Guarded for the same rolled-back-fixture reason as v30.
+      final cols = await db.rawQuery('PRAGMA table_info(${Db.tableSettings})');
+      if (!cols.any((r) => r['name'] == 'conn_priority')) {
+        await db.execute(
+          'ALTER TABLE ${Db.tableSettings} ADD COLUMN conn_priority TEXT',
+        );
+      }
+    }
   }
 
   /// design 0106's tables, written ONCE and used by both [_createStatements]
@@ -1395,6 +1418,7 @@ class AppDatabase {
       text_size TEXT,
       allow_landscape INTEGER NOT NULL DEFAULT 0,
       scan_rssi_min INTEGER,
+      conn_priority TEXT,
       alerts_enabled INTEGER NOT NULL DEFAULT 0,
       alert_sustain_sec INTEGER NOT NULL DEFAULT 5,
       alert_repeat_min INTEGER NOT NULL DEFAULT 15,

@@ -34,6 +34,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../config/multi_link_config.dart';
 import '../demo/demo.dart';
+import '../models/app_settings.dart' show LinkPace;
 import '../models/device_ident.dart' show shortDeviceHash;
 import '../models/log_entry.dart' show LogDirection;
 import '../models/telemetry_sample.dart';
@@ -1323,13 +1324,24 @@ class BleService {
   /// The connection priority asked of Android after every `ready`, or null to
   /// ask nothing — the default, and the behaviour of every build before this.
   ///
-  /// Process-wide and NOT persisted: an app restart returns to null, so an
-  /// experiment cannot outlive the session it was chosen in. Android only
+  /// Process-wide. ~~NOT persisted: an app restart returns to null, so an
+  /// experiment cannot outlive the session it was chosen in.~~ Since schema
+  /// v31 (owner ruling 2026-11-17) the choice is stored as
+  /// `AppSettings.linkPace`; `AppServices.create` and the settings row copy it
+  /// here via [priorityFor]. Android only
   /// (iOS has no such request). Merged from the `test/conn-priority` side
   /// build (`26111490`) on owner ruling 2026-11-16 — ROG Phone 9 Pro drops and
   /// battery reboots (feedback 2026.11.13/018, 2026.11.16/008, /012): the
   /// open question is whether a slower link pace stops them.
   static ConnectionPriority? connectionPriority;
+
+  /// The stored 「連線節奏」 as the plugin's request; null = ask nothing.
+  static ConnectionPriority? priorityFor(LinkPace? p) => switch (p) {
+        null => null,
+        LinkPace.lowPower => ConnectionPriority.lowPower,
+        LinkPace.balanced => ConnectionPriority.balanced,
+        LinkPace.high => ConnectionPriority.high,
+      };
 
   /// Ask Android for [connectionPriority] on [link] and log the outcome as
   /// `conn-priority: requested=…`. The line is written for null too, so an

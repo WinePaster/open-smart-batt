@@ -1348,21 +1348,21 @@
   "settingsExportLogLabel": "Export diagnostic log (.log)",
   "settingsClearLogLabel": "Clear diagnostic log",
   "settingsLogEmpty": "Diagnostic log is empty",
-  "settingsConnPriorityTitle": "Link pace (experiment)",
-  "settingsConnPriorityRow": "Link pace (experiment): {value}",
+  "settingsConnPriorityTitle": "Link pace",
+  "settingsConnPriorityRow": "Link pace: {value}",
   "@settingsConnPriorityRow": {
-    "description": "Android only. Asks the phone for a Bluetooth connection priority; ROG Phone 9 Pro drop experiment (2026-11-16).",
+    "description": "Android only. Asks the phone for a Bluetooth connection priority; ROG Phone 9 Pro drops (2026-11-16); remembered since schema v31 (2026-11-17).",
     "placeholders": {
       "value": {
         "type": "String"
       }
     }
   },
-  "settingsConnPriorityNone": "Don't ask (default)",
-  "settingsConnPriorityLowPower": "Low power (slower)",
+  "settingsConnPriorityNone": "Default",
+  "settingsConnPriorityLowPower": "Slower (if it keeps dropping)",
   "settingsConnPriorityBalanced": "Balanced",
-  "settingsConnPriorityHigh": "High (faster)",
-  "settingsConnPrioritySet": "Set to \"{value}\". Connected units use it now and on every reconnect; restarting the app returns to \"Don't ask\".",
+  "settingsConnPriorityHigh": "Faster",
+  "settingsConnPrioritySet": "Set to \"{value}\" and saved.",
   "@settingsConnPrioritySet": {
     "placeholders": {
       "value": {

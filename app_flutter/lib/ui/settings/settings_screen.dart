@@ -1175,11 +1175,12 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
   /// Requires a live connection: the marks describe states of a device we are
   /// recording, and running it disconnected would write ground truth for
   /// nothing.
-  /// 連線節奏（實驗）: pick a connection priority and apply it to every live
-  /// link now. Not persisted — see [BleService.connectionPriority].
+  /// 連線節奏: pick a connection priority, remember it (schema v31) and apply
+  /// it to every live link now — see [BleService.connectionPriority].
   Future<void> _pickConnectionPriority() async {
     final l10n = AppLocalizations.of(context);
     final conn = context.read<ConnectionController>();
+    final settings = context.read<SettingsController>();
     final messenger = ScaffoldMessenger.of(context);
     final picked = await showDialog<int>(
       context: context,
@@ -1201,7 +1202,9 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
     );
     if (picked == null || !mounted) return;
     final p = connectionPriorityOptions[picked];
-    setState(() => BleService.connectionPriority = p);
+    BleService.connectionPriority = BleService.priorityFor(p);
+    // Stored like the other settings rows: notify now, write in the background.
+    unawaited(settings.setLinkPace(p));
     await conn.applyConnectionPriorityNow();
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 3200),
@@ -1519,7 +1522,7 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
             SettingsLinkRow(
               icon: Icons.speed_outlined,
               label: l10n.settingsConnPriorityRow(connectionPriorityLabel(
-                  l10n, BleService.connectionPriority)),
+                  l10n, context.watch<SettingsController>().linkPace)),
               onTap: _pickConnectionPriority,
             ),
           SettingsLinkRow(

@@ -1,29 +1,29 @@
-/// 連線節奏（實驗）— the Android connection-priority switch in Settings >
-/// diagnostics (owner ruling 2026-11-16, merged from the `test/conn-priority`
-/// side build `26111490`; default 不要求). See [BleService.connectionPriority].
+/// 連線節奏 — the Android connection-priority switch in Settings > diagnostics
+/// (owner ruling 2026-11-16, merged from the `test/conn-priority` side build
+/// `26111490`; default 預設). Remembered since schema v31 (owner ruling
+/// 2026-11-17) as [AppSettings.linkPace]. See [BleService.connectionPriority].
 library;
 
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show ConnectionPriority;
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import 'package:open_smart_batt/models/app_settings.dart' show LinkPace;
 
 /// The choices, in display order; null = ask nothing (the default).
-const List<ConnectionPriority?> connectionPriorityOptions = [
+const List<LinkPace?> connectionPriorityOptions = [
   null,
-  ConnectionPriority.lowPower,
-  ConnectionPriority.balanced,
-  ConnectionPriority.high,
+  LinkPace.lowPower,
+  LinkPace.balanced,
+  LinkPace.high,
 ];
 
-String connectionPriorityLabel(AppLocalizations l10n, ConnectionPriority? p) =>
+String connectionPriorityLabel(AppLocalizations l10n, LinkPace? p) =>
     switch (p) {
       null => l10n.settingsConnPriorityNone,
-      ConnectionPriority.lowPower => l10n.settingsConnPriorityLowPower,
-      ConnectionPriority.balanced => l10n.settingsConnPriorityBalanced,
-      ConnectionPriority.high => l10n.settingsConnPriorityHigh,
+      LinkPace.lowPower => l10n.settingsConnPriorityLowPower,
+      LinkPace.balanced => l10n.settingsConnPriorityBalanced,
+      LinkPace.high => l10n.settingsConnPriorityHigh,
     };
 
 /// Tests force the row on; on a device it exists on Android only (iOS has no

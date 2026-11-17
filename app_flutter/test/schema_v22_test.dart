@@ -469,13 +469,14 @@ void main() {
         // `Db.schemaVersion`'s doc comment is the arbiter, and this line is what
         // makes two branches claiming one number collide here rather than on a
         // user's phone. Moved to 30 on 2026-11-15 (settings.scan_rssi_min,
-        // 搜尋訊號門檻).
+        // 搜尋訊號門檻). Moved to 31 on 2026-11-17 (settings.conn_priority,
+        // 連線節奏 remembered).
         //
         // ⚠️ v24 adds no column, so the parity cases above it stay green
         // whatever it does — this pin and `schema_v24_test.dart` are the only
         // two places that would notice it going missing. v25 DOES add a table,
         // so the parity cases cover it.
-        expect(Db.schemaVersion, 30);
+        expect(Db.schemaVersion, 31);
       }
     });
   });

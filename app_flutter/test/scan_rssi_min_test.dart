@@ -99,8 +99,8 @@ void main() {
           path: await v29('up'), factory: databaseFactoryFfi);
       addTearDown(up.close);
       final v = (await up.db.rawQuery('PRAGMA user_version')).single;
-      expect(v['user_version'], 30);
-      expect(Db.schemaVersion, 30);
+      expect(v['user_version'], Db.schemaVersion);
+      expect(Db.schemaVersion, greaterThanOrEqualTo(30));
       final row = (await up.db.query('settings')).single;
       expect(row.containsKey('scan_rssi_min'), isTrue);
       expect(row['scan_rssi_min'], isNull);
