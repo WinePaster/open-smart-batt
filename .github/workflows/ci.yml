@@ -80,9 +80,13 @@ jobs:
 
   # Unit + widget tests. Until 2026-11-17 CI never ran `flutter test`, so a
   # green CI said nothing about the tests. Separate job so it runs in parallel
-  # with the build. `-j 8` caps file-level concurrency: many widget tests wait
-  # a fixed 20–40 ms of real time for ffi sqlite I/O, and under heavy
-  # parallelism those waits run short and tests fail at random.
+  # with the build. Concurrency is capped: many widget tests wait a fixed
+  # 20–40 ms of real time for ffi sqlite I/O, and under heavy parallelism
+  # those waits run short and tests fail at random. Locally (32 cores) `-j 8`
+  # is enough; this runner has 4 cores and `-j 8` failed 5 such tests on the
+  # first run, so it gets `-j 2` (same files-per-core headroom as local).
+  # TZ: the seam goldens (test/seam_golden_test.dart (d)) were recorded in
+  # UTC+8 and the demo unit follows the local time of day.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -101,7 +105,9 @@ jobs:
         run: flutter pub get
       - name: flutter test
         working-directory: ${{ env.APP_DIR }}
-        run: flutter test -j 8
+        env:
+          TZ: Asia/Taipei
+        run: flutter test -j 2
 
   # iOS compile smoke test. Independent of the Android job above; added by the
   # iOS port (does NOT alter analyze-build).

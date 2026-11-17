@@ -9,7 +9,10 @@
 //      command frames the cut-off flow writes;
 //   c. the order of the frames that link receives (values vary with the wall
 //      clock, so only selector order and checksum are pinned);
-//   d. what the decoder makes of a fixed-clock demo unit's answers;
+//   d. what the decoder makes of a fixed-clock demo unit's answers —
+//      ⚠️ recorded in UTC+8: the demo unit follows the LOCAL time of day
+//      (DemoPeripheral._phase) as well as the epoch, so (d) only matches with
+//      TZ=Asia/Taipei. CI pins that zone for `flutter test` (ci.yml);
 //   e. that a power-bank device-type flips the schedule to the 5-tick `!#`.
 //
 // Goldens live in test/goldens/seam_0099/. To regenerate them (only ever on
