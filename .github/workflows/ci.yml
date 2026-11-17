@@ -78,6 +78,31 @@ jobs:
       - name: foreground-service types (merged manifest)
         run: tool/check_fgs_types.sh "${APP_DIR}/build/app/outputs/flutter-apk/app-debug.apk"
 
+  # Unit + widget tests. Until 2026-11-17 CI never ran `flutter test`, so a
+  # green CI said nothing about the tests. Separate job so it runs in parallel
+  # with the build. `-j 8` caps file-level concurrency: many widget tests wait
+  # a fixed 20–40 ms of real time for ffi sqlite I/O, and under heavy
+  # parallelism those waits run short and tests fail at random.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # sqflite_common_ffi loads the unversioned libsqlite3.so on Linux.
+      - name: sqlite3 for ffi
+        run: sudo apt-get install -y --no-install-recommends libsqlite3-dev
+      - name: pub get
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
+      - name: flutter test
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter test -j 8
+
   # iOS compile smoke test. Independent of the Android job above; added by the
   # iOS port (does NOT alter analyze-build).
   ios-build:
