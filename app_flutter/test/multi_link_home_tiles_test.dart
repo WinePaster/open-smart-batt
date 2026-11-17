@@ -82,6 +82,15 @@ class _FakeSecondary extends BleService {
   }
 }
 
+/// Real-time wait (inside `runAsync`) until [ok] holds; fails after 15 s.
+Future<void> _until(bool Function() ok) async {
+  final sw = Stopwatch()..start();
+  while (!ok()) {
+    if (sw.elapsed > const Duration(seconds: 15)) fail('_until: timed out');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
@@ -112,10 +121,20 @@ void main() {
         await s.devices.save(d);
       }
       await s.multiLink!.setEnabled(true);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // Wait for outcomes, not for a time (2026-11-17): a fixed 20 ms let both
+      // links come up on a quiet machine, but not with `flutter test` running
+      // 32 files at once — this test then failed now and then in a full run.
+      await _until(() => {for (final b in secs) b.id}.containsAll(['A', 'B']));
       secs.firstWhere((b) => b.id == 'A').sample(13.25);
       secs.firstWhere((b) => b.id == 'B').sample(12.20);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // …and until each sample's own `DeviceController.touch` has written and
+      // reloaded, or it lands after `dispose()` below (the fixed 20 ms used to
+      // cover that too, by luck of timing).
+      await _until(() =>
+          s.multiLink!.telemetryFor('A')?.sample.pvlt == 13.25 &&
+          s.multiLink!.telemetryFor('B')?.sample.pvlt == 12.20 &&
+          s.devices.deviceFor('A')?.lastValue == 13.25 &&
+          s.devices.deviceFor('B')?.lastValue == 12.20);
     });
 
     tester.view.physicalSize = const Size(900, 2400);

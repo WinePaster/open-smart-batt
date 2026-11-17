@@ -317,6 +317,46 @@ void main() {
     await settle(tester);
   }
 
+  /// Pump until [done] holds, giving real (ffi) database I/O real time.
+  ///
+  /// 🔴 Why [settle]'s fixed 40 ms is not enough after the naming prompt
+  /// (2026-11-17): every await in the save chain resumes in the test's fake
+  /// zone only on the NEXT pump, and each step is a real database write on
+  /// another isolate. On a quiet machine 40 ms covers it; `flutter test` on
+  /// 32 cores runs 32 test files at once and it does not — `devices_page_test`
+  /// then failed 3–5 naming tests per full run (same on unchanged `e0dc41c`),
+  /// while the file alone passed. So wait for the outcome, not for a time.
+  Future<void> pumpUntil(WidgetTester tester, Future<bool> Function() done,
+      {Duration timeout = const Duration(seconds: 15)}) async {
+    final sw = Stopwatch()..start();
+    while (true) {
+      final ok = await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return done();
+      });
+      await tester.pump();
+      if (ok == true) return;
+      if (sw.elapsed > timeout) fail('pumpUntil: not done after $timeout');
+    }
+  }
+
+  /// Press [button] on the naming prompt and wait until the save flow has
+  /// finished — its last act is the `save-device: result=…` log line, on every
+  /// branch (named / unnamed / declined / already-saved).
+  Future<void> answerNamePrompt(
+      WidgetTester tester, AppServices s, String button) async {
+    Future<int> results() async {
+      await s.pending.drain();
+      return (await s.logRepo.queryLog())
+          .where((e) => (e.note ?? '').startsWith('save-device: result='))
+          .length;
+    }
+
+    final before = (await tester.runAsync(results))!;
+    await tester.tap(find.text(button));
+    await pumpUntil(tester, () async => await results() > before);
+  }
+
   /// Come back from the page FB-92 now pushes.
   ///
   /// Several tests below are about what the LIST does after a connect, and
@@ -441,7 +481,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'Car #2');
     await tester.pump();
-    await tester.tap(find.text('Save alias'));
+    await answerNamePrompt(tester, s, 'Save alias');
     await settle(tester);
 
     expect(s.devices.isSaved('DEV-NEW'), isTrue);
@@ -488,7 +528,7 @@ void main() {
     await settle(tester);
     await tester.enterText(find.byType(TextField), 'Car #2');
     await tester.pump();
-    await tester.tap(find.text('Save alias'));
+    await answerNamePrompt(tester, s, 'Save alias');
     await settleRoute(tester);
     expect(s.devices.isSaved('DEV-NEW'), isTrue);
 
@@ -1042,7 +1082,7 @@ void main() {
         'the page', (tester) async {
       final s = await connectNearbyUnsaved(tester);
 
-      await tester.tap(find.text('Skip'));
+      await answerNamePrompt(tester, s, 'Skip');
       await settleRoute(tester);
 
       expect(s.devices.isSaved('DEV-NEW'), isFalse,
@@ -1065,7 +1105,7 @@ void main() {
       ble._linkOut.add(BleLinkState.disconnected);
       await settle(tester);
 
-      await tester.tap(find.text('Skip'));
+      await answerNamePrompt(tester, s, 'Skip');
       await settleRoute(tester);
 
       expect(s.connection.isOnline, isFalse, reason: 'the precondition');
@@ -1096,7 +1136,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'Car #4');
       await tester.pump();
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settleRoute(tester);
 
       expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #4');
@@ -1458,7 +1498,7 @@ void main() {
       await connectNearby(tester);
 
       // Type nothing at all, and press the save button.
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settleRoute(tester);
       // FB-92: the save now ends on the unit's page. This test is about the
       // ROW the save produced, so come back to where rows are.
@@ -1502,7 +1542,7 @@ void main() {
               'indistinguishable from the empty-field bug we just fixed');
 
       // …and the answer the user actually typed still lands.
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settle(tester);
       await tester.pump(const Duration(milliseconds: 400));
       // ⚠️ **One more `settle` since design 0079 S3 (2026-08-21).** Saving
@@ -1531,7 +1571,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), '老王的機車');
       await tester.pump();
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settle(tester);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.runAsync(s.pending.drain);
@@ -1569,7 +1609,7 @@ void main() {
       await settle(tester);
       await connectNearby(tester);
 
-      await tester.tap(find.text('Skip'));
+      await answerNamePrompt(tester, s, 'Skip');
       await settle(tester);
       await tester.runAsync(s.pending.drain);
 
@@ -1598,7 +1638,7 @@ void main() {
       await settle(tester);
       await connectNearby(tester);
 
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settle(tester);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.runAsync(s.pending.drain);
@@ -1626,7 +1666,7 @@ void main() {
       await settle(tester);
       await connectNearby(tester);
 
-      await tester.tap(find.text('Skip'));
+      await answerNamePrompt(tester, s, 'Skip');
       await settle(tester);
       // ⚠️ **One more `settle` since design 0079 S3 (2026-08-21).** Saving
       // pushes the detail page (FB-92), and that page now issues one database
@@ -1722,7 +1762,7 @@ void main() {
     // never list it.
     await tester.tap(find.text('Connect').last);
     await settle(tester);
-    await tester.tap(find.text('Skip'));
+    await answerNamePrompt(tester, s, 'Skip');
     await settleRoute(tester);
     // FB-92 C5: 跳過 declines the RECORD, not the device — so it lands on the
     // unit's page just as 儲存 does. This test is about the list behind it.
@@ -1901,7 +1941,7 @@ void main() {
           reason: 'the naming prompt must follow the connect, not the caller');
       await tester.enterText(find.byType(TextField), 'Car #9');
       await tester.pump();
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settle(tester);
       expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #9');
     });
@@ -1917,7 +1957,7 @@ void main() {
 
       await tester.tap(find.text('Connect').last);
       await settle(tester);
-      await tester.tap(find.text('Skip')); // decline to name it
+      await answerNamePrompt(tester, s, 'Skip'); // decline to name it
       await settleRoute(tester);
       // FB-92 C5 again. T55-5's subject is the way OUT that the row offers, so
       // it starts from the row.
@@ -1931,7 +1971,7 @@ void main() {
       await settle(tester);
       await tester.enterText(find.byType(TextField), 'Car #7');
       await tester.pump();
-      await tester.tap(find.text('Save alias'));
+      await answerNamePrompt(tester, s, 'Save alias');
       await settle(tester);
       expect(s.devices.deviceFor('DEV-NEW')?.alias, 'Car #7');
     });
