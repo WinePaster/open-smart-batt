@@ -1235,10 +1235,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsConnectionHeading => '連線';
 
   @override
-  String get settingsAutoReconnectLabel => '自動重連';
+  String get settingsAutoReconnectLabel => '自動連線';
 
   @override
-  String get settingsAutoReconnectSub => '連線中斷時自動嘗試重連';
+  String get settingsAutoReconnectSub => '斷線或打開裝置頁時自己連上。關閉後只連你按的。';
 
   @override
   String get settingsBackgroundMonitorLabel => '背景持續監看';

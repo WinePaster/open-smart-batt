@@ -1315,11 +1315,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConnectionHeading => 'Connection';
 
   @override
-  String get settingsAutoReconnectLabel => 'Auto-reconnect';
+  String get settingsAutoReconnectLabel => 'Auto-connect';
 
   @override
   String get settingsAutoReconnectSub =>
-      'Automatically attempt to reconnect when the connection drops';
+      'Connects by itself after a drop or when you open a device. Off: only what you tap.';
 
   @override
   String get settingsBackgroundMonitorLabel =>

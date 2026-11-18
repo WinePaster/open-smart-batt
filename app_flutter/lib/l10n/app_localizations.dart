@@ -2063,13 +2063,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAutoReconnectLabel.
   ///
   /// In en, this message translates to:
-  /// **'Auto-reconnect'**
+  /// **'Auto-connect'**
   String get settingsAutoReconnectLabel;
 
   /// No description provided for @settingsAutoReconnectSub.
   ///
   /// In en, this message translates to:
-  /// **'Automatically attempt to reconnect when the connection drops'**
+  /// **'Connects by itself after a drop or when you open a device. Off: only what you tap.'**
   String get settingsAutoReconnectSub;
 
   /// No description provided for @settingsBackgroundMonitorLabel.
