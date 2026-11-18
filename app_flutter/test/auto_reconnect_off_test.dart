@@ -35,8 +35,13 @@ class _CapturingLogRepo implements LogRepo {
 }
 
 class _StubSettingsRepo implements SettingsRepo {
+  _StubSettingsRepo({this.stored = AppSettings.defaults});
+
+  /// What `settings.load()` reads back — the user's saved choice.
+  final AppSettings stored;
+
   @override
-  Future<AppSettings> loadSettings() async => AppSettings.defaults;
+  Future<AppSettings> loadSettings() async => stored;
 
   @override
   Future<void> saveSettings(AppSettings settings) async {}
@@ -90,10 +95,10 @@ class _FakeBle extends BleService {
 }
 
 class _Harness {
-  _Harness()
+  _Harness({AppSettings stored = AppSettings.defaults})
       : ble = _FakeBle(),
         logs = _CapturingLogRepo(),
-        settings = SettingsController(_StubSettingsRepo()) {
+        settings = SettingsController(_StubSettingsRepo(stored: stored)) {
     conn = ConnectionController(ble, settings: settings, logs: logs);
   }
 
@@ -127,6 +132,16 @@ class _Harness {
   void armAfterHealthyDrop(FakeAsync async) {
     healthyDrop(async);
     conn.armAutoConnect();
+    async.flushMicrotasks();
+  }
+
+  /// A cold start after iOS reclaimed a process that had armed a hand-off:
+  /// `AppServices.create` calls [ConnectionController.restoreArm] before
+  /// `settings.load()`.
+  void coldStartWithArm(FakeAsync async, {String id = 'AA'}) {
+    conn.restoreArm(AutoConnectArm(
+        deviceId: id,
+        armedAt: DateTime.now().subtract(const Duration(minutes: 10))));
     async.flushMicrotasks();
   }
 
@@ -214,6 +229,57 @@ void main() {
       expect(h.conn.isAutoConnectArmed, isFalse);
       expect(h.ble.connectCalls, connectsBefore);
       h.dispose();
+    });
+  });
+
+  group('a hand-off adopted at cold start (design 0060 restoration)', () {
+    test('a launch whose saved setting is off withdraws it at settings load',
+        () {
+      fakeAsync((async) {
+        final h = _Harness(
+            stored: AppSettings.defaults.copyWith(autoReconnect: false));
+        h.coldStartWithArm(async);
+        expect(h.ble.autoConnectCalls, 1,
+            reason: 'restoreArm runs before load, on the default (on)');
+        unawaited(h.settings.load());
+        async.flushMicrotasks();
+        expect(h.ble.disconnectCalls, 1,
+            reason: 'the load is the on → off edge');
+        expect(h.standDownLines.single, contains('adopted=true'));
+        h.dispose();
+      });
+    });
+
+    test('turned off after the cold-start window: still withdrawn', () {
+      fakeAsync((async) {
+        final h = _Harness();
+        h.coldStartWithArm(async);
+        async.elapse(
+            ConnectionController.coldReconcileGrace + const Duration(seconds: 1));
+        h.turnOff(async);
+        expect(h.ble.disconnectCalls, 1);
+        expect(h.standDownLines.single, contains('adopted=true'));
+        h.dispose();
+      });
+    });
+
+    test('a restored link that already came up is left alone', () {
+      fakeAsync((async) {
+        final h = _Harness();
+        h.coldStartWithArm(async);
+        for (final s in [
+          BleLinkState.connecting,
+          BleLinkState.connected,
+          BleLinkState.ready,
+        ]) {
+          h.ble.emitLink(s);
+          async.flushMicrotasks();
+        }
+        h.turnOff(async);
+        expect(h.ble.disconnectCalls, 0);
+        expect(h.standDownLines, isEmpty);
+        h.dispose();
+      });
     });
   });
 }

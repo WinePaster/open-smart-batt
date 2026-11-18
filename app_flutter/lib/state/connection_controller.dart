@@ -230,19 +230,37 @@ class ConnectionController extends ChangeNotifier {
   /// A connect already IN FLIGHT (a rung that fired, `connecting`) is left to
   /// finish; it cannot be told apart from the user's own tap at this layer,
   /// and its failure does not reschedule ([_scheduleReconnect]'s guards).
+  ///
+  /// It also withdraws a hand-off ADOPTED at cold start ([_adoptRestoredArm]),
+  /// which has no watchdog of its own. That case is reached at every launch
+  /// with the setting off, not only by a toggle: [restoreArm] runs before
+  /// `settings.load()`, while the setting still reads its default (on), and
+  /// the load's own notify is the on → off edge this method fires on.
   void _standDownAutoReconnect() {
     final armed = isAutoConnectArmed;
     final retrying = isRetrying;
-    if (!armed && !retrying) return;
+    // Not yet `connected`: a restored link that already came up is a live
+    // link, and the setting does not cut those.
+    final adopted = _adoptedRestoreId != null &&
+        (_link == BleLinkState.connecting ||
+            _link == BleLinkState.disconnected);
+    if (!armed && !retrying && !adopted) return;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempts = 0;
     _event('auto-reconnect: stood down — the setting was turned off '
-        '(armed=$armed retrying=$retrying)');
-    if (armed) {
+        '(armed=$armed retrying=$retrying adopted=$adopted)');
+    if (armed || adopted) {
       // Armed ⇒ not `connected` (that event stands the watchdog down), so
-      // this cancels only the pending OS connect, never a live link.
+      // this cancels only the pending OS connect, never a live link. First,
+      // while [_restoredArm] still says a row may exist, so the row goes too.
       _cancelAutoConnectWatchdog();
+      if (adopted) {
+        // The cold-start episode is closed by the user, not unresolved.
+        _restoredArm = null;
+        _coldReconcileTimer?.cancel();
+        _coldReconcileTimer = null;
+      }
       unawaited(_ble.disconnect().catchError((Object _) {}));
     }
     notifyListeners();
@@ -800,6 +818,17 @@ class ConnectionController extends ChangeNotifier {
   /// deadline — it is a claim about an episode that is already over, held only
   /// long enough to find out whether this launch closes it (design 0060 §3.3).
   AutoConnectArm? _restoredArm;
+
+  /// The unit whose pending connect [_adoptRestoredArm] re-registered, until
+  /// any exit of the watchdog ([_cancelAutoConnectWatchdog]: `connected`,
+  /// `ready`, a user's connect or disconnect, dispose) or
+  /// [_standDownAutoReconnect] withdraws it.
+  ///
+  /// 🔴 2026-11-18: unlike [_restoredArm] this outlives [coldReconcileGrace] —
+  /// the window only bounds the LOG verdict, while the OS-level connect it
+  /// re-registered stays in force. Without this, turning 自動重連 off could
+  /// not see it, and the battery came back anyway.
+  String? _adoptedRestoreId;
 
   /// The window in which a restored arm may still be absorbed silently.
   Timer? _coldReconcileTimer;
@@ -3102,6 +3131,7 @@ class ConnectionController extends ChangeNotifier {
     final mayHaveRow = _autoConnectArmedId != null || _restoredArm != null;
     _autoConnectArmedAt = null;
     _autoConnectArmedId = null;
+    _adoptedRestoreId = null;
     if (mayHaveRow) _clearArmRow();
   }
 
@@ -3188,6 +3218,7 @@ class ConnectionController extends ChangeNotifier {
     // — that path additionally requires `reachedConnected` or an attempt count,
     // both zero here.
     _desiredDeviceId = id;
+    _adoptedRestoreId = id;
     _event('restore: adopting ${shortDeviceHash(id)} — re-registering the '
         'pending connect the previous process left behind');
     unawaited(_ble.connect(id, autoConnect: true).catchError((Object e) {
