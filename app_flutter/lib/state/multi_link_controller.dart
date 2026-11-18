@@ -146,6 +146,7 @@ class MultiLinkController extends ChangeNotifier {
     _conn.addListener(_onPrimaryChanged);
     _devices.addListener(_reconcile);
     _vehicles?.addListener(_onVehiclesChanged);
+    _settings.addListener(_onSettingsChanged);
     _lastPrimary = _conn.connectedDeviceId;
     _lastVehicleId = _vehicleIdNow();
   }
@@ -301,12 +302,27 @@ class MultiLinkController extends ChangeNotifier {
 
   // ---- public surface ----------------------------------------------------
 
-  /// The experiment switch (default OFF, persisted as a marker file).
+  /// The experiment switch (default OFF, persisted as a marker file) — what
+  /// the USER chose, which the settings row shows (design 0063 Q9). Whether
+  /// the experiment actually runs is [active].
   bool get enabled => _enabled;
+
+  /// design 0107: the switch is on AND the app is in personal mode. Simple
+  /// mode (`AppMode.advanced`) withholds multi-link and vehicles the way it
+  /// withholds speed detection and the G meter (design 0063 §3.0.3):
+  /// effective off, the stored switch untouched, restored on the way back.
+  bool get active => _active;
+
+  bool get _personalMode => _settings.mode == AppMode.personal;
+  bool get _active => _enabled && _personalMode;
+
+  /// [_active] as the last [_onSettingsChanged] / [load] / [setEnabled] left
+  /// it — the edge [_onSettingsChanged] acts on.
+  bool _wasActive = false;
 
   /// `on max=<n>` for the export header's `multilink:` line, or null when the
   /// switch is off (0103 §3.6 — the line is absent rather than `off`).
-  String? get exportHeaderValue => _enabled ? 'on max=$maxLinks' : null;
+  String? get exportHeaderValue => _active ? 'on max=$maxLinks' : null;
 
   /// Secondary links with live telemetry.
   int get onlineCount => _links.values.where((l) => l.online).length;
@@ -322,7 +338,7 @@ class MultiLinkController extends ChangeNotifier {
   /// vehicle mode is not in force (switch off, no car, or nothing selected) —
   /// in which case everything behaves exactly as before 0106.
   Vehicle? get activeVehicle {
-    if (!_enabled) return null;
+    if (!_active) return null;
     final v = _vehicles;
     if (v == null || !v.hasCars) return null;
     return v.current;
@@ -341,7 +357,7 @@ class MultiLinkController extends ChangeNotifier {
   /// `current=<car n|personal|none>/<cars> devices=<k>`. ⛔ Never a name: a car
   /// name may be a plate number (§4.3).
   String? get vehicleHeaderValue {
-    if (!_enabled) return null;
+    if (!_active) return null;
     final cars = _vehicles?.cars.length ?? 0;
     final cur = activeVehicle;
     if (cur == null) return 'current=none/$cars devices=0';
@@ -392,7 +408,10 @@ class MultiLinkController extends ChangeNotifier {
     _enabled = await _enabledMarker.acknowledged();
     _skipPrompt = await _skipPromptMarker.acknowledged();
     if (_disposed) return;
-    if (_enabled) _start();
+    // design 0107: `settings.load()` has already run (`AppServices.create`),
+    // so the mode read here is the stored one.
+    _wasActive = _active;
+    if (_active) _start();
     notifyListeners();
   }
 
@@ -403,11 +422,12 @@ class MultiLinkController extends ChangeNotifier {
     if (v) {
       await _enabledMarker.markAcknowledged();
       _stoppedByUser = false;
-      _start();
+      if (_active) _start();
     } else {
       await _enabledMarker.clear();
       _stop();
     }
+    _wasActive = _active;
     _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
         note: 'multilink: switch ${v ? 'on' : 'off'} max=$maxLinks'));
     _conn.refreshMultiLinkMonitor(null);
@@ -428,7 +448,7 @@ class MultiLinkController extends ChangeNotifier {
   /// D2: whether opening [deviceId]'s page should ask first — only for a power
   /// bank, only while other links are live, and not after "don't show again".
   bool shouldPromptForPowerBank(String deviceId) =>
-      _enabled &&
+      _active &&
       !_skipPrompt &&
       classFor(deviceId) == ProductClass.powerBank &&
       onlineCount > 0;
@@ -468,7 +488,7 @@ class MultiLinkController extends ChangeNotifier {
   /// of it — left alone by the switch itself (Q4: picking a vehicle never takes
   /// away the unit being looked at) — is let go when its page closes.
   void onDetailClosed(String deviceId) {
-    if (!_enabled) return;
+    if (!_active) return;
     if (_conn.connectedDeviceId != deviceId) return;
     final vehicle = activeVehicle;
     if (vehicle != null && !vehicle.contains(deviceId)) {
@@ -540,7 +560,25 @@ class MultiLinkController extends ChangeNotifier {
     presenceTick();
   }
 
-  void _stop() {
+  /// design 0107: [_active] flipped because the app MODE changed (the stored
+  /// switch cannot change from here — its row is disabled in simple mode).
+  /// Acts in the same frame, like `GForceController.applySettings`: going to
+  /// simple mode lets every secondary go at once (the primary is untouched);
+  /// coming back starts again under the usual rules, 自動連線 included.
+  void _onSettingsChanged() {
+    if (_disposed) return;
+    final now = _active;
+    if (now == _wasActive) return;
+    _wasActive = now;
+    if (now) {
+      _start();
+    } else {
+      _stop(reason: 'simple-mode');
+    }
+    notifyListeners();
+  }
+
+  void _stop({String reason = 'switch-off'}) {
     _primaryBle?.trackWriteWindow = false;
     _handoffTarget = null;
     _lastPresenceScanAt = null;
@@ -550,7 +588,7 @@ class MultiLinkController extends ChangeNotifier {
     _stallTimer = null;
     _powerBankHeld = false;
     for (final id in _links.keys.toList()) {
-      unawaited(_release(id, reason: 'switch-off'));
+      unawaited(_release(id, reason: reason));
     }
   }
 
@@ -565,7 +603,7 @@ class MultiLinkController extends ChangeNotifier {
     if (_disposed) return;
     _notePresence();
     _trackPrimary();
-    if (!_enabled) return;
+    if (!_active) return;
     if (_primaryIsPowerBank()) {
       _holdForPowerBank();
     } else if (_powerBankHeld) {
@@ -726,10 +764,13 @@ class MultiLinkController extends ChangeNotifier {
   void _reconcile() {
     if (_disposed) return;
     _trackPrimary();
-    if (!_enabled || _stoppedByUser) {
-      if (_links.isNotEmpty && (!_enabled || _stoppedByUser)) {
+    if (!_active || _stoppedByUser) {
+      if (_links.isNotEmpty) {
+        final reason = !_enabled
+            ? 'switch-off'
+            : (!_personalMode ? 'simple-mode' : 'stopped');
         for (final id in _links.keys.toList()) {
-          unawaited(_release(id, reason: _enabled ? 'stopped' : 'switch-off'));
+          unawaited(_release(id, reason: reason));
         }
       }
       return;
@@ -840,7 +881,7 @@ class MultiLinkController extends ChangeNotifier {
         milliseconds: ms > retryCap.inMilliseconds ? retryCap.inMilliseconds : ms);
     l.retryAttempts++;
     l.retryTimer = Timer(delay, () {
-      if (_disposed || _links[l.id] != l || l.releasing || !_enabled) return;
+      if (_disposed || _links[l.id] != l || l.releasing || !_active) return;
       // The setting went off while this retry was waiting.
       if (!_autoAllowed) {
         unawaited(_release(l.id, reason: 'auto-off'));
@@ -903,7 +944,7 @@ class MultiLinkController extends ChangeNotifier {
   /// tab would know of no unit at all.
   @visibleForTesting
   void presenceTick() {
-    if (_disposed || !_enabled || _stoppedByUser) return;
+    if (_disposed || !_active || _stoppedByUser) return;
     _reconcile();
     if (_powerBankHeld) return;
     final vehicle = activeVehicle;
@@ -956,7 +997,7 @@ class MultiLinkController extends ChangeNotifier {
     final id = _vehicleIdNow();
     final prev = _lastVehicleId;
     _lastVehicleId = id;
-    if (!_enabled || _stoppedByUser) return;
+    if (!_active || _stoppedByUser) return;
     if (id != prev) _applyVehicleSwitch(prev, _vehicles?.vehicleFor(id));
     _reconcile();
     _logReadyIfChanged();
@@ -1094,7 +1135,7 @@ class MultiLinkController extends ChangeNotifier {
   /// timer started by [_start] is the only production caller.
   @visibleForTesting
   void checkDemotions() {
-    if (!_enabled) return;
+    if (!_active) return;
     final active = _links.values.where((l) => l.online && !l.paused).toList();
     final total = active.length + (_conn.isOnline ? 1 : 0);
     // D5 ⑥: one link online has nobody to protect.
@@ -1184,7 +1225,7 @@ class MultiLinkController extends ChangeNotifier {
   /// `multilink: ready=<n> ids=<hashes>` whenever the set of live links
   /// (primary included) changes — 0103 §4 ①.
   void _logReadyIfChanged() {
-    if (!_enabled) return;
+    if (!_active) return;
     final primary = _conn.isOnline ? _conn.connectedDeviceId : null;
     final ids = <String>[
       ?primary,
@@ -1207,6 +1248,7 @@ class MultiLinkController extends ChangeNotifier {
     _conn.removeListener(_onPrimaryChanged);
     _devices.removeListener(_reconcile);
     _vehicles?.removeListener(_onVehiclesChanged);
+    _settings.removeListener(_onSettingsChanged);
     _demoteTimer?.cancel();
     _stallTimer?.cancel();
     for (final l in _links.values) {

@@ -32,8 +32,10 @@ import 'vehicles_page.dart';
 /// controller notifies on every link event, and a home grid rebuilt at sample
 /// rate would be the price of a one-bit question.
 VehicleController? visibleVehicles(BuildContext context) {
+  // design 0107: ACTIVE, not the stored switch — simple mode withholds
+  // vehicles together with multi-link.
   final on = context.select<MultiLinkController?, bool>(
-      (m) => m?.enabled ?? false);
+      (m) => m?.active ?? false);
   final vc = context.watch<VehicleController?>();
   if (!on || vc == null || !vc.hasCars) return null;
   return vc;
@@ -43,7 +45,7 @@ VehicleController? visibleVehicles(BuildContext context) {
 VehicleController? readVisibleVehicles(BuildContext context) {
   final ml = context.read<MultiLinkController?>();
   final vc = context.read<VehicleController?>();
-  if (ml == null || !ml.enabled || vc == null || !vc.hasCars) return null;
+  if (ml == null || !ml.active || vc == null || !vc.hasCars) return null;
   return vc;
 }
 
@@ -312,8 +314,16 @@ class _VehicleDiscoveryHintState extends State<VehicleDiscoveryHint> {
   Widget build(BuildContext context) {
     final vc = context.watch<VehicleController?>();
     final on = context.select<MultiLinkController?, bool?>((m) => m?.enabled);
+    // design 0107: no vehicle hint in simple mode — vehicles are held off
+    // there, and its buttons lead to a switch the user cannot flip.
+    final simple = context.select<SettingsController, bool>(
+        (s) => s.mode == AppMode.advanced);
     final devices = context.watch<DeviceController>();
-    if (_seen != false || vc == null || on == null || vc.hasCars) {
+    if (_seen != false ||
+        vc == null ||
+        on == null ||
+        vc.hasCars ||
+        simple) {
       return const SizedBox.shrink();
     }
     if (vehicleCandidates(devices.devices, VehicleKind.car).length < 2) {

@@ -27,8 +27,10 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:open_smart_batt/ui/home/home_page.dart';
+import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:open_smart_batt/ui/vehicles/vehicle_editor_page.dart';
 import 'package:open_smart_batt/ui/vehicles/vehicle_ui.dart';
+import 'package:open_smart_batt/ui/widgets/industrial.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -555,6 +557,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('Manage vehicles…'), findsOneWidget);
+      await done(tester, s);
+    });
+  });
+
+  // design 0107: simple mode holds vehicles (and multi-link) off — effective
+  // off, the stored switch shown but locked, everything back in personal mode.
+  group('0107 simple mode', () {
+    Future<void> simple(WidgetTester tester, AppServices s, AppMode m) async {
+      await tester.runAsync(() => s.settings.setMode(m));
+      await tester.pump();
+    }
+
+    testWidgets('switch ON with cars: the saved list is not grouped',
+        (tester) async {
+      final s = await boot(tester);
+      await simple(tester, s, AppMode.advanced);
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('saved-group-none')), findsNothing);
+      expect(find.text('Car A'), findsNothing);
+      await simple(tester, s, AppMode.personal);
+      await settle(tester);
+      expect(find.text('Car A'), findsWidgets, reason: 'back in personal');
+      await done(tester, s);
+    });
+
+    testWidgets('no vehicle hint in simple mode', (tester) async {
+      final s = await boot(tester, cars: false, enable: false);
+      await simple(tester, s, AppMode.advanced);
+      await pump(tester, s, const DevicesPage(active: true));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('vehicle-hint')), findsNothing);
+      await simple(tester, s, AppMode.personal);
+      await settle(tester);
+      expect(find.byKey(const ValueKey('vehicle-hint')), findsOneWidget);
+      await done(tester, s);
+    });
+
+    testWidgets('Settings: the switch shows ON but is locked and says why; no '
+        'Vehicles row', (tester) async {
+      final s = await boot(tester);
+      await simple(tester, s, AppMode.advanced);
+      await pump(tester, s, const SettingsScreen(),
+          size: const Size(900, 9000));
+      await settle(tester);
+      final label = find.text('Multiple devices at once (experimental)');
+      final row = find.ancestor(of: label, matching: find.byType(SettingsRow));
+      expect(row, findsOneWidget);
+      final sw = tester.widget<Switch>(
+          find.descendant(of: row, matching: find.byType(Switch)));
+      expect(sw.value, isTrue, reason: 'the STORED switch (0063 Q9)');
+      expect(sw.onChanged, isNull, reason: 'cannot be flipped in simple mode');
+      expect(
+          find.descendant(
+              of: row,
+              matching: find.text('Simple mode has turned this off. Switch '
+                  'back to Personal to restore your setting.')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('settings-vehicles')), findsNothing);
+      await simple(tester, s, AppMode.personal);
+      await settle(tester);
+      final sw2 = tester.widget<Switch>(
+          find.descendant(of: row, matching: find.byType(Switch)));
+      expect(sw2.onChanged, isNotNull);
+      expect(find.byKey(const ValueKey('settings-vehicles')), findsOneWidget);
       await done(tester, s);
     });
   });

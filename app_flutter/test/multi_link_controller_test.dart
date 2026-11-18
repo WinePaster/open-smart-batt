@@ -958,6 +958,113 @@ void main() {
     });
   });
 
+  // design 0107: simple mode (AppMode.advanced) withholds multi-link and
+  // vehicles — effective off, the stored switch untouched, restored on return.
+  group('0107: simple mode holds multi-link off', () {
+    Future<List<String>> notes() async {
+      await s.pending.drain();
+      return [for (final e in await s.logRepo.queryLog()) e.note ?? ''];
+    }
+
+    test('a launch in simple mode: no scan, no adoption; the switch stays on',
+        () async {
+      final db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      // Stored before the app starts: switch on, mode simple, a unit saved.
+      await SettingsRepo(db.db)
+          .saveSettings(AppSettings.defaults.copyWith(mode: AppMode.advanced));
+      await AckMarker(MultiLinkConfig.enabledMarker).markAcknowledged();
+      primary = _FakePrimary(adapterOn: true)..nearby = {'A'};
+      s = await AppServices.create(
+        appDatabase: db,
+        ble: primary,
+        multiLinkBuild: true,
+        multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
+        multiLinkClock: () => now,
+      );
+      final ml = s.multiLink!;
+      await s.devices.save(bat('A'));
+      primary.emitScan({'A'});
+      await _settle();
+      now = now.add(MultiLinkConfig.presenceScanEvery);
+      ml.presenceTick();
+      await _settle();
+      expect(s.settings.mode, AppMode.advanced);
+      expect(ml.enabled, isTrue, reason: 'the stored switch is untouched');
+      expect(ml.active, isFalse);
+      expect(primary.scans, 0, reason: 'no switch-on scan, no presence scan');
+      expect(ml.heldIds, isEmpty);
+      expect(log.where((e) => e.startsWith('connect')), isEmpty);
+    });
+
+    test('personal → simple: every secondary goes, the primary stays',
+        () async {
+      final ml = await boot([bat('P'), bat('A'), bat('B')], primaryId: 'P');
+      expect(ml.heldIds, {'A', 'B'});
+      await s.settings.setMode(AppMode.advanced);
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(ml.active, isFalse);
+      expect(s.connection.connectedDeviceId, 'P', reason: 'primary untouched');
+      final n = await notes();
+      for (final id in ['A', 'B']) {
+        expect(
+            n,
+            contains('multilink: release id=${shortDeviceHash(id)} '
+                'reason=simple-mode'),
+            reason: id);
+      }
+      // Later ticks adopt nothing.
+      now = now.add(MultiLinkConfig.presenceScanEvery);
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+    });
+
+    test('simple → personal: secondaries come back', () async {
+      final ml = await boot([bat('A'), bat('B')]);
+      await s.settings.setMode(AppMode.advanced);
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      await s.settings.setMode(AppMode.personal);
+      await _settle();
+      expect(ml.active, isTrue);
+      expect(ml.heldIds, {'A', 'B'});
+    });
+
+    test('export header lines and the vehicle go with the mode', () async {
+      final ml = await boot([bat('a'), bat('b')]);
+      final car = (await s.vehicles.createCar('A')).id;
+      await s.vehicles.setDevices(car, ['a', 'b']);
+      await _settle();
+      expect(ml.exportHeaderValue, isNotNull);
+      expect(ml.vehicleHeaderValue, isNotNull);
+      expect(ml.activeVehicle, isNotNull);
+      await s.settings.setMode(AppMode.advanced);
+      await _settle();
+      expect(ml.exportHeaderValue, isNull);
+      expect(ml.vehicleHeaderValue, isNull);
+      expect(ml.activeVehicle, isNull);
+      expect(s.vehicles.current?.id, car, reason: 'the pick is kept');
+    });
+
+    test('a power bank holding the others paused: simple mode clears it',
+        () async {
+      final ml = await boot([bat('A'), bat('B'), pb('PB')]);
+      await ml.beforePrimaryConnect('PB');
+      primary.connectedId = 'PB';
+      primary.emitLink(BleLinkState.ready);
+      await _settle();
+      expect(ml.heldIds, {'A', 'B'}, reason: 'paused, not dropped');
+      await s.settings.setMode(AppMode.advanced);
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(ml.shouldPromptForPowerBank('PB'), isFalse);
+    });
+  });
+
   test('004: only units seen nearby take a slot', () async {
     final ml = await boot(
         [bat('A'), bat('B'), bat('C'), bat('D'), bat('E')],

@@ -1464,22 +1464,33 @@ class _DiagnosticsCardState extends State<_DiagnosticsCard> {
           // provider: a surface mounted without the provider (a test harness, a
           // future route outside the shell) must not throw in a flag-on build.
           if (context.watch<ConnectionController>().multiLink case final ml?)
-            SettingsRow(
-              label: l10n.multiLinkSettingLabel,
-              sub: l10n.multiLinkSettingSub,
-              trailing: ListenableBuilder(
-                listenable: ml,
-                builder: (_, _) =>
-                    _Toggle(value: ml.enabled, onChanged: ml.setEnabled),
-              ),
-            ),
+            Builder(builder: (context) {
+              // design 0107: simple mode withholds multi-link the way it
+              // withholds speed detection (design 0063 Q9) — the row shows the
+              // STORED switch, cannot be flipped, and says why.
+              final simple = context.select<SettingsController, bool>(
+                  (s) => s.mode == AppMode.advanced);
+              return SettingsRow(
+                label: l10n.multiLinkSettingLabel,
+                sub: simple
+                    ? l10n.settingsDisabledByAdvancedMode
+                    : l10n.multiLinkSettingSub,
+                trailing: ListenableBuilder(
+                  listenable: ml,
+                  builder: (_, _) => _Toggle(
+                      value: ml.enabled,
+                      onChanged: simple ? null : ml.setEnabled),
+                ),
+              );
+            }),
           // design 0106 Phase 4 (mock ⑨): the vehicle list, directly under the
           // switch it depends on — and only while that switch is on, so a user
           // who never turned the experiment on sees no new row (mock ⑧).
           if (context.watch<ConnectionController>().multiLink case final ml?)
             ListenableBuilder(
               listenable: ml,
-              builder: (context, _) => !ml.enabled
+              // design 0107: hidden while simple mode holds vehicles off.
+              builder: (context, _) => !ml.active
                   ? const SizedBox.shrink()
                   // Mock ⑨: a plain settings row (it belongs to the switch
                   // above it, not to the cyan tool links below), whose caption
