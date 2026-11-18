@@ -201,12 +201,51 @@ class ConnectionController extends ChangeNotifier {
     // event path. Subscribed unconditionally — see [_onDiagnostic].
     _diagnosticsSub = _ble.diagnostics.listen(_onDiagnostic);
     _monitorStopSub = _monitor.onStopRequested.listen((_) => _onMonitorStop());
+    _lastAutoReconnect = _settings.autoReconnect;
     _settings.addListener(_onSettingsChanged);
   }
 
+  /// [SettingsController.autoReconnect] as the last [_onSettingsChanged] saw
+  /// it — the edge [_standDownAutoReconnect] fires on.
+  bool _lastAutoReconnect = true;
+
   void _onSettingsChanged() {
     _updateWakelock();
+    final auto = _settings.autoReconnect;
+    if (_lastAutoReconnect && !auto) _standDownAutoReconnect();
+    _lastAutoReconnect = auto;
     _updateMonitor();
+  }
+
+  /// The user turned 自動重連 off: withdraw what is already pending.
+  ///
+  /// 🔴 2026-11-18 user report. Every rung of the backoff ladder re-reads the
+  /// setting when it fires, but an iOS hand-off ([_armAutoConnect]) is a
+  /// connect registered with CoreBluetooth: nothing of ours runs before the OS
+  /// delivers it, so turning the setting off left it in force for up to the
+  /// whole watchdog — and the battery the user wanted left alone came back.
+  /// Cancelled the way the watchdog cancels one ([_onAutoConnectExpired]),
+  /// minus the error: the user asked for this, nothing failed.
+  ///
+  /// A connect already IN FLIGHT (a rung that fired, `connecting`) is left to
+  /// finish; it cannot be told apart from the user's own tap at this layer,
+  /// and its failure does not reschedule ([_scheduleReconnect]'s guards).
+  void _standDownAutoReconnect() {
+    final armed = isAutoConnectArmed;
+    final retrying = isRetrying;
+    if (!armed && !retrying) return;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempts = 0;
+    _event('auto-reconnect: stood down — the setting was turned off '
+        '(armed=$armed retrying=$retrying)');
+    if (armed) {
+      // Armed ⇒ not `connected` (that event stands the watchdog down), so
+      // this cancels only the pending OS connect, never a live link.
+      _cancelAutoConnectWatchdog();
+      unawaited(_ble.disconnect().catchError((Object _) {}));
+    }
+    notifyListeners();
   }
 
   /// Keep the screen awake while connected, when the user enabled the option.

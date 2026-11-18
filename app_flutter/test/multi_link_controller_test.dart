@@ -188,6 +188,9 @@ class _FakeSecondary extends BleService {
 
   void sample(TelemetrySample s) => _teleOut.add(s.copyWith(deviceId: id));
 
+  /// The unit went out of range on its own (no `disconnect` asked for).
+  void drop() => _linkOut.add(BleLinkState.disconnected);
+
   @override
   Future<void> dispose() async {
     await _linkOut.close();
@@ -220,7 +223,8 @@ void main() {
       {bool enable = true,
       String? primaryId,
       Set<String>? nearby,
-      bool adapterOn = false}) async {
+      bool adapterOn = false,
+      bool autoReconnect = true}) async {
     final db = await AppDatabase.open(
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
@@ -242,6 +246,7 @@ void main() {
       await _settle();
     }
     await s.settings.setRawPacketLog(true);
+    if (!autoReconnect) await s.settings.setAutoReconnect(false);
     if (primaryId != null) {
       primary.connectedId = primaryId;
       primary.emitLink(BleLinkState.ready);
@@ -638,11 +643,13 @@ void main() {
     late String carA;
     late String carB;
 
-    Future<MultiLinkController> bootCars({Set<String>? nearby}) async {
+    Future<MultiLinkController> bootCars(
+        {Set<String>? nearby, bool autoReconnect = true}) async {
       final ml = await boot(
           [bat('a'), bat('b'), bat('c'), bat('d'), pb('e')],
           nearby: nearby,
-          adapterOn: true);
+          adapterOn: true,
+          autoReconnect: autoReconnect);
       primary.realisticDisconnect = true;
       primary.acceptConnects = true;
       vehicles = s.vehicles;
@@ -756,6 +763,78 @@ void main() {
       expect(ml.heldIds, {'b'}, reason: 'only car A; B\'s units untouched');
     });
 
+    // 2026-11-18 user report: 自動重連 off, the home tab still connected the
+    // car battery. Off ⇒ only the user's own pick in the home picker connects
+    // a group, once; nothing else (first car, device page, retries) does.
+    group('2026-11-18: 自動重連 off', () {
+      test('creating the first car connects nothing', () async {
+        final ml = await bootCars(autoReconnect: false);
+        expect(vehicles.current?.id, carA);
+        expect(ml.heldIds, isEmpty);
+        expect(log.where((e) => e.startsWith('connect')), isEmpty);
+      });
+
+      test('picking a car in the home picker connects its units once',
+          () async {
+        final ml = await bootCars(autoReconnect: false);
+        await vehicles.select(carB, source: 'home');
+        await _settle();
+        expect(ml.heldIds, {'c', 'd'});
+        // One of them drops: let go, not retried — not even by a later tick.
+        sec('c').drop();
+        await _settle();
+        expect(ml.heldIds, {'d'});
+        now = now.add(MultiLinkConfig.presenceScanEvery);
+        ml.presenceTick();
+        await _settle();
+        expect(ml.heldIds, {'d'});
+        expect(log.where((e) => e == 'connect c'), hasLength(1));
+        expect(
+            await notes(),
+            contains('multilink: release id=${shortDeviceHash('c')} '
+                'reason=auto-off'));
+      });
+
+      test('a switch from the device page is not a pick: nothing connects',
+          () async {
+        final ml = await bootCars(autoReconnect: false);
+        await vehicles.select(carB, source: 'device-page');
+        await _settle();
+        expect(ml.heldIds, isEmpty);
+      });
+
+      test('a pick does not linger: units that turn up later stay down',
+          () async {
+        final ml = await bootCars(nearby: const {}, autoReconnect: false);
+        await vehicles.select(carB, source: 'home');
+        await _settle();
+        expect(ml.heldIds, isEmpty, reason: 'c and d not in range');
+        now = now.add(MultiLinkConfig.presenceWindow +
+            const Duration(seconds: 1));
+        primary.nearby = {'c', 'd'};
+        ml.presenceTick();
+        await _settle();
+        expect(ml.heldIds, isEmpty);
+      });
+
+      test('personal: the home pick connects the power bank; nothing else does',
+          () async {
+        final ml = await bootCars(autoReconnect: false);
+        await vehicles.select(VehicleRepo.personalId);
+        await _settle();
+        now = now.add(const Duration(minutes: 1));
+        ml.presenceTick();
+        await _settle();
+        expect(primary.primaryConnects, isEmpty,
+            reason: 'no source, and the 30 s retry is not the user');
+        await vehicles.select(carA, source: 'home');
+        await _settle();
+        await vehicles.select(VehicleRepo.personalId, source: 'home');
+        await _settle();
+        expect(primary.primaryConnects, ['e']);
+      });
+    });
+
     test('Q4: a non-member primary stays on switch, goes when its page closes',
         () async {
       final ml = await bootCars();
@@ -839,6 +918,46 @@ void main() {
   // 2026.11.12/004: twelve saved units, and the three slots went to the three
   // most recently SEEN — none of them in range — while the two units in front
   // of the dealer waited for him to tap them (≈ 1 min 26 s).
+  group('2026-11-18: 自動重連 off (no vehicle)', () {
+    test('saved units in range are not adopted, and not scanned for',
+        () async {
+      final ml = await boot([bat('A'), bat('B')],
+          nearby: const {}, adapterOn: true, autoReconnect: false);
+      expect(primary.scans, 0, reason: 'nothing the user asked for to find');
+      primary.emitScan({'A', 'B'});
+      await _settle();
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(log.where((e) => e.startsWith('connect')), isEmpty);
+    });
+
+    test('a link up when the setting goes off stays; when it drops it is let '
+        'go, not retried', () async {
+      final ml = await boot([bat('A'), bat('B')]);
+      expect(ml.heldIds, {'A', 'B'});
+      await s.settings.setAutoReconnect(false);
+      await _settle();
+      expect(ml.heldIds, {'A', 'B'}, reason: 'not cut from under the user');
+      sec('A').drop();
+      await _settle();
+      now = now.add(const Duration(minutes: 1));
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, {'B'});
+      expect(log.where((e) => e == 'connect A'), hasLength(1));
+    });
+
+    test('turning it back on resumes the 0103 rule', () async {
+      final ml = await boot([bat('A')], autoReconnect: false);
+      expect(ml.heldIds, isEmpty);
+      await s.settings.setAutoReconnect(true);
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, {'A'});
+    });
+  });
+
   test('004: only units seen nearby take a slot', () async {
     final ml = await boot(
         [bat('A'), bat('B'), bat('C'), bat('D'), bat('E')],

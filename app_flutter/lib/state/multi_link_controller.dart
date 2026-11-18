@@ -240,6 +240,11 @@ class MultiLinkController extends ChangeNotifier {
   /// secondary behind their back. Cleared when they connect it again.
   final Set<String> _released = <String>{};
 
+  /// Units the user asked for, by picking their car in the home picker, while
+  /// [_autoAllowed] is false — each may be adopted ONCE, within
+  /// [presenceWindow] of the pick. See [_autoAllowed].
+  final Map<String, DateTime> _grantedAt = <String, DateTime>{};
+
   /// The unit the primary link is being handed to, from [beforePrimaryConnect]
   /// until the primary actually names it. Never a candidate in that window.
   ///
@@ -268,6 +273,31 @@ class MultiLinkController extends ChangeNotifier {
   /// Serialises secondary connects: each one takes the plugin's global mutex
   /// through discovery, and a queue keeps them from stacking up behind it.
   Future<void> _connectChain = Future<void>.value();
+
+  /// The user's 「自動重連」 setting, read as the one switch that governs "the
+  /// app may connect on its own" — the reading the device page already gives
+  /// it (`autoConnectBlocker`).
+  ///
+  /// 🔴 2026-11-18 user report: with the setting off, the home tab still
+  /// connected a car battery every time it was in range — this controller
+  /// never read the setting. The user parks the car for a month and wanted
+  /// the phone to leave the battery alone. Off now means:
+  ///
+  ///   * no adoption on presence (scan, saved list change, switch-on) — only a
+  ///     unit the user asked for by picking its car in the home picker
+  ///     ([_grantedAt]), and only once;
+  ///   * a secondary that drops is let go, not retried;
+  ///   * the personal group connects its power bank only on that same pick,
+  ///     never on its 30 s retry or when a page closes.
+  ///
+  /// A link already up when the setting goes off stays up: the setting is
+  /// about what the app starts, not about cutting what the user is watching.
+  bool get _autoAllowed => _settings.autoReconnect;
+
+  bool _granted(String id) {
+    final at = _grantedAt[id];
+    return at != null && _now().difference(at) <= presenceWindow;
+  }
 
   // ---- public surface ----------------------------------------------------
 
@@ -443,7 +473,11 @@ class MultiLinkController extends ChangeNotifier {
     final vehicle = activeVehicle;
     if (vehicle != null && !vehicle.contains(deviceId)) {
       unawaited(_dropPrimaryForVehicle(deviceId).then((_) {
-        if (vehicle.isPersonal) _connectPersonalIfNeeded(force: true);
+        // Closing a page is not asking for a power bank: with 自動重連 off
+        // the personal group waits for the user (see [_autoAllowed]).
+        if (vehicle.isPersonal && _autoAllowed) {
+          _connectPersonalIfNeeded(force: true);
+        }
       }));
       return;
     }
@@ -702,7 +736,13 @@ class MultiLinkController extends ChangeNotifier {
     }
     final primary = _conn.connectedDeviceId;
     final budget = maxLinks - (primary != null ? 1 : 0);
-    final want = _candidates().take(budget < 0 ? 0 : budget).toSet();
+    // 自動重連 off: only what is already held, or what the user just asked for
+    // (see [_autoAllowed]).
+    final auto = _autoAllowed;
+    final want = [
+      for (final id in _candidates())
+        if (auto || _links.containsKey(id) || _granted(id)) id
+    ].take(budget < 0 ? 0 : budget).toSet();
     for (final id in _links.keys.toList()) {
       if (id == primary || !want.contains(id)) {
         // While a power bank is held (pause mode) the paused links stay: the
@@ -718,7 +758,10 @@ class MultiLinkController extends ChangeNotifier {
     // while it holds the primary.
     if (_powerBankHeld) return;
     for (final id in want) {
-      if (!_links.containsKey(id)) _adopt(id);
+      if (!_links.containsKey(id)) {
+        _grantedAt.remove(id); // one adoption per pick
+        _adopt(id);
+      }
     }
   }
 
@@ -773,7 +816,14 @@ class MultiLinkController extends ChangeNotifier {
       l.pausedForPowerBank = false;
       l.demoted = false;
       l.demoteTimer?.cancel();
-      if (!l.releasing) _scheduleRetry(l);
+      if (!l.releasing) {
+        // 自動重連 off: a dropped secondary is let go, not retried.
+        if (_autoAllowed) {
+          _scheduleRetry(l);
+        } else {
+          unawaited(_release(l.id, reason: 'auto-off'));
+        }
+      }
     }
     if (wasOnline != l.online) {
       _logReadyIfChanged();
@@ -791,6 +841,11 @@ class MultiLinkController extends ChangeNotifier {
     l.retryAttempts++;
     l.retryTimer = Timer(delay, () {
       if (_disposed || _links[l.id] != l || l.releasing || !_enabled) return;
+      // The setting went off while this retry was waiting.
+      if (!_autoAllowed) {
+        unawaited(_release(l.id, reason: 'auto-off'));
+        return;
+      }
       _connect(l);
     });
   }
@@ -862,12 +917,14 @@ class MultiLinkController extends ChangeNotifier {
     if (_conn.inBackground || _conn.detailVisible || _conn.isScanning) return;
     // The personal group looks for its power banks; everyone else for the
     // units that could take a secondary slot.
+    final auto = _autoAllowed;
     final lookFor = personal
         ? [
             for (final id in vehicle.deviceIds)
-              if (!_released.contains(id)) id
+              if (!_released.contains(id) && auto) id
           ]
-        : _eligible();
+        // 自動重連 off: scan only for the units the user just asked for.
+        : [for (final id in _eligible()) if (auto || _granted(id)) id];
     if (personal && _conn.connectedDeviceId != null) return;
     if (!lookFor.any((id) => !_isPresent(id))) return;
     _lastPresenceScanAt = now;
@@ -907,16 +964,27 @@ class MultiLinkController extends ChangeNotifier {
 
   /// §4.1: the user picked another group.
   void _applyVehicleSwitch(String? prevId, Vehicle? next) {
+    final source = _vehicles?.takeSelectSource() ?? 'other';
     _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
         note: 'vehicle: switch ${_vehicleLabel(prevId)}'
             '→${_vehicleLabel(next?.id)}'
-            ' source=${_vehicles?.takeSelectSource() ?? 'other'}'));
+            ' source=$source'));
     if (next == null) return; // no vehicle any more ⇒ the 0103 rule
+    // 自動重連 off: only the home picker is the user asking for a group's
+    // units — `device-page` follows a unit the user opened, `editor` and a
+    // first car becoming current ask for nothing (see [_autoAllowed]).
+    final mayConnect = _autoAllowed || source == 'home';
     final primary = _conn.connectedDeviceId;
     if (next.isCar) {
       // V1 (owner 2026-11-14 「V1: OK」): choosing this car means wanting its
       // units, including one the user disconnected earlier.
       _released.removeAll(next.deviceIds);
+      if (!_autoAllowed && mayConnect) {
+        final at = _now();
+        for (final id in next.deviceIds) {
+          _grantedAt[id] = at;
+        }
+      }
       for (final id in _links.keys.toList()) {
         if (!next.contains(id)) {
           unawaited(_release(id, reason: 'vehicle-switch'));
@@ -939,11 +1007,12 @@ class MultiLinkController extends ChangeNotifier {
       // Q4's spirit: not out from under an open page — that is let go when
       // the page closes (onDetailClosed). Otherwise make room now.
       if (_conn.detailVisible) return;
-      unawaited(_dropPrimaryForVehicle(primary)
-          .then((_) => _connectPersonalIfNeeded(force: true)));
+      unawaited(_dropPrimaryForVehicle(primary).then((_) {
+        if (mayConnect) _connectPersonalIfNeeded(force: true);
+      }));
       return;
     }
-    _connectPersonalIfNeeded(force: true);
+    if (mayConnect) _connectPersonalIfNeeded(force: true);
     presenceTick();
   }
 
@@ -968,6 +1037,8 @@ class MultiLinkController extends ChangeNotifier {
   void _connectPersonalIfNeeded({bool force = false}) {
     final vehicle = activeVehicle;
     if (_disposed || vehicle == null || !vehicle.isPersonal) return;
+    // 自動重連 off: only a forced call — the user's own pick — connects.
+    if (!force && !_autoAllowed) return;
     if (_conn.connectedDeviceId != null) return; // already on, or coming up
     if (!force && _conn.inBackground) return;
     final now = _now();
