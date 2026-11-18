@@ -25,6 +25,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -201,6 +205,7 @@ void main() {
       );
       ble = _StubBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
     });
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());
@@ -283,8 +288,8 @@ void main() {
     ble.connected = id;
     await tester.runAsync(() async {
       ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -328,8 +333,7 @@ void main() {
       ),
     );
     // Three chained database reads; they need the real event loop.
-    await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await settleTracked(tester);
     await tester.pump();
     await tester.pump();
   }
@@ -370,8 +374,7 @@ void main() {
         ),
       ),
     );
-    await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await settleTracked(tester);
     await tester.pump();
     await tester.pump();
   }
@@ -380,8 +383,7 @@ void main() {
   Future<void> openHistoryTab(WidgetTester tester) async {
     await tester.tap(find.text('History'));
     await tester.pump();
-    await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await settleTracked(tester);
     await tester.pump();
     await tester.pump();
   }
@@ -484,8 +486,7 @@ void main() {
 
       await tester.tap(find.text(l10n.historyRangeAll));
       await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pump();
 
       expect(find.text(l10n.deviceHistoryEmpty), findsOneWidget,
@@ -632,8 +633,7 @@ void main() {
       await tester.pump();
       // The page queries its window on the first frame; the same real-event-
       // loop wait `pumpSection` needs, for the same reason.
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(HistoryChartPage), findsOneWidget);
@@ -655,8 +655,7 @@ void main() {
       expect(orientations.last,
           [for (final o in OrientationPolicy.current) o.toString()],
           reason: 'leaving the page must restore the orientation policy');
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pump();
     });
 
@@ -837,8 +836,7 @@ void main() {
           ),
         ),
       );
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pump();
       await tester.pump();
     }
@@ -990,8 +988,7 @@ void main() {
 
       await tester.tap(find.text('All'));
       await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pump();
 
       await tapLiveTab(tester);
@@ -1092,8 +1089,7 @@ void main() {
 
       await tapInOverflow(tester, Icons.refresh);
       // Same three chained reads as `pumpSection` — they need the real loop.
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await settleTracked(tester);
       await tester.pumpAndSettle();
       expect(debugDeviceHistoryQueries, greaterThan(before),
           reason: 'the button must bypass the P-4 cache, not just setState');
@@ -1420,8 +1416,7 @@ void main() {
       // ① above, one layer down.
       await tester.tap(find.text('All'));
       await tester.pump();
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await settleTracked(tester);
       await tester.pump();
 
       final inflated = find.byType(HistoryRow).evaluate().length;
@@ -1452,8 +1447,7 @@ void main() {
       // it the future the sheet waits on never completes.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 150)));
+      await settleTracked(tester);
       await tester.pump();
 
       // 🔑 The sheet's own copy, not `find.byType(BottomSheet)` — a modal
@@ -1493,8 +1487,8 @@ void main() {
           pvlt: 13.0,
           warnOv: 14.0,
         ));
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
       await tester.pump();
       await pumpSection(tester, deviceId: unitA, live: true);
 

@@ -27,6 +27,10 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Minimal BLE stand-in: no radio, the test drives link transitions directly.
 class _StubBle extends BleService {
   final _linkOut = StreamController<BleLinkState>.broadcast();
@@ -73,7 +77,7 @@ class _StubBle extends BleService {
 
 /// Let the unawaited `_event` inserts land — `insertLog` is a two-step round
 /// trip, so a microtask hop is not enough.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 20));
+Future<void> settle() => settleTrackedPlain();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -84,7 +88,9 @@ void main() {
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
     );
-    return AppServices.create(appDatabase: db, ble: ble);
+    final created = await AppServices.create(appDatabase: db, ble: ble);
+    trackedServices = created;
+    return created;
   }
 
   Future<List<String>> resolveLines(AppServices s) async =>

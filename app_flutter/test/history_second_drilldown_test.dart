@@ -40,6 +40,10 @@ import 'package:open_smart_batt/ui/history/minute_seconds_sheet.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 class _FakeBle extends BleService {
   final _telemetry = StreamController<TelemetrySample>.broadcast();
 
@@ -76,6 +80,7 @@ void main() {
     db = await AppDatabase.open(
         path: inMemoryDatabasePath, factory: databaseFactoryFfi);
     history = HistoryRepo(db.db);
+    _sheetDb = db;
   });
 
   tearDown(() async => db.close());
@@ -395,7 +400,8 @@ Future<void> _pumpSheet(
   // and the widget-test zone's clock is fake, so without it the future the
   // sheet is waiting on never completes.
   await tester.pump();
-  await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 150)));
-  await tester.pump();
+  await settleRawDb(tester, _sheetDb!.db);
 }
+
+/// The database [_pumpSheet] waits on (set in `setUp`).
+AppDatabase? _sheetDb;

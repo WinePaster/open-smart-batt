@@ -14,6 +14,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -72,6 +76,7 @@ void main() {
         factory: databaseFactoryFfi,
       );
       services = await AppServices.create(appDatabase: db, ble: _StubBle());
+      trackedServices = services;
     });
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());
@@ -132,9 +137,7 @@ void main() {
     );
     // Two chained reads — the option list, then the data for whichever unit
     // that list caused to be selected. Both need the real event loop.
-    await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-    });
+    await settleTracked(tester);
     await tester.pump();
     await tester.pump();
   }

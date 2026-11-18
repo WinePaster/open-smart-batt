@@ -34,6 +34,8 @@ import 'package:open_smart_batt/ui/widgets/industrial.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 class _FakePrimary extends BleService {
   _FakePrimary(this.nearby);
   final Set<String> nearby;
@@ -101,6 +103,9 @@ void main() {
     markers.deleteSync(recursive: true);
   });
 
+  /// The services the current test booted ([boot] sets it).
+  late AppServices current;
+
   late String carA;
   late String carB;
   var dbSeq = 0;
@@ -125,6 +130,7 @@ void main() {
         multiLinkBuild: true,
         multiLinkBleFactory: _FakeSecondary.new,
       );
+      trackedServices = s;
       for (final d in [
         const SavedDevice(id: 'a', alias: 'Bat a', productClass: _bat),
         const SavedDevice(id: 'b', alias: 'Bat b', productClass: _bat),
@@ -144,8 +150,9 @@ void main() {
         await s.vehicles.setDevices(VehicleRepo.personalId, ['e']);
       }
       if (enable) await s.multiLink!.setEnabled(true);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await servicesBarrier(s);
     });
+    current = s;
     return s;
   }
 
@@ -188,11 +195,14 @@ void main() {
     await tester.pump();
   }
 
+  /// Database work done and on screen (support/db_settle.dart), then the
+  /// 400 ms a route or dialog transition takes, then whatever that queued.
+  /// Was a fixed 40 ms real-time sleep — root repo
+  /// docs/knowledges/flutter-test-db-timing.md (⑥ lost it on CI 2 of 4 runs).
   Future<void> settle(WidgetTester tester) async {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)));
-    await tester.pump();
+    await settleDb(tester, current);
     await tester.pump(const Duration(milliseconds: 400));
+    await settleDb(tester, current);
   }
 
   Future<void> done(WidgetTester tester, AppServices s) async {
@@ -316,8 +326,8 @@ void main() {
     await tester.runAsync(() async {
       await s.devices.save(const SavedDevice(
           id: 'f', alias: 'Bat f', productClass: _bat));
-      await Future<void>.delayed(const Duration(milliseconds: 30));
     });
+    await settleTracked(tester);
     await pump(tester, s, const DevicesPage(active: true));
     await settle(tester);
     expect(find.byKey(ValueKey('saved-group-$carA')), findsOneWidget);

@@ -36,6 +36,8 @@ import 'package:open_smart_batt/theme/app_theme.dart';
 import 'package:open_smart_batt/ui/util/export_scope.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 class _StubBle extends BleService {
   final _telemetryOut = StreamController<TelemetrySample>.broadcast();
   final _linkOut = StreamController<BleLinkState>.broadcast();
@@ -92,6 +94,7 @@ void main() {
       );
       ble = _StubBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
       // Both saved, with the identity fragments an export would print.
       await services.devices.saveNew(pageUnit, 'Front capacitor',
           productClass: ProductClass.supercapacitor);
@@ -108,11 +111,19 @@ void main() {
 
   Future<void> connectTo(WidgetTester tester, String id) async {
     ble.connected = id;
-    await tester.runAsync(() async {
-      ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-    });
-    await tester.pump();
+    await tester.runAsync(() async => ble.emitLink(BleLinkState.ready));
+    await settleDb(tester, services);
+  }
+
+  /// Animations settled AND the database work they started done
+  /// (support/db_settle.dart). `pumpAndSettle` alone does not wait for the
+  /// sheet's queries: under load the test ended with one still queued — the
+  /// sqflite lock-warning timer then fails it (root repo
+  /// docs/knowledges/flutter-test-db-timing.md).
+  Future<void> settleAll(WidgetTester tester) async {
+    await tester.pumpAndSettle();
+    await settleDb(tester, services);
+    await tester.pumpAndSettle();
   }
 
   /// Pump a button that calls [chooseExportScope] the way the detail page's
@@ -172,7 +183,7 @@ void main() {
       ),
     );
     await tester.tap(find.text('export'));
-    await tester.pumpAndSettle();
+    await settleAll(tester);
     expect(opened, isTrue);
 
     final l10n = await AppLocalizations.delegate.load(const Locale('en'));
@@ -181,7 +192,7 @@ void main() {
     } else {
       await tester.tap(find.textContaining(RegExp(r'^This device')));
     }
-    await tester.pumpAndSettle();
+    await settleAll(tester);
     return result;
   }
 
@@ -243,8 +254,8 @@ void main() {
           dealerCode: '12',
           pvlt: 12.6,
         ));
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       final target = await openSheetAndTapThisDevice(tester, deviceId: unsaved);
@@ -339,7 +350,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('export'));
-      await tester.pumpAndSettle();
+      await settleAll(tester);
 
       expect(find.text(l10n.exportScopeAllDevices), findsNothing,
           reason: 'a pinned export must not offer an unpinned option');

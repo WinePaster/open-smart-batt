@@ -67,6 +67,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/config/app_config.dart';
 import 'package:open_smart_batt/data/data.dart';
@@ -205,11 +209,27 @@ void main() {
   /// the widget clock. BOTH halves are required — see the file header.
   Future<void> settle(WidgetTester tester,
       {int rounds = 80, bool untilShared = false}) async {
-    for (var i = 0; i < rounds; i++) {
-      if (untilShared && shared.isNotEmpty) break;
-      await tester.pump(const Duration(milliseconds: 20));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)));
+    // Database work waits on a barrier, not a clock; the share itself (file
+    // IO / a background isolate, not the database) is polled until it lands,
+    // with a real-time cap (support/db_settle.dart; root repo
+    // docs/knowledges/flutter-test-db-timing.md).
+    if (untilShared) {
+      final clock = Stopwatch()..start();
+      while (shared.isEmpty) {
+        if (clock.elapsed > const Duration(seconds: 20)) {
+          fail('settle(untilShared): nothing shared after 20 s');
+        }
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(() async {
+          await servicesBarrier(services);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        });
+      }
+    } else {
+      for (var i = 0; i < rounds; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(() => servicesBarrier(services));
+      }
     }
     await tester.pump();
   }

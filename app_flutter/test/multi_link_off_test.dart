@@ -27,6 +27,10 @@ import 'package:open_smart_batt/protocol/protocol.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(' ');
 
@@ -104,7 +108,7 @@ void main() {
     final conn = s.connection;
     bool old(String id) => conn.isOnline && conn.connectedDeviceId == id;
     Future<void> check() async {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await settleServices(s);
       for (final id in ['A', 'B']) {
         expect(conn.isOnlineFor(id), old(id), reason: 'id=$id');
       }

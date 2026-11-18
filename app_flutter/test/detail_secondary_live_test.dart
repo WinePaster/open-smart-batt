@@ -30,6 +30,10 @@ import 'package:open_smart_batt/ui/devices/device_detail_page.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// The primary link. Records connects; a connect comes up `ready` at once and
 /// reports a healthy capacitor's run mode, like the real transport would.
 class _FakePrimary extends BleService {
@@ -167,6 +171,7 @@ void main() {
       multiLinkBleFactory: () => _FakeSecondary(secs),
       multiLinkClock: () => now,
     );
+    trackedServices = s;
     for (final d in const [
       SavedDevice(
           id: 'A', alias: 'Cap A', productClass: ProductClass.supercapacitor),
@@ -176,10 +181,10 @@ void main() {
       await s.devices.save(d);
     }
     await s.multiLink!.setEnabled(true);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await settleServices(s);
     sec('A').sample(13.61, mac: 'AA:BB:CC:DD:EE:01');
     sec('B').sample(12.20);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await settleServices(s);
   }
 
   Future<void> disposeServices() async {
@@ -229,8 +234,7 @@ void main() {
       'offline body', (tester) async {
     await tester.runAsync(bootServices);
     await pumpPage(tester, 'A');
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await settleTracked(tester);
     await tester.pump();
 
     expect(primary.connects, isEmpty,
@@ -279,8 +283,7 @@ void main() {
     expect(find.text('13.61 V'), findsOneWidget);
     // The hand-over runs real async (database, stream hops).
     for (var i = 0; i < 10; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 30)));
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -336,7 +339,7 @@ void main() {
   test('P1-4b: a unit saved without a class gets no secondary source', () async {
     await bootServices();
     await s.devices.save(const SavedDevice(id: 'B', alias: 'Cap B'));
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await settleServices(s);
     expect(s.multiLink!.liveSourceFor('B'), isNull,
         reason: 'nothing to route its dashboard by — that page keeps the '
             'pre-Phase-1 primary connect, where the wire byte decides');

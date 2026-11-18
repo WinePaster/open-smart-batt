@@ -18,6 +18,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -80,6 +84,7 @@ void main() {
         appDatabase: appDb,
         ble: fakeBle,
       );
+      trackedServices = services;
     });
     return services;
   }
@@ -118,8 +123,7 @@ void main() {
     // which fires its three queries on mount. Real database IO cannot settle
     // under the widget tester's fake clock, so it is drained here — otherwise
     // every test in this file ends holding a pending timer.
-    await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await settleTracked(tester);
     await tester.pump();
   }
 

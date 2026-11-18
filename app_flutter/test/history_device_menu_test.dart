@@ -36,6 +36,8 @@ import 'package:open_smart_batt/ui/history/history_screen.dart';
 import 'package:open_smart_batt/ui/widgets/industrial_card.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 /// BleService stub: nothing here reaches the plugin channel.
 class _StubBle extends BleService {
   final _telemetryOut = StreamController<TelemetrySample>.broadcast();
@@ -143,12 +145,10 @@ void main() {
       ),
     );
     // Two chained reads — the option list, then the data for whichever unit
-    // that list caused to be selected. Both need the real event loop.
-    await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-    });
-    await tester.pump();
-    await tester.pump();
+    // that list caused to be selected. Both need the real event loop: wait on
+    // the database barrier, not a clock (support/db_settle.dart; root repo
+    // docs/knowledges/flutter-test-db-timing.md — 150 ms lost under load).
+    await settleDb(tester, services);
   }
 
   /// The rect of a menu row, found through the label only that row carries.
@@ -277,10 +277,7 @@ void main() {
         // state, and the spinner there schedules frames forever.
         await t.tap(find.text(capName));
         await t.pump();
-        await t.runAsync(() async {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-        });
-        await t.pump();
+        await settleDb(t, services);
         await t.pump(const Duration(milliseconds: 400)); // menu closes
 
         // The menu closed and the bar now names the other unit.

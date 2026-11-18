@@ -27,6 +27,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_test/flutter_test.dart' as ft show expect;
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -110,6 +114,7 @@ void main() {
       );
       ble = _FakeBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
     });
     return services;
   }
@@ -145,8 +150,8 @@ void main() {
       ble.emitLink(BleLinkState.connected);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -196,8 +201,8 @@ void main() {
     final s = await stalled(t);
     await t.runAsync(() async {
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
 
     expect(await gateFirings(t, s), 1);
@@ -212,8 +217,8 @@ void main() {
     final s = await stalled(t);
     await t.runAsync(() async {
       ble.emitScan(const [DiscoveredDevice(id: 'AA', name: 'X', rssi: -50)]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
 
     expect(await gateFirings(t, s), 1);
@@ -230,8 +235,8 @@ void main() {
 
     await t.runAsync(() async {
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
 
     expect(s.connection.setupFailuresFor('AA'), before,
@@ -259,8 +264,8 @@ void main() {
     await t.runAsync(() async {
       s.connection.logAppLifecycle('resumed');
       ble.emitScan(const [DiscoveredDevice(id: 'AA', name: 'X', rssi: -50)]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 1);
   });
@@ -271,13 +276,13 @@ void main() {
     // Scan results arrive repeatedly. Without the spent flag each one would
     // qualify for its own attempt as soon as the previous had failed.
     final s = await stalled(t);
-    await t.runAsync(() async {
-      for (var i = 0; i < 5; i++) {
-        ble.emitScan(const [DiscoveredDevice(id: 'AA', name: 'X', rssi: -50)]);
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-    });
-    await t.pump();
+    // Each result fully handled (both zones, the database) before the next —
+    // the case where the previous attempt has already failed.
+    for (var i = 0; i < 5; i++) {
+      await t.runAsync(() async => ble.emitScan(
+          const [DiscoveredDevice(id: 'AA', name: 'X', rssi: -50)]));
+      await settleTracked(t);
+    }
     expect(await gateFirings(t, s), 1);
     expect(s.connection.isSetupStalledFor('AA'), isTrue);
   });
@@ -288,16 +293,16 @@ void main() {
     final s = await stalled(t);
     await t.runAsync(() async {
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 1);
 
     await t.runAsync(() async {
       s.connection.logAppLifecycle('paused');
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 2,
         reason: 'the copy says leaving and coming back retries');
@@ -313,8 +318,8 @@ void main() {
     await t.runAsync(() async {
       await s.settings.setAutoReconnect(false);
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 0);
   });
@@ -325,8 +330,8 @@ void main() {
       await s.connection.disconnect();
       ble.connectCalls.clear();
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 0,
         reason: 'a manual disconnect is the user saying what they want');
@@ -336,8 +341,8 @@ void main() {
     final s = await stalled(t);
     await t.runAsync(() async {
       ble.emitScan(const [DiscoveredDevice(id: 'BB', name: 'Y', rssi: -50)]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 0);
     expect(s.connection.isSetupStalledFor('AA'), isTrue);
@@ -348,8 +353,8 @@ void main() {
     await pumpUnder(t, s);
     await t.runAsync(() async {
       s.connection.logAppLifecycle('resumed');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(t);
     await t.pump();
     expect(await gateFirings(t, s), 0);
   });

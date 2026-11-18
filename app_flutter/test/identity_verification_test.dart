@@ -38,6 +38,10 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// The two capacitors of `2026.08.14/004`, by their real advertised name.
 const _savedId = 'SAVED-UNIT';
 const _savedMac = 'FE:78:27:73:00:01';
@@ -211,8 +215,7 @@ void main() {
   tearDown(() async => services.dispose());
 
   Future<void> settle() async {
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    await services.pending.drain();
+    await settleServices(services);
   }
 
   /// Teach the saved record the address the real unit reports, the way a

@@ -34,6 +34,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -83,6 +87,7 @@ void main() {
         factory: databaseFactoryFfi,
       );
       s = await AppServices.create(appDatabase: db, ble: _FakeBle());
+      trackedServices = s;
       await s.devices.saveNew('DEV-0', 'unit 0',
           productClass: ProductClass.smartBattery);
     });
@@ -142,8 +147,7 @@ void main() {
   }
 
   Future<void> settle(WidgetTester tester) async {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)));
+    await settleTracked(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
   }

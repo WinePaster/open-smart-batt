@@ -39,6 +39,8 @@ import 'package:open_smart_batt/ui/settings/settings_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 /// The v11 settings shape, written out BY HAND for the reason
 /// `schema_v19_test` gives: sharing `_createStatements` with the code under
 /// test would make the migration test pass whatever the migration did. v11
@@ -440,6 +442,9 @@ void main() {
   group('the app shell', () {
     late _FakeBle ble;
 
+    /// The services [makeServices] built last, for [settle]'s barrier.
+    AppServices? latest;
+
     Future<AppServices> makeServices(
       WidgetTester tester, {
       AppTextSize? size,
@@ -462,7 +467,16 @@ void main() {
         // SAME instance for the same path, and the matrix opens two apps in
         // one test while the first one's disposal may still be in flight.
         final dbDir = await Directory.systemTemp.createTemp('osb_text_size_db');
-        addTearDown(() => dbDir.delete(recursive: true));
+        addTearDown(() async {
+          // The services close the database fire-and-forget; SQLite may remove
+          // its journal while the recursive delete is walking the directory
+          // (same guard as support/landscape_harness.dart).
+          try {
+            await dbDir.delete(recursive: true);
+          } on FileSystemException {
+            // Already gone, or emptied under us — nothing left to clean.
+          }
+        });
         final db = await AppDatabase.open(
           path: p.join(dbDir.path, 'app.db'),
           factory: databaseFactoryFfi,
@@ -506,16 +520,26 @@ void main() {
         if (lang != null) await s.settings.setLang(lang);
         await s.pending.drain();
       });
+      latest = s;
       return s;
     }
 
+    // Database part on a barrier, not a clock (support/db_settle.dart; root
+    // repo docs/knowledges/flutter-test-db-timing.md — the overflow matrix
+    // lost a 6 × 10 ms sleep on CI run 44285994408). Pumps are for animations.
     Future<void> settle(WidgetTester tester) async {
+      final s = latest;
       for (var i = 0; i < 6; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
+        if (s != null) {
+          await tester.runAsync(() => servicesBarrier(s));
+        } else {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+        }
         await tester.pump(const Duration(milliseconds: 100));
       }
+      if (s != null) await settleDb(tester, s);
     }
 
     double appScale(WidgetTester tester) => MediaQuery.textScalerOf(

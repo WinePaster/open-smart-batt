@@ -27,6 +27,10 @@ import 'package:open_smart_batt/platform/platform.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Records what the platform channel would have been asked to do.
 class _FakeMonitor implements MonitorService {
   _FakeMonitor({this.holdsThroughReconnect = true});
@@ -167,7 +171,7 @@ class _FakeHealth extends ChangeNotifier implements TelemetryHealth {
 /// A microtask hop is not enough: `_event` fires an unawaited DB insert, and if
 /// the test tears the database down before it completes the whole case fails on
 /// "database has already been closed" rather than on anything real.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 20));
+Future<void> settle() => settleTrackedPlain();
 
 TelemetrySample sampleAt({double? pvlt, int? soc, int? tempC}) =>
     TelemetrySample.empty().copyWith(
@@ -185,7 +189,9 @@ void main() {
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
     );
-    return AppServices.create(appDatabase: db, ble: ble, monitor: monitor);
+    final created = await AppServices.create(appDatabase: db, ble: ble, monitor: monitor);
+    trackedServices = created;
+    return created;
   }
 
   group('service lifecycle follows the link', () {

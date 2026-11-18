@@ -22,6 +22,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -149,6 +153,7 @@ void main() {
         );
         ble = _StubBle();
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
       });
       return (services, ble);
     }
@@ -157,8 +162,7 @@ void main() {
       final (s, ble) = await boot(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await settleTracked(tester);
         await s.dispose();
       });
 

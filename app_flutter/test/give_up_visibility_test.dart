@@ -40,6 +40,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -757,6 +761,7 @@ void main() {
         );
         ble = _FakeBle()..connectError = _fbpTimeout();
         s = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = s;
         await s.devices.saveNew('AA', 'Cap #1', name: 'RCE-SCAP_II');
       });
       addTearDown(() => tester.runAsync(s.dispose));
@@ -783,8 +788,8 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.tap(find.text('Cap #1'));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       // The whole chain: plugin exception → typed classifier → `lastError` →
@@ -821,6 +826,7 @@ void main() {
           ..connectError = FlutterBluePlusException(
               ErrorPlatform.android, 'connect', 133, 'GATT_ERROR');
         s = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = s;
         await s.devices.saveNew('AA', 'Cap #1', name: 'RCE-SCAP_II');
       });
       addTearDown(() => tester.runAsync(s.dispose));
@@ -846,8 +852,8 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.tap(find.text('Cap #1'));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(s.connection.lastErrorUnattributed, 'connect_failed');
@@ -882,6 +888,7 @@ void main() {
         );
         ble = _FakeBle();
         s = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = s;
       });
       addTearDown(() => tester.runAsync(s.dispose));
 
@@ -908,8 +915,8 @@ void main() {
         ble._linkOut.add(BleLinkState.connecting);
         await Future<void>.delayed(Duration.zero);
         ble._linkOut.add(BleLinkState.disconnected);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(s.connection.isRetrying, isFalse);
@@ -929,6 +936,7 @@ void main() {
         );
         ble = _FakeBle();
         s = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = s;
       });
       addTearDown(() => tester.runAsync(s.dispose));
 
@@ -957,8 +965,8 @@ void main() {
         ble._linkOut.add(BleLinkState.connected);
         await Future<void>.delayed(Duration.zero);
         ble._linkOut.add(BleLinkState.disconnected);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(s.connection.isRetrying, isTrue);

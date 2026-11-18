@@ -57,6 +57,10 @@ import 'package:open_smart_batt/config/app_config.dart' show AppEdition;
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -144,6 +148,7 @@ void main() {
         factory: databaseFactoryFfi,
       );
       services = await AppServices.create(appDatabase: db, ble: _StubBle());
+      trackedServices = services;
       devices = services.devices;
       facts = services.facts;
     });
@@ -456,6 +461,7 @@ void main() {
           factory: databaseFactoryFfi,
         );
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
       });
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -504,7 +510,9 @@ void main() {
       await tester.runAsync(() async {
         ble.held = devId;
         ble.emitLink(BleLinkState.ready);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await settleTracked(tester);
+      await tester.runAsync(() async {
         ble.emitTelemetry(TelemetrySample(
           timestamp: DateTime.now(),
           pvlt: 13.1,
@@ -512,20 +520,18 @@ void main() {
           dealerCode: dealer,
           serial: tail,
         ));
-        await Future<void>.delayed(const Duration(milliseconds: 60));
       });
-      await tester.pump();
+      await settleTracked(tester);
     }
 
     /// The 13 s hole in the field log: `disconnected`, then a `connected` that
     /// never reaches `ready`.
     Future<void> dropAndHalfReturn(WidgetTester tester) async {
-      await tester.runAsync(() async {
-        ble.emitLink(BleLinkState.disconnected);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-        ble.emitLink(BleLinkState.connected);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-      });
+      await tester.runAsync(
+          () async => ble.emitLink(BleLinkState.disconnected));
+      await settleTracked(tester);
+      await tester.runAsync(() async => ble.emitLink(BleLinkState.connected));
+      await settleTracked(tester);
       await tester.pump();
     }
 

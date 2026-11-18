@@ -22,6 +22,8 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'db_settle.dart';
+
 /// The window sizes of design 0105 §4.9, in logical px (dpr 1).
 class Win {
   const Win(this.name, this.size);
@@ -172,6 +174,10 @@ final List<SavedDevice> kHarnessDevices = [
   ),
 ];
 
+/// The services the running test built, for [settleHarness]'s database
+/// barrier. Cleared on teardown.
+AppServices? _harnessServices;
+
 /// Build real [AppServices] over a fresh temp-file database.
 Future<AppServices> makeHarnessServices(
   WidgetTester tester, {
@@ -220,17 +226,31 @@ Future<AppServices> makeHarnessServices(
     }
     await s.pending.drain();
   });
+  _harnessServices = s;
+  addTearDown(() => _harnessServices = null);
   return s;
 }
 
 /// Let real async work (DB reads) and a few frames run.
+///
+/// The database part waits on a barrier, not a clock (support/db_settle.dart;
+/// root repo docs/knowledges/flutter-test-db-timing.md): it was 6 × a 10 ms
+/// real-time sleep, which a slow CI runner lost — a detail page's history
+/// query still queued when the test ended (`landscape_detail_test`, CI run
+/// 44285994408). The 100 ms pumps stay: they are for animations.
 Future<void> settleHarness(WidgetTester tester) async {
+  final s = _harnessServices;
   for (var i = 0; i < 6; i++) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 10)),
-    );
+    if (s != null) {
+      await tester.runAsync(() => servicesBarrier(s));
+    } else {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+    }
     await tester.pump(const Duration(milliseconds: 100));
   }
+  if (s != null) await settleDb(tester, s);
 }
 
 /// Size the test window (dpr 1) and the OS text scale; both reset on teardown.

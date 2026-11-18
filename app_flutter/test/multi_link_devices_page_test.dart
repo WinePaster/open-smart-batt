@@ -21,6 +21,10 @@ import 'package:open_smart_batt/ui/devices/devices_page.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 class _FakePrimary extends BleService {
   /// A scan that has already found both units: only a unit seen in range is
   /// adopted as a secondary (2026.11.12/004).
@@ -116,6 +120,7 @@ void main() {
         multiLinkBuild: true,
         multiLinkBleFactory: () => _FakeSecondary(secs),
       );
+      trackedServices = s;
       for (final d in [
         const SavedDevice(
             id: 'A', alias: 'Bat A', productClass: ProductClass.smartBattery),
@@ -125,8 +130,8 @@ void main() {
         await s.devices.save(d);
       }
       await s.multiLink!.setEnabled(true);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     expect(s.multiLink!.isOnlineFor('A'), isTrue);
     expect(s.multiLink!.isOnlineFor('B'), isTrue);
 
@@ -167,8 +172,7 @@ void main() {
     await tester.tap(find.text('Disconnect').first);
     // The release awaits the link's teardown; let both zones run it out.
     for (var i = 0; i < 3; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -185,8 +189,8 @@ void main() {
     // Not adopted again behind the user's back (PR #43's rule).
     await tester.runAsync(() async {
       s.multiLink!.presenceTick();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     expect(s.multiLink!.isOnlineFor('A'), isFalse);
     expect(secs.where((x) => x.id == 'A'), hasLength(1),
         reason: 'no second link was opened to A');

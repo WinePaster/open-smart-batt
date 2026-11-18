@@ -26,6 +26,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -121,6 +125,7 @@ void main() {
       notifier = NoopAlertNotifier();
       services = await AppServices.create(
           appDatabase: db, ble: _FakeBle(), alertNotifier: notifier);
+      trackedServices = services;
       for (final d in seed) {
         await services.devices.save(d);
       }
@@ -453,6 +458,7 @@ void main() {
         ble = _FakeBle();
         services = await AppServices.create(
             appDatabase: db, ble: ble, alertNotifier: notifier);
+        trackedServices = services;
         for (final d in seed) {
           await services.devices.save(d);
         }
@@ -509,8 +515,8 @@ void main() {
           () => services.alerts.onSample(deviceId, s));
       await tester.runAsync(() async {
         ble.emit(s);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
     }
 
     /// Raise BOTH kinds — used to test that a NEW kind reopens a collapsed
@@ -522,8 +528,8 @@ void main() {
           () => services.alerts.onSample(deviceId, s));
       await tester.runAsync(() async {
         ble.emit(s);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
     }
 
     tearDown(() async => services.dispose());

@@ -51,6 +51,10 @@ import 'package:open_smart_batt/ui/util/export_header.dart';
 import 'package:open_smart_batt/ui/widgets/industrial.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Inert BleService — copied from `nav_shell_test.dart`, same reason: these
 /// tests are about where a TAP goes, never about establishing a link, and the
 /// real implementation would leave a pending timer the fake-async zone in a
@@ -137,8 +141,7 @@ void main() {
 
   /// Let the real (ffi) database finish whatever the last frame started.
   Future<void> drain(WidgetTester tester) async {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -159,6 +162,7 @@ void main() {
       );
       services = await AppServices.create(
           appDatabase: appDb, ble: _FakeBleService());
+      trackedServices = services;
       // 🔴 The WHOLE row is rewritten, not just the mode. `inMemoryDatabasePath`
       // is not a fresh database per test in this process — the settings row
       // survives — so anything a previous test switched on is still on. Both

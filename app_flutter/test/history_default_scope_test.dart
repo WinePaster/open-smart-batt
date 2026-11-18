@@ -37,6 +37,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -254,6 +258,7 @@ void main() {
       );
       ble = _StubBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
     });
 
     tearDown(() async => services.dispose());
@@ -265,10 +270,10 @@ void main() {
       // up at once it stops being hypothetical — one unit disconnecting clears
       // the ambient session while the other is still streaming.
       ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
       ble.emitTelemetry(TelemetrySample(
           timestamp: DateTime.utc(2026, 8, 6, 12), pvlt: 12.5));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
 
       services.telemetry.flushPendingHistory();
       await services.pending.drain();
@@ -283,10 +288,10 @@ void main() {
       // decides, not something incidental about the stub.
       ble.connected = 'AA';
       ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
       ble.emitTelemetry(TelemetrySample(
           timestamp: DateTime.utc(2026, 8, 6, 12), pvlt: 12.5));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
 
       services.telemetry.flushPendingHistory();
       await services.pending.drain();
@@ -323,6 +328,7 @@ void main() {
           factory: databaseFactoryFfi,
         );
         services = await AppServices.create(appDatabase: db, ble: _StubBle());
+        trackedServices = services;
       });
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
@@ -368,9 +374,7 @@ void main() {
       // The screen makes two chained reads — the option list, then the data for
       // whichever unit that list caused to be selected. Both need the real
       // event loop; the pumps afterwards render what they produced.
-      await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 150));
-      });
+      await settleTracked(tester);
       await tester.pump();
       await tester.pump();
     }

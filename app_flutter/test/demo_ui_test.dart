@@ -28,6 +28,10 @@ import 'package:open_smart_batt/ui/util/export_scope.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Link state and scan results a test can state outright.
 class _FakeBle extends BleService {
   final _linkOut = StreamController<BleLinkState>.broadcast();
@@ -112,6 +116,7 @@ void main() {
           path: inMemoryDatabasePath, factory: databaseFactoryFfi);
       ble = _FakeBle();
       s = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = s;
     });
     return s;
   }
@@ -189,8 +194,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('demo-pick-${DemoKind.battery.id}')));
     for (var i = 0; i < 10; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await settleTracked(tester);
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(ble.connectedId, DemoKind.battery.id);
@@ -205,8 +209,7 @@ void main() {
     final s = await makeServices(tester);
     ble.scanFails = true; // the simulator / a reviewer with the radio off
     await tester.pumpWidget(app(s, const Scaffold(body: DevicesPage(active: true))));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await settleTracked(tester);
     await tester.pump();
     expect(s.connection.lastErrorFor('AA:BB:CC:DD:EE:01'), 'bluetooth_off',
         reason: 'precondition: a real unit does see the radio error');
@@ -215,8 +218,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('demo-pick-${DemoKind.battery.id}')));
     for (var i = 0; i < 10; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await settleTracked(tester);
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.byType(DeviceDetailPage), findsOneWidget);
@@ -237,8 +239,7 @@ void main() {
       expect(find.text('page'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('demo-end')));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await settleTracked(tester);
       await tester.pump();
       expect(find.byKey(const ValueKey('demo-banner')), findsNothing);
       await tester.runAsync(s.dispose);

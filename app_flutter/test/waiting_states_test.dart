@@ -23,6 +23,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -101,6 +105,7 @@ void main() {
       );
       ble = _FakeBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
     });
     return services;
   }
@@ -146,8 +151,8 @@ void main() {
       ble.emitLink(BleLinkState.connected);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -208,8 +213,8 @@ void main() {
     Future<void> stall(WidgetTester tester, AppServices s) async {
       await tester.runAsync(() async {
         ble.emitLink(BleLinkState.ready);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(
           kClassPendingTimeout + const Duration(milliseconds: 200)));
@@ -256,13 +261,11 @@ void main() {
       addTearDown(() => tester.runAsync(s.dispose));
       ble.failures = 3;
       await pumpUnder(tester, s, const ClassPendingView(deviceId: 'DEV-TEST'));
-      await tester.runAsync(() async {
-        ble.emitLink(BleLinkState.ready);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-        ble.emitTelemetry(TelemetrySample(timestamp: DateTime.now()));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      });
-      await tester.pump();
+      await tester.runAsync(() async => ble.emitLink(BleLinkState.ready));
+      await settleTracked(tester);
+      await tester.runAsync(
+          () async => ble.emitTelemetry(TelemetrySample(timestamp: DateTime.now())));
+      await settleTracked(tester);
       await tester.runAsync(() => Future<void>.delayed(
           kClassPendingTimeout + const Duration(milliseconds: 200)));
       await tester.pump(const Duration(milliseconds: 300));

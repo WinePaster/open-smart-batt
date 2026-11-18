@@ -23,6 +23,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -74,6 +78,7 @@ void main() {
         );
         ble = _StubBle();
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
       });
       return (services, ble);
     }
@@ -101,8 +106,7 @@ void main() {
       // which fires its queries on mount. Real database IO cannot settle under
       // the widget tester's fake clock, so it is drained here — otherwise the
       // test ends holding a pending timer.
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -128,8 +132,7 @@ void main() {
       // Connecting re-routes the dashboard, which mounts a FRESH history block
       // (design 0065) and so starts a fresh set of queries. Drained here for
       // the same reason `pump` drains its own.
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -139,8 +142,7 @@ void main() {
       final (s, ble) = await boot(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await settleTracked(tester);
         await s.dispose();
       });
       await pump(tester, s);
@@ -166,8 +168,7 @@ void main() {
       final (s, ble) = await boot(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await settleTracked(tester);
         await s.dispose();
       });
       await pump(tester, s);
@@ -191,8 +192,7 @@ void main() {
       final (s, ble) = await boot(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await settleTracked(tester);
         await s.dispose();
       });
       await pump(tester, s);
@@ -212,8 +212,7 @@ void main() {
       final (s, ble) = await boot(tester);
       addTearDown(() async {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await settleTracked(tester);
         await s.dispose();
       });
       await pump(tester, s);

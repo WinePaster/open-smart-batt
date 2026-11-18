@@ -32,6 +32,10 @@ import 'package:open_smart_batt/ui/history/history_chart_page.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 class _FakeBle extends BleService {
   final _telemetry = StreamController<TelemetrySample>.broadcast();
 
@@ -113,12 +117,8 @@ void main() {
   ///    [CircularProgressIndicator] is on screen while a window is in flight
   ///    and an indefinite animation never settles.
   Future<void> settle(WidgetTester t) async {
-    for (var i = 0; i < 5; i++) {
-      await t.pump();
-      await t.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
-      await t.pump();
-    }
+    await t.pump();
+    await settleRawDb(t, db.db);
   }
 
   Future<void> open(WidgetTester t, ProductClass? cls,

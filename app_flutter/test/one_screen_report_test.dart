@@ -37,6 +37,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -191,8 +195,7 @@ void main() {
     // mount. Real database IO cannot settle under the fake clock, so it is
     // drained here rather than left as a pending timer at teardown.
     if (extra.isNotEmpty) {
-      await tester.runAsync(
-          () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await settleTracked(tester);
       await tester.pump();
     }
   }
@@ -271,6 +274,7 @@ void main() {
         );
         ble = _FakeBle();
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
         await services.devices.saveNew('DEV-A', 'Cap #1', name: 'RCE-SCAP_II');
       });
       addTearDown(() => tester.runAsync(services.dispose));

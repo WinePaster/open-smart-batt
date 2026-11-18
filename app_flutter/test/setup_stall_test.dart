@@ -28,6 +28,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -97,6 +101,7 @@ void main() {
       );
       ble = _FakeBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
     });
     return services;
   }
@@ -134,8 +139,8 @@ void main() {
       ble.emitLink(BleLinkState.connected);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -157,8 +162,8 @@ void main() {
       ble.emitLink(BleLinkState.disconnecting);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -170,8 +175,8 @@ void main() {
       ble.emitLink(BleLinkState.connected);
       await Future<void>.delayed(Duration.zero);
       ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -316,8 +321,8 @@ void main() {
           ble.emitLink(BleLinkState.connecting);
           await Future<void>.delayed(Duration.zero);
           ble.emitLink(BleLinkState.disconnected); // never reached `connected`
-          await Future<void>.delayed(const Duration(milliseconds: 20));
         });
+        await settleTracked(tester);
         await tester.pump();
       }
 
@@ -370,8 +375,8 @@ void main() {
           ble.emitLink(BleLinkState.disconnecting);
           await Future<void>.delayed(Duration.zero);
           ble.emitLink(BleLinkState.disconnected);
-          await Future<void>.delayed(const Duration(milliseconds: 20));
         });
+        await settleTracked(tester);
         await tester.pump();
         await tester.runAsync(() => s.connection.connect('AA'));
       }

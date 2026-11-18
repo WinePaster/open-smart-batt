@@ -19,6 +19,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -362,6 +366,7 @@ void main() {
         );
         ble = _FakeBleService();
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
         for (final d in seed) {
           await services.devices.save(d);
         }
@@ -411,8 +416,8 @@ void main() {
     Future<void> feed(WidgetTester tester, TelemetrySample s) async {
       await tester.runAsync(() async {
         ble.emit(s);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -638,8 +643,7 @@ void main() {
 
       final before = DateTime.now();
       await tester.tap(find.text('Off'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
 
       final saved = services.devices.deviceFor(_unitA)!;
@@ -665,8 +669,7 @@ void main() {
       await pump(tester, const AlertSettingsPage(deviceId: _unitA));
 
       await tester.tap(find.byType(Switch).last);
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
 
       final saved = services.devices.deviceFor(_unitA)!;
@@ -690,8 +693,7 @@ void main() {
 
       expect(find.textContaining('Save this device first'), findsOneWidget);
       await tester.tap(find.byType(AlertSettingsEntry));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
       // The route's own transition — a dialog is a route, and one pump only
       // pushes it.
@@ -707,8 +709,7 @@ void main() {
       // exercised rather than left hanging: nothing is written, and the entry
       // row still says the same thing.
       await tester.tap(find.text('Skip'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(services.devices.isSaved(_unitA), isFalse);
@@ -731,6 +732,7 @@ void main() {
         );
         ble = _FakeBleService();
         services = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = services;
         for (final d in seed) {
           await services.devices.save(d);
         }
@@ -780,8 +782,8 @@ void main() {
     Future<void> feed(WidgetTester tester, TelemetrySample s) async {
       await tester.runAsync(() async {
         ble.emit(s);
-        await Future<void>.delayed(const Duration(milliseconds: 30));
       });
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -884,6 +886,7 @@ void main() {
           ble: _FakeBleService(),
           alertNotifier: notifier,
         );
+        trackedServices = services;
       });
     }
 
@@ -929,8 +932,7 @@ void main() {
       // can never progress, and the test would then fail on a pending timer that
       // has nothing to do with warnings. Same drain as
       // `device_info_slot_test.dart`.
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await settleTracked(tester);
       await tester.pump();
     }
 
@@ -971,8 +973,7 @@ void main() {
       expect(services.settings.alertsEnabled, isFalse,
           reason: 'nothing is written until the user says yes');
       await tester.tap(find.text('Turn on'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pumpAndSettle();
       expect(services.settings.alertsEnabled, isTrue);
     });
@@ -1020,8 +1021,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Turn on'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pumpAndSettle();
 
       // Enabled anyway — refusing to enable would trade a silent failure for a
@@ -1072,8 +1072,7 @@ void main() {
       await tester.tap(find.descendant(
           of: find.ancestor(of: find.text('5 s'), matching: find.byType(Row)).first,
           matching: find.byTooltip('Increase')));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
       expect(services.settings.alertSustainSec, 6);
 
@@ -1094,8 +1093,7 @@ void main() {
           findsOneWidget);
       await tester.tap(
           find.descendant(of: row, matching: find.byTooltip('Increase')));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 40)));
+      await settleTracked(tester);
       await tester.pump();
       expect(services.settings.scanRssiMin, -90);
       expect(find.descendant(of: row, matching: find.text('-90 dBm')),

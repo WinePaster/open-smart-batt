@@ -45,6 +45,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -243,6 +247,7 @@ void main() {
       );
       ble = _FakeBle();
       s = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = s;
       await s.devices.saveNew('DEV-A', 'Cap #1', name: 'RCE-SCAP_II');
     });
     return s;
@@ -287,8 +292,7 @@ void main() {
 
   /// Let the real (ffi) database finish whatever the last frame started.
   Future<void> settle(WidgetTester tester) async {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)));
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -465,8 +469,8 @@ void main() {
         const DiscoveredDevice(
             id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
       ]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
     await openScanTab(tester);
     expect(find.text('RCE-CarBatt'), findsOneWidget);
@@ -519,8 +523,8 @@ void main() {
         const DiscoveredDevice(
             id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
       ]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
     await openScanTab(tester);
 
@@ -1065,8 +1069,8 @@ void main() {
           const DiscoveredDevice(
               id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
       await openScanTab(tester);
       await tester.tap(find.text('Connect').last);
@@ -1098,6 +1102,11 @@ void main() {
     testWidgets('C6: a unit that DROPS while the dialog is up opens nothing',
         (tester) async {
       final s = await connectNearbyUnsaved(tester);
+      // The link must STAY gone: the waits below are database barriers, and on
+      // a loaded machine their real time can pass the 2 s reconnect rung,
+      // whose stub connect would bring the unit back before the precondition
+      // is read (root repo docs/knowledges/flutter-test-db-timing.md).
+      await tester.runAsync(() => s.settings.setAutoReconnect(false));
 
       // The dialog has no deadline. A user can put the phone down on it, walk
       // away from the vehicle, and answer it five minutes later.
@@ -1129,6 +1138,8 @@ void main() {
       // design 0055 §7.1 rule 2 exists to prevent and which the sub-tab split
       // would otherwise manufacture. So C7 is applied to the success path only.
       final s = await connectNearbyUnsaved(tester);
+      // As in C6: keep the dropped link from being reconnected by the 2 s rung.
+      await tester.runAsync(() => s.settings.setAutoReconnect(false));
 
       ble.connectedId = null;
       ble._linkOut.add(BleLinkState.disconnected);
@@ -1480,8 +1491,8 @@ void main() {
           const DiscoveredDevice(
               id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
       await openScanTab(tester);
       await tester.tap(find.text('Connect').last);
@@ -1752,8 +1763,8 @@ void main() {
         const DiscoveredDevice(
             id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
       ]);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
+    await settleTracked(tester);
     await tester.pump();
     await openScanTab(tester);
 
@@ -1824,8 +1835,8 @@ void main() {
         ble._scanOut.add([
           DiscoveredDevice(id: id, name: name, rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
       if (openTab) {
         await openScanTab(tester);
@@ -2002,7 +2013,8 @@ void main() {
           factory: databaseFactoryFfi,
         );
         ble = _FakeBle();
-        s = await AppServices.create(appDatabase: db, ble: ble); // NOTHING saved
+        s = await AppServices.create(appDatabase: db, ble: ble);
+        trackedServices = s; // NOTHING saved
       });
       addTearDown(() => teardown(tester, s));
       await pumpPage(tester, s);
@@ -2013,8 +2025,8 @@ void main() {
           const DiscoveredDevice(
               id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       // No tab tap anywhere above: the scan is what came up.
@@ -2332,8 +2344,8 @@ void main() {
           const DiscoveredDevice(
               id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(find.text('RCE-CarBatt'), findsOneWidget);
@@ -2407,8 +2419,8 @@ void main() {
           const DiscoveredDevice(
               id: 'DEV-NEW', name: 'RCE-CarBatt', rssi: -55, isVendor: true),
         ]);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
       await openScanTab(tester);
       await openDetail(tester, 'RCE-CarBatt');
@@ -2430,8 +2442,8 @@ void main() {
     Future<void> emit(WidgetTester tester, List<DiscoveredDevice> hits) async {
       await tester.runAsync(() async {
         ble._scanOut.add(hits);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
     }
 

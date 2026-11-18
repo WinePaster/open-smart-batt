@@ -30,6 +30,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothAdapterState;
 import 'package:flutter_test/flutter_test.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/models/models.dart';
@@ -90,7 +94,7 @@ class _StubBle extends BleService {
 
 /// Let the fire-and-forget writes land. Each one is a DB statement plus a
 /// controller reload, so a microtask hop is not enough.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 40));
+Future<void> settle() => settleTrackedPlain();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -101,7 +105,9 @@ void main() {
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
     );
-    return AppServices.create(appDatabase: db, ble: ble);
+    final created = await AppServices.create(appDatabase: db, ble: ble);
+    trackedServices = created;
+    return created;
   }
 
   TelemetrySample sampleWith({int? deviceType, String? mac, String? serial}) =>

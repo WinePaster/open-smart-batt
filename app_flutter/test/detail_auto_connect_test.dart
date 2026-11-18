@@ -51,6 +51,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -227,6 +231,7 @@ void main() {
       );
       ble = _FakeBle();
       services = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = services;
       if (saveDevice) {
         await services.devices.saveNew('DEV-A', 'Cap #1', name: 'RCE-SCAP_II');
       }
@@ -390,8 +395,7 @@ void main() {
     // design 0065 mounts a history block on this page, and re-pumping a fresh
     // page builds a fresh one with a fresh set of queries. Real
     // database IO cannot settle under the fake clock, so it is drained here.
-    await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await settleTracked(tester);
     await tester.pump();
 
     expect(conn.connectToSavedCalls, 0);

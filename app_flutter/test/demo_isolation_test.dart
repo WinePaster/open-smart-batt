@@ -23,6 +23,10 @@ import 'package:open_smart_batt/protocol/protocol.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 const _realId = 'AA:BB:CC:DD:EE:01';
 
 /// The REAL [BleService] — connect, the demo link, writes and teardown are all
@@ -143,8 +147,7 @@ void main() {
       // T5 — the purge on disconnect.
       await s.connection.disconnect();
       await _waitFor(() => s.ble.currentState == BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      await s.pending.drain();
+      await settleServices(s);
       expect(await _demoRows(s, Db.tableHistory), 0);
       final after =
           await s.historyRepo.exportCsv(labelFor: (id) => id ?? '-');

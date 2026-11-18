@@ -33,6 +33,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/l10n/app_localizations.dart';
@@ -84,6 +88,7 @@ void main() {
         factory: databaseFactoryFfi,
       );
       s = await AppServices.create(appDatabase: db, ble: _FakeBle());
+      trackedServices = s;
       for (var i = 0; i < devices; i++) {
         // 🔴 A class is required since design 0050 D4 — the home surface (and
         // therefore this editor, which edits the same resolved list) drops
@@ -131,8 +136,7 @@ void main() {
   }
 
   Future<void> settle(WidgetTester tester) async {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)));
+    await settleTracked(tester);
     await tester.pump();
   }
 

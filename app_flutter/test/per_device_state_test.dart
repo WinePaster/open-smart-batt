@@ -39,6 +39,10 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// BleService stub whose telemetry / packet / link streams a test can drive.
 /// Nothing below reaches the plugin channel.
 class _StubBle extends BleService {
@@ -260,8 +264,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       ble.emitLink(BleLinkState.disconnected);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await services.pending.drain();
+      await settleServices(services);
 
       final rows = await services.historyRepo.querySamplesWithDevice();
       expect(rows.map((r) => r.deviceId).toSet(), {'AA', 'BB'});
@@ -299,8 +302,7 @@ void main() {
           deviceId: 'AA'));
       ble.emitPacket(BlePacketEvent(LogDirection.rx, const [0xB8, 0x21],
           deviceId: 'BB'));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await services.pending.drain();
+      await settleServices(services);
 
       final rows = await services.logRepo.queryLog();
       final a = rows.firstWhere((e) => e.deviceId == 'AA');
@@ -324,8 +326,7 @@ void main() {
           deviceId: 'AA'));
       ble.emitPacket(BlePacketEvent(LogDirection.rx, const [0xB8, 0x21],
           deviceId: 'BB'));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await services.pending.drain();
+      await settleServices(services);
 
       final out = await services.logRepo
           .exportLog(deviceId: 'AA', header: const ['scope: AA']);
@@ -342,8 +343,7 @@ void main() {
 
       ble.emitPacket(
           BlePacketEvent(LogDirection.event, const [], note: 'GATT dump'));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await services.pending.drain();
+      await settleServices(services);
 
       final row = (await services.logRepo.queryLog())
           .firstWhere((e) => e.note == 'GATT dump');
@@ -382,8 +382,7 @@ void main() {
     tearDown(() async => services.dispose());
 
     Future<void> settle() async {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await services.pending.drain();
+      await settleServices(services);
     }
 
     test('0x38 fills it in, and a disconnect empties it', () async {

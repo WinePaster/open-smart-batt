@@ -40,6 +40,8 @@ import 'package:open_smart_batt/ui/dashboard/pack_view.dart';
 import 'package:open_smart_batt/ui/util/export_scope.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 /// No radio: the test drives link transitions and telemetry directly, and says
 /// which id/name the "connected" unit has.
 class _StubBle extends BleService {
@@ -94,7 +96,8 @@ class _StubBle extends BleService {
 
 /// Let the fire-and-forget writes land. `record()` is a transaction plus a
 /// reload, so a microtask hop is not enough.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 40));
+// Waits use the database barrier (support/db_settle.dart `settleServices`),
+// not a fixed 40 ms sleep — root repo docs/knowledges/flutter-test-db-timing.md.
 
 /// The `ampere` cell of a one-row CSV export.
 ///
@@ -157,7 +160,7 @@ void main() {
     ble.advertised = name;
     await s.connection.connect(id);
     ble.emitLink(BleLinkState.ready);
-    await settle();
+    await settleServices(s);
     ble.emitTelemetry(sampleWith(
       deviceType: deviceType,
       mac: mac,
@@ -165,11 +168,11 @@ void main() {
       dealerCode: dealerCode,
       current: current,
     ));
-    await settle();
+    await settleServices(s);
     ble.emitLink(BleLinkState.disconnected);
     ble.held = null;
     ble.advertised = '';
-    await settle();
+    await settleServices(s);
   }
 
   // =========================================================================
@@ -222,14 +225,14 @@ void main() {
       ble.advertised = 'RCE-SCAP_II';
       await s.connection.connect('CAP');
       ble.emitLink(BleLinkState.ready);
-      await settle();
+      await settleServices(s);
       ble.emitTelemetry(sampleWith(mac: 'AA:BB:CC:DD:EE:FF'));
-      await settle();
+      await settleServices(s);
       expect(s.facts.factFor('CAP')!.mac, 'AA:BB:CC:DD:EE:FF');
 
       // 0x38 is not on every frame; the next one carries the class instead.
       ble.emitTelemetry(sampleWith(deviceType: kSuperCapacitorDeviceType));
-      await settle();
+      await settleServices(s);
 
       final f = s.facts.factFor('CAP')!;
       expect(f.mac, 'AA:BB:CC:DD:EE:FF',
@@ -247,10 +250,10 @@ void main() {
       ble.held = 'CAP';
       await s.connection.connect('CAP');
       ble.emitLink(BleLinkState.ready);
-      await settle();
+      await settleServices(s);
       s.connection.setPackLabelOverride(ProductClass.smartBattery);
       ble.emitTelemetry(sampleWith());
-      await settle();
+      await settleServices(s);
 
       expect(s.connection.packLabel, ProductClass.smartBattery,
           reason: 'it does drive the cosmetic chip');
@@ -287,7 +290,7 @@ void main() {
       ble.held = 'CAP';
       await s.connection.connect('CAP');
       ble.emitLink(BleLinkState.ready);
-      await settle();
+      await settleServices(s);
 
       expect(s.connection.resolvedClass, ProductClass.unknown,
           reason: '🔴 design 0057 §3: a cached class may not seed routing — '
@@ -310,7 +313,7 @@ void main() {
       ble.held = 'CAP';
       await s.connection.connect('CAP');
       ble.emitLink(BleLinkState.ready);
-      await settle();
+      await settleServices(s);
 
       expect(s.connection.resolvedClass, ProductClass.supercapacitor);
       expect(s.connection.routing, RoutingDecision.pack,
@@ -356,7 +359,7 @@ void main() {
         ble.held = 'CAP';
         await s.connection.connect('CAP');
         ble.emitLink(BleLinkState.ready);
-        await settle();
+        await settleServices(s);
       });
       await tester.pump();
 
@@ -384,7 +387,7 @@ void main() {
       ble.held = 'CAP';
       await s.connection.connect('CAP');
       ble.emitLink(BleLinkState.ready);
-      await settle();
+      await settleServices(s);
       expect(s.connection.resolvedClass, ProductClass.unknown);
       expect(s.connection.routing, RoutingDecision.pending,
           reason: '「我刪掉的話　就是當一個陌生的裝置重新開始不是嗎？」');

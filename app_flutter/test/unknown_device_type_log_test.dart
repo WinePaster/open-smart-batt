@@ -25,6 +25,10 @@ import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 class _StubBle extends BleService {
   final _linkOut = StreamController<BleLinkState>.broadcast();
   final _teleOut = StreamController<TelemetrySample>.broadcast();
@@ -61,7 +65,7 @@ class _StubBle extends BleService {
 
 /// `_event` inserts are unawaited two-step round trips; a microtask is not
 /// enough to see them land.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 30));
+Future<void> settle() => settleTrackedPlain();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -72,7 +76,9 @@ void main() {
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
     );
-    return AppServices.create(appDatabase: db, ble: ble);
+    final created = await AppServices.create(appDatabase: db, ble: ble);
+    trackedServices = created;
+    return created;
   }
 
   Future<List<String>> notes(AppServices s) async =>

@@ -40,6 +40,10 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Inert BleService: never reaches the (unsupported) flutter_blue_plus platform.
 class _FakeBleService extends BleService {
   @override
@@ -76,9 +80,7 @@ void main() {
 
   /// Let the real (ffi) database finish whatever the last frame started.
   Future<void> drain(WidgetTester tester) async {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
+    await settleTracked(tester);
     await tester.pump();
   }
 
@@ -93,6 +95,7 @@ void main() {
         appDatabase: appDb,
         ble: _FakeBleService(),
       );
+      trackedServices = services;
     });
     // design 0105: this file pins the PORTRAIT phone shell (bottom bar). The
     // default 800×600 test window is landscape and would now get the rail.

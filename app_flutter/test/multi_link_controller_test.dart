@@ -31,6 +31,8 @@ import 'package:open_smart_batt/ui/util/export_header.dart';
 import 'package:open_smart_batt/ui/util/report_bundle.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/db_settle.dart';
+
 /// The primary link: driven by hand, never touches a radio.
 class _FakePrimary extends BleService {
   _FakePrimary({this.adapterOn = false});
@@ -201,7 +203,20 @@ class _FakeSecondary extends BleService {
   }
 }
 
-Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 20));
+/// The services the running test built; [_settle] waits on their database.
+AppServices? _settleTarget;
+
+/// Database work done (support/db_settle.dart `settleServices`), not a fixed
+/// 20 ms sleep — root repo docs/knowledges/flutter-test-db-timing.md (the
+/// personal-group test lost it on CI run 44104916877).
+Future<void> _settle() async {
+  final s = _settleTarget;
+  if (s == null) {
+    await Future<void>.delayed(Duration.zero);
+    return;
+  }
+  await settleServices(s);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -237,6 +252,7 @@ void main() {
       multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
       multiLinkClock: () => now,
     );
+    _settleTarget = s;
     for (final d in devices) {
       await s.devices.save(d);
     }
@@ -267,6 +283,7 @@ void main() {
   });
 
   tearDown(() async {
+    _settleTarget = null;
     await s.pending.drain();
     await s.dispose();
     AckMarker.debugDirectoryOverride = null;
@@ -475,6 +492,7 @@ void main() {
       multiLinkBuild: true,
       multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
     );
+    _settleTarget = s;
     await s.devices.save(bat('A'));
     await s.devices.save(bat('B'));
     // A short retry so three rounds fit in a test.
@@ -495,7 +513,10 @@ void main() {
     for (var round = 1; round <= 3; round++) {
       sec('A').avg = 700;
       ml.checkDemotions();
-      await _settle();
+      // Not the database: the controller's own 10 ms retry timer has to run.
+      // A timer due later than it fires after it (Dart orders timers by
+      // deadline), so this does not depend on machine speed.
+      await Future<void>.delayed(const Duration(milliseconds: 30));
     }
     expect(ml.heldIds.contains('A'), isFalse);
     expect(log, contains('disconnect A'));
@@ -984,6 +1005,7 @@ void main() {
         multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
         multiLinkClock: () => now,
       );
+      _settleTarget = s;
       final ml = s.multiLink!;
       await s.devices.save(bat('A'));
       primary.emitScan({'A'});

@@ -22,6 +22,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'dart:io';
@@ -95,6 +99,7 @@ void main() {
       );
       ble = _FakeBle();
       s = await AppServices.create(appDatabase: db, ble: ble);
+      trackedServices = s;
       for (final d in devices) {
         await s.devices.save(d);
       }
@@ -246,8 +251,8 @@ void main() {
       await pumpHome(tester, s);
       await tester.runAsync(() async {
         ble.emitLink(BleLinkState.ready);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       // A is live, B is not — and B still says when it was last seen.
@@ -296,8 +301,8 @@ void main() {
           timestamp: DateTime.now(),
           dvol: const [3.304, 3.306, 3.292, 3.319],
         ));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(find.byType(DvolBars), findsOneWidget);
@@ -320,8 +325,8 @@ void main() {
           timestamp: DateTime.now(),
           dvolPending: true,
         ));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
       });
+      await settleTracked(tester);
       await tester.pump();
 
       expect(find.byType(PendingNote), findsOneWidget);

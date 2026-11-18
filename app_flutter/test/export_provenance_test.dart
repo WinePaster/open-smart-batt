@@ -25,6 +25,10 @@ import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/ui/util/export_header.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+// Database waits use a barrier, not a clock (support/db_settle.dart;
+// root repo docs/knowledges/flutter-test-db-timing.md).
+import 'support/db_settle.dart';
+
 /// Minimal BleService stub: the controller only needs the three streams and a
 /// connected id for attribution.
 class _StubBle extends BleService {
@@ -453,7 +457,7 @@ void main() {
 
       // Recording is unconditional — there is no longer a switch to turn on.
       ble.emitLink(BleLinkState.ready);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
 
       // Three snapshots inside one WINDOW, then the app leaves the foreground
       // without any disconnect — the 2026-07-28 shape exactly. The window
@@ -467,13 +471,13 @@ void main() {
           pvlt: 12.0 + i,
         ));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
 
       expect(await services.historyRepo.count(), 0,
           reason: 'nothing is written until the bucket closes');
 
       services.telemetry.flushPendingHistory();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
 
       final rows = await services.historyRepo.querySamples();
       expect(rows, hasLength(1));
@@ -498,7 +502,7 @@ void main() {
 
       services.telemetry.flushPendingHistory();
       services.telemetry.flushPendingHistory();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await settleServices(services);
       expect(await services.historyRepo.count(), 0);
     });
   });
