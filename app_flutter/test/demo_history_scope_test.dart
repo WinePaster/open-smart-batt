@@ -138,6 +138,8 @@ void main() {
     // Two chained reads — the option list, then the data for whichever unit
     // that list caused to be selected. Both need the real event loop.
     await settleTracked(tester);
+    await pumpUntilNoSpinner(tester,
+        waitingFor: 'the History screen to finish loading');
     await tester.pump();
     await tester.pump();
   }

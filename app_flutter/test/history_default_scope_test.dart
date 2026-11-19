@@ -375,6 +375,9 @@ void main() {
       // whichever unit that list caused to be selected. Both need the real
       // event loop; the pumps afterwards render what they produced.
       await settleTracked(tester);
+      // CI run 44560314299: the round count alone was not enough under load.
+      await pumpUntilNoSpinner(tester,
+          waitingFor: 'the History screen to finish loading');
       await tester.pump();
       await tester.pump();
     }

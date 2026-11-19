@@ -16,6 +16,7 @@
 // the results reach the tree; a rebuild may queue more, hence a few rounds.
 //
 // Root repo: docs/knowledges/flutter-test-db-timing.md.
+import 'package:flutter/material.dart' show CircularProgressIndicator;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/state/state.dart';
@@ -138,3 +139,20 @@ Future<void> settleTrackedPlain({int rounds = 10}) {
   }
   return settleServices(s, rounds: rounds);
 }
+
+/// After a [settleDb]-style settle on a screen that shows a
+/// [CircularProgressIndicator] while it loads (the History screen's
+/// FutureBuilder): pump until no spinner is left.
+///
+/// CI run 44560314299 (2026-11-19): `history_default_scope_test` lost ten
+/// database rounds under load although the chain takes ~6 idle — some hop
+/// waits on something the database barrier does not cover. The spinner is the
+/// screen's own word for "not done", so this waits on that rather than on a
+/// longer round count. Root repo docs/knowledges/flutter-test-db-timing.md §7.
+Future<void> pumpUntilNoSpinner(WidgetTester tester,
+        {String waitingFor = 'the screen to finish loading'}) =>
+    pumpUntil(
+      tester,
+      () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      waitingFor: waitingFor,
+    );

@@ -149,6 +149,8 @@ void main() {
     // the database barrier, not a clock (support/db_settle.dart; root repo
     // docs/knowledges/flutter-test-db-timing.md — 150 ms lost under load).
     await settleDb(tester, services);
+    await pumpUntilNoSpinner(tester,
+        waitingFor: 'the History screen to finish loading');
   }
 
   /// The rect of a menu row, found through the label only that row carries.

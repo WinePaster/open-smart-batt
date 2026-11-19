@@ -311,6 +311,8 @@ void main() {
         ),
       );
       await settleTracked(tester);
+      await pumpUntilNoSpinner(tester,
+          waitingFor: 'the History screen to finish loading');
       await tester.pump();
       await tester.pump();
     }
