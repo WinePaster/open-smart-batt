@@ -196,6 +196,7 @@ class HomeTileView extends StatelessWidget {
             deviceId: tile.deviceId,
             view: tile.view,
             preview: preview,
+            onTap: onOpenDetail,
           ),
         );
     }
@@ -541,9 +542,16 @@ class _ModuleTile extends StatelessWidget {
     this.deviceId,
     this.view,
     this.preview,
+    this.onTap,
   });
 
   final DisplayModule module;
+
+  /// Open [deviceId]'s page, like the device card (2026.11.19/007: 「只有上面
+  /// 那個點了會連線，下面的不行」). Not wired for a phone module (no unit) or
+  /// in the editor preview. A button inside the card still takes its own tap —
+  /// the innermost recognizer wins.
+  final void Function(String deviceId)? onTap;
 
   /// Null for a module that reads no device at all (design 0042's `speed` reads
   /// the phone's own GNSS), in which case it is ALWAYS live.
@@ -653,6 +661,7 @@ class _ModuleTile extends StatelessWidget {
     // the user is working out what happened.
     if (id == null) return card; // a phone module — there is no unit to name
     final l10n = AppLocalizations.of(context);
+    final open = onTap;
     return CardDeviceScope(
       // Empty aliases are a supported value (FB-61), so the fallback is the
       // same string the device list shows rather than a blank line.
@@ -660,7 +669,13 @@ class _ModuleTile extends StatelessWidget {
         id,
         fallback: l10n.devicesUnnamed,
       ),
-      child: card,
+      child: open == null
+          ? card
+          : GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => open(id),
+              child: card,
+            ),
     );
   }
 }

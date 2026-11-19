@@ -114,7 +114,7 @@ void main() {
   }
 
   Future<void> pumpHome(WidgetTester tester, AppServices s,
-      {VoidCallback? onEdit}) async {
+      {VoidCallback? onEdit, void Function(String)? onOpenDetail}) async {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -135,7 +135,8 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('en'),
-          home: Scaffold(body: HomePage(onEdit: onEdit)),
+          home: Scaffold(
+              body: HomePage(onEdit: onEdit, onOpenDetail: onOpenDetail)),
         ),
       ),
     );
@@ -524,6 +525,53 @@ void main() {
   // is that the ROW exists, that it does something, and — the part this project
   // keeps getting wrong — that its caller actually passes a callback.
   // ===========================================================================
+  // 2026.11.19/007: 「只有上面那個點了會連線，下面的不行」— a module tile about
+  // one unit opens that unit's page, like its device card.
+  group('a module tile opens its unit', () {
+    Future<AppServices> bootModules(WidgetTester tester) async {
+      final s = await boot(tester, devices: [
+        SavedDevice(
+          id: 'A',
+          productClass: ProductClass.smartBattery,
+          alias: 'Cap #1',
+          lastValue: 12.64,
+          lastSeen: DateTime.now(),
+        ),
+      ]);
+      await tester.runAsync(() => s.settings.setHomeLayout(
+            const HomeLayout([
+              HomeTile.module(DisplayModule.clock),
+              HomeTile.module(DisplayModule.cells, deviceId: 'A'),
+            ]).encode(),
+          ));
+      return s;
+    }
+
+    testWidgets('a waiting tile for A opens A', (tester) async {
+      final s = await bootModules(tester);
+      addTearDown(() => teardown(tester, s));
+      final opened = <String>[];
+      await pumpHome(tester, s, onOpenDetail: opened.add);
+
+      final waiting = find.byType(HomeWaitingTile);
+      expect(waiting, findsOneWidget);
+      await tester.tap(waiting);
+      await tester.pump();
+      expect(opened, ['A']);
+    });
+
+    testWidgets('a phone module opens nothing', (tester) async {
+      final s = await bootModules(tester);
+      addTearDown(() => teardown(tester, s));
+      final opened = <String>[];
+      await pumpHome(tester, s, onOpenDetail: opened.add);
+
+      await tester.tap(find.text('CLOCK'));
+      await tester.pump();
+      expect(opened, isEmpty, reason: 'the clock belongs to no unit');
+    });
+  });
+
   group('the edit-layout row', () {
     testWidgets('it is at the foot of the grid, and it fires', (tester) async {
       final s = await boot(tester, devices: [
