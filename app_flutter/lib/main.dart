@@ -1500,8 +1500,14 @@ class _BrandAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Compact connection indicator (mockup `.conn` pill). Green when the link is
-/// ready, amber while connecting, danger-red otherwise.
+/// [_ConnectionPill.presentationOf], reachable from tests.
+@visibleForTesting
+(bool, Color, String) connectionPillPresentation(ConnectionController conn) =>
+    _ConnectionPill.presentationOf(conn);
+
+/// Compact connection indicator (mockup `.conn` pill). Green when a link is
+/// ready (the primary, or a secondary with no primary — 2026.11.19/004), amber
+/// while connecting, danger-red otherwise.
 class _ConnectionPill extends StatelessWidget {
   const _ConnectionPill({required this.onTap});
 
@@ -1526,6 +1532,10 @@ class _ConnectionPill extends StatelessWidget {
       BleLinkState.connecting ||
       BleLinkState.connected => (AppSemantics.warn, 'CONNECTING'),
       BleLinkState.disconnecting => (AppSemantics.warn, 'CLOSING'),
+      // 2026.11.19/004: no primary link, but secondaries streaming (design
+      // 0103 allows it) — connected, not OFFLINE.
+      BleLinkState.disconnected when conn.isAnyOnline =>
+        (AppSemantics.good, 'CONNECTED'),
       BleLinkState.disconnected => (AppSemantics.danger, 'OFFLINE'),
     };
     return (demo, color, label);

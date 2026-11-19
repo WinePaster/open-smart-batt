@@ -276,7 +276,7 @@ class ConnectionController extends ChangeNotifier {
   /// settings now because they cost the user different things (battery vs a lit
   /// screen) and only one of them actually keeps telemetry flowing.
   void _updateWakelock() {
-    final shouldKeep = isOnline && _settings.keepScreenAwake;
+    final shouldKeep = keepsScreenAwake;
     // Fire-and-forget; ignore platform errors (e.g. in unit tests / unsupported
     // platforms where the plugin channel is absent).
     WakelockPlus.toggle(enable: shouldKeep).catchError((_) {});
@@ -299,8 +299,7 @@ class ConnectionController extends ChangeNotifier {
     // reconnect of a link that dropped — see
     // [MonitorService.holdsThroughReconnect]. Stopping on the drop is what let
     // Android freeze the ladder that was supposed to bring the link back.
-    final shouldRun = (isOnline ||
-            (_multiLink?.onlineCount ?? 0) > 0 ||
+    final shouldRun = (isAnyOnline ||
             (_monitor.holdsThroughReconnect && _autoReconnecting)) &&
         _settings.backgroundMonitoring &&
         !_ble.isDemoLink;
@@ -1311,6 +1310,27 @@ class ConnectionController extends ChangeNotifier {
   /// True once notify is enabled + keep-alive is running (telemetry flowing).
   bool get isOnline => _link == BleLinkState.ready;
 
+  /// Whether any link has live telemetry — the primary, or (design 0103) a
+  /// secondary.
+  ///
+  /// 2026.11.19/004: two units adopted as secondaries within 2 s of a cold
+  /// start, so no primary link at all — a state design 0103 allows, and the
+  /// monitor already counted. The status pill and the screen wakelock read
+  /// [isOnline] alone, so the pill said OFFLINE and the screen slept while
+  /// both units were streaming. Anything that means "connected to something"
+  /// reads this; [isOnline] stays "the primary link is ready".
+  bool get isAnyOnline => isOnline || (_multiLink?.onlineCount ?? 0) > 0;
+
+  /// Whether the screen should be held on right now: a live link (any, see
+  /// [isAnyOnline]) and the user's 螢幕保持亮著 setting.
+  bool get keepsScreenAwake => isAnyOnline && _settings.keepScreenAwake;
+
+  /// [MultiLinkController.onlineCount] > 0 as the last
+  /// [refreshMultiLinkMonitor] saw it — the edge that re-evaluates the
+  /// wakelock and tells the pill (2026.11.19/004). An edge, because that call
+  /// also arrives with every secondary sample.
+  bool _secondaryOnline = false;
+
   /// Whether [deviceId] has live telemetry right now — the primary link, or
   /// (design 0103) one of the multi-link experiment's secondary links.
   ///
@@ -1330,10 +1350,18 @@ class ConnectionController extends ChangeNotifier {
   void bindMultiLink(MultiLinkController controller) => _multiLink = controller;
 
   /// Re-evaluate the monitor and its reading line after a secondary link
-  /// changed (design 0103). Called by [MultiLinkController].
+  /// changed (design 0103) — and, when secondaries go from none live to some
+  /// or back, the wakelock and every listener (the status pill reads
+  /// [isAnyOnline], 2026.11.19/004). Called by [MultiLinkController].
   void refreshMultiLinkMonitor(TelemetrySample? latest) {
     _updateMonitor();
     if (latest != null) _updateNotificationBody(latest);
+    final secondaryOnline = (_multiLink?.onlineCount ?? 0) > 0;
+    if (secondaryOnline != _secondaryOnline) {
+      _secondaryOnline = secondaryOnline;
+      _updateWakelock();
+      notifyListeners();
+    }
   }
 
   /// True while connecting / discovering / disconnecting (UI shows a spinner).

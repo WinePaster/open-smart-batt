@@ -14,6 +14,8 @@
 //   §3.6 / FB-41  two links interleaving samples never cross-attribute
 //   004 only units seen nearby (scan or live link) take a slot; an absent held
 //       unit gives its slot back after the presence window
+//   2026.11.19/004  secondaries alone (no primary) are "connected" for the
+//       status pill and the screen wakelock, like the monitor already was
 import 'dart:async';
 import 'dart:io';
 
@@ -24,9 +26,11 @@ import 'package:open_smart_batt/ble/ble.dart';
 import 'package:open_smart_batt/config/app_config.dart';
 import 'package:open_smart_batt/config/multi_link_config.dart';
 import 'package:open_smart_batt/data/data.dart';
+import 'package:open_smart_batt/main.dart' show connectionPillPresentation;
 import 'package:open_smart_batt/models/models.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/accent_theme.dart';
+import 'package:open_smart_batt/theme/app_theme.dart' show AppSemantics;
 import 'package:open_smart_batt/ui/util/export_header.dart';
 import 'package:open_smart_batt/ui/util/report_bundle.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -582,6 +586,65 @@ void main() {
   test('D2 / G4: a lone power bank gets no prompt', () async {
     final ml = await boot([pb('PB')]);
     expect(ml.shouldPromptForPowerBank('PB'), isFalse);
+  });
+
+  group('2026.11.19/004: secondaries alone count as connected', () {
+    test('two secondaries, no primary: pill CONNECTED, screen held on',
+        () async {
+      final ml = await boot([bat('A'), bat('B')]);
+      final conn = s.connection;
+      expect(ml.onlineIds, {'A', 'B'});
+      expect(conn.linkState, BleLinkState.disconnected);
+      expect(conn.isOnline, isFalse, reason: 'isOnline is the primary alone');
+      expect(conn.isAnyOnline, isTrue);
+      final (_, color, label) = connectionPillPresentation(conn);
+      expect(label, 'CONNECTED');
+      expect(color, AppSemantics.good);
+
+      expect(conn.keepsScreenAwake, isFalse, reason: 'setting off by default');
+      await s.settings.setKeepScreenAwake(true);
+      expect(conn.keepsScreenAwake, isTrue);
+    });
+
+    test('the pill hears the edge, not every sample; OFFLINE once all drop',
+        () async {
+      await boot([bat('A')], enable: false);
+      final conn = s.connection;
+      final ml = s.multiLink!;
+      var notified = 0;
+      conn.addListener(() => notified++);
+
+      await ml.setEnabled(true);
+      await _settle();
+      expect(conn.isAnyOnline, isTrue);
+      expect(notified, greaterThan(0), reason: 'none → some is an edge');
+
+      notified = 0;
+      for (var i = 0; i < 5; i++) {
+        sec('A').sample(TelemetrySample(timestamp: now, pvlt: 12.8));
+      }
+      await _settle();
+      expect(notified, 0, reason: 'samples are not edges');
+
+      await s.settings.setAutoReconnect(false);
+      sec('A').drop();
+      await _settle();
+      expect(conn.isAnyOnline, isFalse);
+      expect(notified, greaterThan(0), reason: 'some → none is an edge');
+      expect(connectionPillPresentation(conn).$3, 'OFFLINE');
+    });
+
+    test('no multi-link: unchanged — the primary alone decides', () async {
+      await boot([bat('A')], enable: false);
+      final conn = s.connection;
+      expect(conn.isAnyOnline, isFalse);
+      expect(connectionPillPresentation(conn).$3, 'OFFLINE');
+      primary.connectedId = 'A';
+      primary.emitLink(BleLinkState.ready);
+      await _settle();
+      expect(conn.isAnyOnline, isTrue);
+      expect(connectionPillPresentation(conn).$3, 'CONNECTED');
+    });
   });
 
   test('switch off releases every secondary; the switch persists', () async {
