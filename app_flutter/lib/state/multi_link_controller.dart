@@ -798,6 +798,11 @@ class MultiLinkController extends ChangeNotifier {
     // A power bank's cost is the whole budget (0046a §5.5): no new links
     // while it holds the primary.
     if (_powerBankHeld) return;
+    // 2026.11.19/007: let a presence scan run its full window before adopting
+    // anyone — a link's connect stops the scan, and the units not heard yet
+    // would wait a minute for the next one. The scan's end notifies, and that
+    // reconcile adopts everyone it found.
+    if (_conn.isPresenceScanning) return;
     for (final id in want) {
       if (!_links.containsKey(id)) {
         _grantedAt.remove(id); // one adoption per pick

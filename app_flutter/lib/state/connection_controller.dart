@@ -745,6 +745,10 @@ class ConnectionController extends ChangeNotifier {
   BleLinkState _link = BleLinkState.disconnected;
   List<DiscoveredDevice> _scanResults = const [];
   bool _scanning = false;
+
+  /// The scan in progress was started by [startPresenceScan]. Cleared when
+  /// that scan stops. See [isPresenceScanning].
+  bool _presenceScan = false;
   BluetoothAdapterState _adapter = BluetoothAdapterState.unknown;
 
   String? _desiredDeviceId; // device we want to stay connected to
@@ -1422,6 +1426,15 @@ class ConnectionController extends ChangeNotifier {
   /// True while a scan is in progress.
   bool get isScanning => _scanning;
 
+  /// True while a scan started by [startPresenceScan] is still running.
+  ///
+  /// 2026.11.19/007: the multi-link controller adopts nothing while this is
+  /// true. Every link's `connect()` stops the system-wide scan first
+  /// (`BleService.connect`), so adopting the first unit a presence scan finds
+  /// ended that scan 50–105 ms in, before a second unit of the same car had
+  /// been heard — and the next presence scan is a minute away.
+  bool get isPresenceScanning => _presenceScan && _scanning;
+
   /// True while the app is backgrounded (the same tracker the keep-alive
   /// pacing gate reads).
   bool get inBackground => _bgWindow.inBackground;
@@ -1441,9 +1454,11 @@ class ConnectionController extends ChangeNotifier {
       {Duration timeout = const Duration(seconds: 4)}) async {
     if (_scanning || _detailVisible || !isAdapterOn) return;
     _event('scan start (multilink presence)');
+    _presenceScan = true;
     try {
       await _ble.startScan(timeout: timeout);
     } catch (e) {
+      _presenceScan = false;
       _event('presence scan failed: $e');
     }
   }
@@ -3883,6 +3898,7 @@ class ConnectionController extends ChangeNotifier {
     if (_scanning == scanning) return;
     _scanning = scanning;
     if (!scanning) {
+      _presenceScan = false;
       _event('scan done: ${_scanResults.length} device(s)');
       // The roster is written BEFORE any UI filtering, which is the whole
       // point — it has to contain the entries the list hides. Without

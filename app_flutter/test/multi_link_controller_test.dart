@@ -16,6 +16,8 @@
 //       unit gives its slot back after the presence window
 //   2026.11.19/004  secondaries alone (no primary) are "connected" for the
 //       status pill and the screen wakelock, like the monitor already was
+//   2026.11.19/007  nobody is adopted until a presence scan has run its
+//       window (a connect stops the scan)
 import 'dart:async';
 import 'dart:io';
 
@@ -66,18 +68,27 @@ class _FakePrimary extends BleService {
   Stream<BluetoothAdapterState> get adapterState => adapterOn
       ? Stream<BluetoothAdapterState>.value(BluetoothAdapterState.on)
       : const Stream<BluetoothAdapterState>.empty();
+  final _scanningOut = StreamController<bool>.broadcast();
   @override
-  Stream<bool> get scanning => const Stream<bool>.empty();
+  Stream<bool> get scanning => _scanningOut.stream;
   @override
   bool get isScanning => false;
   @override
   Stream<List<DiscoveredDevice>> get scanResults => _scanOut.stream;
 
+  /// Opt-in (2026.11.19/007): a scan that reports `scanning` true, delivers
+  /// [nearby] at once, and stays open until [finishScan] — the real radio's
+  /// shape. Off, a scan is the instantaneous list the older tests assume.
+  bool realisticScan = false;
+
   @override
   Future<void> startScan({Duration timeout = const Duration(seconds: 15)}) async {
     scans++;
+    if (realisticScan) _scanningOut.add(true);
     emitScan(nearby);
   }
+
+  void finishScan() => _scanningOut.add(false);
 
   void emitLink(BleLinkState s) => _linkOut.add(s);
 
@@ -125,6 +136,7 @@ class _FakePrimary extends BleService {
     await _linkOut.close();
     await _teleOut.close();
     await _scanOut.close();
+    await _scanningOut.close();
     await super.dispose();
   }
 }
@@ -1273,6 +1285,50 @@ void main() {
     await _settle();
     expect(primary.scans, 2);
     expect(ml.heldIds, {'B'});
+  });
+
+  group('2026.11.19/007: a presence scan runs its window before anyone is '
+      'adopted', () {
+    test('the first unit heard waits; both are adopted when the scan ends',
+        () async {
+      final ml = await boot([bat('A'), bat('B')],
+          nearby: const {}, adapterOn: true, enable: false);
+      primary.realisticScan = true;
+      primary.nearby = {'A'};
+      await ml.setEnabled(true);
+      await _settle();
+      expect(primary.scans, 1);
+      expect(s.connection.isPresenceScanning, isTrue);
+      expect(ml.heldIds, isEmpty,
+          reason: 'adopting A now would stop the scan before B is heard');
+      expect(log.where((l) => l.startsWith('connect')), isEmpty);
+
+      primary.emitScan({'A', 'B'});
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+
+      primary.finishScan();
+      await _settle();
+      expect(s.connection.isPresenceScanning, isFalse);
+      expect(ml.heldIds, {'A', 'B'});
+      expect(log, containsAll(['connect A', 'connect B']));
+    });
+
+    test('a scan that is not a presence scan does not hold adoption',
+        () async {
+      final ml = await boot([bat('A')],
+          nearby: const {}, adapterOn: true, enable: false);
+      primary.realisticScan = true;
+      // The devices tab's own scan (startScan, not startPresenceScan).
+      await s.connection.startScan();
+      primary.emitScan({'A'});
+      await _settle();
+      expect(s.connection.isScanning, isTrue);
+      expect(s.connection.isPresenceScanning, isFalse);
+      await ml.setEnabled(true);
+      await _settle();
+      expect(ml.heldIds, {'A'});
+    });
   });
 
   test('004: no presence scan in the background or behind a device page',
