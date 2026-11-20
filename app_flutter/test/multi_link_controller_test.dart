@@ -1331,6 +1331,64 @@ void main() {
     });
   });
 
+  group('2026.11.20/003: the log says why a unit in range holds no link', () {
+    Future<List<String>> holds() async {
+      await s.pending.drain();
+      // queryLog is newest first; oldest first reads as a timeline.
+      return [
+        for (final e in (await s.logRepo.queryLog()).reversed)
+          if ((e.note ?? '').startsWith('multilink: hold')) e.note!
+      ];
+    }
+
+    String h(String id) => shortDeviceHash(id);
+
+    test('自動連線 off: auto-off, logged once however often it reconciles',
+        () async {
+      await boot([bat('A')], autoReconnect: false);
+      primary.emitScan({'A'});
+      await _settle();
+      s.multiLink!.presenceTick();
+      await _settle();
+      expect(await holds(), ['multilink: hold ${h('A')}=auto-off']);
+    });
+
+    test('a presence scan holds both, then none once they are adopted',
+        () async {
+      final ml = await boot([bat('A'), bat('B')],
+          nearby: const {}, adapterOn: true, enable: false);
+      primary.realisticScan = true;
+      primary.nearby = {'A'};
+      await ml.setEnabled(true);
+      await _settle();
+      primary.emitScan({'A', 'B'});
+      await _settle();
+      primary.finishScan();
+      await _settle();
+      expect(ml.heldIds, {'A', 'B'});
+      final n = await holds();
+      expect(n.first, contains('${h('A')}=presence-scan'));
+      expect(n, contains('multilink: hold ${h('A')}=presence-scan,'
+          '${h('B')}=presence-scan'));
+      expect(n.last, 'multilink: hold none');
+    });
+
+    test('a unit the user let go: released', () async {
+      final ml = await boot([bat('A')]);
+      expect(ml.heldIds, {'A'});
+      await ml.releaseByUser('A');
+      await _settle();
+      expect(await holds(), ['multilink: hold ${h('A')}=released']);
+    });
+
+    test('the switch off says nothing', () async {
+      await boot([bat('A')], enable: false);
+      primary.emitScan({'A'});
+      await _settle();
+      expect(await holds(), isEmpty);
+    });
+  });
+
   test('004: no presence scan in the background or behind a device page',
       () async {
     await boot([bat('A')], nearby: const {}, adapterOn: true);

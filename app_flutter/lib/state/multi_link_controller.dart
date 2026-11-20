@@ -269,6 +269,7 @@ class MultiLinkController extends ChangeNotifier {
   Timer? _demoteTimer;
   Timer? _stallTimer;
   String _lastReadyLine = '';
+  String _lastHoldLine = '';
   MultiLinkBodyFormat _bodyFormat = (n, r) => '$n · $r';
 
   /// Serialises secondary connects: each one takes the plugin's global mutex
@@ -765,14 +766,16 @@ class MultiLinkController extends ChangeNotifier {
     if (_disposed) return;
     _trackPrimary();
     if (!_active || _stoppedByUser) {
+      final reason = !_enabled
+          ? 'switch-off'
+          : (!_personalMode ? 'simple-mode' : 'stopped');
       if (_links.isNotEmpty) {
-        final reason = !_enabled
-            ? 'switch-off'
-            : (!_personalMode ? 'simple-mode' : 'stopped');
         for (final id in _links.keys.toList()) {
           unawaited(_release(id, reason: reason));
         }
       }
+      // Switched off is the feature not being used at all: nothing to explain.
+      if (_enabled) _logHoldIfChanged(all: reason);
       return;
     }
     final primary = _conn.connectedDeviceId;
@@ -797,18 +800,85 @@ class MultiLinkController extends ChangeNotifier {
     }
     // A power bank's cost is the whole budget (0046a §5.5): no new links
     // while it holds the primary.
-    if (_powerBankHeld) return;
+    if (_powerBankHeld) {
+      _logHoldIfChanged(all: 'power-bank');
+      return;
+    }
     // 2026.11.19/007: let a presence scan run its full window before adopting
     // anyone — a link's connect stops the scan, and the units not heard yet
     // would wait a minute for the next one. The scan's end notifies, and that
     // reconcile adopts everyone it found.
-    if (_conn.isPresenceScanning) return;
+    if (_conn.isPresenceScanning) {
+      _logHoldIfChanged(all: 'presence-scan');
+      return;
+    }
     for (final id in want) {
       if (!_links.containsKey(id)) {
         _grantedAt.remove(id); // one adoption per pick
         _adopt(id);
       }
     }
+    _logHoldIfChanged(want: want);
+  }
+
+  /// Log why saved units in range — and a car's units out of range — hold no
+  /// link after this reconcile; only when the answer changes.
+  ///
+  /// 2026.11.20/003: after a cold start the scans heard both of a car's units
+  /// and for 13 s nothing was adopted, and the log could not say why — the
+  /// switch, the mode, 自動連線, a unit the user let go, or not seen at all.
+  /// [all] is a reason that holds every unit; otherwise each unit gets its own
+  /// against [want], the set this reconcile chose.
+  void _logHoldIfChanged({String? all, Set<String> want = const {}}) {
+    final primary = _conn.connectedDeviceId;
+    final vehicle = activeVehicle;
+    final car = vehicle != null && vehicle.isCar ? vehicle.deviceIds : null;
+    final eligible = all == null ? _eligible().toSet() : const <String>{};
+    final auto = _autoAllowed;
+    final parts = <String>[];
+    for (final d in _devices.devices) {
+      final id = d.id;
+      if (id == primary ||
+          _links.containsKey(id) ||
+          d.productClass == ProductClass.powerBank ||
+          isDemoDeviceId(id)) {
+        continue;
+      }
+      final present = _isPresent(id);
+      final inCar = car?.contains(id) ?? false;
+      if (!present && !inCar) continue;
+      final String why;
+      if (all != null) {
+        why = all;
+      } else if (!present) {
+        why = 'unseen';
+      } else if (!eligible.contains(id)) {
+        why = car != null && !inCar
+            ? 'other-car'
+            : id == _handoffTarget
+                ? 'handoff'
+                : d.stale
+                    ? 'stale'
+                    : _leftOut.contains(id)
+                        ? 'left-out'
+                        : 'released';
+      } else if (!want.contains(id)) {
+        why = auto || _granted(id) ? 'budget' : 'auto-off';
+      } else {
+        continue; // adopted by this reconcile
+      }
+      parts.add('${shortDeviceHash(id)}=$why');
+    }
+    const cap = 6;
+    final body = parts.length > cap
+        ? '${parts.take(cap).join(',')},+${parts.length - cap}'
+        : parts.join(',');
+    final line = body.isEmpty ? '' : 'multilink: hold $body';
+    if (line == _lastHoldLine) return;
+    final cleared = line.isEmpty;
+    _lastHoldLine = line;
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: cleared ? 'multilink: hold none' : line));
   }
 
   void _adopt(String id) {
