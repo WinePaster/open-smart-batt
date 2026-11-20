@@ -1452,7 +1452,13 @@ class ConnectionController extends ChangeNotifier {
   /// results still arrive on [scanResults] and the roster is still logged.
   Future<void> startPresenceScan(
       {Duration timeout = const Duration(seconds: 4)}) async {
-    if (_scanning || _detailVisible || !isAdapterOn) return;
+    if (_scanning || _detailVisible || !isAdapterOn) {
+      // 2026.11.20/004: a skip used to be silent, and the caller had already
+      // counted the scan as done.
+      _event('presence scan skipped: '
+          '${_scanning ? 'scanning' : _detailVisible ? 'detail' : 'adapter=${_adapter.name}'}');
+      return;
+    }
     _event('scan start (multilink presence)');
     _presenceScan = true;
     try {
@@ -1830,6 +1836,7 @@ class ConnectionController extends ChangeNotifier {
   /// query and cannot change behaviour.
   void logAppLifecycle(String state) {
     _event('app $state');
+    final wasBackground = _bgWindow.inBackground;
     // FB-113 (A). After the note, so the log reads in the order things
     // happened; before the keep-alive re-pacing, which is about a LIVE link and
     // has nothing to say about a stalled one.
@@ -1846,6 +1853,9 @@ class ConnectionController extends ChangeNotifier {
     // hands the keep-alive to the notify path (iOS only, see the gate), exit
     // hands it back to the timer. AFTER the tracker so both read one state.
     _updateKeepAlivePacing();
+    // 2026.11.20/004: [inBackground] is read by listeners (the multi-link
+    // presence scan waits for the foreground), so its edge is a change.
+    if (_bgWindow.inBackground != wasBackground) notifyListeners();
   }
 
   /// Foreground/background window pairing for the `bg-window:` lines.

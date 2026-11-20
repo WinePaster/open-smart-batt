@@ -41,9 +41,15 @@ import 'support/db_settle.dart';
 
 /// The primary link: driven by hand, never touches a radio.
 class _FakePrimary extends BleService {
-  _FakePrimary({this.adapterOn = false});
+  _FakePrimary({this.adapterOn = false, this.lateAdapter = false});
 
   final bool adapterOn;
+
+  /// 2026.11.20/004: the radio reports nothing until [emitAdapter] — iOS at a
+  /// cold start, where the state is `unknown` for a moment.
+  final bool lateAdapter;
+  final _adapterOut = StreamController<BluetoothAdapterState>.broadcast();
+  void emitAdapter(BluetoothAdapterState s) => _adapterOut.add(s);
   final _linkOut = StreamController<BleLinkState>.broadcast();
   final _teleOut = StreamController<TelemetrySample>.broadcast();
   final _scanOut = StreamController<List<DiscoveredDevice>>.broadcast();
@@ -65,9 +71,11 @@ class _FakePrimary extends BleService {
   @override
   Stream<TelemetrySample> get telemetry => _teleOut.stream;
   @override
-  Stream<BluetoothAdapterState> get adapterState => adapterOn
-      ? Stream<BluetoothAdapterState>.value(BluetoothAdapterState.on)
-      : const Stream<BluetoothAdapterState>.empty();
+  Stream<BluetoothAdapterState> get adapterState => lateAdapter
+      ? _adapterOut.stream
+      : adapterOn
+          ? Stream<BluetoothAdapterState>.value(BluetoothAdapterState.on)
+          : const Stream<BluetoothAdapterState>.empty();
   final _scanningOut = StreamController<bool>.broadcast();
   @override
   Stream<bool> get scanning => _scanningOut.stream;
@@ -1266,6 +1274,80 @@ void main() {
       await launch(['A'], nearby: {'A'}, switchOn: false);
       expect(primary.primaryConnects, isEmpty);
       expect((await notes()).where((n) => n.contains('simple-launch')), isEmpty);
+    });
+  });
+
+  // 2026.11.20/004 (何先生, iOS, personal mode): at a cold start the presence
+  // scan ran before the radio was on, was skipped without a word, and still
+  // counted — the first real scan came 60.002 s after the launch.
+  group('2026.11.20/004: the cold-start presence scan waits for the radio', () {
+    Future<List<String>> notes() async {
+      await s.pending.drain();
+      return [for (final e in await s.logRepo.queryLog()) e.note ?? ''];
+    }
+
+    Future<MultiLinkController> coldStart(List<String> saved,
+        {Set<String> nearby = const {}}) async {
+      final db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      await SettingsRepo(db.db)
+          .saveSettings(AppSettings.defaults.copyWith(rawPacketLog: true));
+      final repo = DeviceRepo(db.db);
+      for (final id in saved) {
+        await repo.upsertSavedDevice(bat(id));
+      }
+      await AckMarker(MultiLinkConfig.enabledMarker).markAcknowledged();
+      primary = _FakePrimary(lateAdapter: true)..nearby = nearby;
+      s = await AppServices.create(
+        appDatabase: db,
+        ble: primary,
+        multiLinkBuild: true,
+        multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
+        multiLinkClock: () => now,
+      );
+      _settleTarget = s;
+      await _settle();
+      return s.multiLink!;
+    }
+
+    test('scans the moment the radio is on, and adopts both', () async {
+      final ml = await coldStart(['A', 'B'], nearby: {'A', 'B'});
+      expect(primary.scans, 0, reason: 'radio not on yet');
+      expect(await notes(),
+          contains('multilink: presence scan waits: adapter=unknown'));
+      primary.emitAdapter(BluetoothAdapterState.on);
+      await _settle();
+      expect(primary.scans, 1);
+      expect(ml.heldIds, {'A', 'B'});
+    });
+
+    test('a scan the radio did not allow does not use up the minute',
+        () async {
+      final ml = await coldStart(['A'], nearby: {'A'});
+      ml.presenceTick(); // the 10 s tick, radio still not on
+      await _settle();
+      expect(primary.scans, 0);
+      primary.emitAdapter(BluetoothAdapterState.on);
+      await _settle();
+      ml.presenceTick(); // same instant: no 60 s wait was stamped
+      await _settle();
+      expect(primary.scans, greaterThan(0));
+      expect(ml.heldIds, {'A'});
+    });
+
+    test('back in the foreground: scans at once', () async {
+      final ml = await coldStart(['A'], nearby: {});
+      s.connection.logAppLifecycle('paused');
+      primary.emitAdapter(BluetoothAdapterState.on);
+      await _settle();
+      expect(primary.scans, 0, reason: 'in the background');
+      primary.nearby = {'A'};
+      s.connection.logAppLifecycle('resumed');
+      await _settle();
+      expect(primary.scans, 1);
+      expect(ml.heldIds, {'A'});
     });
   });
 

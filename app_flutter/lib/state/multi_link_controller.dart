@@ -281,6 +281,12 @@ class MultiLinkController extends ChangeNotifier {
   String _lastReadyLine = '';
   String _lastHoldLine = '';
 
+  /// 2026.11.20/004: whether a presence scan could start at the last
+  /// [_onPrimaryChanged] (radio on, app in the foreground) — the edge that
+  /// runs [presenceTick] at once; and the last skip reason logged.
+  bool _scanReady = false;
+  String _lastScanSkip = '';
+
   /// design 0107 §9: a launch in simple mode is still looking for the
   /// last-used unit ([simpleLaunchTick]); when its window opened; its ticker.
   bool _launchPending = false;
@@ -626,6 +632,9 @@ class MultiLinkController extends ChangeNotifier {
     _notePresence();
     _trackPrimary();
     if (_launchPending) simpleLaunchTick();
+    final scanReady = _conn.isAdapterOn && !_conn.inBackground;
+    final scanReadyEdge = scanReady && !_scanReady;
+    _scanReady = scanReady;
     if (!_active) return;
     if (_primaryIsPowerBank()) {
       _holdForPowerBank();
@@ -634,6 +643,8 @@ class MultiLinkController extends ChangeNotifier {
     }
     _reconcile();
     _logReadyIfChanged();
+    // The cold-start scan waits for the radio; run it the moment it can.
+    if (scanReadyEdge) presenceTick();
   }
 
   /// Fold a change of primary into [_released] / [_seenAt] / [_handoffTarget].
@@ -1053,6 +1064,14 @@ class MultiLinkController extends ChangeNotifier {
     final last = _lastPresenceScanAt;
     if (last != null && now.difference(last) < presenceScanEvery) return;
     if (_conn.inBackground || _conn.detailVisible || _conn.isScanning) return;
+    // 2026.11.20/004: at a cold start the radio is not on yet (iOS reports
+    // `unknown` for a moment). The scan was skipped, but [_lastPresenceScanAt]
+    // was already stamped, so the next one waited the full minute. Not
+    // stamped now; [_onPrimaryChanged] runs this again when the radio is on.
+    if (!_conn.isAdapterOn) {
+      _logScanSkip('adapter=${_conn.adapterState.name}');
+      return;
+    }
     // The personal group looks for its power banks; everyone else for the
     // units that could take a secondary slot.
     final auto = _autoAllowed;
@@ -1065,8 +1084,18 @@ class MultiLinkController extends ChangeNotifier {
         : [for (final id in _eligible()) if (auto || _granted(id)) id];
     if (personal && _conn.connectedDeviceId != null) return;
     if (!lookFor.any((id) => !_isPresent(id))) return;
+    _lastScanSkip = '';
     _lastPresenceScanAt = now;
     unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
+  }
+
+  /// Log a presence scan the radio would not allow — once per reason, so the
+  /// 10 s tick does not repeat it.
+  void _logScanSkip(String why) {
+    if (why == _lastScanSkip) return;
+    _lastScanSkip = why;
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: 'multilink: presence scan waits: $why'));
   }
 
   // ---- design 0107 §9: a launch in simple mode ------------------------------
@@ -1140,7 +1169,7 @@ class MultiLinkController extends ChangeNotifier {
     if (now.difference(since) >= launchWindow) {
       return _endSimpleLaunch('not-seen', target.id);
     }
-    if (_conn.isScanning || _conn.detailVisible) return;
+    if (_conn.isScanning || _conn.detailVisible || !_conn.isAdapterOn) return;
     // Spaced: a scan's own results notify, and back-to-back 4 s scans for
     // 30 s would keep the radio busy for nothing.
     final lastScan = _launchScanAt;
