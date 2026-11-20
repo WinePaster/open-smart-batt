@@ -1162,6 +1162,113 @@ void main() {
     });
   });
 
+  // design 0107 §9 (2026-11-20, 何先生): a launch in simple mode connects the
+  // last-used unit as the primary — the launch connect used to be multi-link's.
+  group('0107 §9: a launch in simple mode connects the last-used unit', () {
+    Future<List<String>> notes() async {
+      await s.pending.drain();
+      return [for (final e in await s.logRepo.queryLog()) e.note ?? ''];
+    }
+
+    /// Stored before the app starts: switch on, [mode], units saved in
+    /// [saved] order (first = most recently used), [nearby] in range.
+    Future<MultiLinkController> launch(List<String> saved,
+        {AppMode mode = AppMode.advanced,
+        Set<String> nearby = const {},
+        bool auto = true,
+        bool switchOn = true}) async {
+      final db = await AppDatabase.open(
+        path: inMemoryDatabasePath,
+        factory: databaseFactoryFfi,
+      );
+      await SettingsRepo(db.db).saveSettings(AppSettings.defaults
+          .copyWith(mode: mode, autoReconnect: auto, rawPacketLog: true));
+      final repo = DeviceRepo(db.db);
+      final t0 = DateTime(2026, 11, 20, 7);
+      for (var i = 0; i < saved.length; i++) {
+        await repo.upsertSavedDevice(
+            bat(saved[i]).copyWith(lastSeen: t0.subtract(Duration(hours: i))));
+      }
+      if (switchOn) {
+        await AckMarker(MultiLinkConfig.enabledMarker).markAcknowledged();
+      } else {
+        await AckMarker(MultiLinkConfig.enabledMarker).clear();
+      }
+      primary = _FakePrimary(adapterOn: true)
+        ..nearby = nearby
+        ..acceptConnects = true;
+      s = await AppServices.create(
+        appDatabase: db,
+        ble: primary,
+        multiLinkBuild: true,
+        multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
+        multiLinkClock: () => now,
+      );
+      _settleTarget = s;
+      await _settle();
+      return s.multiLink!;
+    }
+
+    test('in range: the last-used unit only, as the primary', () async {
+      final ml = await launch(['A', 'B'], nearby: {'A', 'B'});
+      expect(primary.primaryConnects, ['A']);
+      expect(s.connection.connectedDeviceId, 'A');
+      expect(ml.heldIds, isEmpty, reason: 'no secondaries in simple mode');
+      expect(await notes(),
+          contains('multilink: simple-launch connect id=${shortDeviceHash('A')}'));
+    });
+
+    test('out of range: scans, gives up after the window, never another unit',
+        () async {
+      final ml = await launch(['A', 'B'], nearby: {'B'});
+      expect(primary.scans, greaterThan(0));
+      expect(primary.primaryConnects, isEmpty);
+      now = now.add(ml.launchWindow);
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, isEmpty, reason: 'B is not the last used');
+      expect(await notes(),
+          contains('multilink: simple-launch not-seen id=${shortDeviceHash('A')}'));
+      // Done: later ticks do nothing even once A shows up.
+      primary.emitScan({'A'});
+      await _settle();
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, isEmpty);
+    });
+
+    test('heard later inside the window: connects then', () async {
+      final ml = await launch(['A'], nearby: {});
+      expect(primary.primaryConnects, isEmpty);
+      now = now.add(const Duration(seconds: 10));
+      primary.emitScan({'A'});
+      await _settle();
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, ['A']);
+    });
+
+    test('自動連線 off: nothing connects', () async {
+      await launch(['A'], nearby: {'A'}, auto: false);
+      expect(primary.primaryConnects, isEmpty);
+      expect(await notes(), contains('multilink: simple-launch auto-off'));
+    });
+
+    test('personal mode: multi-link as before, not this path', () async {
+      final ml = await launch(['A', 'B'], mode: AppMode.personal, nearby: {'A', 'B'});
+      expect(primary.primaryConnects, isEmpty);
+      expect(ml.heldIds, {'A', 'B'});
+      expect((await notes()).where((n) => n.contains('simple-launch')), isEmpty);
+    });
+
+    test('switch off: nothing (a launch never connected there before)',
+        () async {
+      await launch(['A'], nearby: {'A'}, switchOn: false);
+      expect(primary.primaryConnects, isEmpty);
+      expect((await notes()).where((n) => n.contains('simple-launch')), isEmpty);
+    });
+  });
+
   test('004: only units seen nearby take a slot', () async {
     final ml = await boot(
         [bat('A'), bat('B'), bat('C'), bat('D'), bat('E')],

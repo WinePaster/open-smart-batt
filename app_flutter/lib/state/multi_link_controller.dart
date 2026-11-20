@@ -121,6 +121,9 @@ class MultiLinkController extends ChangeNotifier {
     this.stallThreshold = BleService.telemetryStallThreshold,
     this.stallCheckEvery = const Duration(seconds: 2),
     this.personalRetryEvery = const Duration(seconds: 30),
+    this.launchTickEvery = const Duration(seconds: 2),
+    this.launchWindow = const Duration(seconds: 30),
+    this.launchScanEvery = const Duration(seconds: 6),
     DateTime Function()? clock,
     VehicleController? vehicles,
     BleService? primaryBle,
@@ -178,6 +181,13 @@ class MultiLinkController extends ChangeNotifier {
   /// design 0106 Phase 3: how long the personal group waits before trying its
   /// power bank again after a connect that did not take.
   final Duration personalRetryEvery;
+
+  /// design 0107 §9: how often a launch in simple mode looks for the last-used
+  /// unit, and how long it keeps looking (counted from the first foreground
+  /// look) before giving up.
+  final Duration launchTickEvery;
+  final Duration launchWindow;
+  final Duration launchScanEvery;
   final DateTime Function() _now;
 
   /// design 0106 Phase 3 — the vehicles, or null (tests that predate them). A
@@ -270,6 +280,13 @@ class MultiLinkController extends ChangeNotifier {
   Timer? _stallTimer;
   String _lastReadyLine = '';
   String _lastHoldLine = '';
+
+  /// design 0107 §9: a launch in simple mode is still looking for the
+  /// last-used unit ([simpleLaunchTick]); when its window opened; its ticker.
+  bool _launchPending = false;
+  DateTime? _launchSince;
+  DateTime? _launchScanAt;
+  Timer? _launchTimer;
   MultiLinkBodyFormat _bodyFormat = (n, r) => '$n · $r';
 
   /// Serialises secondary connects: each one takes the plugin's global mutex
@@ -412,7 +429,11 @@ class MultiLinkController extends ChangeNotifier {
     // design 0107: `settings.load()` has already run (`AppServices.create`),
     // so the mode read here is the stored one.
     _wasActive = _active;
-    if (_active) _start();
+    if (_active) {
+      _start();
+    } else if (_enabled) {
+      _armSimpleLaunch();
+    }
     notifyListeners();
   }
 
@@ -604,6 +625,7 @@ class MultiLinkController extends ChangeNotifier {
     if (_disposed) return;
     _notePresence();
     _trackPrimary();
+    if (_launchPending) simpleLaunchTick();
     if (!_active) return;
     if (_primaryIsPowerBank()) {
       _holdForPowerBank();
@@ -1047,6 +1069,86 @@ class MultiLinkController extends ChangeNotifier {
     unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
   }
 
+  // ---- design 0107 §9: a launch in simple mode ------------------------------
+
+  /// 2026-11-20 (何先生, via the owner): "opening the app used to connect on the
+  /// home page, now it does not". The primary never connects on its own at
+  /// launch (`monitor_service.dart`, "the app never auto-connects at launch");
+  /// the launch connect was always this controller's secondaries, and design
+  /// 0107 withholds those in simple mode. So a launch in simple mode, with the
+  /// switch on and 自動連線 on, connects the LAST-USED unit as the primary —
+  /// that one only: a dealer's phone holds a dozen customers' units, and
+  /// connecting the wrong one is worse than connecting none.
+  void _armSimpleLaunch() {
+    if (_disposed || _launchPending) return;
+    _launchPending = true;
+    _launchSince = null;
+    _launchScanAt = null;
+    _launchTimer?.cancel();
+    _launchTimer = Timer.periodic(launchTickEvery, (_) => simpleLaunchTick());
+    simpleLaunchTick();
+  }
+
+  void _endSimpleLaunch(String outcome, [String? id]) {
+    _launchPending = false;
+    _launchTimer?.cancel();
+    _launchTimer = null;
+    _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+        note: 'multilink: simple-launch $outcome'
+            '${id == null ? '' : ' id=${shortDeviceHash(id)}'}',
+        deviceId: id));
+  }
+
+  /// The unit a launch in simple mode connects: the most recently used saved
+  /// unit ([DeviceController.devices] is most-recently-seen first), power
+  /// banks included — in simple mode it is the only link, not a secondary.
+  SavedDevice? _launchTarget() {
+    for (final d in _devices.devices) {
+      if (isDemoDeviceId(d.id) || d.stale) continue;
+      return d;
+    }
+    return null;
+  }
+
+  /// One look of a launch in simple mode: connect the last-used unit once it
+  /// is heard, scan for it while it is not, give up after [launchWindow].
+  /// Public for tests; [_armSimpleLaunch]'s ticker and the primary's listener
+  /// are the production callers.
+  @visibleForTesting
+  void simpleLaunchTick() {
+    if (_disposed || !_launchPending) return;
+    // Back in personal mode: the secondaries' own rules take over.
+    if (!_enabled || _personalMode) return _endSimpleLaunch('mode');
+    if (!_autoAllowed) return _endSimpleLaunch('auto-off');
+    if (_stoppedByUser) return _endSimpleLaunch('stopped');
+    // The user tapped a unit, or iOS restored the previous link.
+    if (_conn.connectedDeviceId != null) return _endSimpleLaunch('primary-up');
+    if (_conn.isAutoConnectArmed) return _endSimpleLaunch('armed');
+    final target = _launchTarget();
+    if (target == null) return _endSimpleLaunch('no-device');
+    if (_conn.inBackground) return; // the window opens in the foreground
+    final now = _now();
+    final since = _launchSince ??= now;
+    if (_isPresent(target.id)) {
+      _endSimpleLaunch('connect', target.id);
+      unawaited(_conn
+          .connect(target.id,
+              seedClass: target.productClass, autoTrigger: 'simple-launch')
+          .catchError((Object _) {}));
+      return;
+    }
+    if (now.difference(since) >= launchWindow) {
+      return _endSimpleLaunch('not-seen', target.id);
+    }
+    if (_conn.isScanning || _conn.detailVisible) return;
+    // Spaced: a scan's own results notify, and back-to-back 4 s scans for
+    // 30 s would keep the radio busy for nothing.
+    final lastScan = _launchScanAt;
+    if (lastScan != null && now.difference(lastScan) < launchScanEvery) return;
+    _launchScanAt = now;
+    unawaited(_conn.startPresenceScan(timeout: presenceScanTimeout));
+  }
+
   // ---- design 0106 Phase 3: vehicles ---------------------------------------
 
   String? _vehicleIdNow() {
@@ -1326,6 +1428,7 @@ class MultiLinkController extends ChangeNotifier {
     _settings.removeListener(_onSettingsChanged);
     _demoteTimer?.cancel();
     _stallTimer?.cancel();
+    _launchTimer?.cancel();
     for (final l in _links.values) {
       l.releasing = true;
       l.retryTimer?.cancel();
