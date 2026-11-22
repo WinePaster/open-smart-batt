@@ -90,7 +90,14 @@ class VehicleRepo {
 
   /// Add a car. The personal row is created alongside the FIRST car (§3.1 —
   /// an install that never uses vehicles keeps empty tables), and a car added
-  /// while nothing is selected becomes the current vehicle.
+  /// while nothing is selected — or while no other car exists — becomes the
+  /// current vehicle.
+  ///
+  /// 2026.11.22/004: "no other car" also covers an install left with
+  /// `personal` selected and zero cars (what [delete] used to leave behind when
+  /// the last car went while the personal row was picked). Without it the new
+  /// car was never selected, the personal row (power banks only) took over the
+  /// moment a car existed, and every unit of the new car was dropped.
   Future<Vehicle> createCar(String name) async {
     final id = _newId();
     await _db.transaction((txn) async {
@@ -109,7 +116,9 @@ class VehicleRepo {
         'sort': nextSort,
       });
       await _ensurePersonal(txn);
-      if (await _currentId(txn) == null) await _writeCurrent(txn, id);
+      if (cars.isEmpty || await _currentId(txn) == null) {
+        await _writeCurrent(txn, id);
+      }
     });
     return (await getAll()).firstWhere((v) => v.id == id);
   }
@@ -133,8 +142,9 @@ class VehicleRepo {
       });
 
   /// Delete a car. Its memberships go with it (the units themselves stay
-  /// saved). Deleting the current car selects the first remaining car, or
-  /// nothing when it was the last one.
+  /// saved). Deleting the current car selects the first remaining car;
+  /// deleting the LAST car clears the selection whatever it was — a personal
+  /// row picked on its own must not outlive the cars (2026.11.22/004).
   Future<void> delete(String id) => _db.transaction((txn) async {
         if (id == personalId) throw const VehicleRuleException('personal_fixed');
         if (!await _exists(txn, id)) {
@@ -145,15 +155,16 @@ class VehicleRepo {
         await txn.delete(Db.tableVehicleDevices,
             where: 'vehicle_id = ?', whereArgs: [id]);
         await txn.delete(Db.tableVehicles, where: 'id = ?', whereArgs: [id]);
-        if (await _currentId(txn) == id) {
-          final next = await txn.query(Db.tableVehicles,
-              columns: ['id'],
-              where: 'kind = ?',
-              whereArgs: ['car'],
-              orderBy: 'sort ASC, id ASC',
-              limit: 1);
-          await _writeCurrent(
-              txn, next.isEmpty ? null : next.first['id'] as String);
+        final next = await txn.query(Db.tableVehicles,
+            columns: ['id'],
+            where: 'kind = ?',
+            whereArgs: ['car'],
+            orderBy: 'sort ASC, id ASC',
+            limit: 1);
+        if (next.isEmpty) {
+          await _writeCurrent(txn, null);
+        } else if (await _currentId(txn) == id) {
+          await _writeCurrent(txn, next.first['id'] as String);
         }
       });
 

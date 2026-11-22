@@ -202,6 +202,33 @@ void main() {
       expect(await repo.currentId(), isNull);
     });
 
+    // 2026.11.22/004: the personal row picked on its own must not outlive the
+    // cars, and a car made with no other car around is selected regardless.
+    test('deleting the last car clears a personal selection too', () async {
+      final a = await repo.createCar('A');
+      await repo.setCurrent(VehicleRepo.personalId);
+      await repo.delete(a.id);
+      expect(await repo.currentId(), isNull);
+      final b = await repo.createCar('B');
+      expect(await repo.currentId(), b.id);
+    });
+
+    test('a car made while personal is selected and no car exists becomes '
+        'current (installs already left in that state)', () async {
+      final a = await repo.createCar('A');
+      await repo.delete(a.id);
+      await repo.setCurrent(VehicleRepo.personalId);
+      final b = await repo.createCar('B');
+      expect(await repo.currentId(), b.id);
+    });
+
+    test('a second car does not take over a personal selection', () async {
+      await repo.createCar('A');
+      await repo.setCurrent(VehicleRepo.personalId);
+      await repo.createCar('B');
+      expect(await repo.currentId(), VehicleRepo.personalId);
+    });
+
     test('setCurrent refuses an unknown id', () async {
       expect(() => repo.setCurrent('nope'), rule('not_found'));
     });

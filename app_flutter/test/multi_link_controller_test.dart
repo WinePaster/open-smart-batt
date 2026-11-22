@@ -817,6 +817,42 @@ void main() {
       expect(ml.vehicleHeaderValue, isNull, reason: 'no line while off');
     });
 
+    // 2026.11.22/004 (何先生): personal picked, the last car deleted, a new
+    // car made with both units ⇒ the selection stayed `personal`, the new car
+    // never became current and neither unit was connected.
+    test('004: a car made after the last one went while personal was picked '
+        'becomes current and its units connect', () async {
+      final ml = await bootCars();
+      await vehicles.select(VehicleRepo.personalId, source: 'home');
+      await _settle();
+      await vehicles.delete(carA);
+      await vehicles.delete(carB);
+      await _settle();
+      final c = await vehicles.createCar('C');
+      await vehicles.setDevices(c.id, ['a', 'b']);
+      await _settle();
+      expect(vehicles.current?.id, c.id);
+      expect({...ml.heldIds, s.connection.connectedDeviceId}..remove(null),
+          {'a', 'b'});
+    });
+
+    test('004: with personal picked, a car\'s unit in range holds as personal, '
+        'not released', () async {
+      // No power bank in range (何先生's case): otherwise its exclusive
+      // connect holds everyone as `power-bank`.
+      await bootCars(nearby: {'a', 'b', 'c', 'd'});
+      await vehicles.select(VehicleRepo.personalId);
+      await _settle();
+      await s.pending.drain();
+      final holds = [
+        for (final e in await s.logRepo.queryLog())
+          if ((e.note ?? '').startsWith('multilink: hold')) e.note!
+      ];
+      expect(holds.first, contains('${shortDeviceHash('a')}=personal'));
+      expect(holds.first, contains('${shortDeviceHash('c')}=personal'));
+      expect(holds.first, isNot(contains('released')));
+    });
+
     test('personal: every secondary goes, e connects as the PRIMARY', () async {
       final ml = await bootCars();
       await vehicles.select(VehicleRepo.personalId);

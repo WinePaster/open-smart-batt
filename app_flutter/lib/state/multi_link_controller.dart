@@ -938,15 +938,20 @@ class MultiLinkController extends ChangeNotifier {
       } else if (!present) {
         why = 'unseen';
       } else if (!eligible.contains(id)) {
+        // 2026.11.22/004: with the personal row picked, a car's unit is out
+        // because of the group, not because the user let it go — `released`
+        // there read as the latter.
         why = car != null && !inCar
             ? 'other-car'
-            : id == _handoffTarget
-                ? 'handoff'
-                : d.stale
-                    ? 'stale'
-                    : _leftOut.contains(id)
-                        ? 'left-out'
-                        : 'released';
+            : vehicle != null && vehicle.isPersonal && !vehicle.contains(id)
+                ? 'personal'
+                : id == _handoffTarget
+                    ? 'handoff'
+                    : d.stale
+                        ? 'stale'
+                        : _leftOut.contains(id)
+                            ? 'left-out'
+                            : 'released';
       } else if (!want.contains(id)) {
         why = auto || _granted(id) ? 'budget' : 'auto-off';
       } else {
