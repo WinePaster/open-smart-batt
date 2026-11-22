@@ -400,7 +400,7 @@
     }
   },
   "cutOffDialogTitle": "Send Cut-off Command",
-  "cutOffDialogBody": "Cutting off makes the battery stop supplying power. The vehicle will not start.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one: some batteries still fail to restore after repeated attempts, and the cause is still being investigated. If restoring fails, this app cannot bring the battery back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.",
+  "cutOffDialogBody": "Cutting off stops the output. The vehicle will not start until you press Restore Power.\n\nRestoring is not guaranteed; if it fails, this app cannot bring power back. Make sure you have another way to restore power (the vendor tool, or your dealer). You take this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.",
   "cutOffDialogConfirm": "I understand — send it",
   "cutOffFailedSnack": "Cut-off command failed: {error}",
   "@cutOffFailedSnack": {
@@ -411,14 +411,14 @@
     }
   },
   "cutOffDisabledNote": "The cut-off command can only be sent while the device reports it is running normally.",
-  "cutOffLinkLostSnack": "Couldn't confirm the cut-off — the Bluetooth link dropped while waiting for the device to report. The battery may already be cut off, and it stays cut off across a disconnect. Reconnect; if it shows cut off, press Restore Power.",
+  "cutOffLinkLostSnack": "Couldn't confirm the cut-off — Bluetooth dropped while waiting for the device to report. The unit may already be cut off, and it stays that way across a disconnect. Reconnect; if it shows cut off, press Restore Power.",
   "cutOffGenerationNote": "Cut-off is only offered on batteries whose serial starts with 0168 or 0169.",
   "commonLockAction": "Lock",
   "@commonLockAction": {
     "description": "design 0108. Button that sends anti-theft (0x23 <- 0x01). OSB Pro only."
   },
   "lockDialogTitle": "Send Lock Command",
-  "lockDialogBody": "Locking (anti-theft) cuts the output. The vehicle will not start until you press Restore Power.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one. If restoring fails, this app cannot bring the unit back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.",
+  "lockDialogBody": "Locking (anti-theft) stops the output. The vehicle will not start until you press Restore Power.\n\nRestoring is not guaranteed; if it fails, this app cannot bring power back. Make sure you have another way to restore power (the vendor tool, or your dealer). You take this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.",
   "lockDialogConfirm": "I understand — lock it",
   "lockFailedSnack": "Lock command failed: {error}",
   "@lockFailedSnack": {
@@ -428,7 +428,7 @@
       }
     }
   },
-  "lockLinkLostSnack": "Couldn't confirm the lock — the Bluetooth link dropped while waiting for the device to report. The unit may already be locked, and it stays locked across a disconnect. Reconnect; if it shows anti-theft, press Restore Power.",
+  "lockLinkLostSnack": "Couldn't confirm the lock — Bluetooth dropped while waiting for the device to report. The unit may already be locked, and it stays that way across a disconnect. Reconnect; if it shows anti-theft, press Restore Power.",
   "lockDisabledNote": "The lock command can only be sent while the device reports it is running normally.",
   "lockGenerationNote": "Lock is only offered on batteries whose serial starts with 0168 or 0169.",
   "cutOffLockDisabledNote": "Cut-off and lock can only be sent while the device reports it is running normally.",

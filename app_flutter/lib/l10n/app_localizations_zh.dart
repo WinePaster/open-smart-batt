@@ -533,7 +533,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffDialogBody =>
-      '斷電會讓電池切斷輸出，車輛將無法啟動。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功：目前仍有電池在多次復電後都解不開，原因還在查證。如果復電失敗，本 App 無法讓這顆電池恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。\n\n送出前請先熄火、關閉電源，並確認人員已離車。';
+      '斷電會切斷輸出，車輛將無法啟動，要按「復電」才會恢復。\n\n復電不保證每次成功；失敗時本 App 無法恢復供電，請先確認有其他復電手段（原廠工具／經銷商）。風險自負。\n\n送出前請熄火、關閉電源，並確認人員已離車。';
 
   @override
   String get cutOffDialogConfirm => '我了解，仍要送出';
@@ -548,7 +548,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffLinkLostSnack =>
-      '斷電結果無法確認 —— 等待回報時藍牙連線中斷了。電池可能已經斷電，而且斷線後仍會保持。請重新連線；若顯示斷電，按「復電」。';
+      '斷電結果無法確認 —— 等待回報時藍牙斷線。裝置可能已經斷電，斷線後仍會保持。請重新連線；若顯示斷電，按「復電」。';
 
   @override
   String get cutOffGenerationNote => '斷電只開放序號 0168、0169 開頭的電池。';
@@ -561,7 +561,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get lockDialogBody =>
-      '上鎖（防盜）會切斷輸出，車輛將無法啟動，要按「復電」才會恢復。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功。如果復電失敗，本 App 無法讓它恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。\n\n送出前請先熄火、關閉電源，並確認人員已離車。';
+      '上鎖（防盜）會切斷輸出，車輛將無法啟動，要按「復電」才會恢復。\n\n復電不保證每次成功；失敗時本 App 無法恢復供電，請先確認有其他復電手段（原廠工具／經銷商）。風險自負。\n\n送出前請熄火、關閉電源，並確認人員已離車。';
 
   @override
   String get lockDialogConfirm => '我了解，仍要上鎖';
@@ -573,7 +573,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get lockLinkLostSnack =>
-      '上鎖結果無法確認 —— 等待回報時藍牙連線中斷了。裝置可能已經上鎖，而且斷線後仍會保持。請重新連線；若顯示防盜，按「復電」。';
+      '上鎖結果無法確認 —— 等待回報時藍牙斷線。裝置可能已經上鎖，斷線後仍會保持。請重新連線；若顯示防盜，按「復電」。';
 
   @override
   String get lockDisabledNote => '只有在裝置回報運行正常時，才能送出上鎖指令。';
