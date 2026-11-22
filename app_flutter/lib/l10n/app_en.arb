@@ -111,6 +111,10 @@
   },
   "dashboardDeviceTypeSupercapacitor": "Supercapacitor",
   "dashboardDeviceTypeSmartBattery": "Smart Battery",
+  "dashboardDeviceTypeBlackBox": "Black Box",
+  "@dashboardDeviceTypeBlackBox": {
+    "description": "design 0108. Product-class chip for an RCE black box (device-type 0x12): a voltage/current monitor with no cells of its own."
+  },
   "dashboardDeviceTypePowerBank": "Power Bank",
   "dashboardDeviceTypeRceDevice": "RCE Device",
   "dashboardDeviceTypeWithName": "{type} ({name})",
@@ -409,6 +413,26 @@
   "cutOffDisabledNote": "The cut-off command can only be sent while the device reports it is running normally.",
   "cutOffLinkLostSnack": "Couldn't confirm the cut-off — the Bluetooth link dropped while waiting for the device to report. The battery may already be cut off, and it stays cut off across a disconnect. Reconnect; if it shows cut off, press Restore Power.",
   "cutOffGenerationNote": "Cut-off is only offered on batteries whose serial starts with 0168 or 0169.",
+  "commonLockAction": "Lock",
+  "@commonLockAction": {
+    "description": "design 0108. Button that sends anti-theft (0x23 <- 0x01). OSB Pro only."
+  },
+  "lockDialogTitle": "Send Lock Command",
+  "lockDialogBody": "Locking (anti-theft) cuts the output. The vehicle will not start until you press Restore Power.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one. If restoring fails, this app cannot bring the unit back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.",
+  "lockDialogConfirm": "I understand — lock it",
+  "lockFailedSnack": "Lock command failed: {error}",
+  "@lockFailedSnack": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "lockLinkLostSnack": "Couldn't confirm the lock — the Bluetooth link dropped while waiting for the device to report. The unit may already be locked, and it stays locked across a disconnect. Reconnect; if it shows anti-theft, press Restore Power.",
+  "lockDisabledNote": "The lock command can only be sent while the device reports it is running normally.",
+  "lockGenerationNote": "Lock is only offered on batteries whose serial starts with 0168 or 0169.",
+  "cutOffLockDisabledNote": "Cut-off and lock can only be sent while the device reports it is running normally.",
+  "cutOffLockGenerationNote": "Cut-off and lock are only offered on batteries whose serial starts with 0168 or 0169.",
   "releaseDisabledNote": "The device reports it is running normally — not in cut-off or anti-theft mode, so there is nothing to restore.",
   "antiTheftDialogTitle": "Enable Anti-theft Mode",
   "antiTheftDialogBody": "Anti-theft mode is not fully verified and appears only on supported models. Are you sure you want to send the anti-theft command?",

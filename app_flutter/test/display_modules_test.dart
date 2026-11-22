@@ -144,6 +144,7 @@ void main() {
       DisplayModule.gaugeVoltage: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: false,
         ProductClass.unknown: false,
       },
@@ -151,6 +152,7 @@ void main() {
       DisplayModule.gaugeSoc: {
         ProductClass.smartBattery: false,
         ProductClass.supercapacitor: false,
+        ProductClass.blackBox: false,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -158,6 +160,7 @@ void main() {
       DisplayModule.readouts: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -165,6 +168,7 @@ void main() {
       DisplayModule.chart: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -172,6 +176,7 @@ void main() {
       DisplayModule.cells: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: false,
+        ProductClass.blackBox: false,
         ProductClass.powerBank: false,
         ProductClass.unknown: false,
       },
@@ -179,6 +184,7 @@ void main() {
       DisplayModule.energyPath: {
         ProductClass.smartBattery: false,
         ProductClass.supercapacitor: false,
+        ProductClass.blackBox: false,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -192,6 +198,7 @@ void main() {
       DisplayModule.speed: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -202,6 +209,7 @@ void main() {
       DisplayModule.gForce: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },
@@ -214,6 +222,7 @@ void main() {
       DisplayModule.clock: {
         ProductClass.smartBattery: true,
         ProductClass.supercapacitor: true,
+        ProductClass.blackBox: true,
         ProductClass.powerBank: true,
         ProductClass.unknown: false,
       },

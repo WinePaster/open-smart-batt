@@ -52,7 +52,10 @@ Future<void> main() => bootstrap(
 ///   the same way. Open default = null = RCE only.
 /// - [deviceInfoPanelBuilder]: optional closed-side panel builder. Null on the
 ///   open build (no panel; the open app never reads [DeviceMetadata] content).
-/// - [allowCutOff]: offer 斷電 on an identified smart battery (design 0104).
+/// - [allowCutOff]: offer 斷電 on an identified smart battery or black box
+///   (design 0104 / 0108).
+/// - [allowLock]: offer 上鎖 (anti-theft) on the same units (design 0108).
+///   Open default = false, like [allowCutOff].
 ///   Open default = false — the community build offers release only. Published
 ///   as [ControlFeatures]; it is NOT part of [config], which carries no
 ///   behaviour.
@@ -66,9 +69,10 @@ Future<void> bootstrap({
   AppConfig config = AppConfig.open,
   List<DeviceProfile>? profiles,
   bool allowCutOff = false,
+  bool allowLock = false,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final controls = ControlFeatures(cutOff: allowCutOff);
+  final controls = ControlFeatures(cutOff: allowCutOff, lock: allowLock);
   // design 0060 §3.8 (FB-67, Phase 2 "B"): opt into CoreBluetooth state
   // restoration HERE, and nowhere else. See [BleService.enableStateRestoration]
   // for why this is the only line in the app where the option can still take
@@ -107,6 +111,7 @@ Future<void> bootstrap({
           config: config,
           profiles: profiles,
           allowCutOff: allowCutOff,
+          allowLock: allowLock,
         ),
       ),
     );

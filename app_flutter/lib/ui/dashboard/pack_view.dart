@@ -63,6 +63,11 @@ class PackView extends StatelessWidget {
       case ProductClass.supercapacitor:
         return CapacitorView(deviceId: deviceId);
       case ProductClass.smartBattery:
+      // design 0108: a black box is "a battery without per-cell voltages",
+      // so it takes the battery's controls — 復電 everywhere, 上鎖 / 斷電 where
+      // the build injects them. Its CARDS differ, and those come from
+      // `DisplayModules.blackBox`, not from this switch.
+      case ProductClass.blackBox:
         return BatteryView(deviceId: deviceId);
       case ProductClass.powerBank:
       case ProductClass.unknown:
@@ -342,6 +347,8 @@ class _PackLabelChip extends StatelessWidget {
         return l10n.dashboardDeviceTypeSupercapacitor;
       case ProductClass.smartBattery:
         return l10n.dashboardDeviceTypeSmartBattery;
+      case ProductClass.blackBox:
+        return l10n.dashboardDeviceTypeBlackBox;
       case ProductClass.powerBank:
       case ProductClass.unknown:
         // Nothing here guesses any more: the telemetry-fingerprint heuristic

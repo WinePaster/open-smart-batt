@@ -132,6 +132,7 @@ enum RoutingDecision {
         return RoutingDecision.powerBank;
       case ProductClass.smartBattery:
       case ProductClass.supercapacitor:
+      case ProductClass.blackBox:
         return RoutingDecision.pack;
       case ProductClass.unknown:
         // The one place the two "unknown"s are told apart.

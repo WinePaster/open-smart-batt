@@ -172,6 +172,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardDeviceTypeSmartBattery => 'Smart Battery';
 
   @override
+  String get dashboardDeviceTypeBlackBox => 'Black Box';
+
+  @override
   String get dashboardDeviceTypePowerBank => 'Power Bank';
 
   @override
@@ -571,6 +574,44 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cutOffGenerationNote =>
       'Cut-off is only offered on batteries whose serial starts with 0168 or 0169.';
+
+  @override
+  String get commonLockAction => 'Lock';
+
+  @override
+  String get lockDialogTitle => 'Send Lock Command';
+
+  @override
+  String get lockDialogBody =>
+      'Locking (anti-theft) cuts the output. The vehicle will not start until you press Restore Power.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one. If restoring fails, this app cannot bring the unit back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.';
+
+  @override
+  String get lockDialogConfirm => 'I understand — lock it';
+
+  @override
+  String lockFailedSnack(String error) {
+    return 'Lock command failed: $error';
+  }
+
+  @override
+  String get lockLinkLostSnack =>
+      'Couldn\'t confirm the lock — the Bluetooth link dropped while waiting for the device to report. The unit may already be locked, and it stays locked across a disconnect. Reconnect; if it shows anti-theft, press Restore Power.';
+
+  @override
+  String get lockDisabledNote =>
+      'The lock command can only be sent while the device reports it is running normally.';
+
+  @override
+  String get lockGenerationNote =>
+      'Lock is only offered on batteries whose serial starts with 0168 or 0169.';
+
+  @override
+  String get cutOffLockDisabledNote =>
+      'Cut-off and lock can only be sent while the device reports it is running normally.';
+
+  @override
+  String get cutOffLockGenerationNote =>
+      'Cut-off and lock are only offered on batteries whose serial starts with 0168 or 0169.';
 
   @override
   String get releaseDisabledNote =>

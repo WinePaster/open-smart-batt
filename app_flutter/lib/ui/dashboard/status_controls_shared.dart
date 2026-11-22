@@ -615,42 +615,6 @@ Future<bool> _waitFor(
   return test(tele.mode);
 }
 
-/// Watch `0x23` after a mode write and report what actually happened.
-///
-/// Every mode write used to report "sent" and stop there, because the wire
-/// carries no acknowledgement — but `0x23` streams at roughly 1 Hz, so the
-/// device's own answer arrives within seconds if we simply look. Six seconds at
-/// 500 ms gives about six samples of a ~1 Hz register.
-///
-/// This turns each attempt into evidence, which matters while the release code
-/// itself is unproven: eight writes of the previous code, across two packs,
-/// changed nothing, and nobody could tell that from the app.
-///
-/// Reports "unchanged", never "failed". A device that ignored the write and one
-/// that was never in that state look identical from here, and we do not know
-/// which we are seeing.
-Future<String> _modeWriteOutcome(
-  AppLocalizations l10n,
-  TelemetryController tele, {
-  required String action,
-  required int? before,
-  required bool skipAuth,
-}) async {
-  const window = Duration(seconds: 6);
-  switch (await watchModeAfterWrite(() => tele.mode, before, window)) {
-    case ModeWatch.changed:
-      return l10n.modeChangedSnack(action, runStatusOf(l10n, tele.mode).label);
-    case ModeWatch.linkLost:
-      return l10n.modeLinkLostSnack(action);
-    case ModeWatch.unchanged:
-      break;
-  }
-  final status = runStatusOf(l10n, tele.mode).label;
-  return skipAuth
-      ? l10n.modeUnchangedNoAuthSnack(action, status)
-      : l10n.modeUnchangedSnack(action, status);
-}
-
 /// What watching `0x23` after a mode write found.
 @visibleForTesting
 enum ModeWatch {
@@ -676,8 +640,9 @@ enum ModeWatch {
 /// as [ModeWatch.linkLost] when there was a value before, and is just "no
 /// reading yet" when there was not.
 ///
-/// Shared by the release retry loop and [_modeWriteOutcome], so none of the
-/// three mode writes can report a disconnect as success.
+/// Shared by every mode write — 復電, 斷電 and (design 0108) 上鎖 all run
+/// through [sendModeWithAuthPlan] — so none of them can report a disconnect as
+/// success.
 @visibleForTesting
 Future<ModeWatch> watchModeAfterWrite(
     int? Function() read, int? before, Duration window) async {
@@ -1022,68 +987,68 @@ Future<void> cutOff(BuildContext context, TelemetryController tele) async {
   );
 }
 
-/// 防盜 — NOT a documented-safe path: require explicit confirmation and the same
-/// per-device auth before sending a gated mode code.
+/// 上鎖 — anti-theft (`0x23` <- `0x01`), sent EXACTLY like 復電 and 斷電
+/// (design 0108).
+///
+/// Offered where a composition root injected `ControlFeatures(lock: true)`
+/// (OSB Pro) or a per-model override says so; the caller gates the button on
+/// [cutOffActionEnabled] and, on a battery, [cutOffGenerationAllowed] — the
+/// same gate as 斷電, because a lock also leaves the vehicle unable to start.
+///
+/// Wire basis: the engineering app's anti-theft writes on a `0169` pack (two,
+/// 2026-08/09) used the same standalone auth, the same `0x00A8` and the same
+/// 15-byte mode+auth frame as its cut-off and release, mode byte aside, and
+/// each took on the first try (design 0104 §2.2 W5).
+///
+/// 🔴 Until design 0108 this function wrote ONE mode+auth frame with no
+/// standalone auth, no `0x23` read-back and no retry, and its auth dialog
+/// offered a mode-only "skip auth" send — the shape 斷電 had before design
+/// 0104. Both are gone for the reason given on [cutOff].
 Future<void> antiTheft(BuildContext context, TelemetryController tele) async {
   // design 0106 Phase 1 (ruling T1): a unit drawn from its secondary link is
   // handed over to the primary first — writes go through the primary only.
   if (!await ensurePrimaryFor(context, action: 'anti-theft')) return;
   if (!context.mounted) return;
-  final conn = context.read<ConnectionController>();
   final l10n = AppLocalizations.of(context);
-  final messenger = ScaffoldMessenger.of(context);
+  final action = l10n.commonLockAction;
   final before = tele.mode;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
-      title: Text(l10n.antiTheftDialogTitle),
-      content: Text(
-        l10n.antiTheftDialogBody,
-        style: TextStyle(color: context.colors.muted),
+      title: Text(l10n.lockDialogTitle),
+      content: SingleChildScrollView(
+        child: Text(
+          l10n.lockDialogBody,
+          style: TextStyle(color: context.colors.muted, height: 1.5),
+        ),
       ),
       actions: [
+        // Cancel first, as on 斷電.
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: Text(l10n.commonCancel),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(l10n.commonContinue),
+          child: Text(
+            l10n.lockDialogConfirm,
+            style: const TextStyle(color: AppSemantics.danger),
+          ),
         ),
       ],
     ),
   );
   if (confirmed != true) return;
   if (!context.mounted) return;
-  final req = await showReleaseCutOffDialog(
+  await sendModeWithAuthPlan(
     context,
-    initialDealerCode: tele.dealerCode,
+    tele,
+    mode: ModeArg.antiTheft,
+    action: action,
+    before: before,
+    failedSnack: l10n.lockFailedSnack,
+    linkLostSnack: l10n.lockLinkLostSnack,
   );
-  if (req == null) return;
-  try {
-    if (req.skipAuth) {
-      await conn.switchModeOnly(ModeArg.antiTheft);
-    } else {
-      await conn.switchMode(ModeArg.antiTheft,
-          cb: req.creds!.cb, pwSum: req.creds!.pwSum);
-    }
-    // All three mode writes (復電 / 斷電 / 防盜) share one verification path, so
-    // none of them can regress to reporting "sent" without looking.
-    messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 3600),
-      content: Text(await _modeWriteOutcome(l10n, tele,
-          action: l10n.commonAntiTheft,
-          before: before,
-          skipAuth: req.skipAuth)),
-    ));
-  } catch (e) {
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(milliseconds: 1600),
-        content: Text(l10n.antiTheftFailedSnack('$e')),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------

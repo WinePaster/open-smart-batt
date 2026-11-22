@@ -434,6 +434,7 @@ class CategoryAlertDefaults {
 /// |----------------|-----------|-----------|-----------|
 /// | smartBattery   | ≥ 15.0 V  | ≤ 11.5 V  | ≥ 80 °C   |
 /// | supercapacitor | ≥ 15.0 V  | ≤ 11.5 V  | ≥ 80 °C   |
+/// | blackBox       | ≥ 15.0 V  | ≤ 11.5 V  | ≥ 80 °C   |
 /// | powerBank      | —         | —         | ≥ 50 °C   |
 ///
 /// ~~The previous table, keyed on [DeclaredCategory]: car battery 15.0 / 12.0 /
@@ -450,6 +451,9 @@ const Map<ProductClass, CategoryAlertDefaults> kAppAlertThresholds =
   ProductClass.smartBattery: CategoryAlertDefaults(ov: 15.0, uv: 11.5, ot: 80),
   ProductClass.supercapacitor:
       CategoryAlertDefaults(ov: 15.0, uv: 11.5, ot: 80),
+  // design 0108: the black box watches a vehicle battery's terminals, so it
+  // takes the battery's row (owner: 「像是電池 但是沒有分串電壓的版本」).
+  ProductClass.blackBox: CategoryAlertDefaults(ov: 15.0, uv: 11.5, ot: 80),
   // 🔴 No `ov` / `uv` — see [kPowerBankWatchesTemperatureOnly].
   ProductClass.powerBank: CategoryAlertDefaults(ot: kPowerBankOtDefaultC),
 };

@@ -310,6 +310,8 @@ void main() {
       ProductClass.smartBattery: 'face=fixed modules=chart,readouts,cells',
       // No `cells` — design 0050 D5,「電容沒有分串電壓」.
       ProductClass.supercapacitor: 'face=fixed modules=chart,readouts',
+      // design 0108: the battery minus `cells` (「他不會有分串電壓」).
+      ProductClass.blackBox: 'face=fixed modules=chart,readouts',
       // 🔴 No `gaugeSoc` since 2026-08-21 (owner: 「移除SOC圓環」) — break 4
       // below. The SOC number is still on the page, in `readouts`.
       ProductClass.powerBank: 'face=fixed modules=chart,readouts,energyPath',

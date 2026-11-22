@@ -326,6 +326,12 @@ abstract class AppLocalizations {
   /// **'Smart Battery'**
   String get dashboardDeviceTypeSmartBattery;
 
+  /// design 0108. Product-class chip for an RCE black box (device-type 0x12): a voltage/current monitor with no cells of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Black Box'**
+  String get dashboardDeviceTypeBlackBox;
+
   /// No description provided for @dashboardDeviceTypePowerBank.
   ///
   /// In en, this message translates to:
@@ -979,6 +985,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cut-off is only offered on batteries whose serial starts with 0168 or 0169.'**
   String get cutOffGenerationNote;
+
+  /// design 0108. Button that sends anti-theft (0x23 <- 0x01). OSB Pro only.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get commonLockAction;
+
+  /// No description provided for @lockDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Lock Command'**
+  String get lockDialogTitle;
+
+  /// No description provided for @lockDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Locking (anti-theft) cuts the output. The vehicle will not start until you press Restore Power.\n\nThis app has restored power on several batteries, but success is not guaranteed for every one. If restoring fails, this app cannot bring the unit back.\n\nMake sure you have another way to restore power (the vendor tool, or your dealer) before continuing. You are taking this risk yourself.\n\nBefore sending, switch the engine off, turn the power off, and make sure nobody is in the vehicle.'**
+  String get lockDialogBody;
+
+  /// No description provided for @lockDialogConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand — lock it'**
+  String get lockDialogConfirm;
+
+  /// No description provided for @lockFailedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock command failed: {error}'**
+  String lockFailedSnack(String error);
+
+  /// No description provided for @lockLinkLostSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t confirm the lock — the Bluetooth link dropped while waiting for the device to report. The unit may already be locked, and it stays locked across a disconnect. Reconnect; if it shows anti-theft, press Restore Power.'**
+  String get lockLinkLostSnack;
+
+  /// No description provided for @lockDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The lock command can only be sent while the device reports it is running normally.'**
+  String get lockDisabledNote;
+
+  /// No description provided for @lockGenerationNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock is only offered on batteries whose serial starts with 0168 or 0169.'**
+  String get lockGenerationNote;
+
+  /// No description provided for @cutOffLockDisabledNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off and lock can only be sent while the device reports it is running normally.'**
+  String get cutOffLockDisabledNote;
+
+  /// No description provided for @cutOffLockGenerationNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut-off and lock are only offered on batteries whose serial starts with 0168 or 0169.'**
+  String get cutOffLockGenerationNote;
 
   /// No description provided for @releaseDisabledNote.
   ///

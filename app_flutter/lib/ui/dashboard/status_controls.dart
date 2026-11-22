@@ -268,9 +268,20 @@ class BatteryControls extends StatelessWidget {
     // 斷電 exists only where a composition root injected it (design 0104: OSB
     // Pro). Absent provider ⇒ null ⇒ off, so the community build and every
     // test harness that does not provide one render exactly what they did.
-    final offerCutOff = context.watch<ControlFeatures?>()?.cutOff ?? false;
+    final features = context.watch<ControlFeatures?>();
+    final offerCutOff = features?.cutOff ?? false;
+    // design 0108: 上鎖 is offered either by the build (OSB Pro injects
+    // `lock`) or, as before, by a per-model override — which nothing in `lib/`
+    // sets, so on the community build the button still never appears.
+    final offerLock = (features?.lock ?? false) || hasAntiTheft;
     final cutOffModeOk = cutOffActionEnabled(tele.mode);
-    final cutOffGenOk = cutOffGenerationAllowed(tele.dealerCode);
+    // design 0108 Q2 (owner: 「我覺得沒關係不限制」): the 0168／0169 limit is a
+    // BATTERY rule (design 0104 Q1). A black box is not held to it.
+    final label = src?.packLabel ??
+        context.select<ConnectionController, ProductClass>((c) => c.packLabel);
+    final cutOffGenOk = label == ProductClass.blackBox ||
+        cutOffGenerationAllowed(tele.dealerCode);
+    final lockOk = online && cutOffModeOk && cutOffGenOk;
     // FB-30. This body was the ONLY one of the three that never consulted
     // `readingBreachesThreshold()` — a battery crossing the over/under-voltage or
     // over-temperature limits IT REPORTED (0x2B) said nothing at all, while a
@@ -349,16 +360,18 @@ class BatteryControls extends StatelessWidget {
                     : null,
               ),
             ),
-            // Anti-theft is unchanged: still model-gated, so still off unless a
-            // unit is explicitly marked as supporting it.
-            if (hasAntiTheft) ...[
+            // 上鎖 (design 0108): same gate as 斷電 — it also leaves the
+            // vehicle unable to start, so it is offered only from a positively
+            // normal state, on a generation seen to release.
+            if (offerLock) ...[
               const SizedBox(width: 9),
               Expanded(
                 child: ControlButton(
                   variant: ControlButtonVariant.ghost,
                   icon: Icons.shield_outlined,
-                  label: l10n.commonAntiTheft,
-                  onPressed: online ? () => antiTheft(context, context.read<TelemetryController>())
+                  label: l10n.commonLockAction,
+                  onPressed: lockOk
+                      ? () => antiTheft(context, context.read<TelemetryController>())
                       : null,
                 ),
               ),
@@ -379,9 +392,19 @@ class BatteryControls extends StatelessWidget {
           if (online && !canRelease) l10n.releaseDisabledNote,
           // Why 斷電 is grey, when it is offered at all. The mode reason wins:
           // it is the one the owner can act on (release first).
-          if (offerCutOff && online && !cutOffModeOk) l10n.cutOffDisabledNote,
-          if (offerCutOff && online && cutOffModeOk && !cutOffGenOk)
-            l10n.cutOffGenerationNote,
+          if (online && !cutOffModeOk && (offerCutOff || offerLock))
+            offerCutOff && offerLock
+                ? l10n.cutOffLockDisabledNote
+                : offerCutOff
+                    ? l10n.cutOffDisabledNote
+                    : l10n.lockDisabledNote,
+          if (online && cutOffModeOk && !cutOffGenOk &&
+              (offerCutOff || offerLock))
+            offerCutOff && offerLock
+                ? l10n.cutOffLockGenerationNote
+                : offerCutOff
+                    ? l10n.cutOffGenerationNote
+                    : l10n.lockGenerationNote,
           // Same treatment as the other two bodies: OUR computation from the
           // device's own thresholds, so it is an advisory line and never a
           // device-reported status badge.

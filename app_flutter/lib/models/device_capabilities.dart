@@ -11,6 +11,7 @@
 /// | [powerBank]      |   —    |   —    |     —      |
 /// | [supercapacitor] |   ✅   |   ❌   |     ❌     |
 /// | [smartBattery]   |   ❌   |   ✅   | model-gated |
+/// | [blackBox]       |   ❌   |   ✅   | model-gated |
 /// | [unknown]        |   ❌   |   ✅   |     ❌     |
 ///
 /// The [unknown] row is a lenient-but-bounded fallback for a pack that has not
@@ -100,15 +101,24 @@ class DeviceCapabilities {
   /// run mode to be cut off from, so the control would be inert at best and, if
   /// the write were honoured, would be operating a mode the hardware does not
   /// define.
+  ///
+  /// design 0108: a [blackBox] too — it uses the battery's mode codes (the
+  /// captured unit read `02` while cut off).
   bool get hasCutOff =>
       productClass == ProductClass.smartBattery ||
+      productClass == ProductClass.blackBox ||
       productClass == ProductClass.unknown;
 
   /// 防盜 (anti-theft) available — [smartBattery] AND a per-model override.
   /// NEVER in the [unknown] fallback: anti-theft trips the battery's output, so
   /// offering it to a unit we cannot even identify has no justification.
+  ///
+  /// The OTHER way the button appears is `ControlFeatures.lock` (design 0108,
+  /// OSB Pro), read by `BatteryControls` — a build decision, not a model one.
   bool get hasAntiTheft =>
-      productClass == ProductClass.smartBattery && (antiTheftOverride ?? false);
+      (productClass == ProductClass.smartBattery ||
+          productClass == ProductClass.blackBox) &&
+      (antiTheftOverride ?? false);
 
   DeviceCapabilities copyWith({
     ProductClass? productClass,

@@ -219,6 +219,31 @@ class DisplayModules {
     chartFootnote: _capacitorChartFootnote,
   );
 
+  /// Black box (device-type `0x12`, design 0108): the battery's entry minus
+  /// the per-cell card — owner, 2026-11-22: 「你可以想像他像是電池 但是沒有分串
+  /// 電壓的版本 其他功能一樣」.
+  ///
+  /// Two fields differ from [battery], and both follow from the hardware
+  /// rather than from taste:
+  ///  * no `cells` — the unit answers `0x24` with an EMPTY payload (owner:
+  ///    「他不會有分串電壓」);
+  ///  * no SOH — SOH is the health of a battery, and a black box has none of
+  ///    its own; the captured unit sends no SOH source either, so a gauge line
+  ///    could only ever read "SOH --" (the capacitor's reason, above).
+  /// Current stays: it is a voltage-AND-current monitor, and its `0x2E` uses
+  /// the battery's encoding (`0200` = 0 A while cut off).
+  static const DisplayModules blackBox = DisplayModules(
+    extra: {DisplayModule.gaugeVoltage},
+    dataGated: <DisplayModule>{},
+    chartTracks: {TrendField.current, TrendField.pvlt, TrendField.temperature},
+    sohGaugeLine: null,
+    // No `0x37` on the wire at all.
+    showsSvltReadout: false,
+    showsCurrentReadout: true,
+    showsSohReadout: false,
+    chartFootnote: null,
+  );
+
   /// Power bank: a different shell entirely ([PowerBankView]) — SOC ring,
   /// energy-path row, no DVOL, no protection controls.
   static const DisplayModules powerBank = DisplayModules(
@@ -294,6 +319,7 @@ class DisplayModules {
   static DisplayModules? forClass(ProductClass c) => switch (c) {
         ProductClass.smartBattery => battery,
         ProductClass.supercapacitor => capacitor,
+        ProductClass.blackBox => blackBox,
         ProductClass.powerBank => powerBank,
         ProductClass.unknown => null,
       };

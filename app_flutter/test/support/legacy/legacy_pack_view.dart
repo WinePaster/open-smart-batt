@@ -65,6 +65,7 @@ class LegacyPackView extends StatelessWidget {
       case ProductClass.supercapacitor:
         return LegacyCapacitorView(deviceId: deviceId);
       case ProductClass.smartBattery:
+      case ProductClass.blackBox:
         return LegacyBatteryView(deviceId: deviceId);
       case ProductClass.powerBank:
       case ProductClass.unknown:
@@ -315,6 +316,8 @@ class _PackLabelChip extends StatelessWidget {
         return l10n.dashboardDeviceTypeSupercapacitor;
       case ProductClass.smartBattery:
         return l10n.dashboardDeviceTypeSmartBattery;
+      case ProductClass.blackBox:
+        return l10n.dashboardDeviceTypeBlackBox;
       case ProductClass.powerBank:
       case ProductClass.unknown:
         // Nothing here guesses any more: the telemetry-fingerprint heuristic

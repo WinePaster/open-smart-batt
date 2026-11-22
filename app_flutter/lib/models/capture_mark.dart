@@ -53,7 +53,8 @@ enum CaptureMark {
   ///
   /// [ProductClass.smartBattery] here means "a pack" — capacitors share the
   /// same marks, since the states being declared (idle / charging / loaded) are
-  /// the same physical situations.
+  /// the same physical situations. So does a black box (design 0108): it sits
+  /// on a vehicle battery and reads that battery's idle / charging / load.
   final ProductClass? appliesTo;
 
   /// Marks worth offering for [cls]. An unknown class gets the generic ones
@@ -64,7 +65,8 @@ enum CaptureMark {
           if (m.appliesTo == null ||
               m.appliesTo == cls ||
               (m.appliesTo == ProductClass.smartBattery &&
-                  cls == ProductClass.supercapacitor))
+                  (cls == ProductClass.supercapacitor ||
+                      cls == ProductClass.blackBox)))
             m,
       ];
 

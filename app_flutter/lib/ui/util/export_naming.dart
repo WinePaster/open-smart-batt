@@ -28,6 +28,7 @@ String productClassSlug(ProductClass? c) => switch (c) {
       ProductClass.powerBank => 'powerbank',
       ProductClass.supercapacitor => 'capacitor',
       ProductClass.smartBattery => 'battery',
+      ProductClass.blackBox => 'blackbox',
       _ => 'unknown',
     };
 

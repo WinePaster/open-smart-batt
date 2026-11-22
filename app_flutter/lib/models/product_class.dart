@@ -14,7 +14,8 @@
 ///   * `0x22` → [powerBank] (PROTOCOL.md §8.2/§9);
 ///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
 ///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27);
-///   * `0x18` → [supercapacitor] (three independent units, 2026-08-01).
+///   * `0x18` → [supercapacitor] (three independent units, 2026-08-01);
+///   * `0x12` → [blackBox] (one unit, 2026-11-22 — design 0108).
 ///
 /// The list grows one measured byte at a time, and a byte nobody has measured
 /// stays out. That has a visible cost — a new hardware generation shows up as
@@ -77,6 +78,22 @@ const int kSuperCapacitorDeviceType = 0x17;
 /// `DeviceCapabilities`, was offered 解除斷電, a mode a capacitor does not have.
 const int kSuperCapacitorGen3DeviceType = 0x18;
 
+/// Device-type byte (selector 0x10 b4) for the motorcycle BLACK BOX —
+/// wire-verified 2026-11-22 on one unit (serial 016802120000017, design 0108).
+///
+/// One unit is below the bar the capacitor bytes cleared, and it lands anyway
+/// because the byte does not stand alone: the serial's product field reads
+/// `0212`, `0x27` carries `0212` in the same position a battery carries `0102`,
+/// and the engineering app's own type picker lists `[12]機車黑盒子` beside
+/// `[02]` and `[22]` — the two bytes we already know as battery and power bank.
+///
+/// What it is (owner, 2026-11-22): a pure monitor — voltage and current
+/// sensing plus lock / cut-off / release, and NO battery or capacitor of its
+/// own. On the wire that reads as `0x24` with an empty payload and no `0x37`.
+/// Its `0x23` uses the battery's codes (the captured unit was cut off and read
+/// `02` throughout).
+const int kBlackBoxDeviceType = 0x12;
+
 /// The product class a connected RCE unit belongs to.
 enum ProductClass {
   /// Portable power bank (RSPB) — device-type 0x22 (verified). Routes to its own
@@ -94,6 +111,12 @@ enum ProductClass {
   /// gates controls directly and may route without consulting a label.
   smartBattery,
 
+  /// Motorcycle black box — device-type 0x12 (one unit, 2026-11-22, design
+  /// 0108). A pure monitor: voltage, current and temperature, no cells, no
+  /// SOH, no capacitor. Shares the pack shell and the battery's mode codes, so
+  /// it gets 復電 (and, where injected, 上鎖 / 斷電) — not the battery's cards.
+  blackBox,
+
   /// Not yet determined: no device-type frame seen yet, or a byte this build
   /// does not recognise. The user resolves it — nothing is inferred from
   /// telemetry, because not guessing cannot guess wrong.
@@ -110,6 +133,7 @@ enum ProductClass {
   ///   * 0x02 => [smartBattery] (verified on a car battery — see
   ///     [kSmartBatteryDeviceType]);
   ///   * 0x17, 0x18 => [supercapacitor] (wire-verified 2026-07-27 / 2026-08-01);
+  ///   * 0x12 => [blackBox] (wire-verified 2026-11-22, design 0108);
   ///   * every other value => [unknown], which the UI presents as "unclassified"
   ///     and lets the user resolve. All three classes now have a wire-verified
   ///     byte, so nothing is inferred from telemetry any more.
@@ -122,6 +146,8 @@ enum ProductClass {
       case kSuperCapacitorDeviceType:
       case kSuperCapacitorGen3DeviceType:
         return ProductClass.supercapacitor;
+      case kBlackBoxDeviceType:
+        return ProductClass.blackBox;
       default:
         return ProductClass.unknown;
     }

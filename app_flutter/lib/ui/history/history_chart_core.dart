@@ -520,7 +520,8 @@ String? historyChartCurrentDirectionLabel(
     switch (cls) {
       ProductClass.powerBank => l10n.powerBankTrackCurrentDirectionKey,
       ProductClass.smartBattery ||
-      ProductClass.supercapacitor =>
+      ProductClass.supercapacitor ||
+      ProductClass.blackBox =>
         l10n.dashboardTrackCurrentDirectionKey,
       ProductClass.unknown || null => null,
     };

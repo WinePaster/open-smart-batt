@@ -290,6 +290,12 @@ class TelemetryDecoder {
           dvolPending: false,
         );
       case Selectors.dvol:
+        // design 0108: four payload bytes or nothing. A black box (0x12)
+        // answers 0x24 with LEN 0 — it has no cells — and InboundFrame.b()
+        // returns 0 out of range, so without this the frame decoded to four
+        // 0.000 V cells and the CSV said "measured zero" where the truth is
+        // "there is nothing to measure". Same rule, same reason as 0x47 above.
+        if (f.len < 4) return base;
         final scale = base.vadj;
         if (scale == null) {
           // 0x47 may already have published real per-cell voltages. Do NOT

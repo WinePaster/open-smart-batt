@@ -165,6 +165,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get dashboardDeviceTypeSmartBattery => '智慧電池';
 
   @override
+  String get dashboardDeviceTypeBlackBox => '黑盒子';
+
+  @override
   String get dashboardDeviceTypePowerBank => '行動電源';
 
   @override
@@ -549,6 +552,40 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cutOffGenerationNote => '斷電只開放序號 0168、0169 開頭的電池。';
+
+  @override
+  String get commonLockAction => '上鎖';
+
+  @override
+  String get lockDialogTitle => '送出上鎖指令';
+
+  @override
+  String get lockDialogBody =>
+      '上鎖（防盜）會切斷輸出，車輛將無法啟動，要按「復電」才會恢復。\n\n本 App 已在多顆電池上成功復電，但不保證每一顆都會成功。如果復電失敗，本 App 無法讓它恢復供電。\n\n請確認你有其他復電手段（原廠工具／經銷商）再繼續。風險請自行承擔。\n\n送出前請先熄火、關閉電源，並確認人員已離車。';
+
+  @override
+  String get lockDialogConfirm => '我了解，仍要上鎖';
+
+  @override
+  String lockFailedSnack(String error) {
+    return '上鎖指令失敗：$error';
+  }
+
+  @override
+  String get lockLinkLostSnack =>
+      '上鎖結果無法確認 —— 等待回報時藍牙連線中斷了。裝置可能已經上鎖，而且斷線後仍會保持。請重新連線；若顯示防盜，按「復電」。';
+
+  @override
+  String get lockDisabledNote => '只有在裝置回報運行正常時，才能送出上鎖指令。';
+
+  @override
+  String get lockGenerationNote => '上鎖只開放序號 0168、0169 開頭的電池。';
+
+  @override
+  String get cutOffLockDisabledNote => '只有在裝置回報運行正常時，才能送出斷電或上鎖指令。';
+
+  @override
+  String get cutOffLockGenerationNote => '斷電與上鎖只開放序號 0168、0169 開頭的電池。';
 
   @override
   String get releaseDisabledNote => '裝置目前回報運行正常，不在斷電或防盜模式，沒有需要恢復的對象。';

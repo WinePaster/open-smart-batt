@@ -409,7 +409,7 @@ class MultiLinkController extends ChangeNotifier {
   /// SECONDARY link, or null when it is not (offline, releasing, or a class
   /// the secondary dashboard cannot draw from the saved record alone).
   ///
-  /// Only a battery or capacitor gets one: those are the only classes a
+  /// Only a battery, capacitor or black box (design 0108) gets one: those are the only classes a
   /// secondary link ever carries (power banks are never adopted, D1), and a
   /// unit saved without a class has no record to route its dashboard by —
   /// that page keeps the pre-Phase-1 behaviour of connecting it as the
@@ -418,7 +418,9 @@ class MultiLinkController extends ChangeNotifier {
     final l = _links[deviceId];
     if (l == null || !l.online || l.releasing) return null;
     final cls = classFor(deviceId);
-    if (cls != ProductClass.smartBattery && cls != ProductClass.supercapacitor) {
+    if (cls != ProductClass.smartBattery &&
+        cls != ProductClass.supercapacitor &&
+        cls != ProductClass.blackBox) {
       return null;
     }
     return _SecondaryLiveSource(this, l, cls);
