@@ -290,6 +290,21 @@ class MultiLinkController extends ChangeNotifier {
   /// design 0107 §9: a launch in simple mode is still looking for the
   /// last-used unit ([simpleLaunchTick]); when its window opened; its ticker.
   bool _launchPending = false;
+
+  /// 2026.11.22/002: what armed the pending look — `launch` (a cold start),
+  /// `mode-switch` (personal → simple) or `resume` (back to the foreground).
+  /// Written on the outcome line for the last two, so the cold-start line
+  /// keeps the format 0107 §9 shipped with.
+  String _launchTrigger = 'launch';
+
+  /// Set by [load]. Before it, a settings notification is `settings.load()`
+  /// itself, not the user switching modes.
+  bool _loaded = false;
+
+  /// The mode and the foreground state as [_onSettingsChanged] /
+  /// [_onPrimaryChanged] last saw them — the edges 2026.11.22/002 acts on.
+  bool _wasPersonal = true;
+  bool _wasInBackground = false;
   DateTime? _launchSince;
   DateTime? _launchScanAt;
   Timer? _launchTimer;
@@ -437,10 +452,17 @@ class MultiLinkController extends ChangeNotifier {
     // design 0107: `settings.load()` has already run (`AppServices.create`),
     // so the mode read here is the stored one.
     _wasActive = _active;
+    _wasPersonal = _personalMode;
+    _wasInBackground = _conn.inBackground;
+    _loaded = true;
     if (_active) {
       _start();
-    } else if (_enabled) {
-      _armSimpleLaunch();
+    } else if (!_personalMode) {
+      // 2026.11.22/002: NOT gated on the switch any more. The switch's row is
+      // greyed out in simple mode and says so, so a user reads it as having
+      // nothing to do with simple mode — and with it off (its default) a
+      // launch in simple mode connected nothing at all.
+      _armSimpleLaunch('launch');
     }
     notifyListeners();
   }
@@ -597,6 +619,22 @@ class MultiLinkController extends ChangeNotifier {
   /// coming back starts again under the usual rules, 自動連線 included.
   void _onSettingsChanged() {
     if (_disposed) return;
+    // 2026.11.22/002 (P3, P2): say when the mode changes — the export has no
+    // other trace of it — and give a switch INTO simple mode the same one look
+    // for the last-used unit a launch gets. Ahead of the [_active] edge below,
+    // because with the switch off that edge never moves.
+    final personal = _personalMode;
+    if (_loaded && personal != _wasPersonal) {
+      _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
+          note: 'app mode: ${_wasPersonal ? 'personal' : 'advanced'} → '
+              '${personal ? 'personal' : 'advanced'}'));
+      _wasPersonal = personal;
+      // Only with nothing connected: a switch made while looking at a live
+      // unit has nothing to look for, and would only log `primary-up`.
+      if (!personal && _conn.connectedDeviceId == null) {
+        _armSimpleLaunch('mode-switch');
+      }
+    }
     final now = _active;
     if (now == _wasActive) return;
     _wasActive = now;
@@ -633,6 +671,18 @@ class MultiLinkController extends ChangeNotifier {
     if (_disposed) return;
     _notePresence();
     _trackPrimary();
+    // 2026.11.22/002 (P2): back in the foreground in simple mode with nothing
+    // connected — one more look for the last-used unit. A cold start is not
+    // the only way back into the app; on a phone it is the rarer one.
+    final bg = _conn.inBackground;
+    final resumed = _wasInBackground && !bg;
+    _wasInBackground = bg;
+    if (resumed &&
+        _loaded &&
+        !_personalMode &&
+        _conn.connectedDeviceId == null) {
+      _armSimpleLaunch('resume');
+    }
     if (_launchPending) simpleLaunchTick();
     final scanReady = _conn.isAdapterOn && !_conn.inBackground;
     final scanReadyEdge = scanReady && !_scanReady;
@@ -1106,12 +1156,18 @@ class MultiLinkController extends ChangeNotifier {
   /// home page, now it does not". The primary never connects on its own at
   /// launch (`monitor_service.dart`, "the app never auto-connects at launch");
   /// the launch connect was always this controller's secondaries, and design
-  /// 0107 withholds those in simple mode. So a launch in simple mode, with the
-  /// switch on and 自動連線 on, connects the LAST-USED unit as the primary —
-  /// that one only: a dealer's phone holds a dozen customers' units, and
-  /// connecting the wrong one is worse than connecting none.
-  void _armSimpleLaunch() {
+  /// 0107 withholds those in simple mode. So a launch in simple mode, with
+  /// 自動連線 on, connects the LAST-USED unit as the primary — that one only: a
+  /// dealer's phone holds a dozen customers' units, and connecting the wrong
+  /// one is worse than connecting none.
+  ///
+  /// 🔴 2026.11.22/002: this used to require the multi-link switch too, and the
+  /// reporter had turned it off — so it never ran. It also ran only at a cold
+  /// start; a switch into simple mode and a return to the foreground now arm
+  /// it as well ([trigger]).
+  void _armSimpleLaunch(String trigger) {
     if (_disposed || _launchPending) return;
+    _launchTrigger = trigger;
     _launchPending = true;
     _launchSince = null;
     _launchScanAt = null;
@@ -1126,7 +1182,8 @@ class MultiLinkController extends ChangeNotifier {
     _launchTimer = null;
     _tele.logExtraPacket(BlePacketEvent(LogDirection.event, const [],
         note: 'multilink: simple-launch $outcome'
-            '${id == null ? '' : ' id=${shortDeviceHash(id)}'}',
+            '${id == null ? '' : ' id=${shortDeviceHash(id)}'}'
+            '${_launchTrigger == 'launch' ? '' : ' via=$_launchTrigger'}',
         deviceId: id));
   }
 
@@ -1149,7 +1206,7 @@ class MultiLinkController extends ChangeNotifier {
   void simpleLaunchTick() {
     if (_disposed || !_launchPending) return;
     // Back in personal mode: the secondaries' own rules take over.
-    if (!_enabled || _personalMode) return _endSimpleLaunch('mode');
+    if (_personalMode) return _endSimpleLaunch('mode');
     if (!_autoAllowed) return _endSimpleLaunch('auto-off');
     if (_stoppedByUser) return _endSimpleLaunch('stopped');
     // The user tapped a unit, or iOS restored the previous link.
@@ -1157,6 +1214,11 @@ class MultiLinkController extends ChangeNotifier {
     if (_conn.isAutoConnectArmed) return _endSimpleLaunch('armed');
     final target = _launchTarget();
     if (target == null) return _endSimpleLaunch('no-device');
+    // The user let this unit go in this session (PR #43's rule): a mode switch
+    // or a return to the foreground must not bring it back behind their back.
+    if (_released.contains(target.id)) {
+      return _endSimpleLaunch('released', target.id);
+    }
     if (_conn.inBackground) return; // the window opens in the foreground
     final now = _now();
     final since = _launchSince ??= now;

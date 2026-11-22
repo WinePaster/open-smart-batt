@@ -1130,13 +1130,19 @@ void main() {
 
     test('simple → personal: secondaries come back', () async {
       final ml = await boot([bat('A'), bat('B')]);
+      primary.acceptConnects = true;
       await s.settings.setMode(AppMode.advanced);
       await _settle();
       expect(ml.heldIds, isEmpty);
+      // 2026.11.22/002: the switch into simple mode, with nothing connected,
+      // takes the last-used unit as the primary (one unit, never both).
+      expect(primary.primaryConnects, hasLength(1));
+      final first = primary.primaryConnects.single;
       await s.settings.setMode(AppMode.personal);
       await _settle();
       expect(ml.active, isTrue);
-      expect(ml.heldIds, {'A', 'B'});
+      expect(ml.heldIds, {'A', 'B'}.difference({first}),
+          reason: 'the other unit comes back as a secondary');
     });
 
     test('export header lines and the vehicle go with the mode', () async {
@@ -1269,9 +1275,82 @@ void main() {
       expect((await notes()).where((n) => n.contains('simple-launch')), isEmpty);
     });
 
-    test('switch off: nothing (a launch never connected there before)',
-        () async {
+    // 🔴 2026.11.22/002 inverted this test. It used to pin "switch off ⇒
+    // nothing" — and that was the field bug: the reporter had switched it off,
+    // and the row is greyed out in simple mode, so nothing told him why.
+    test('switch off: connects all the same (2026.11.22/002)', () async {
       await launch(['A'], nearby: {'A'}, switchOn: false);
+      expect(primary.primaryConnects, ['A']);
+      expect(await notes(),
+          contains('multilink: simple-launch connect id=${shortDeviceHash('A')}'));
+    });
+
+    test('personal → simple: one look, and the switch is logged', () async {
+      final ml = await launch(['A', 'B'],
+          mode: AppMode.personal, nearby: {'A', 'B'}, switchOn: false);
+      expect(primary.primaryConnects, isEmpty, reason: 'personal, switch off');
+      await s.settings.setMode(AppMode.advanced);
+      await _settle();
+      expect(primary.primaryConnects, ['A']);
+      final n = await notes();
+      expect(n, contains('app mode: personal → advanced'));
+      expect(
+          n,
+          contains('multilink: simple-launch connect '
+              'id=${shortDeviceHash('A')} via=mode-switch'));
+      await s.settings.setMode(AppMode.personal);
+      await _settle();
+      expect(await notes(), contains('app mode: advanced → personal'));
+      expect(ml.enabled, isFalse, reason: 'the switch is not touched');
+    });
+
+    test('back in the foreground with nothing connected: one more look',
+        () async {
+      final ml = await launch(['A'], nearby: {});
+      now = now.add(ml.launchWindow);
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, isEmpty, reason: 'the launch gave up');
+      s.connection.logAppLifecycle('paused');
+      await _settle();
+      s.connection.logAppLifecycle('resumed');
+      await _settle();
+      primary.emitScan({'A'});
+      await _settle();
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, ['A']);
+      expect(
+          await notes(),
+          contains('multilink: simple-launch connect '
+              'id=${shortDeviceHash('A')} via=resume'));
+    });
+
+    test('a unit the user let go is not brought back by a resume', () async {
+      final ml = await launch(['A'], nearby: {'A'});
+      expect(primary.primaryConnects, ['A']);
+      primary.realisticDisconnect = true;
+      await s.connection.disconnect();
+      await _settle();
+      s.connection.logAppLifecycle('paused');
+      await _settle();
+      s.connection.logAppLifecycle('resumed');
+      await _settle();
+      ml.simpleLaunchTick();
+      await _settle();
+      expect(primary.primaryConnects, ['A'], reason: 'no second connect');
+      expect(
+          await notes(),
+          contains('multilink: simple-launch released '
+              'id=${shortDeviceHash('A')} via=resume'));
+    });
+
+    test('personal mode: a resume arms nothing', () async {
+      await launch(['A'], mode: AppMode.personal, nearby: {'A'}, switchOn: false);
+      s.connection.logAppLifecycle('paused');
+      await _settle();
+      s.connection.logAppLifecycle('resumed');
+      await _settle();
       expect(primary.primaryConnects, isEmpty);
       expect((await notes()).where((n) => n.contains('simple-launch')), isEmpty);
     });
