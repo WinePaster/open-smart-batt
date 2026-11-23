@@ -852,6 +852,7 @@ Future<void> sendModeWithAuthPlan(
   final l10n = AppLocalizations.of(context);
   final messenger = ScaffoldMessenger.of(context);
   var plan = releaseAuthPlan(tele.dealerCode);
+  var source = 'auto';
   if (plan == null) {
     // Dealer code not on the wire yet — let the owner supply auth manually.
     if (!context.mounted) return;
@@ -861,7 +862,16 @@ Future<void> sendModeWithAuthPlan(
     );
     if (req == null || req.creds == null) return; // auth is required (Q3)
     plan = [req.creds!];
+    source = 'manual';
   }
+  // 2026.11.23/003: with the raw packet log off, a mode write left no trace at
+  // all — a black box went from `02` to `00` and the log could not say the app
+  // had sent anything. These lines always reach the diagnostic log. Which
+  // credential, never its value: the auth is static and replayable.
+  final modeHex = _modeHex(mode);
+  conn.noteDetailEvent('mode-write: start mode=$modeHex '
+      'before=${_modeHex(before)} creds=${plan.length} source=$source');
+  var tries = 0;
   try {
     // 🔵 Owner's ruling 2026-11-10 (「多送一個授權也不影響」): before the first
     // write of each credential, the standalone auth ++ `0x2A` read-back the
@@ -872,6 +882,9 @@ Future<void> sendModeWithAuthPlan(
     final run = await runReleasePlan(
       plan,
       attempt: (creds) async {
+        tries++;
+        conn.noteDetailEvent('mode-write: send mode=$modeHex '
+            'cred=${plan!.indexOf(creds) + 1}/${plan.length} try=$tries');
         if (!identical(authed, creds)) {
           await conn.sendAuth(cb: creds.cb, pwSum: creds.pwSum);
           await conn.pollAuth();
@@ -883,6 +896,8 @@ Future<void> sendModeWithAuthPlan(
       },
       watch: () => watchModeAfterWrite(() => tele.mode, before, _releaseWindow),
     );
+    conn.noteDetailEvent('mode-write: result=${run.result.name} '
+        'mode=$modeHex writes=${run.writes} now=${_modeHex(tele.mode)}');
     final status = runStatusOf(l10n, tele.mode).label;
     messenger.showSnackBar(SnackBar(
       duration: const Duration(milliseconds: 4200),
@@ -894,6 +909,8 @@ Future<void> sendModeWithAuthPlan(
       }),
     ));
   } catch (e) {
+    conn.noteDetailEvent('mode-write: failed mode=$modeHex after=$tries '
+        'error=${_short('$e')}');
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(milliseconds: 1600),
@@ -902,6 +919,12 @@ Future<void> sendModeWithAuthPlan(
     );
   }
 }
+
+String _short(String s) => s.length <= 160 ? s : '${s.substring(0, 160)}…';
+
+/// `0x23` value as two hex digits for the `mode-write:` lines; `-` unknown.
+String _modeHex(int? m) =>
+    m == null ? '-' : m.toRadixString(16).padLeft(2, '0');
 
 /// Serial generations a cut-off may be sent to (design 0104 Q1): the two whose
 /// cut-off AND release are both on the wire from the engineering app with

@@ -175,6 +175,7 @@ void main() {
   });
 
   late _FakeBleService fakeBle;
+  late AppServices svc;
 
   Future<void> online(
     WidgetTester tester, {
@@ -191,6 +192,7 @@ void main() {
       );
       fakeBle = _FakeBleService(deviceType: deviceType, dealerCode: dealer);
       s = await AppServices.create(appDatabase: appDb, ble: fakeBle);
+      svc = s;
     });
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());
@@ -345,6 +347,39 @@ void main() {
       // standalone auth, exactly as on a battery.
       expect(fakeBle.writes.map(_hex),
           [_authA8, _authPoll, _releaseA8, _modeRead]);
+      await step(tester);
+    });
+
+    // 2026.11.23/003: a black box went from `02` to `00` after the user's
+    // 復電 and, with the raw packet log off, nothing in the log said the app
+    // had sent a thing.
+    testWidgets('every mode write is in the diagnostic log, never the auth',
+        (tester) async {
+      await online(tester, mode: ReportedStatus.cutOffActive, controls: null);
+      await tester.tap(button('Restore Power'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Restore'));
+      await tester.pump();
+      await step(tester, times: 6);
+      expect(fakeBle.writes.map(_hex),
+          [_authA8, _authPoll, _releaseA8, _modeRead]);
+      final notes = (await tester.runAsync(() async {
+        await svc.pending.drain();
+        return [for (final e in await svc.logRepo.queryLog()) e.note ?? ''];
+      }))!
+          .where((n) => n.startsWith('mode-write:'))
+          .toList()
+          .reversed // queryLog is newest first
+          .toList();
+      expect(notes, [
+        'mode-write: start mode=00 before=02 creds=1 source=auto',
+        'mode-write: send mode=00 cred=1/1 try=1',
+        'mode-write: result=changed mode=00 writes=1 now=00',
+      ]);
+      for (final n in notes) {
+        expect(n, isNot(contains('a8')), reason: 'no credential values');
+        expect(n, isNot(contains('1e4')));
+      }
       await step(tester);
     });
 
