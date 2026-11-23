@@ -18,6 +18,8 @@
 //       status pill and the screen wakelock, like the monitor already was
 //   2026.11.19/007  nobody is adopted until a presence scan has run its
 //       window (a connect stops the scan)
+//   2026.11.23/002  a dropped secondary's retry holds the Android foreground
+//       service (no primary), until it comes back or is released
 import 'dart:async';
 import 'dart:io';
 
@@ -30,6 +32,7 @@ import 'package:open_smart_batt/config/multi_link_config.dart';
 import 'package:open_smart_batt/data/data.dart';
 import 'package:open_smart_batt/main.dart' show connectionPillPresentation;
 import 'package:open_smart_batt/models/models.dart';
+import 'package:open_smart_batt/platform/platform.dart';
 import 'package:open_smart_batt/state/state.dart';
 import 'package:open_smart_batt/theme/accent_theme.dart';
 import 'package:open_smart_batt/theme/app_theme.dart' show AppSemantics;
@@ -227,6 +230,42 @@ class _FakeSecondary extends BleService {
   }
 }
 
+/// Records what the platform service was asked to do (2026.11.23/002).
+class _FakeMonitor implements MonitorService {
+  _FakeMonitor({this.holdsThroughReconnect = true});
+
+  @override
+  final bool holdsThroughReconnect;
+
+  final List<String> calls = [];
+  final List<MonitorNotification> posted = [];
+  final _stop = StreamController<void>.broadcast();
+
+  @override
+  Future<void> start(MonitorNotification n) async {
+    calls.add('start');
+    posted.add(n);
+  }
+
+  @override
+  Future<void> update(MonitorNotification n) async {
+    calls.add('update');
+    posted.add(n);
+  }
+
+  @override
+  Future<void> stop() async => calls.add('stop');
+
+  @override
+  Stream<void> get onStopRequested => _stop.stream;
+
+  @override
+  bool get pacesKeepAliveInBackground => false;
+
+  @override
+  void dispose() => _stop.close();
+}
+
 /// The services the running test built; [_settle] waits on their database.
 AppServices? _settleTarget;
 
@@ -263,7 +302,8 @@ void main() {
       String? primaryId,
       Set<String>? nearby,
       bool adapterOn = false,
-      bool autoReconnect = true}) async {
+      bool autoReconnect = true,
+      MonitorService? monitor}) async {
     final db = await AppDatabase.open(
       path: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
@@ -275,6 +315,7 @@ void main() {
       multiLinkBuild: true,
       multiLinkBleFactory: () => _FakeSecondary(log, secondaries),
       multiLinkClock: () => now,
+      monitor: monitor,
     );
     _settleTarget = s;
     for (final d in devices) {
@@ -664,6 +705,82 @@ void main() {
       await _settle();
       expect(conn.isAnyOnline, isTrue);
       expect(connectionPillPresentation(conn).$3, 'CONNECTED');
+    });
+  });
+
+  // 2026.11.23/002: a realme 9 Pro+ with one battery held as a secondary and
+  // no primary. The drop stopped the foreground service (the primary's ladder
+  // was never running), the OS froze the app, and the 30 s retry ran 1 min
+  // 49 s late once and not at all for 40 min the next time.
+  group('2026.11.23/002: a secondary\'s retry holds the monitor', () {
+    Future<(MultiLinkController, _FakeMonitor)> onlineThenDropped(
+        {bool holds = true}) async {
+      final monitor = _FakeMonitor(holdsThroughReconnect: holds);
+      final ml = await boot([bat('A')], monitor: monitor);
+      s.connection.setNotificationStrings(
+        title: 'monitoring',
+        titleConnecting: 'connecting',
+        titleStalled: 'no data',
+        stopLabel: 'Stop',
+        channelName: 'ch',
+        channelDescription: 'desc',
+      );
+      expect(ml.onlineIds, {'A'});
+      expect(s.connection.monitorRunning, isTrue);
+      sec('A').drop();
+      await _settle();
+      return (ml, monitor);
+    }
+
+    test('the last secondary dropping keeps the service up, "connecting"',
+        () async {
+      final (ml, monitor) = await onlineThenDropped();
+      expect(ml.heldIds, {'A'}, reason: 'held for the retry');
+      expect(ml.reconnectingCount, 1);
+      expect(s.connection.isAnyOnline, isFalse);
+      expect(s.connection.monitorRunning, isTrue);
+      expect(monitor.calls, isNot(contains('stop')));
+      expect(monitor.posted.last.title, 'connecting');
+    });
+
+    test('the link coming back keeps the same service, retitled', () async {
+      final (ml, monitor) = await onlineThenDropped();
+      final starts = monitor.calls.where((c) => c == 'start').length;
+      await sec('A').connect('A');
+      await _settle();
+      expect(ml.reconnectingCount, 0);
+      expect(s.connection.monitorRunning, isTrue);
+      expect(monitor.calls.where((c) => c == 'start').length, starts);
+      expect(monitor.posted.last.title, 'monitoring');
+    });
+
+    test('released after the presence window ⇒ the service stops', () async {
+      final (ml, monitor) = await onlineThenDropped();
+      now = now.add(MultiLinkConfig.presenceWindow + const Duration(seconds: 1));
+      ml.presenceTick();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(ml.reconnectingCount, 0);
+      expect(s.connection.monitorRunning, isFalse);
+      expect(monitor.calls.last, 'stop');
+    });
+
+    test('自動連線 off: let go at once, nothing holds', () async {
+      final monitor = _FakeMonitor();
+      final ml = await boot([bat('A')], monitor: monitor);
+      await s.settings.setAutoReconnect(false);
+      sec('A').drop();
+      await _settle();
+      expect(ml.heldIds, isEmpty);
+      expect(s.connection.monitorRunning, isFalse);
+    });
+
+    test('a platform that does not hold (iOS shape) stops on the drop',
+        () async {
+      final (ml, monitor) = await onlineThenDropped(holds: false);
+      expect(ml.reconnectingCount, 1);
+      expect(s.connection.monitorRunning, isFalse);
+      expect(monitor.calls.last, 'stop');
     });
   });
 

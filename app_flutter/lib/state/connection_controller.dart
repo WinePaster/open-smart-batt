@@ -299,20 +299,30 @@ class ConnectionController extends ChangeNotifier {
     // reconnect of a link that dropped — see
     // [MonitorService.holdsThroughReconnect]. Stopping on the drop is what let
     // Android freeze the ladder that was supposed to bring the link back.
+    //
+    // 2026.11.23/002: the same for a secondary link's retry. With no primary
+    // the ladder above is never running, so the last secondary's drop stopped
+    // the service and the retry timer froze with the app.
     final shouldRun = (isAnyOnline ||
-            (_monitor.holdsThroughReconnect && _autoReconnecting)) &&
+            (_monitor.holdsThroughReconnect &&
+                (_autoReconnecting || _secondaryReconnecting))) &&
         _settings.backgroundMonitoring &&
         !_ble.isDemoLink;
+    final secondaryLive = (_multiLink?.onlineCount ?? 0) > 0;
     if (shouldRun == _monitorRunning) {
       // Online ⇄ reconnecting with the service up the whole time: the title
       // has to follow, and nothing else would push it.
-      if (shouldRun && isOnline != _monitorOnline) {
+      if (shouldRun &&
+          (isOnline != _monitorOnline ||
+              secondaryLive != _monitorSecondaryOnline)) {
         _monitorOnline = isOnline;
+        _monitorSecondaryOnline = secondaryLive;
         unawaited(_monitor.update(_buildNotification()));
       }
       return;
     }
     _monitorOnline = isOnline;
+    _monitorSecondaryOnline = secondaryLive;
     _monitorRunning = shouldRun;
     if (shouldRun) {
       _lastNotifyAt = null;
@@ -378,6 +388,10 @@ class ConnectionController extends ChangeNotifier {
     // design 0103: "stop" stops every link, not only the primary.
     _multiLink?.onMonitorStopped();
   }
+
+  /// A secondary link that was live is retrying (2026.11.23/002); see
+  /// [MultiLinkController.reconnectingCount].
+  bool get _secondaryReconnecting => (_multiLink?.reconnectingCount ?? 0) > 0;
 
   /// An auto-reconnect ladder is under way for a link that existed: a rung is
   /// pending or in flight, the user has not let go, and it has not given up.
@@ -531,6 +545,10 @@ class ConnectionController extends ChangeNotifier {
   /// Whether the link was online the last time [_updateMonitor] ran with the
   /// service up — so an online ⇄ reconnecting edge re-posts the title.
   bool _monitorOnline = false;
+
+  /// Whether a secondary link was live when the notification was last pushed
+  /// — the title's other input while there is no primary (2026.11.23/002).
+  bool _monitorSecondaryOnline = false;
   DateTime? _lastNotifyAt;
   /// Pre-l10n seeds for the three ongoing-notification titles, replaced by
   /// [setNotificationStrings] on the first frame. Seeded from the injected

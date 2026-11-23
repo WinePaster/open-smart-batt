@@ -366,6 +366,20 @@ class MultiLinkController extends ChangeNotifier {
   /// Secondary links with live telemetry.
   int get onlineCount => _links.values.where((l) => l.online).length;
 
+  /// Held links that were live, dropped on their own, and are now waiting on
+  /// (or running) a retry. A link that never came up does not count — the
+  /// same rule as the primary's ladder (FB-53).
+  ///
+  /// 2026.11.23/002: the connection controller keeps the Android foreground
+  /// service up while this is non-zero. With only secondaries and no primary,
+  /// the last drop used to stop the service, and a realme 9 Pro+ then froze
+  /// the app: the 30 s retry ran 1 min 49 s late once and not at all for
+  /// 40 min the next time. The hold ends when the link comes back or is
+  /// released ([presenceWindow] after it was last seen, in the background).
+  int get reconnectingCount => _links.values
+      .where((l) => !l.online && !l.releasing && l.readyAt != null)
+      .length;
+
   /// Ids of the secondary links currently up (for tests and the log line).
   Set<String> get onlineIds =>
       {for (final l in _links.values) if (l.online) l.id};
@@ -1493,7 +1507,9 @@ class MultiLinkController extends ChangeNotifier {
     await l.ble.dispose();
     if (_disposed) return;
     _logReadyIfChanged();
-    if (wasOnline) _conn.refreshMultiLinkMonitor(null);
+    // A link let go while it was retrying also ends a hold on the monitor
+    // ([reconnectingCount]).
+    if (wasOnline || l.readyAt != null) _conn.refreshMultiLinkMonitor(null);
     notifyListeners();
   }
 
