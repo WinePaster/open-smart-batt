@@ -4642,6 +4642,12 @@ abstract class AppLocalizations {
   /// **'Check that it is nearby and still powered. If it has been moved, walk closer and try again.'**
   String get disconnectedUnreachableRunHint;
 
+  /// FB-119: advice when a black box (0x12) does not answer — it sleeps a few minutes after disconnecting and wakes on a voltage/current change.
+  ///
+  /// In en, this message translates to:
+  /// **'The black box may be asleep. Turn on the headlight or blip the throttle, then try again.'**
+  String get blackBoxAsleepHint;
+
   /// design 0086 S3 — used INSTEAD of alertsBannerUnsavedNote when the unsaved card is already on screen right below, so the banner does not repeat 'this device is not saved'. It keeps only the part that card does not say: notifications are silent.
   ///
   /// In en, this message translates to:

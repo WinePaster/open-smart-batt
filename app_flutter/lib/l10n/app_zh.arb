@@ -761,6 +761,7 @@
   "disconnectedUnreachableRunTitle": "找不到這台裝置",
   "disconnectedUnreachableRunBody": "已經連續 {count} 次連不上。",
   "disconnectedUnreachableRunHint": "請確認它在附近、而且還有電。如果剛剛移動過，走近一點再試一次。",
+  "blackBoxAsleepHint": "黑盒子可能在休眠，開大燈或催油門叫醒後再試。",
   "alertsBannerUnsavedNoteBrief": "手機不會響。警告本身仍在追蹤。",
   "alertsBannerCollapse": "收合",
   "alertsBannerExpand": "展開完整警告",

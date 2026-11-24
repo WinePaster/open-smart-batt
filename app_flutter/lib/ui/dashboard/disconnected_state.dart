@@ -77,6 +77,14 @@ class DisconnectedState extends StatelessWidget {
       unreachableRun: conn.isUnreachableRunUnattributed,
       reachFailures: conn.reachFailuresUnattributed,
       reconnectAttempts: conn.reconnectAttempts,
+      // FB-119: the class of the unit this screen is waiting for — the
+      // controller's target — so a black box that is asleep gets its own
+      // advice. A target with no saved class falls back to the generic hint.
+      productClass: switch (conn.connectedDeviceId) {
+        final String id =>
+          devices.where((d) => d.id == id).firstOrNull?.productClass,
+        null => null,
+      },
     );
 
     return LayoutBuilder(

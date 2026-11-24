@@ -2812,6 +2812,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Check that it is nearby and still powered. If it has been moved, walk closer and try again.';
 
   @override
+  String get blackBoxAsleepHint =>
+      'The black box may be asleep. Turn on the headlight or blip the throttle, then try again.';
+
+  @override
   String get alertsBannerUnsavedNoteBrief =>
       'Your phone will not ring for this one. The warning itself is still tracked.';
 

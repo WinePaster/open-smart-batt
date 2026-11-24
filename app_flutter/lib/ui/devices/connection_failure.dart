@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:open_smart_batt/l10n/app_localizations.dart';
+import '../../models/product_class.dart';
 import '../../state/state.dart';
 import '../../theme/app_theme.dart';
 
@@ -85,6 +86,24 @@ const gaveUpCodes = <String>{
 /// what this file uses it for.
 const radioCodes = radioLevelErrorCodes;
 
+/// The give-up codes that mean "the unit did not answer" — the ones a sleeping
+/// black box produces.
+///
+/// FB-119 (feedback `2026.11.24/003`, field report from a dealer, one unit): a
+/// black box stops advertising a few minutes after its link drops, and
+/// switching the ignition on or even starting the engine does not reliably wake
+/// it; turning on the headlight or blipping the throttle does. For that unit the
+/// standing hint — "check it is nearby and powered" — points the wrong way: it
+/// IS nearby and powered. Radio codes and `wrong_device` are not here: their
+/// remedies are about the phone or the pairing, not the unit.
+const blackBoxAsleepCodes = <String>{
+  'device_unreachable',
+  'autoconnect_timeout',
+  'reconnect_exhausted',
+  'connect_failed',
+  'device_stale',
+};
+
 /// The four strings a screen needs to report one connection state.
 ///
 /// [adviceHint] is non-null exactly when the attempt has ENDED — the stalled
@@ -135,7 +154,11 @@ ConnectionFailureCopy connectionFailureCopy({
   // silence.
   bool unreachableRun = false,
   int reachFailures = 0,
+  // FB-119. Defaulted for the reason `unreachableRun` is: a caller that does
+  // not know the unit's class gets the generic advice, never a missing one.
+  ProductClass? productClass,
 }) {
+  final blackBox = productClass == ProductClass.blackBox;
   // FB-52: the link has come up several times and never said anything. This
   // has to outrank the plain "not connected" copy — the user watched the
   // spinner and was told nothing, for forty minutes, in the capture that
@@ -176,7 +199,9 @@ ConnectionFailureCopy connectionFailureCopy({
     return ConnectionFailureCopy(
       title: l10n.disconnectedUnreachableRunTitle,
       body: l10n.disconnectedUnreachableRunBody(reachFailures),
-      adviceHint: l10n.disconnectedUnreachableRunHint,
+      adviceHint: blackBox
+          ? l10n.blackBoxAsleepHint
+          : l10n.disconnectedUnreachableRunHint,
     );
   }
   if (gaveUp) {
@@ -219,6 +244,10 @@ ConnectionFailureCopy connectionFailureCopy({
         // and powered" is the wrong instruction, and "scan for it below" is
         // only half of the remedy.
         'wrong_device' => l10n.disconnectedWrongDeviceHint,
+        // FB-119: before the radio test only because the two sets are
+        // disjoint — a radio code never reaches this arm.
+        final String code when blackBox && blackBoxAsleepCodes.contains(code) =>
+          l10n.blackBoxAsleepHint,
         _ => radioCodes.contains(lastError)
             ? l10n.disconnectedGaveUpRadioHint
             : l10n.disconnectedGaveUpHint,

@@ -1331,6 +1331,8 @@ class _OfflineBody extends StatelessWidget {
       unreachableRun: conn.isUnreachableRunFor(deviceId),
       reachFailures: conn.reachFailuresFor(deviceId),
       reconnectAttempts: conn.reconnectAttempts,
+      // FB-119: the black box's own advice when it does not answer.
+      productClass: devices.deviceFor(deviceId)?.productClass,
     );
 
     final saved = devices.deviceFor(deviceId);
