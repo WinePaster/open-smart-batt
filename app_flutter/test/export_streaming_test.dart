@@ -200,6 +200,30 @@ void main() {
       expect(await file.readAsString(), inMemory.text);
     });
 
+    test('the file starts with a UTF-8 BOM so Excel reads non-ASCII labels',
+        () async {
+      // Owner report 2026-11-24: the `device` column (`機車黑盒子`) opened as
+      // mojibake in a spreadsheet. The bytes were correct UTF-8; what was
+      // missing was the mark that tells Excel so. Dart's `readAsString`
+      // swallows the BOM, which is why the byte-identical test above cannot
+      // see it — this one reads bytes.
+      final repo = HistoryRepo(appDb.db);
+      await seed(3, from: DateTime(2026, 8, 1), deviceId: 'AA', appBuild: '9');
+      final file = File('${tmp.path}/bom.csv');
+      await repo.exportCsvToFile(file,
+          labelFor: (id) => '機車黑盒子', header: const ['t']);
+      final bytes = await file.readAsBytes();
+      expect(bytes.take(3).toList(), HistoryRepo.csvUtf8Bom);
+      // Exactly one, and the preamble follows it directly.
+      expect(bytes.skip(3).take(3).toList(), isNot(HistoryRepo.csvUtf8Bom));
+      expect(utf8.decode(bytes.skip(3).toList()), startsWith('#'));
+      expect(utf8.decode(bytes.skip(3).toList()), contains('機車黑盒子'));
+      // The in-memory variant is text, not a file — no BOM.
+      final inMemory =
+          await repo.exportCsv(labelFor: (id) => '機車黑盒子', header: const ['t']);
+      expect(inMemory.text.codeUnitAt(0), isNot(0xFEFF));
+    });
+
     test('the file grows while the export is still running', () async {
       // What "streamed" means, observably: bytes reach the disk before the
       // future completes, which can only happen if the writer hands the event

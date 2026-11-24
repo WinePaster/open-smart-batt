@@ -1261,6 +1261,13 @@ class HistoryRepo {
   }) async {
     final sink = file.openWrite();
     try {
+      // A UTF-8 byte-order mark first, and only in the FILE. Without it Excel
+      // reads the CSV in the system's legacy code page and every non-ASCII
+      // cell — the `device` label (`機車黑盒子`), a user's own unit name —
+      // turns to mojibake, while the bytes themselves are correct UTF-8
+      // (owner report 2026-11-24). The in-memory [exportCsv] stays BOM-free:
+      // it is text, not a file a spreadsheet opens.
+      sink.add(csvUtf8Bom);
       return await _exportCsvStream(
         granularity: granularity,
         // Flushing per page is what keeps the streaming honest: an unawaited
@@ -1287,7 +1294,8 @@ class HistoryRepo {
 
   /// In-memory variant of [exportCsvToFile], for tests and callers that already
   /// hold the whole thing (there are none in the app — every export path writes
-  /// a file). Same bytes, same row count; it just accumulates them in a
+  /// a file). Same bytes after the file's leading UTF-8 BOM
+  /// ([csvUtf8Bom]), same row count; it just accumulates them in a
   /// [StringBuffer] instead of a sink, so it carries the memory cost the file
   /// path exists to avoid. Do not reach for it from the UI.
   Future<({String text, int rows})> exportCsv({
@@ -1312,6 +1320,10 @@ class HistoryRepo {
     );
     return (text: buf.toString(), rows: rows);
   }
+
+  /// The UTF-8 byte-order mark [exportCsvToFile] writes before the preamble,
+  /// so spreadsheet apps (Excel above all) decode the file as UTF-8.
+  static const List<int> csvUtf8Bom = [0xEF, 0xBB, 0xBF];
 
   /// Rows fetched (and converted, and written) per page — design 0030 T4b.
   static const int _exportPageSize = 5000;
