@@ -1825,7 +1825,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsRawPacketLogSub =>
-      'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device\'s own Bluetooth address.';
+      'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. On by default. Includes the device\'s own Bluetooth address.';
 
   @override
   String get settingsLogMaxSizeLabel => 'Log size limit';

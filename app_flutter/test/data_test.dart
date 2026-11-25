@@ -415,7 +415,7 @@ void main() {
       final repo = SettingsRepo(appDb.db);
       final s = await repo.loadSettings();
       // Diagnostics raw-packet log is OFF by default (the headline requirement).
-      expect(s.rawPacketLog, isFalse);
+      expect(s.rawPacketLog, isTrue); // ON by default since schema v32
       // And the rest of the documented defaults.
       expect(s.autoReconnect, isTrue);
       expect(s.pollIntervalMs, 1000);
@@ -478,16 +478,17 @@ void main() {
       expect((await repo.loadSettings()).rawPacketLog, isTrue);
     });
 
-    test('resetToDefaults turns diagnostics back OFF', () async {
+    test('resetToDefaults turns diagnostics back ON (default since v32)',
+        () async {
       final repo = SettingsRepo(appDb.db);
       await repo.saveSettings(
-        AppSettings.defaults.copyWith(rawPacketLog: true, pollIntervalMs: 2000),
+        AppSettings.defaults.copyWith(rawPacketLog: false, pollIntervalMs: 2000),
       );
-      expect((await repo.loadSettings()).rawPacketLog, isTrue);
+      expect((await repo.loadSettings()).rawPacketLog, isFalse);
 
       await repo.resetToDefaults();
       final s = await repo.loadSettings();
-      expect(s.rawPacketLog, isFalse);
+      expect(s.rawPacketLog, isTrue);
       expect(s.pollIntervalMs, 1000);
     });
   });

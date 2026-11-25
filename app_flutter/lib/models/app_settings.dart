@@ -433,7 +433,8 @@ class AppSettings {
   final RetentionPolicy retention;
 
   // --- diagnostics ---
-  /// Log raw TX/RX BLE packets as hex. DEFAULT OFF.
+  /// Log raw TX/RX BLE packets as hex. DEFAULT ON since schema v32 (owner
+  /// ruling 2026-11-25) — see `Db.schemaVersion` v32 in `app_database.dart`.
   final bool rawPacketLog;
 
   /// Diagnostic log size cap (bytes) before rotation, or
@@ -515,7 +516,7 @@ class AppSettings {
     // this; `fromMap`'s own fallback is still `forever`, which is what keeps an
     // upgrade from re-deciding for somebody.
     this.retention = RetentionPolicy.days90,
-    this.rawPacketLog = false,
+    this.rawPacketLog = true,
     this.logMaxBytes = defaultLogMaxBytes,
     // 🔴 design 0080 Q4. See [alertsEnabled] — and note that `fromMap` reads a
     // pre-v22 row as OFF too, so a new install and an upgraded one agree.

@@ -163,6 +163,7 @@ Future<Map<String, Object?>> _rowOf(dynamic db, String id) async =>
     (await db.query('saved_devices', where: 'id = ?', whereArgs: [id])).single;
 
 void main() {
+  _v32RawLogTests();
   setUpAll(sqfliteFfiInit);
 
   /// Build a real v21 file on disk, seed it, then open it with the current app
@@ -476,8 +477,48 @@ void main() {
         // whatever it does — this pin and `schema_v24_test.dart` are the only
         // two places that would notice it going missing. v25 DOES add a table,
         // so the parity cases cover it.
-        expect(Db.schemaVersion, 31);
+        expect(Db.schemaVersion, 32);
       }
+    });
+  });
+}
+
+/// v32 (owner ruling 2026-11-25, option b): an existing install whose raw
+/// packet log was OFF comes back ON after the upgrade; a fresh install is ON
+/// through `AppSettings.defaults`.
+void _v32RawLogTests() {
+  group('v32: raw packet log on for everyone', () {
+    test('an upgraded install that had it OFF reads ON', () async {
+      final dir = await Directory.systemTemp.createTemp('osb_v32_raw');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = p.join(dir.path, 'v21.db');
+      final legacy = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 21,
+          onCreate: (db, _) async {
+            for (final stmt in _v21Schema) {
+              await db.execute(stmt);
+            }
+            await db.execute(
+                'INSERT INTO settings (id, raw_packet_log) VALUES (1, 0)');
+          },
+        ),
+      );
+      await legacy.close();
+      final upgraded =
+          await AppDatabase.open(path: path, factory: databaseFactoryFfi);
+      addTearDown(upgraded.close);
+      final row = (await upgraded.db
+              .rawQuery('SELECT raw_packet_log FROM settings WHERE id = 1'))
+          .single;
+      expect(row['raw_packet_log'], 1);
+      expect(
+          (await SettingsRepo(upgraded.db).loadSettings()).rawPacketLog, isTrue);
+    });
+
+    test('a fresh install with nothing stored reads ON', () async {
+      expect(AppSettings.defaults.rawPacketLog, isTrue);
     });
   });
 }

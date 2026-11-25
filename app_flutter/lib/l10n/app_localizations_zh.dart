@@ -1714,7 +1714,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsRawPacketLogSub =>
-      '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設關閉。內容含裝置自身的藍牙位址。';
+      '記錄 TX/RX 原始 hex，供回報問題或協助破解未知指令。預設開啟。內容含裝置自身的藍牙位址。';
 
   @override
   String get settingsLogMaxSizeLabel => '日誌容量上限';

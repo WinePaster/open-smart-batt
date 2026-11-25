@@ -102,7 +102,10 @@ class _CapturingLogRepo implements LogRepo {
 
 class _StubSettingsRepo implements SettingsRepo {
   @override
-  Future<AppSettings> loadSettings() async => AppSettings.defaults;
+  // Raw packet log OFF, as every test here was written against (the default
+  // is ON since schema v32): R5 pins that transport lines do not need it.
+  Future<AppSettings> loadSettings() async =>
+      AppSettings.defaults.copyWith(rawPacketLog: false);
 
   @override
   Future<void> saveSettings(AppSettings settings) async {}
@@ -757,7 +760,7 @@ void main() {
         (tester) async {
       final h = _Harness();
       addTearDown(h.dispose);
-      expect(AppSettings.defaults.rawPacketLog, isFalse,
+      expect((await _StubSettingsRepo().loadSettings()).rawPacketLog, isFalse,
           reason: 'the condition this line has to survive');
       h.ble.emitDiagnostic('conn-state: connected reason=null sub=3ms '
           'decision=setup');

@@ -147,7 +147,9 @@ void main() {
         direction: LogDirection.rx,
         hex: 'b81901040000ccff',
       ));
-      if (rawLog) await services.settings.setRawPacketLog(true);
+      // Explicit both ways: the default is ON since schema v32, and the OFF
+      // tests (R3 off, R4) need the FB-32 path.
+      await services.settings.setRawPacketLog(rawLog);
     });
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());

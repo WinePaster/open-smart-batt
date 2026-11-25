@@ -2951,7 +2951,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRawPacketLogSub.
   ///
   /// In en, this message translates to:
-  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. Off by default. Includes the device\'s own Bluetooth address.'**
+  /// **'Logs raw TX/RX hex for reporting issues or helping decode unknown commands. On by default. Includes the device\'s own Bluetooth address.'**
   String get settingsRawPacketLogSub;
 
   /// No description provided for @settingsLogMaxSizeLabel.

@@ -442,8 +442,9 @@ class Db {
   /// take that back — the only thing that would is renumbering the whole table,
   /// which would also erase genuine rotation from every other database. Those
   /// installs are corrected by their next `clearLog`. In practice the exposed
-  /// set is small: `raw_packet_log` DEFAULTs to 0, so a cleared log is normally
-  /// still empty when the upgrade arrives.
+  /// set is small: `raw_packet_log` DEFAULTed to 0 when this was written, so a
+  /// cleared log was normally still empty when the upgrade arrived (it is ON
+  /// by default since v32).
   ///
   /// Idempotent, and it has to be — `_onUpgrade` is a cumulative `if (from < N)`
   /// chain. Running it on an already-aligned database is a no-op, and on a
@@ -574,7 +575,25 @@ class Db {
   /// CLAIMING A NUMBER: 31 was taken after reading `schemaVersion` out of every
   /// local ref of the public (244 refs) and pro (40 refs) repos on 2026-11-17
   /// — the highest anywhere was 30.
-  static const int schemaVersion = 31;
+  ///
+  /// v32 — raw packet log ON by default, for everyone (owner ruling
+  /// 2026-11-25, option b). No column change: the upgrade sets
+  /// `settings.raw_packet_log = 1` on the existing row; a fresh install gets
+  /// it from `AppSettings.rawPacketLog`'s default, which is now `true`. The
+  /// column keeps `DEFAULT 0` on purpose — a fresh database and an upgraded one
+  /// must have the SAME schema (`schema_v12_test` and friends), and the old
+  /// `ALTER TABLE … DEFAULT 0` cannot be rewritten on devices that ran it. Why: 100 of the 103 diagnostic logs sent in 2026-11
+  /// already had it on; the three that did not (`2026.11.10/001`,
+  /// `2026.11.23/003`, `2026.11.25/001`) were all first-time users who never
+  /// opened the setting — and two of them carried a new model or a new
+  /// question that only frames could answer. ⚠️ An upgrade cannot tell "never
+  /// touched" from "turned it off on purpose"; the owner accepted that the
+  /// second group turns it off again.
+  ///
+  /// CLAIMING A NUMBER: 32 was taken after reading `schemaVersion` out of every
+  /// ref of the public (244 refs) and pro (40 refs) repos on 2026-11-25 — the
+  /// highest anywhere was 31.
+  static const int schemaVersion = 32;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -749,10 +768,11 @@ class AppDatabase {
     //
     // Weigh that against what it buys. After the O(1) rotation accounting
     // (`log_repo.dart`), this path uses ~0.54% of one background thread at the
-    // measured packet rate, and only while `rawPacketLog` is on — which is off
-    // by default. Trading any corruption risk on a database holding the user's
-    // entire history (retention defaults to forever) for 0.4% of a background
-    // thread on an opt-in diagnostic path is not a trade worth making.
+    // measured packet rate, and only while `rawPacketLog` is on — which was off
+    // by default when this was written, and is ON since v32. The arithmetic
+    // still decides it: trading any corruption risk on a database holding the
+    // user's entire history (retention defaults to forever) for 0.4% of a
+    // background thread is not a trade worth making, opt-in or not.
     //
     // To revisit: read `PRAGMA synchronous` on a real Android device under WAL
     // and check whether upstream has flipped the default since.
@@ -1235,6 +1255,16 @@ class AppDatabase {
         await db.execute(
           'ALTER TABLE ${Db.tableSettings} ADD COLUMN conn_priority TEXT',
         );
+      }
+    }
+    if (from < 32) {
+      // Raw packet log on for everyone — see [Db.schemaVersion] v32. A row
+      // update, not a column change; idempotent, so a re-run is harmless.
+      // Guarded: a partial fixture (or a file rolled back past v1's column)
+      // has no such column, and there is then nothing to turn on.
+      final cols = await db.rawQuery('PRAGMA table_info(${Db.tableSettings})');
+      if (cols.any((r) => r['name'] == 'raw_packet_log')) {
+        await db.execute('UPDATE ${Db.tableSettings} SET raw_packet_log = 1');
       }
     }
   }

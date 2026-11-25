@@ -345,10 +345,12 @@ void main() {
         find.text('Export diagnostic log (.log)'), 200);
     await tester.tap(find.text('Export diagnostic log (.log)'));
     await settle(tester, rounds: 20);
-    // Raw packet logging is OFF by default, so the "what this file will and
-    // will not contain" dialog comes first (FB-32).
+    // Raw packet logging is ON by default since schema v32, so the dialog
+    // that comes first is FB-37's "this file carries the device's BLE address"
+    // one, not FB-32's "this file holds almost nothing".
     expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.text('Export anyway'));
+    expect(find.text('Export anyway'), findsNothing);
+    await tester.tap(find.text('Got it, export'));
     // Nothing on the link and no granularity choice on this path, so
     // `chooseExportScope` resolves to all-devices without showing a sheet.
     await settle(tester, untilShared: true);

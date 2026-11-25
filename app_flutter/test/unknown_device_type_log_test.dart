@@ -90,9 +90,10 @@ void main() {
           .toList();
 
   /// Connect, reach `ready`, then answer with one device-type byte.
-  Future<AppServices> report(int deviceType) async {
+  Future<AppServices> report(int deviceType, {bool? rawLog}) async {
     final ble = _StubBle();
     final s = await makeServices(ble);
+    if (rawLog != null) await s.settings.setRawPacketLog(rawLog);
     ble.emitLink(BleLinkState.connecting);
     ble.emitLink(BleLinkState.ready);
     await settle();
@@ -162,10 +163,12 @@ void main() {
     // Not a redundant assertion: a capture from a real reporter arrived with
     // rawPacketLog off and zero decodable frames. Anything that lives only in
     // the packet log is invisible in that case.
-    final s = await report(0x19);
+    // Off on purpose: the default is ON since schema v32, and this pins the
+    // reporter who never turned it on (or turned it off).
+    final s = await report(0x19, rawLog: false);
     addTearDown(s.dispose);
     expect(s.settings.settings.rawPacketLog, isFalse,
-        reason: 'default is off — the condition this line has to survive');
+        reason: 'the condition this line has to survive');
     expect(await unrecognisedLines(s), hasLength(1));
   });
 }
