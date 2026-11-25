@@ -309,7 +309,7 @@ jobs:
       # install an AAB, so offering one next to the APK only invites the wrong
       # download. It is kept as a workflow artifact for manual Play uploads.
       - name: 保存 Play AAB（workflow artifact，不附在 Release）
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: play-aab-${{ needs.version.outputs.tag }}
           path: |
@@ -360,7 +360,7 @@ jobs:
 
       - name: 上傳 release APK artifact（模式 C）
         if: inputs.play_aab_only == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apk-${{ needs.version.outputs.tag }}
           path: |
