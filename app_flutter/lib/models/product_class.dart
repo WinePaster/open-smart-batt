@@ -15,7 +15,9 @@
 ///   * `0x02` → [smartBattery] (connect-burst HCI snoop 2026-07-06);
 ///   * `0x17` → [supercapacitor] (owner-confirmed unit, 2026-07-27);
 ///   * `0x18` → [supercapacitor] (three independent units, 2026-08-01);
-///   * `0x12` → [blackBox] (one unit, 2026-11-22 — design 0108).
+///   * `0x12` → [blackBox] (one unit, 2026-11-22 — design 0108);
+///   * `0x14` → [blackBox] (one unit, 2026-11-25 — owner ruling, see
+///     [kMiniBlackBoxDeviceType]).
 ///
 /// The list grows one measured byte at a time, and a byte nobody has measured
 /// stays out. That has a visible cost — a new hardware generation shows up as
@@ -94,6 +96,18 @@ const int kSuperCapacitorGen3DeviceType = 0x18;
 /// `02` throughout).
 const int kBlackBoxDeviceType = 0x12;
 
+/// Device-type byte (selector 0x10 b4) of the second black-box model — the
+/// unit its owner calls 「機車小黑盒」 (serial product field `0214`; feedback
+/// `2026.11.25/001`, one unit, raw packet log off).
+///
+/// Mapped to [ProductClass.blackBox] by owner ruling (2026-11-25: show it as
+/// the black box now; in OSB Pro it gets the controls, elsewhere it is the
+/// same as `0x12`). What backs it is thin and stated here so nobody mistakes it
+/// for a capture: the owner's name for it, and a history export whose columns
+/// have the black box's shape (voltage, current, temperature, mode; no cells,
+/// no SOH). No frame of it has been seen.
+const int kMiniBlackBoxDeviceType = 0x14;
+
 /// The product class a connected RCE unit belongs to.
 enum ProductClass {
   /// Portable power bank (RSPB) — device-type 0x22 (verified). Routes to its own
@@ -134,6 +148,8 @@ enum ProductClass {
   ///     [kSmartBatteryDeviceType]);
   ///   * 0x17, 0x18 => [supercapacitor] (wire-verified 2026-07-27 / 2026-08-01);
   ///   * 0x12 => [blackBox] (wire-verified 2026-11-22, design 0108);
+  ///   * 0x14 => [blackBox] (owner ruling 2026-11-25, one unit, EVT only —
+  ///     see [kMiniBlackBoxDeviceType]);
   ///   * every other value => [unknown], which the UI presents as "unclassified"
   ///     and lets the user resolve. All three classes now have a wire-verified
   ///     byte, so nothing is inferred from telemetry any more.
@@ -147,6 +163,7 @@ enum ProductClass {
       case kSuperCapacitorGen3DeviceType:
         return ProductClass.supercapacitor;
       case kBlackBoxDeviceType:
+      case kMiniBlackBoxDeviceType:
         return ProductClass.blackBox;
       default:
         return ProductClass.unknown;

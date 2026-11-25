@@ -241,6 +241,37 @@ void main() {
     }
   }
 
+  // feedback 2026.11.25/001 + owner ruling 2026-11-25: 「0x14在pro版本要有控制
+  // 按鈕 在其他版本 同0x12」. Same class, so the same body, the same cards and
+  // the same per-build controls — these pin that nothing treats it apart.
+  group('0x14 (機車小黑盒) is the black box', () {
+    test('0x14 maps to blackBox', () {
+      expect(ProductClass.fromDeviceType(kMiniBlackBoxDeviceType),
+          ProductClass.blackBox);
+    });
+
+    testWidgets('community build: Restore only, as for 0x12', (tester) async {
+      await online(tester,
+          mode: ReportedStatus.cutOffActive,
+          controls: null,
+          deviceType: kMiniBlackBoxDeviceType,
+          dealer: '01680214');
+      expect(button('Lock'), findsNothing);
+      expect(button('Cut Off'), findsNothing);
+      expect(widgetOf(tester, 'Restore Power').onPressed, isNotNull);
+    });
+
+    testWidgets('OSB Pro: Lock and Cut Off live from normal', (tester) async {
+      await online(tester,
+          mode: ReportedStatus.normal,
+          deviceType: kMiniBlackBoxDeviceType,
+          dealer: '01680214');
+      expect(widgetOf(tester, 'Lock').onPressed, isNotNull);
+      expect(widgetOf(tester, 'Cut Off').onPressed, isNotNull);
+      expect(widgetOf(tester, 'Restore Power').onPressed, isNull);
+    });
+  });
+
   group('community build: 復電 only', () {
     testWidgets('no ControlFeatures ⇒ no Lock, no Cut Off; Restore is there',
         (tester) async {

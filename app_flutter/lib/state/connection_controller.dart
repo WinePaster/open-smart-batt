@@ -3776,7 +3776,8 @@ class ConnectionController extends ChangeNotifier {
     final hex = '0x${dt.toRadixString(16).toUpperCase().padLeft(2, '0')}';
     _event('device-type byte not recognised: $hex '
         '— shown as unclassified; this build maps '
-        '0x02 (battery), 0x17/0x18 (capacitor), 0x22 (power bank)');
+        '0x02 (battery), 0x17/0x18 (capacitor), 0x12/0x14 (black box), '
+        '0x22 (power bank)');
   }
 
   /// Record an unrecognised capacitor status byte to the diagnostic log.

@@ -1,8 +1,8 @@
 /// OpenSmartBatt — "this build does not know what this is".
 ///
 /// Drawn for [RoutingDecision.unclassified]: the unit answered with a
-/// device-type byte, and it is not one of the four this build maps
-/// (`0x02` battery, `0x17`/`0x18` capacitor, `0x22` power bank — see
+/// device-type byte, and it is not one this build maps (`0x02` battery,
+/// `0x17`/`0x18` capacitor, `0x12`/`0x14` black box, `0x22` power bank — see
 /// [ProductClass.fromDeviceType]).
 ///
 /// ## Why this is a dead end on purpose (design 0050 D3 / D7 / D8)
