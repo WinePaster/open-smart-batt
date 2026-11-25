@@ -2894,4 +2894,38 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get vehicleErrorNotFound => '這台車已經不存在。';
+
+  @override
+  String get thanksListLabel => '感謝名單';
+
+  @override
+  String thanksListCount(int count) {
+    return '$count 位車友';
+  }
+
+  @override
+  String thanksListReports(int count) {
+    return '$count 次';
+  }
+
+  @override
+  String get thanksStory1 =>
+      '在 RCE Battery 結束營業的那一天，這些電池和電容並沒有壞 —— 只是突然沒有人看得見它們了。';
+
+  @override
+  String thanksStory2(String appName) {
+    return '$appName 能走到今天，靠的不是一個人。是一群車主，在停車場、在車庫、在下班的路上，把手機接上自己的電池，按下匯出，把一份又一份紀錄送回來。';
+  }
+
+  @override
+  String get thanksStory3 =>
+      '有人半夜重接黑盒子的線，只為了確認電流出不出得來；有人一個月內回報了四十次；也有人只傳過一次，卻剛好讓我們找到藏了很久的錯。';
+
+  @override
+  String get thanksStory4 => '每一份回報，都讓這個 App 更懂這些硬體一點。謝謝你們，讓它們繼續被看見。';
+
+  @override
+  String thanksListFootnote(String date) {
+    return '回報次數統計至 $date。依數字、英文字母、中文筆畫排序；後方為回報次數。名稱以回報時的顯示名稱為準，如需更改或不想列出，請透過「回報問題」告訴我們。';
+  }
 }

@@ -2174,5 +2174,18 @@
   "vehicleErrorNotFound": "That vehicle no longer exists.",
   "@vehicleErrorNotFound": {
     "description": "design 0106 rule not_found."
-  }
+  },
+  "thanksListLabel": "Thanks",
+  "@thanksListLabel": {"description": "pro design 0109: Settings → About row and page title. The row is drawn only when the build carries assets/credits/thanks.json (gitignored — the names never enter this repo)."},
+  "thanksListCount": "{count} riders",
+  "@thanksListCount": {"placeholders": {"count": {"type": "int"}}},
+  "thanksListReports": "{count}×",
+  "@thanksListReports": {"placeholders": {"count": {"type": "int"}}},
+  "thanksStory1": "The day RCE Battery closed its doors, these batteries and capacitors did not break — they simply stopped being seen.",
+  "thanksStory2": "{appName} got here because of more than one person: riders and drivers who, in car parks, garages and on the way home from work, connected their phones to their own batteries, pressed export, and sent the records back to us, one after another.",
+  "@thanksStory2": {"description": "pro design 0109. appName injected (FB-109: no brand literal in lib/).", "placeholders": {"appName": {"type": "String"}}},
+  "thanksStory3": "Someone rewired a black box in the middle of the night just to see whether the current would show up. Someone sent forty reports in one month. Someone sent only one — and it was the one that uncovered a bug that had been hiding for a long time.",
+  "thanksStory4": "Every report taught this app a little more about the hardware. Thank you for keeping it seen.",
+  "thanksListFootnote": "Report counts as of {date}. Sorted by digits, then letters, then Chinese stroke count; the number is how many reports each person sent. Names are shown as they were when reporting — to change yours or be left off, tell us through “Report a problem”.",
+  "@thanksListFootnote": {"placeholders": {"date": {"type": "String"}}}
 }

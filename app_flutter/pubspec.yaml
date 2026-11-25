@@ -168,6 +168,12 @@ flutter:
   # Enables gen_l10n localization codegen on build / pub get.
   generate: true
 
+  # pro design 0109: the thanks list. The directory is tracked (via .gitkeep)
+  # so the build never fails on it; `thanks.json` inside it is gitignored and
+  # written only by release builds — the names never enter this repository.
+  assets:
+    - assets/credits/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

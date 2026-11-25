@@ -65,3 +65,8 @@ phone_db/
 # It was untracked but NOT ignored, which is one `git add -A` away from a mess;
 # the same gap that let `raw/` sit outside this file for weeks (see CLAUDE.md).
 .claude/
+
+# pro design 0109 — the thanks list is a BUILD-TIME asset. The names must never
+# enter git history (owner ruling 2026-11-25: a rider who asks to be taken off
+# could not be). Release builds write it; a build from source has none.
+app_flutter/assets/credits/thanks.json

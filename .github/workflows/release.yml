@@ -171,6 +171,22 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: flutter pub get
 
+      # pro design 0109 — the thanks list is a build-time asset: the names are
+      # never committed (a rider who asks to be taken off could not be, once
+      # git has them). The secret is optional; without it the About row is
+      # simply not drawn. Never echo it.
+      - name: 感謝名單（build-time asset，來自 secret）
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          THANKS_JSON: ${{ secrets.THANKS_JSON }}
+        run: |
+          if [ -n "$THANKS_JSON" ]; then
+            printf '%s' "$THANKS_JSON" > assets/credits/thanks.json
+            echo "thanks list: written ($(wc -c < assets/credits/thanks.json) bytes)"
+          else
+            echo "thanks list: no THANKS_JSON secret — About row will not be drawn"
+          fi
+
       # A release APK MUST carry the project's own, stable key. Signing with
       # the debug key produces a fresh certificate on every CI run, and Android
       # refuses to install an update signed by a different one — so every
@@ -483,6 +499,22 @@ jobs:
           # ExportOptions.plist ships with a placeholder so the real Team ID never
           # enters the public repo; inject it at build time only.
           /usr/bin/sed -i '' "s/__APPLE_TEAM_ID__/${APPLE_TEAM_ID}/" ios/ExportOptions.plist
+
+      # pro design 0109 — the thanks list is a build-time asset: the names are
+      # never committed (a rider who asks to be taken off could not be, once
+      # git has them). The secret is optional; without it the About row is
+      # simply not drawn. Never echo it.
+      - name: 感謝名單（build-time asset，來自 secret）
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          THANKS_JSON: ${{ secrets.THANKS_JSON }}
+        run: |
+          if [ -n "$THANKS_JSON" ]; then
+            printf '%s' "$THANKS_JSON" > assets/credits/thanks.json
+            echo "thanks list: written ($(wc -c < assets/credits/thanks.json) bytes)"
+          else
+            echo "thanks list: no THANKS_JSON secret — About row will not be drawn"
+          fi
 
       - name: flutter build ipa
         working-directory: ${{ env.APP_DIR }}

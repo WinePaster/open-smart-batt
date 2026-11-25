@@ -3071,4 +3071,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get vehicleErrorNotFound => 'That vehicle no longer exists.';
+
+  @override
+  String get thanksListLabel => 'Thanks';
+
+  @override
+  String thanksListCount(int count) {
+    return '$count riders';
+  }
+
+  @override
+  String thanksListReports(int count) {
+    return '$count×';
+  }
+
+  @override
+  String get thanksStory1 =>
+      'The day RCE Battery closed its doors, these batteries and capacitors did not break — they simply stopped being seen.';
+
+  @override
+  String thanksStory2(String appName) {
+    return '$appName got here because of more than one person: riders and drivers who, in car parks, garages and on the way home from work, connected their phones to their own batteries, pressed export, and sent the records back to us, one after another.';
+  }
+
+  @override
+  String get thanksStory3 =>
+      'Someone rewired a black box in the middle of the night just to see whether the current would show up. Someone sent forty reports in one month. Someone sent only one — and it was the one that uncovered a bug that had been hiding for a long time.';
+
+  @override
+  String get thanksStory4 =>
+      'Every report taught this app a little more about the hardware. Thank you for keeping it seen.';
+
+  @override
+  String thanksListFootnote(String date) {
+    return 'Report counts as of $date. Sorted by digits, then letters, then Chinese stroke count; the number is how many reports each person sent. Names are shown as they were when reporting — to change yours or be left off, tell us through “Report a problem”.';
+  }
 }

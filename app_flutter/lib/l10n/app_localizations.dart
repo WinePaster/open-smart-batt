@@ -5091,6 +5091,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'That vehicle no longer exists.'**
   String get vehicleErrorNotFound;
+
+  /// pro design 0109: Settings → About row and page title. The row is drawn only when the build carries assets/credits/thanks.json (gitignored — the names never enter this repo).
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks'**
+  String get thanksListLabel;
+
+  /// No description provided for @thanksListCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} riders'**
+  String thanksListCount(int count);
+
+  /// No description provided for @thanksListReports.
+  ///
+  /// In en, this message translates to:
+  /// **'{count}×'**
+  String thanksListReports(int count);
+
+  /// No description provided for @thanksStory1.
+  ///
+  /// In en, this message translates to:
+  /// **'The day RCE Battery closed its doors, these batteries and capacitors did not break — they simply stopped being seen.'**
+  String get thanksStory1;
+
+  /// pro design 0109. appName injected (FB-109: no brand literal in lib/).
+  ///
+  /// In en, this message translates to:
+  /// **'{appName} got here because of more than one person: riders and drivers who, in car parks, garages and on the way home from work, connected their phones to their own batteries, pressed export, and sent the records back to us, one after another.'**
+  String thanksStory2(String appName);
+
+  /// No description provided for @thanksStory3.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone rewired a black box in the middle of the night just to see whether the current would show up. Someone sent forty reports in one month. Someone sent only one — and it was the one that uncovered a bug that had been hiding for a long time.'**
+  String get thanksStory3;
+
+  /// No description provided for @thanksStory4.
+  ///
+  /// In en, this message translates to:
+  /// **'Every report taught this app a little more about the hardware. Thank you for keeping it seen.'**
+  String get thanksStory4;
+
+  /// No description provided for @thanksListFootnote.
+  ///
+  /// In en, this message translates to:
+  /// **'Report counts as of {date}. Sorted by digits, then letters, then Chinese stroke count; the number is how many reports each person sent. Names are shown as they were when reporting — to change yours or be left off, tell us through “Report a problem”.'**
+  String thanksListFootnote(String date);
 }
 
 class _AppLocalizationsDelegate

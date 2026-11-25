@@ -38,6 +38,7 @@ import 'measurement_explainer.dart';
 import 'report_problem.dart';
 import 'g_meter_consent_dialog.dart';
 import 'speed_consent_dialog.dart';
+import 'thanks_list.dart';
 
 
 /// Community project links (mockup startup disclaimer + About card).
@@ -1629,6 +1630,8 @@ class _AboutCard extends StatelessWidget {
             label: l10n.settingsProtocolDocLabel,
             onTap: () => _copy(context, kProtocolUrl),
           ),
+          // pro design 0109: drawn only when the build carries the list.
+          const ThanksListRow(),
           SettingsLinkRow(
             icon: Icons.link,
             label: l10n.settingsCopyrightLabel,
