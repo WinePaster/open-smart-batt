@@ -297,7 +297,7 @@ List<String> exportHeaderLines({
     // sites pass it; `export_provenance_test` asserts they do, so this cannot
     // be quietly dropped the way an unasserted optional could.
     if (ampereColumn) ...[
-      'ampere sign: battery negative=discharge positive=charge; '
+      'ampere sign: battery and black box negative=discharge positive=charge; '
           'power bank positive=discharge (0x4A-0x49)',
       'ampere sign: capacitor rows are blank - that unit cannot measure current',
     ],

@@ -255,7 +255,7 @@ void main() {
         'window: all',
         'resolution: requested=1s',
         'resolution: contains=1s,60s',
-        'ampere sign: battery negative=discharge positive=charge; '
+        'ampere sign: battery and black box negative=discharge positive=charge; '
             'power bank positive=discharge (0x4A-0x49)',
         'ampere sign: capacitor rows are blank - that unit cannot measure '
             'current',

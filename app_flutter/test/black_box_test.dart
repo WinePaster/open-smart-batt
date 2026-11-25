@@ -140,6 +140,55 @@ void main() {
     });
   });
 
+  // feedback 2026.11.25/002 (one unit, wired the factory way): the black box
+  // signs 0x2E opposite to a battery. Owner ruling 2026-11-25: show the actual
+  // direction, 0x14 the same as 0x12.
+  group('current direction (black box 0x2E is opposite to a battery)', () {
+    InboundFrame cur(int raw) {
+      final b = [0xB8, 0x2E, 0x01, 0x02, raw >> 8, raw & 0xFF];
+      return _frame([...b, b.fold<int>(0, (x, y) => x ^ y)]);
+    }
+
+    InboundFrame type(int dt) {
+      final b = [0xB8, 0x10, 0x01, 0x01, dt];
+      return _frame([...b, b.fold<int>(0, (x, y) => x ^ y)]);
+    }
+
+    final at = DateTime.utc(2026, 11, 25);
+    TelemetrySample after(int dt, int raw) => TelemetryDecoder.apply(
+        TelemetryDecoder.apply(TelemetrySample.empty(), type(dt), at: at),
+        cur(raw),
+        at: at);
+
+    for (final dt in [kBlackBoxDeviceType, kMiniBlackBoxDeviceType]) {
+      final name = '0x${dt.toRadixString(16)}';
+      test('$name: the field crank 019a reads −102 A (discharge)', () {
+        expect(after(dt, 0x019A).current, -102.0);
+      });
+      test('$name: the alternator charge 0208 reads +8 A', () {
+        expect(after(dt, 0x0208).current, 8.0);
+      });
+      test('$name: at rest 0200 is 0.0, not -0.0', () {
+        final a = after(dt, 0x0200).current!;
+        expect(a, 0.0);
+        expect(a.isNegative, isFalse);
+      });
+    }
+
+    test('a battery keeps its sign: 019a is +102 A', () {
+      expect(after(kSmartBatteryDeviceType, 0x019A).current, 102.0);
+    });
+
+    test('a current decoded before 0x10 is re-signed when 0x10 says black box',
+        () {
+      var s = TelemetryDecoder.apply(TelemetrySample.empty(), cur(0x019A),
+          at: at);
+      expect(s.current, 102.0); // class unknown ⇒ battery sign
+      s = TelemetryDecoder.apply(s, type(kBlackBoxDeviceType), at: at);
+      expect(s.current, -102.0);
+    });
+  });
+
   group('no cells', () {
     test('0x24 with LEN 0 leaves dvol null — not four 0 V cells', () {
       final at = DateTime.utc(2026, 11, 22);

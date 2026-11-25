@@ -88,6 +88,28 @@ class TelemetryDecoder {
   /// Main current (A) — selector 0x2E: 512 - (b4*256+b5).
   static double current(InboundFrame f) => (512 - f.u16(4)).toDouble();
 
+  /// Main current (A) for a unit of device type [deviceType], in the PACK
+  /// convention every screen and the CSV use: negative = discharge.
+  ///
+  /// A black box reports `0x2E` with the OPPOSITE sign to a battery (feedback
+  /// `2026.11.25/002`, one unit wired the factory way): ignition-on read
+  /// `01fc` (+4 A by [current]) while the voltage fell, the crank read `019a`
+  /// (+102 A) while it collapsed from 13.22 to 10.13 V — only a starter motor
+  /// does that, and it can only discharge — and the alternator's charge after
+  /// it read `0208` (−8 A) while the voltage climbed to 14.5 V. So for a black
+  /// box the raw value is negated, and it reads like a battery: the crank is
+  /// −102 A, 放電中. Owner ruling 2026-11-25: 「0x12先按照實際判斷的好了…
+  /// 0x14同0x12」 — `0x14` follows `0x12` until its own capture says otherwise.
+  ///
+  /// `-0.0` is folded to `0.0` so a black box at rest prints `0.0`, not `-0.0`.
+  static double packCurrent(InboundFrame f, int? deviceType) {
+    final a = current(f);
+    if (ProductClass.fromDeviceType(deviceType) != ProductClass.blackBox) {
+      return a;
+    }
+    return a == 0 ? 0.0 : -a;
+  }
+
   /// VADJ scale — selector 0x30: (b4*256+b5)/100.
   static double vadj(InboundFrame f) => f.u16(4) / 100.0;
 
@@ -268,7 +290,8 @@ class TelemetryDecoder {
       case Selectors.temperature:
         return base.copyWith(timestamp: ts, temperatureC: temperature(f));
       case Selectors.current:
-        return base.copyWith(timestamp: ts, current: current(f));
+        return base.copyWith(
+            timestamp: ts, current: packCurrent(f, base.deviceType));
       case Selectors.vadj:
         return base.copyWith(timestamp: ts, vadj: vadj(f));
       case Selectors.cellVoltagesMv:
@@ -429,8 +452,19 @@ class TelemetryDecoder {
         );
       case Selectors.deviceType:
         // Re-derive OT: a 0x2B that landed before the class did is waiting on it.
-        return _withDerivedOt(
-            base.copyWith(timestamp: ts, deviceType: f.b(4)));
+        //
+        // And re-sign a current that landed before the class did: a black box
+        // reads `0x2E` the other way round ([packCurrent]), and a frame decoded
+        // while the class was still unknown took the battery's sign.
+        final dt = f.b(4);
+        final wasBox = ProductClass.fromDeviceType(base.deviceType) ==
+            ProductClass.blackBox;
+        final isBox = ProductClass.fromDeviceType(dt) == ProductClass.blackBox;
+        final a = base.current;
+        final resigned =
+            (a != null && a != 0 && wasBox != isBox) ? -a : base.current;
+        return _withDerivedOt(base.copyWith(
+            timestamp: ts, deviceType: dt, current: resigned));
       case Selectors.serialB:
         return base.copyWith(timestamp: ts, serial: serial(f));
       case Selectors.year:
