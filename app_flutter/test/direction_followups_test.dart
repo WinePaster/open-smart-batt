@@ -450,7 +450,10 @@ void main() {
       // The honesty requirement, one clause at a time. A file that stated only
       // the battery rule would be WORSE than one that stated none: a recipient
       // would confidently read a power bank's column backwards.
-      expect(text, contains('battery negative=discharge positive=charge'));
+      // feedback 2026.11.25/002: the black box is decoded into the pack
+      // convention, so the clause names it beside the battery.
+      expect(text,
+          contains('battery and black box negative=discharge positive=charge'));
       expect(text, contains('power bank positive=discharge (0x4A-0x49)'));
       expect(text, contains('capacitor rows are blank'));
     });
