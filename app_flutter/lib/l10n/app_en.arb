@@ -192,6 +192,10 @@
   "captureWizardFinished": "Capture finished. Tap \u201cReport now\u201d to send it to us.",
   "dashboardProtectionHeading": "Protection Status / Mode",
   "gaugePvltLabel": "Primary Voltage",
+  "blackBoxVoltageLabel": "Battery Voltage",
+  "@blackBoxVoltageLabel": {
+    "description": "Black box only (owner ruling 2026-11-25): its 0x19 is the battery-side voltage, not its own output — it keeps reading ~13 V while the output is cut off — so it is named for what it measures."
+  },
   "gaugeSohUnknown": "SOH --",
   "gaugeSohValue": "SOH {soh}% · Health {label}",
   "@gaugeSohValue": {
@@ -1570,9 +1574,9 @@
   "dashboardTrackPvlt": "Primary voltage",
   "dashboardTrackTemperature": "Temperature",
   "powerBankTrackCurrent": "Current",
-  "powerBankTrackCurrentDirectionKey": "+ discharge \u00b7 \u2212 charge",
+  "powerBankTrackCurrentDirectionKey": "+ charge \u00b7 \u2212 discharge",
   "@powerBankTrackCurrentDirectionKey": {
-    "description": "Direction key for a POWER BANK's current axis \u2014 \ud83d\udd34 deliberately the MIRROR of dashboardTrackCurrentDirectionKey, not a copy of it. A power bank derives current from 0x4A \u2212 0x49, where POSITIVE is discharging; a pack derives it from 0x2E = 512 \u2212 u16, where negative is discharging (power_flow.dart: \u201cTHE SIGN IS THE OPPOSITE\u201d). Two keys rather than one reworded at the call site, for the same reason packDirection*/powerBankDirection* are two sets: a wording change made for a car battery must not silently reach a power bank."
+    "description": "Direction key for a POWER BANK's current axis. Since 2026-11-25 it reads the same as dashboardTrackCurrentDirectionKey (owner ruling: every unit signed from its own point of view, out = minus, in = plus; the power bank current is now 0x49 \u2212 0x4A). Kept as its own key so a wording change for one family does not silently reach the other."
   },
   "powerBankTrackOutput": "Output voltage",
   "powerBankTrackInput": "Input voltage",

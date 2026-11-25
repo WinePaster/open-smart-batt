@@ -199,7 +199,7 @@ void main() {
   group('T1 §3.3 vectors', () {
     testWidgets('0x0a charging: CHARGING · Type-C · PD · 9.14 V · 0.42 A',
         (tester) async {
-      await mount(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await mount(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('Type-C'), findsOneWidget);
       expect(find.text('PD'), findsOneWidget);
@@ -215,7 +215,7 @@ void main() {
       // Revised 2026-08-05: bit1 clear + discharging leaves Type-A as the only
       // path the energy can take (29,114/0 over every port-marked capture,
       // three units). Still no Type-A BIT — bit0 stays refuted and unread.
-      await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
+      await mount(tester, portFlagsRaw: 0x05, current: -0.42, svlt: 5.12);
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('Type-A'), findsOneWidget);
       expect(find.text('5.12 V'), findsOneWidget);
@@ -233,7 +233,7 @@ void main() {
       // uses, not a rail-specific phrase. The two standby STRINGS were merged;
       // the corroboration TEST that used to pick between them still runs and is
       // pinned by the spurious-0x00 group below.
-      await mount(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      await mount(tester, portFlagsRaw: 0x00, current: 0.03, svlt: 3.95);
       expect(find.text('STANDBY'), findsOneWidget);
       expect(find.text('Standby · output off'), findsNothing);
       expect(find.text('Standby · no flow'), findsNothing);
@@ -253,7 +253,7 @@ void main() {
       // The 13:08:26 vector — b7 = 0x00 at the capture's highest discharge,
       // with `0x37` never dropping below 5.17 V across ±2 s. 5 such frames in
       // 36,152 bursts; at 1 Hz that is a visible flicker every ~2 hours.
-      await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+      await mount(tester, portFlagsRaw: 0x00, current: -2.718, svlt: 5.22);
       expect(find.text('STANDBY'), findsNothing);
       // bit1 is clear at 0x00, so a fall-through would print Type-A with full
       // confidence — and the operator had this sample marked Type-C.
@@ -273,7 +273,7 @@ void main() {
       // The 20:49:38 vector. 0.068 A > 0.05 A, so it is a contradiction too —
       // this is the sample that shows the guard is not merely a "large current"
       // rule; the dead-band is the whole test.
-      await mount(tester, portFlagsRaw: 0x00, current: 0.068, svlt: 5.18);
+      await mount(tester, portFlagsRaw: 0x00, current: -0.068, svlt: 5.18);
       expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
       expect(find.text('Type-C'), findsNothing);
@@ -284,7 +284,7 @@ void main() {
         (tester) async {
       // A debounce was considered and rejected (state + latency on the genuine
       // transition). Nothing is waiting to flip this row a second later.
-      await mount(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+      await mount(tester, portFlagsRaw: 0x00, current: -2.718, svlt: 5.22);
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('Type-A'), findsNothing);
       await tester.pump(const Duration(seconds: 15));
@@ -302,7 +302,7 @@ void main() {
       // ladder sees flag and current AGREE: plain standby, no charging word,
       // and no withheld-badge contradiction state. Before the veto this unit
       // read "charging 0.06 A" through no port at all, forever.
-      await mount(tester, portFlagsRaw: 0x00, current: -0.060, svlt: 3.95);
+      await mount(tester, portFlagsRaw: 0x00, current: 0.060, svlt: 3.95);
       expect(find.text('STANDBY'), findsOneWidget);
       expect(find.text('CHARGING'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
@@ -317,7 +317,7 @@ void main() {
   testWidgets('T2 no negative "non-PD" wording when bit3 is clear',
       (tester) async {
     // 0x02 = bit1 only. Charging, bit3 clear → PD simply absent.
-    await mount(tester, portFlagsRaw: 0x02, current: -0.42, svlt: 9.0);
+    await mount(tester, portFlagsRaw: 0x02, current: 0.42, svlt: 9.0);
     expect(find.text('CHARGING'), findsOneWidget);
     expect(find.text('PD'), findsNothing);
     for (final s in [
@@ -345,13 +345,13 @@ void main() {
         (tester) async {
       // 0x22 = bit1 + bit5 (a non-5 V output contract). While charging we look
       // at bit3 (clear).
-      await mount(tester, portFlagsRaw: 0x22, current: -0.42, svlt: 9.0);
+      await mount(tester, portFlagsRaw: 0x22, current: 0.42, svlt: 9.0);
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('PD'), findsNothing);
     });
 
     testWidgets('discharging + bit5 set → PD (reads bit5)', (tester) async {
-      await mount(tester, portFlagsRaw: 0x22, current: 1.2, svlt: 5.1);
+      await mount(tester, portFlagsRaw: 0x22, current: -1.2, svlt: 5.1);
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('PD'), findsOneWidget);
     });
@@ -359,7 +359,7 @@ void main() {
     testWidgets('discharging + bit3 set + bit5 clear → no PD (never crosses)',
         (tester) async {
       // 0x0a = bit1 + bit3 (input PD). While DISCHARGING we look at bit5 (clear).
-      await mount(tester, portFlagsRaw: 0x0a, current: 1.2, svlt: 5.1);
+      await mount(tester, portFlagsRaw: 0x0a, current: -1.2, svlt: 5.1);
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('PD'), findsNothing);
     });
@@ -377,7 +377,7 @@ void main() {
     // and design 0041 Q3 finally deleted the badge it named: the row now
     // withholds the port by drawing NOTHING there. The invariant is unchanged —
     // only how "I don't know" is spelled.
-    await mount(tester, portFlagsRaw: 0x00, current: 0.30, svlt: 3.95);
+    await mount(tester, portFlagsRaw: 0x00, current: -0.30, svlt: 3.95);
     expect(find.text('Type-A'), findsNothing);
     expect(find.text('Type-C'), findsNothing);
     expect(find.text('Path undetermined'), findsNothing);
@@ -391,7 +391,7 @@ void main() {
   testWidgets('T5 a later sample replaces the row wholesale — no cross-mix',
       (tester) async {
     final (_, emit) = await mount(
-        tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+        tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
     // First sample: CHARGING · Type-C · PD · 9.14 V.
     expect(find.text('CHARGING'), findsOneWidget);
     expect(find.text('9.14 V'), findsOneWidget);
@@ -401,7 +401,7 @@ void main() {
       timestamp: DateTime(2026, 8, 4, 14, 44),
       pvlt: 3.95,
       svlt: 5.12,
-      current: 0.42,
+      current: -0.42,
       portFlagsRaw: 0x05,
     ));
     await tester.pump();
@@ -424,7 +424,7 @@ void main() {
   // =========================================================================
   testWidgets('T6 0x12 shows Type-C, no PD, and needs no bit4 special case',
       (tester) async {
-    await mount(tester, portFlagsRaw: 0x12, current: -0.30, svlt: 9.0);
+    await mount(tester, portFlagsRaw: 0x12, current: 0.30, svlt: 9.0);
     expect(find.text('Type-C'), findsOneWidget);
     expect(find.text('PD'), findsNothing);
     expect(find.text('Path undetermined'), findsNothing);
@@ -436,7 +436,7 @@ void main() {
   // =========================================================================
   testWidgets('T7 0x03 → Type-C only; bit0 never yields Type-A',
       (tester) async {
-    await mount(tester, portFlagsRaw: 0x03, current: -0.30, svlt: 9.0);
+    await mount(tester, portFlagsRaw: 0x03, current: 0.30, svlt: 9.0);
     expect(find.text('Type-C'), findsOneWidget);
     expect(find.text('Type-A'), findsNothing);
     expect(find.text('Path undetermined'), findsNothing);
@@ -451,7 +451,7 @@ void main() {
     // (idle). The honest face is "Type-C · STANDBY", NOT "Type-C supplying" —
     // the badge is drawn in its outline form, which is what says "cable
     // inserted" without claiming "cable in use".
-    await mount(tester, portFlagsRaw: 0x02, current: 0.019, svlt: 5.16);
+    await mount(tester, portFlagsRaw: 0x02, current: -0.019, svlt: 5.16);
     expect(find.text('STANDBY'), findsOneWidget);
     expect(find.text('Type-C'), findsOneWidget);
     // No direction from an in-band current, and no supplying claim.
@@ -471,7 +471,7 @@ void main() {
   // T9 — 0x4B not arrived: waiting, not a decoded zero.
   // =========================================================================
   testWidgets('T9 pre-0x4B shows waiting, never 0.00 A or --', (tester) async {
-    await mount(tester, portFlagsRaw: null, current: -0.42, svlt: 9.0);
+    await mount(tester, portFlagsRaw: null, current: 0.42, svlt: 9.0);
     expect(find.textContaining('Waiting for device'), findsOneWidget);
     expect(find.text('0.00 A'), findsNothing);
     expect(find.text('-- A'), findsNothing);
@@ -490,7 +490,7 @@ void main() {
     ]) {
       testWidgets('${cls.name} renders nothing', (tester) async {
         await mount(tester,
-            portFlagsRaw: 0x0a, current: -0.42, svlt: 9.0, cls: cls);
+            portFlagsRaw: 0x0a, current: 0.42, svlt: 9.0, cls: cls);
         expect(find.byType(PowerPathRow), findsOneWidget);
         expect(find.text('Energy Path'), findsNothing);
         expect(find.text('CHARGING'), findsNothing);
@@ -508,29 +508,29 @@ void main() {
       // with bit1 clear. Discharge with bit1 clear is derived as Type-A, so
       // hooking it would ask a question already answered — on the state a bank
       // spends most of its life in.
-      await mount(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
+      await mount(tester, portFlagsRaw: 0x01, current: 0.42, svlt: 5.1);
       expect(find.text('Which port is this?'), findsOneWidget);
     });
 
     testWidgets('NOT shown on a derived Type-A row', (tester) async {
-      await mount(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.1);
+      await mount(tester, portFlagsRaw: 0x05, current: -0.42, svlt: 5.1);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('NOT shown on a known Type-C row', (tester) async {
-      await mount(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await mount(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('NOT shown in rail-off standby', (tester) async {
-      await mount(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      await mount(tester, portFlagsRaw: 0x00, current: 0.03, svlt: 3.95);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('NOT shown on a contradicted 0x00 burst', (tester) async {
       // Undetermined AND charging — normally the one hooked state. Suppressed:
       // an answer here would be filed against a b7 we do not believe.
-      await mount(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+      await mount(tester, portFlagsRaw: 0x00, current: 2.712, svlt: 4.92);
       expect(find.text('Path undetermined'), findsNothing);
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('Which port is this?'), findsNothing);
@@ -541,19 +541,19 @@ void main() {
       // 0x05, in-band current → idle. Port is undetermined (nothing to
       // eliminate from when nothing moves), but the hook rides only the MOVING
       // row, so it stays away.
-      await mount(tester, portFlagsRaw: 0x05, current: 0.01, svlt: 5.1);
+      await mount(tester, portFlagsRaw: 0x05, current: -0.01, svlt: 5.1);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('NOT shown while waiting for 0x4B', (tester) async {
-      await mount(tester, portFlagsRaw: null, current: -0.42, svlt: 9.0);
+      await mount(tester, portFlagsRaw: null, current: 0.42, svlt: 9.0);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('records a tag once, then is gone for the connection',
         (tester) async {
       final (s, _) =
-          await mount(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
+          await mount(tester, portFlagsRaw: 0x01, current: 0.42, svlt: 5.1);
       final hook = find.text('Which port is this?');
       expect(hook, findsOneWidget);
 

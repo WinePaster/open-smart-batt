@@ -126,22 +126,24 @@ void main() {
   });
 
   group('D6 the two families are NOT interchangeable', () {
-    test('the same number gets opposite verdicts', () {
-      // 🔴 The single most important assertion in this file. `0x2E` negative is
-      // a pack discharging; `0x4A − 0x49` negative is a power bank CHARGING.
-      // Anyone who unifies these two derivations breaks this line.
+    test('since 2026-11-25 the same number gets the same verdict', () {
+      // Owner ruling 2026-11-25: every unit is signed from its own point of
+      // view — out of it is −, into it is + — so a power bank's current is now
+      // 0x49 − 0x4A and agrees with a pack's 0x2E on sign. (Until then this
+      // test pinned the OPPOSITE verdicts.) The two functions stay separate
+      // for their dead-bands and the power bank's rail-off veto.
       expect(packFlowOf(-30), PowerFlow.discharging);
-      expect(powerFlowOf(-30), PowerFlow.charging);
+      expect(powerFlowOf(-30), PowerFlow.discharging);
       expect(packFlowOf(30), PowerFlow.charging);
-      expect(powerFlowOf(30), PowerFlow.discharging);
+      expect(powerFlowOf(30), PowerFlow.charging);
     });
 
     test('and they do not share a dead-band either', () {
       // A power bank at 0.5 A is discharging; a pack at 0.5 A is a rounding
       // artefact. Copying one band onto the other family is a defect in both
       // directions at once.
-      expect(powerFlowOf(0.5), PowerFlow.discharging);
-      expect(packFlowOf(0.5), PowerFlow.idle);
+      expect(powerFlowOf(-0.5), PowerFlow.discharging);
+      expect(packFlowOf(-0.5), PowerFlow.idle);
       expect(kPowerFlowDeadbandA, isNot(kPackFlowDeadbandA));
     });
   });
@@ -287,14 +289,12 @@ void main() {
                   deviceType: 0x18,
                   current: 2.72),
               trend: bufferWithSwing()));
-      expect(find.text('+ charge · − discharge'), findsNothing,
-          reason: 'the pack key is signed the other way round — on a power '
-              'bank it would be a confident lie, not a missing label');
-      expect(find.text('＋充電 · −放電'), findsNothing);
-      // 🔵 design 0056 §9 Q1 ① — and it is the MIRROR, not a copy.
-      expect(find.text('+ discharge · − charge'), findsOneWidget,
+      // 2026-11-25: the power bank's own key now reads like the pack's (same
+      // sign convention for every unit).
+      expect(find.text('+ charge · − discharge'), findsOneWidget,
           reason: 'a signed current with nothing saying which half is which '
               'is exactly what FB-47 was filed for');
+      expect(find.text('+ discharge · − charge'), findsNothing);
     });
 
     testWidgets('zh key, power bank', (tester) async {
@@ -308,20 +308,21 @@ void main() {
                   current: 2.72),
               trend: bufferWithSwing()),
           locale: const Locale('zh'));
-      expect(find.text('＋放電 · −充電'), findsOneWidget);
-      expect(find.text('＋充電 · −放電'), findsNothing);
+      expect(find.text('＋充電 · −放電'), findsOneWidget);
+      expect(find.text('＋放電 · −充電'), findsNothing);
     });
 
-    test('the two axis keys are mirrors, and separate strings', () async {
-      // 🔴 If these two ever became the same string, one family would be
-      // reading the other's convention with no error anywhere on screen.
+    test('the two axis keys are separate strings that now read the same',
+        () async {
+      // 2026-11-25: one sign convention for every unit, so the two keys carry
+      // the same words. They stay two keys so a wording change for one family
+      // does not silently reach the other.
       for (final code in ['en', 'zh']) {
         final l = await AppLocalizations.delegate.load(Locale(code));
         expect(l.powerBankTrackCurrentDirectionKey, isNotEmpty);
         expect(l.powerBankTrackCurrentDirectionKey,
-            isNot(l.dashboardTrackCurrentDirectionKey),
-            reason: '$code: the two families sign current oppositely, so the '
-                'two keys must never collapse into one');
+            l.dashboardTrackCurrentDirectionKey,
+            reason: '$code: every unit is signed out = −, in = +');
       }
     });
   });

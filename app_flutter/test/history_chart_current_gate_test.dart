@@ -189,18 +189,17 @@ void main() {
       }
     });
 
-    test('a power bank gets its OWN key, and it is the mirror image', () {
+    test('a power bank gets its OWN key, which now reads like the pack one', () {
       final pack = historyChartCurrentDirectionLabel(
           en, ProductClass.smartBattery)!;
       final bank =
           historyChartCurrentDirectionLabel(en, ProductClass.powerBank)!;
       expect(bank, en.powerBankTrackCurrentDirectionKey);
-      expect(bank, isNot(pack));
-      // 🔴 Not merely "different" — OPPOSITE. `0x2E` = 512 − u16 signs a charge
-      // positive; `0x4A − 0x49` signs a DISCHARGE positive. Reusing the pack
-      // key would label every power-bank charge as a discharge.
+      // 2026-11-25: one convention for every unit (out = −, in = +); the power
+      // bank is now 0x49 − 0x4A, so its key carries the pack's words.
+      expect(bank, pack);
       expect(pack, startsWith('+ charge'));
-      expect(bank, startsWith('+ discharge'));
+      expect(bank, startsWith('+ charge'));
     });
 
     test('an unclassified unit is left UNLABELLED, not defaulted to pack', () {
@@ -273,8 +272,6 @@ void main() {
 
       expect(painterOf(t).currentDirectionLabel,
           en.powerBankTrackCurrentDirectionKey);
-      expect(painterOf(t).currentDirectionLabel,
-          isNot(en.dashboardTrackCurrentDirectionKey));
     });
 
     testWidgets('nothing is explained away when there is nothing wrong',

@@ -256,7 +256,7 @@ void main() {
         'resolution: requested=1s',
         'resolution: contains=1s,60s',
         'ampere sign: battery and black box negative=discharge positive=charge; '
-            'power bank positive=discharge (0x4A-0x49)',
+            'power bank negative=discharge positive=charge (0x49-0x4A)',
         'ampere sign: capacitor rows are blank - that unit cannot measure '
             'current',
         // design 0063 — see the log twin above. Both preambles carry it, in the

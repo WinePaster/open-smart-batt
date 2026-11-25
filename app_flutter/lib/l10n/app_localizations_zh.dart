@@ -287,6 +287,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gaugePvltLabel => '主電壓';
 
   @override
+  String get blackBoxVoltageLabel => '電瓶電壓';
+
+  @override
   String get gaugeSohUnknown => 'SOH --';
 
   @override
@@ -2033,7 +2036,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get powerBankTrackCurrent => '電流';
 
   @override
-  String get powerBankTrackCurrentDirectionKey => '＋放電 · −充電';
+  String get powerBankTrackCurrentDirectionKey => '＋充電 · −放電';
 
   @override
   String get powerBankTrackOutput => '輸出電壓';

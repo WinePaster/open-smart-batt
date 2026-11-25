@@ -270,7 +270,7 @@ void main() {
   group('Q5+Q12 — current and voltage tiles are gone from the grid', () {
     testWidgets('no current tile and no voltage tile, either direction',
         (tester) async {
-      await pumpBank(tester, current: -0.43);
+      await pumpBank(tester, current: 0.43);
       final items = readoutsCard(tester).items.map(kind).toList();
       expect(items, isNot(contains('current')),
           reason: 'the current readout now lives on the energy-path row');
@@ -282,7 +282,7 @@ void main() {
       // The magnitude/voltage strings used to be tiles here; they must not be
       // (the energy-path row is a separate widget, tested elsewhere, and is not
       // even built in this harness — the class is not overridden to powerBank).
-      await pumpBank(tester, current: -0.43);
+      await pumpBank(tester, current: 0.43);
       // No Icons.usb tile (that was the voltage readout's icon).
       expect(find.byIcon(Icons.usb), findsNothing);
     });
@@ -313,7 +313,7 @@ void main() {
   group('the glyph follows the flow', () {
     testWidgets('charging draws the charging battery (chip + SOC tile)',
         (tester) async {
-      await pumpBank(tester, current: -0.43);
+      await pumpBank(tester, current: 0.43);
       expect(iconCount(tester, Icons.battery_charging_full), 2);
       // The lone bolt is the energy-path row's (waiting) heading, not a flow
       // glyph — charging draws no discharge glyph on chip or SOC tile.
@@ -322,7 +322,7 @@ void main() {
     });
 
     testWidgets('discharging stops drawing a charging battery', (tester) async {
-      await pumpBank(tester, current: 1.2);
+      await pumpBank(tester, current: -1.2);
       // FB-47 symptom 1, pinned: NOTHING here may show a charging battery while
       // the bank is being drained.
       expect(iconCount(tester, Icons.battery_charging_full), 0);
@@ -361,12 +361,12 @@ void main() {
   group('the chart SVLT legend follows the direction', () {
     testWidgets('charging → input', (tester) async {
       await pumpBank(tester,
-          current: -0.43, face: Watchface.diagnostic);
+          current: 0.43, face: Watchface.diagnostic);
       expect(svltTrackLabel(tester), 'Input voltage');
     });
 
     testWidgets('discharging → output', (tester) async {
-      await pumpBank(tester, current: 1.2, face: Watchface.diagnostic);
+      await pumpBank(tester, current: -1.2, face: Watchface.diagnostic);
       expect(svltTrackLabel(tester), 'Output voltage');
     });
 
@@ -390,7 +390,7 @@ void main() {
       // What the original was really guarding — "the three tests above pass
       // because the face was asked for, not because the card is everywhere" —
       // no longer has a subject: the card IS everywhere now, by ruling.
-      await pumpBank(tester, current: -0.43);
+      await pumpBank(tester, current: 0.43);
       expect(find.byType(TrendChartCard), findsOneWidget);
       final svlt = chartCard(tester)
           .tracks
@@ -405,7 +405,7 @@ void main() {
   // =========================================================================
   testWidgets('the current track stays signed and zero-spanning while charging',
       (tester) async {
-    await pumpBank(tester, current: -0.43, face: Watchface.diagnostic);
+    await pumpBank(tester, current: 0.43, face: Watchface.diagnostic);
 
     final current = chartCard(tester)
         .tracks
@@ -420,7 +420,7 @@ void main() {
   // change freely.
   // =========================================================================
   testWidgets('readout tiles are in the surviving grid order', (tester) async {
-    await pumpBank(tester, current: 1.2); // pumpBank registers its own teardown
+    await pumpBank(tester, current: -1.2); // pumpBank registers its own teardown
 
     // designCapacityMah is unset in this snapshot, so the capacity tile is
     // absent; the surviving two must be in order, with current, port voltage
@@ -437,13 +437,13 @@ void main() {
   // The behaviour itself is untouched by the ruling.
   group('the SOC ring, where it still lives, carries the direction', () {
     testWidgets('charging', (tester) async {
-      await pumpHomeCard(tester, current: -0.43);
+      await pumpHomeCard(tester, current: 0.43);
       expect(gauge(tester).subText, 'CHARGING');
       expect(gauge(tester).subIcon, Icons.battery_charging_full);
     });
 
     testWidgets('discharging', (tester) async {
-      await pumpHomeCard(tester, current: 1.2);
+      await pumpHomeCard(tester, current: -1.2);
       expect(gauge(tester).subText, 'DISCHARGING');
       expect(gauge(tester).subIcon, Icons.bolt);
     });
@@ -476,7 +476,7 @@ void main() {
         (tester) async {
       // 10000 mAh IS on the wire here (`0x4B` b4b5, the value a rated-10000
       // unit actually reports), and the tile still must not appear.
-      final s = await pumpBank(tester, current: 1.2, designCapacityMah: 10000);
+      final s = await pumpBank(tester, current: -1.2, designCapacityMah: 10000);
       // 🔑 Proved to have ARRIVED before it is asserted absent. Without this
       // line the test passes just as well on a build that never decoded the
       // register — an absence of data wearing an absence of tile's clothes.
@@ -490,7 +490,7 @@ void main() {
 
     testWidgets('home grid: the same frame still prints it', (tester) async {
       await pumpHomeCard(tester,
-          current: 1.2,
+          current: -1.2,
           module: DisplayModule.readouts,
           designCapacityMah: 10000);
       expect(readoutsCard(tester).items.map(kind).toList(),
@@ -509,7 +509,7 @@ void main() {
     // tile, both reading `tele.pvlt`. Owner's call was to drop it, not to
     // de-duplicate it — a 1S bank's cell voltage is the pack voltage the SOC
     // ring already stands for.
-    await pumpBank(tester, current: 1.2);
+    await pumpBank(tester, current: -1.2);
     expect(readoutsCard(tester).items.map(kind).toList(),
         isNot(contains('cell')));
     expect(find.byIcon(Icons.battery_5_bar), findsNothing);

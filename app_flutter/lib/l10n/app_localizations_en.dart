@@ -297,6 +297,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gaugePvltLabel => 'Primary Voltage';
 
   @override
+  String get blackBoxVoltageLabel => 'Battery Voltage';
+
+  @override
   String get gaugeSohUnknown => 'SOH --';
 
   @override
@@ -2158,7 +2161,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get powerBankTrackCurrent => 'Current';
 
   @override
-  String get powerBankTrackCurrentDirectionKey => '+ discharge · − charge';
+  String get powerBankTrackCurrentDirectionKey => '+ charge · − discharge';
 
   @override
   String get powerBankTrackOutput => 'Output voltage';

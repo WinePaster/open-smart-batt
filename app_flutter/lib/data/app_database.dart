@@ -593,7 +593,20 @@ class Db {
   /// CLAIMING A NUMBER: 32 was taken after reading `schemaVersion` out of every
   /// ref of the public (244 refs) and pro (40 refs) repos on 2026-11-25 — the
   /// highest anywhere was 31.
-  static const int schemaVersion = 32;
+  ///
+  /// v33 — power-bank current re-signed (owner ruling 2026-11-25: every unit is
+  /// signed from its own point of view — current out of it is −, into it is +).
+  /// The decoder now writes `0x49 − 0x4A` (negative = discharge); rows a power
+  /// bank recorded before that hold `0x4A − 0x49`, so the upgrade negates
+  /// `history.ampere` for every row whose `device_id` is known to be a power
+  /// bank — in `saved_devices` or `device_facts`. ⚠️ A power bank that is in
+  /// neither table cannot be recognised and keeps the old sign. Black-box rows
+  /// recorded before public `d7187e4` are deliberately NOT re-signed (owner:
+  /// 「不轉號」).
+  ///
+  /// CLAIMING A NUMBER: 33 follows 32 in the same session (2026-11-25); no ref
+  /// of either repo held a number above 32.
+  static const int schemaVersion = 33;
 
   /// On-disk database file name (lives under the platform databases dir).
   static const String fileName = 'open_smart_batt.db';
@@ -1265,6 +1278,31 @@ class AppDatabase {
       final cols = await db.rawQuery('PRAGMA table_info(${Db.tableSettings})');
       if (cols.any((r) => r['name'] == 'raw_packet_log')) {
         await db.execute('UPDATE ${Db.tableSettings} SET raw_packet_log = 1');
+      }
+    }
+    if (from < 33) {
+      // Power-bank current re-signed — see [Db.schemaVersion] v33. Runs once:
+      // `from < 33` is the guard, because negating is NOT idempotent. Each
+      // source table is checked before it is read, for partial fixtures.
+      Future<bool> has(String table, List<String> cols) async {
+        final info = await db.rawQuery('PRAGMA table_info($table)');
+        final names = info.map((r) => r['name']).toSet();
+        return cols.every(names.contains);
+      }
+
+      final sources = <String>[
+        if (await has(Db.tableSavedDevices, ['id', 'product_class']))
+          "SELECT id FROM ${Db.tableSavedDevices} WHERE product_class = 'powerBank'",
+        if (await has(Db.tableDeviceFacts, ['id', 'product_class']))
+          "SELECT id FROM ${Db.tableDeviceFacts} WHERE product_class = 'powerBank'",
+      ];
+      if (await has(Db.tableHistory, ['ampere', 'device_id']) &&
+          sources.isNotEmpty) {
+        await db.execute(
+          'UPDATE ${Db.tableHistory} SET ampere = -ampere '
+          'WHERE ampere IS NOT NULL AND ampere != 0 '
+          'AND device_id IN (${sources.join(' UNION ')})',
+        );
       }
     }
   }

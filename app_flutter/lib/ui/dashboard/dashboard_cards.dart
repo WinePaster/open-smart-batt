@@ -132,7 +132,7 @@ Widget? dashboardCardFor(
         return IndustrialCard(
           child: PvltNumeric.voltage(
             volts: tele.pvlt,
-            caption: l10n.gaugePvltLabel,
+            caption: modules.pvltLabel(l10n),
             subText: sohText,
           ),
         );
@@ -144,7 +144,7 @@ Widget? dashboardCardFor(
             return Center(
               child: PvltGauge.voltage(
                 volts: tele.pvlt,
-                caption: l10n.gaugePvltLabel,
+                caption: modules.pvltLabel(l10n),
                 subText: sohText,
                 size: s,
               ),
@@ -347,7 +347,7 @@ Widget? dashboardCardFor(
           // question is what the register can support — not what looks tidy.
           Readout(
             icon: Icons.bolt,
-            label: l10n.gaugePvltLabel,
+            label: modules.pvltLabel(l10n),
             value: _fmt2(tele.pvlt),
             unit: 'V',
           ),

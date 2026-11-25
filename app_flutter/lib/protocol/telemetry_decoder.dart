@@ -415,10 +415,14 @@ class TelemetryDecoder {
           // used to, made a bank that was charging read 0.00 A forever, because
           // the only register the app looked at is the one that goes quiet
           // while charging.
+          //
+          // 🔴 SIGN (since 2026-11-25): charge − discharge, so a bank that is
+          // discharging reads NEGATIVE — the same convention as a pack (owner ruling 2026-11-25: every unit is signed from its OWN point of view — current out of the unit is −, current into it is +).
+          // It used to be `discharging − charge` (positive = discharge).
           final discharging = f.u16(6) / 1000.0;
           return base.copyWith(
             timestamp: ts,
-            current: discharging - (base.chargeCurrent ?? 0),
+            current: (base.chargeCurrent ?? 0) - discharging,
           );
         }
         return base.copyWith(

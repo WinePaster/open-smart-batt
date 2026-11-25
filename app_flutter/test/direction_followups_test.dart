@@ -183,41 +183,41 @@ void main() {
   // ===========================================================================
   // P — the power bank's history row (ruled 2026-08-11, after the battery)
   // ===========================================================================
-  group('P1 a power bank names its direction with its OWN convention', () {
-    test('positive is DIScharging — the opposite of a battery', () {
-      // 🔴 The assertion that catches anyone routing this family through
-      // `packFlowOf`: the same sign gets the opposite word on the two families.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, 2.72),
+  group('P1 a power bank names its direction with its OWN derivation', () {
+    test('negative is discharging — the same as a battery since 2026-11-25', () {
+      // Owner ruling 2026-11-25: every unit is signed out = −, in = +. Until
+      // then a power bank read the opposite way (0x4A − 0x49); now 0x49 − 0x4A.
+      expect(historyCurrentBit(zh, ProductClass.powerBank, -2.72),
           '電流 2.7A 放電中');
-      expect(historyCurrentBit(zh, ProductClass.smartBattery, 2.72),
-          '電流 2.7A 充電中');
+      expect(historyCurrentBit(zh, ProductClass.smartBattery, -2.72),
+          '電流 2.7A 放電中');
     });
 
-    test('negative is charging — the FB-47 reading, now explained', () {
+    test('positive is charging — the FB-47 reading, re-signed 2026-11-25', () {
       // The 2026-08-04 capture: `−0.43 A` with no direction shown, which the
       // owner — who had ruled on the sign convention himself — read as a fault.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.43),
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.43),
           '電流 0.4A 充電中');
-      expect(historyCurrentBit(en, ProductClass.powerBank, -0.43),
+      expect(historyCurrentBit(en, ProductClass.powerBank, 0.43),
           'Current 0.4A CHARGING');
     });
 
     test('P2 no minus sign survives on a power bank row either', () {
-      for (final a in [-0.43, -2.712, -0.06, -0.667]) {
+      for (final a in [0.43, -2.712, 0.06, -0.667]) {
         expect(historyCurrentBit(zh, ProductClass.powerBank, a),
             isNot(contains('-')));
       }
     });
 
     test('P3 its own 0.05 A band, not the pack 1.5 A one', () {
-      // A power bank at 0.5 A is discharging; a battery at 0.5 A is a rounding
+      // A power bank at −0.5 A is discharging; a battery at 0.5 A is a rounding
       // artefact. One shared band would be wrong on both families at once.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.5),
+      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.5),
           '電流 0.5A 放電中');
       expect(historyCurrentBit(zh, ProductClass.smartBattery, 0.5),
           '電流 0.5A 靜置');
       // In-band: a magnitude, no direction claimed.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.02),
+      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.02),
           '電流 0.0A 待機');
     });
 
@@ -259,10 +259,10 @@ void main() {
       // unit's 58–69 mA offset reads CHARGING here while the dashboard reads
       // STANDBY. Documented in `historyCurrentBit`; the remedy, if one is ever
       // ruled, is to persist b7 — not a second dead-band.
-      expect(historyCurrentBit(zh, ProductClass.powerBank, -0.06),
+      expect(historyCurrentBit(zh, ProductClass.powerBank, 0.06),
           '電流 0.1A 充電中');
       // The live derivation, for contrast — same number, with the flag.
-      expect(powerFlowOf(-0.06, portFlagsRaw: 0x00), PowerFlow.idle);
+      expect(powerFlowOf(0.06, portFlagsRaw: 0x00), PowerFlow.idle);
     });
   });
 
@@ -397,7 +397,7 @@ void main() {
             timestamp: recentlyToday(now),
             pvlt: 3.95,
             temperatureC: 30,
-            current: -0.43,
+            current: 0.43,
           ),
           deviceId: 'DEV-PB',
         );
@@ -454,7 +454,8 @@ void main() {
       // convention, so the clause names it beside the battery.
       expect(text,
           contains('battery and black box negative=discharge positive=charge'));
-      expect(text, contains('power bank positive=discharge (0x4A-0x49)'));
+      expect(text,
+          contains('power bank negative=discharge positive=charge (0x49-0x4A)'));
       expect(text, contains('capacitor rows are blank'));
     });
 

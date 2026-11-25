@@ -209,15 +209,13 @@ void main() {
     expect(painterOf(t).series, HistoryChartSeries.both);
   });
 
-  testWidgets('a power bank is labelled with its own, opposite key', (t) async {
+  testWidgets('a power bank is labelled with its own key', (t) async {
     await t.runAsync(seed);
     await open(t, ProductClass.powerBank);
     // Opens on voltage＋current (design 0096): current is already drawn.
 
     expect(painterOf(t).currentDirectionLabel,
         en.powerBankTrackCurrentDirectionKey);
-    expect(painterOf(t).currentDirectionLabel,
-        isNot(en.dashboardTrackCurrentDirectionKey));
   });
 
   testWidgets('a super-capacitor: dead toggle, and the reason on screen',

@@ -171,7 +171,7 @@ void main() {
   group('§3.3 port ladder', () {
     testWidgets('0x0a (bit1+bit3) charging: Type-C + PD, never Type-A',
         (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
 
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('Type-C'), findsOneWidget);
@@ -189,7 +189,7 @@ void main() {
       // With no Type-C cable and energy leaving the bank there is no other path
       // it can take: 29,114 agree / 0 disagree over every port-marked capture,
       // three units (feedback-analysis/2026.08.04-014.md §1).
-      await pumpRow(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
+      await pumpRow(tester, portFlagsRaw: 0x05, current: -0.42, svlt: 5.12);
 
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('Type-A'), findsOneWidget);
@@ -202,7 +202,7 @@ void main() {
       // ever starts reading "path undetermined" while the case above reads
       // Type-A, someone has quietly wired bit0 back in — the reading that four
       // field captures refuted (§4.3).
-      await pumpRow(tester, portFlagsRaw: 0x04, current: 0.42, svlt: 5.12);
+      await pumpRow(tester, portFlagsRaw: 0x04, current: -0.42, svlt: 5.12);
 
       expect(find.text('Type-A'), findsOneWidget);
     });
@@ -232,7 +232,7 @@ void main() {
       // distinction between those two was given up knowingly (R1), not lost.
       // The corroboration test itself survives; see the contradiction cases
       // below, which are what it still decides.
-      await pumpRow(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      await pumpRow(tester, portFlagsRaw: 0x00, current: 0.03, svlt: 3.95);
 
       expect(find.text('STANDBY'), findsOneWidget);
       expect(find.text('Standby · output off'), findsNothing);
@@ -252,7 +252,7 @@ void main() {
       // The Type-A assertion is the load-bearing one: b7 == 0x00 has bit1
       // clear, so a fall-through to the normal ladder would print "Type-A" with
       // full confidence — on a sample the operator had marked Type-C.
-      await pumpRow(tester, portFlagsRaw: 0x00, current: 2.718, svlt: 5.22);
+      await pumpRow(tester, portFlagsRaw: 0x00, current: -2.718, svlt: 5.22);
 
       expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
@@ -270,7 +270,7 @@ void main() {
     testWidgets('spurious 0x00 on the charge side is treated the same',
         (tester) async {
       // The 23:25:27 vector: b7 = 0x00 with `0x49` at 2,712 mA charging.
-      await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+      await pumpRow(tester, portFlagsRaw: 0x00, current: 2.712, svlt: 4.92);
 
       expect(find.text('STANDBY'), findsNothing);
       expect(find.text('Type-A'), findsNothing);
@@ -281,7 +281,7 @@ void main() {
 
     testWidgets('0x03 (bit0+bit1): bit1 wins → Type-C, never Type-A',
         (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x03, current: -0.30, svlt: 9.0);
+      await pumpRow(tester, portFlagsRaw: 0x03, current: 0.30, svlt: 9.0);
 
       expect(find.text('Type-C'), findsOneWidget);
       expect(find.text('Type-A'), findsNothing);
@@ -290,7 +290,7 @@ void main() {
 
     testWidgets('0x12 (bit1+bit4): Type-C, and bit4 needs no special case',
         (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x12, current: -0.30, svlt: 9.0);
+      await pumpRow(tester, portFlagsRaw: 0x12, current: 0.30, svlt: 9.0);
 
       expect(find.text('Type-C'), findsOneWidget);
       // bit3 is clear here → no PD, and NO negative label (§4.4).
@@ -305,7 +305,7 @@ void main() {
     testWidgets('bit3 clear while charging shows no PD and no negative label',
         (tester) async {
       // 0x02 = bit1 only. Charging, but bit3 clear.
-      await pumpRow(tester, portFlagsRaw: 0x02, current: -0.42, svlt: 9.0);
+      await pumpRow(tester, portFlagsRaw: 0x02, current: 0.42, svlt: 9.0);
 
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('PD'), findsNothing);
@@ -319,7 +319,7 @@ void main() {
         (tester) async {
       // 0x22 = bit1 + bit5 (a non-5 V output contract). While CHARGING we look
       // at bit3 (clear).
-      await pumpRow(tester, portFlagsRaw: 0x22, current: -0.42, svlt: 9.0);
+      await pumpRow(tester, portFlagsRaw: 0x22, current: 0.42, svlt: 9.0);
 
       expect(find.text('CHARGING'), findsOneWidget);
       expect(find.text('PD'), findsNothing);
@@ -327,7 +327,7 @@ void main() {
 
     testWidgets('discharging reads bit5 → PD from output', (tester) async {
       // 0x22 = bit1 + bit5. Discharging, so bit5 is the one that counts.
-      await pumpRow(tester, portFlagsRaw: 0x22, current: 1.2, svlt: 5.1);
+      await pumpRow(tester, portFlagsRaw: 0x22, current: -1.2, svlt: 5.1);
 
       expect(find.text('DISCHARGING'), findsOneWidget);
       expect(find.text('PD'), findsOneWidget);
@@ -340,7 +340,7 @@ void main() {
   group('waiting and gating', () {
     testWidgets('0x4B not yet arrived: waiting, not a decoded zero',
         (tester) async {
-      await pumpRow(tester, portFlagsRaw: null, current: -0.42, svlt: 9.0);
+      await pumpRow(tester, portFlagsRaw: null, current: 0.42, svlt: 9.0);
 
       expect(find.textContaining('Waiting for device'), findsOneWidget);
       expect(find.text('0.42 A'), findsNothing);
@@ -350,7 +350,7 @@ void main() {
     testWidgets('non-power-bank renders nothing (T10)', (tester) async {
       await pumpRow(tester,
           portFlagsRaw: 0x0a,
-          current: -0.42,
+          current: 0.42,
           svlt: 9.0,
           cls: ProductClass.smartBattery);
 
@@ -372,7 +372,7 @@ void main() {
       // never produced: energy coming IN with no Type-C cable detected. A user
       // who reaches it is exactly who we want to hear from.
       final s =
-          await pumpRow(tester, portFlagsRaw: 0x01, current: -0.42, svlt: 5.1);
+          await pumpRow(tester, portFlagsRaw: 0x01, current: 0.42, svlt: 5.1);
 
       final hook = find.text('Which port is this?');
       expect(hook, findsOneWidget);
@@ -398,12 +398,12 @@ void main() {
     });
 
     testWidgets('never shown for a known Type-C port', (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
     testWidgets('never shown in standby', (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x00, current: -0.03, svlt: 3.95);
+      await pumpRow(tester, portFlagsRaw: 0x00, current: 0.03, svlt: 3.95);
       expect(find.text('Which port is this?'), findsNothing);
     });
 
@@ -411,7 +411,7 @@ void main() {
       // Undetermined AND charging, which is normally the one hooked state —
       // but we do not ask the user to label a burst whose flag byte we have
       // just decided not to believe.
-      await pumpRow(tester, portFlagsRaw: 0x00, current: -2.712, svlt: 4.92);
+      await pumpRow(tester, portFlagsRaw: 0x00, current: 2.712, svlt: 4.92);
       // No badge at all since design 0041 Q3 — which is exactly why the hook's
       // suppression matters here: with nothing in the port slot, the hook would
       // be the row's only remaining voice, and it must still stay silent on a
@@ -440,7 +440,7 @@ void main() {
     double x(WidgetTester tester, Finder f) => tester.getTopLeft(f.first).dx;
 
     testWidgets('charging: port → PD → direction → V → A', (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
 
       final port = x(tester, find.text('Type-C'));
       final pd = x(tester, find.text('PD'));
@@ -456,7 +456,7 @@ void main() {
 
     testWidgets('discharging: the same order, Type-A by elimination',
         (tester) async {
-      await pumpRow(tester, portFlagsRaw: 0x05, current: 0.42, svlt: 5.12);
+      await pumpRow(tester, portFlagsRaw: 0x05, current: -0.42, svlt: 5.12);
 
       expect(x(tester, find.text('Type-A')),
           lessThan(x(tester, find.text('DISCHARGING'))));
@@ -469,7 +469,7 @@ void main() {
       // A `·` between them would undo the grouping this change is for: the
       // separators mark the boundaries BETWEEN clauses, and the direction plus
       // its numbers are one clause. Three dots, not four.
-      await pumpRow(tester, portFlagsRaw: 0x0a, current: -0.42, svlt: 9.14);
+      await pumpRow(tester, portFlagsRaw: 0x0a, current: 0.42, svlt: 9.14);
       expect(find.text('·'), findsNWidgets(1),
           reason: 'one separator: [port PD] · [direction V A]');
     });

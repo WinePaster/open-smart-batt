@@ -191,7 +191,9 @@ TelemetrySample previewPackSample(DateTime now) => TelemetrySample(
 TelemetrySample previewPowerBankSample(DateTime now) => TelemetrySample(
       timestamp: now,
       svlt: 9.05,
-      current: 2.72,
+      // Negative = discharging (every unit signed out = −, in = +, since
+      // 2026-11-25), matching the 0x22 discharge flags above.
+      current: -2.72,
       temperatureC: 41,
       socPercent: 100,
       designCapacityMah: 20000,

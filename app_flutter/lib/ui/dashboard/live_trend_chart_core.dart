@@ -208,7 +208,9 @@ List<TrendTrack> chartTracksFor(
     if (modules.hasTrack(TrendField.pvlt))
       TrendTrack(
         field: TrendField.pvlt,
-        label: l10n.dashboardTrackPvlt,
+        label: modules.pvltIsBatterySide
+            ? l10n.blackBoxVoltageLabel
+            : l10n.dashboardTrackPvlt,
         unit: 'V',
         color: context.accent.accent,
         decimals: 2,

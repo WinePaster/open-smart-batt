@@ -65,9 +65,10 @@ class TelemetrySample {
   ///   §8.2, corrected 2026-08-11: five engine starts read −211…−446 A while
   ///   PVLT collapsed, then turned positive as PVLT climbed to 14.5 V).
   ///   Quantised to whole amps — 1 A per count, no fine structure near zero.
-  /// * power bank — selector 0x4A minus 0x49, in amps. **Positive = discharge,
-  ///   negative = charge** (design 0030; signed since FB-46, when publishing a
-  ///   magnitude made a charging bank read 0.00 A forever).
+  /// * power bank — selector 0x49 minus 0x4A, in amps. **Negative =
+  ///   discharge, positive = charge** since 2026-11-25 (owner ruling 2026-11-25: every unit is signed from its OWN point of view — current out of the unit is −, current into it is +); before that
+  ///   it was 0x4A − 0x49 (positive = discharge). Signed since FB-46, when
+  ///   publishing a magnitude made a charging bank read 0.00 A forever.
   ///
   /// 🔴 Nothing may reason about direction from this field without knowing
   /// which family produced it. `ui/dashboard/power_flow.dart` has one

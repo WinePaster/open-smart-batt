@@ -328,12 +328,12 @@ void main() {
             ),
           )));
 
-      // Positive is DISCHARGING on a power bank (0x4A − 0x49).
-      await open(1.2);
+      // Negative is DISCHARGING on a power bank (0x49 − 0x4A, since 2026-11-25).
+      await open(-1.2);
       await t.pump();
       expect(find.text(_en.powerBankTrackOutput), findsOneWidget);
 
-      await open(-1.2);
+      await open(1.2);
       await t.pump();
       expect(find.text(_en.powerBankTrackInput), findsOneWidget,
           reason: 'the legend is derived per build, not captured once');
@@ -349,7 +349,7 @@ void main() {
       }
       await t.pumpWidget(_app(LiveTrendChartPage(
           shellClass: ProductClass.powerBank,
-          tele: _tele(buf, current: 1.2, soc: 61))));
+          tele: _tele(buf, current: -1.2, soc: 61))));
       await t.pump(const Duration(milliseconds: 120));
       expect(find.text(_en.powerBankTrackOutput, skipOffstage: false),
           findsOneWidget);

@@ -189,6 +189,21 @@ void main() {
     });
   });
 
+  // Owner ruling 2026-11-25 (「3.b」): a unit's voltage is read as its own
+  // output, and a black box's 0x19 is the battery side — it keeps reading ~13 V
+  // while the output is cut off — so it is named 電瓶電壓.
+  group('voltage label: battery side, not output', () {
+    test('a black box says Battery Voltage / 電瓶電壓; a battery does not',
+        () async {
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      final zh = await AppLocalizations.delegate.load(const Locale('zh'));
+      expect(DisplayModules.blackBox.pvltLabel(en), 'Battery Voltage');
+      expect(DisplayModules.blackBox.pvltLabel(zh), '電瓶電壓');
+      expect(DisplayModules.battery.pvltLabel(en), en.gaugePvltLabel);
+      expect(DisplayModules.capacitor.pvltLabel(zh), zh.gaugePvltLabel);
+    });
+  });
+
   group('no cells', () {
     test('0x24 with LEN 0 leaves dvol null — not four 0 V cells', () {
       final at = DateTime.utc(2026, 11, 22);

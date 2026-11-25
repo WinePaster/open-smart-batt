@@ -74,7 +74,24 @@ class DisplayModules {
     required this.showsCurrentReadout,
     required this.showsSohReadout,
     required this.chartFootnote,
+    this.pvltIsBatterySide = false,
   });
+
+  /// True when `0x19` is NOT this unit's own output voltage but the battery it
+  /// sits on — so the label says 電瓶電壓 instead of 主電壓.
+  ///
+  /// A black box only (owner ruling 2026-11-25, 「3.b」, under the rule that a
+  /// unit's voltage is read from its own point of view, as its OUTPUT): while
+  /// cut off its output is dead, yet `0x19` keeps reading ~13 V — the first
+  /// unit read 13.36–13.42 V in `02` on the bench, and a second one sat in `02`
+  /// for a month at 13.2–13.38 V while its owner had to bypass it to start the
+  /// bike (feedback 2026.11.25/002). It has no other voltage register (no
+  /// `0x37`, `0x24` empty), so the honest fix is the name, not the number.
+  final bool pvltIsBatterySide;
+
+  /// The label for `0x19` on this class's own screens.
+  String pvltLabel(AppLocalizations l10n) =>
+      pvltIsBatterySide ? l10n.blackBoxVoltageLabel : l10n.gaugePvltLabel;
 
   /// 🔴 The modules EVERY class offers (design 0050 D1, 「通用」).
   ///
@@ -242,6 +259,7 @@ class DisplayModules {
     showsCurrentReadout: true,
     showsSohReadout: false,
     chartFootnote: null,
+    pvltIsBatterySide: true,
   );
 
   /// Power bank: a different shell entirely ([PowerBankView]) — SOC ring,

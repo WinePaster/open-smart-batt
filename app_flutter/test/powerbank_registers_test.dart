@@ -45,7 +45,7 @@ void main() {
       final s = TelemetryDecoder.apply(
           pb, decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]),
           at: at);
-      expect(s.current, closeTo(1.081, 1e-9));
+      expect(s.current, closeTo(-1.081, 1e-9));
     });
 
     test('a pack is UNAFFECTED — 0x4A keeps its documented meaning', () {
@@ -146,7 +146,7 @@ void main() {
       expect(s.svlt, isNull, reason: 'the mV field duplicates SVLT');
     });
 
-    test('charging reads negative: 0x49 carries the mA, 0x4A is idle', () {
+    test('charging reads positive (2026-11-25 sign): 0x49 carries the mA, 0x4A is idle', () {
       // 0x49 mV 5.160 V / mA 1875, then 0x4A idle — the shape of a charging
       // burst in 2026.08.01/009.
       final a = TelemetryDecoder.apply(
@@ -155,17 +155,17 @@ void main() {
       final b = TelemetryDecoder.apply(
           a, decodeOne(0x4A, [0x0F, 0xA3, 0x00, 0x00]),
           at: at);
-      expect(b.current, closeTo(-1.875, 1e-9));
+      expect(b.current, closeTo(1.875, 1e-9));
     });
 
-    test('discharging stays positive once the charge side is idle', () {
+    test('discharging reads negative once the charge side is idle', () {
       final a = TelemetryDecoder.apply(
           pb, decodeOne(0x49, [0x14, 0x28, 0x00, 0x00]),
           at: at);
       final b = TelemetryDecoder.apply(
           a, decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]),
           at: at);
-      expect(b.current, closeTo(1.081, 1e-9),
+      expect(b.current, closeTo(-1.081, 1e-9),
           reason: 'the value the unit\'s own display showed');
     });
 
@@ -228,7 +228,7 @@ void main() {
       expect(s.isPowerBank, isTrue, reason: '0x10 = 0x22 leads the burst');
       // What the unit's own display showed at this moment: 94 %, 1.05 A.
       expect(s.socPercent, 94);
-      expect(s.current, closeTo(1.081, 1e-9));
+      expect(s.current, closeTo(-1.081, 1e-9));
       expect(s.designCapacityMah, 10000);
       // 0x49 and the 0x4B tail bytes still publish nothing.
       expect(s.svlt, isNull);
@@ -271,7 +271,7 @@ void main() {
       d.ingest(decodeOne(0x4A, [0x0F, 0x73, 0x04, 0x39]), at: at);
       d.ingest(decodeOne(0x4B, [0x27, 0x10, 0x5E, 0x26, 0x30]), at: at);
       expect(d.sample.isPowerBank, isTrue);
-      expect(d.sample.current, closeTo(1.081, 1e-9));
+      expect(d.sample.current, closeTo(-1.081, 1e-9));
       expect(d.sample.socPercent, 94);
     });
   });

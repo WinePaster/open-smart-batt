@@ -93,9 +93,11 @@ const double kRailOffChargeVetoA = 0.3;
 /// A POWER BANK's direction, from the SIGN of its signed current. Sign only —
 /// the magnitude never decides a direction, only whether there is one at all.
 ///
-/// 🔴 Power banks ONLY, and the sign it reads is the power bank's
-/// (positive = discharge). A pack is the other way round; call [packFlowOf],
-/// which is not a wrapper around this one for exactly that reason.
+/// 🔴 Power banks ONLY. ~~The sign it reads is the power bank's (positive =
+/// discharge), the opposite of a pack's.~~ Since 2026-11-25 a power bank is
+/// signed like a pack — negative = discharge, positive = charge (owner ruling 2026-11-25: every unit is signed from its OWN point of view — current out of the unit is −, current into it is +). It
+/// stays a separate function from [packFlowOf] because its dead-band and its
+/// rail-off veto are power-bank facts a pack does not have.
 ///
 /// [portFlagsRaw] is the same burst's raw `0x4B` b7, when the caller has one
 /// (power banks only). It can only VETO: a charging-signed current under
@@ -110,12 +112,12 @@ PowerFlow powerFlowOf(double? current, {int? portFlagsRaw}) {
   // Deliberately NOT a positive rule in either direction — no bit ever makes
   // a "charging" claim (bit1 is cable-present, bit3 is one-way), and a
   // discharge is never vetoed here.
-  if (current < 0 &&
+  if (current > 0 &&
       current.abs() < kRailOffChargeVetoA &&
       portFlagsRaw == 0x00) {
     return PowerFlow.idle;
   }
-  return current < 0 ? PowerFlow.charging : PowerFlow.discharging;
+  return current > 0 ? PowerFlow.charging : PowerFlow.discharging;
 }
 
 /// Amps below which a PACK's current names no direction (design 0056).
@@ -143,8 +145,8 @@ const double kPackFlowDeadbandA = 1.5;
 
 /// A PACK's direction (battery / capacitor), from the sign of `0x2E`.
 ///
-/// 🔴 THE SIGN IS THE OPPOSITE of [powerFlowOf]'s: on a pack **negative is
-/// discharge and positive is charge** (`docs/protocol/telemetry-decoding.md`
+/// ~~🔴 THE SIGN IS THE OPPOSITE of [powerFlowOf]'s~~ (2026-11-25: power banks
+/// now share it): on a pack **negative is discharge and positive is charge** (`docs/protocol/telemetry-decoding.md`
 /// §8.2, corrected 2026-08-11 — five engine-start events reading −211…−446 A
 /// while PVLT collapsed, then positive as PVLT climbed). Delegating to
 /// [powerFlowOf] with a negated argument was considered and rejected: it would

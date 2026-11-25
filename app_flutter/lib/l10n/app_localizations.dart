@@ -548,6 +548,12 @@ abstract class AppLocalizations {
   /// **'Primary Voltage'**
   String get gaugePvltLabel;
 
+  /// Black box only (owner ruling 2026-11-25): its 0x19 is the battery-side voltage, not its own output — it keeps reading ~13 V while the output is cut off — so it is named for what it measures.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery Voltage'**
+  String get blackBoxVoltageLabel;
+
   /// No description provided for @gaugeSohUnknown.
   ///
   /// In en, this message translates to:
@@ -3524,10 +3530,10 @@ abstract class AppLocalizations {
   /// **'Current'**
   String get powerBankTrackCurrent;
 
-  /// Direction key for a POWER BANK's current axis — 🔴 deliberately the MIRROR of dashboardTrackCurrentDirectionKey, not a copy of it. A power bank derives current from 0x4A − 0x49, where POSITIVE is discharging; a pack derives it from 0x2E = 512 − u16, where negative is discharging (power_flow.dart: “THE SIGN IS THE OPPOSITE”). Two keys rather than one reworded at the call site, for the same reason packDirection*/powerBankDirection* are two sets: a wording change made for a car battery must not silently reach a power bank.
+  /// Direction key for a POWER BANK's current axis. Since 2026-11-25 it reads the same as dashboardTrackCurrentDirectionKey (owner ruling: every unit signed from its own point of view, out = minus, in = plus; the power bank current is now 0x49 − 0x4A). Kept as its own key so a wording change for one family does not silently reach the other.
   ///
   /// In en, this message translates to:
-  /// **'+ discharge · − charge'**
+  /// **'+ charge · − discharge'**
   String get powerBankTrackCurrentDirectionKey;
 
   /// No description provided for @powerBankTrackOutput.

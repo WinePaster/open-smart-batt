@@ -164,6 +164,7 @@ Future<Map<String, Object?>> _rowOf(dynamic db, String id) async =>
 
 void main() {
   _v32RawLogTests();
+  _v33PowerBankSignTests();
   setUpAll(sqfliteFfiInit);
 
   /// Build a real v21 file on disk, seed it, then open it with the current app
@@ -477,7 +478,7 @@ void main() {
         // whatever it does — this pin and `schema_v24_test.dart` are the only
         // two places that would notice it going missing. v25 DOES add a table,
         // so the parity cases cover it.
-        expect(Db.schemaVersion, 32);
+        expect(Db.schemaVersion, 33);
       }
     });
   });
@@ -519,6 +520,52 @@ void _v32RawLogTests() {
 
     test('a fresh install with nothing stored reads ON', () async {
       expect(AppSettings.defaults.rawPacketLog, isTrue);
+    });
+  });
+
+}
+
+void _v33PowerBankSignTests() {
+  // v33 (owner ruling 2026-11-25): every unit signed out = −, in = +. A power
+  // bank's stored current was 0x4A − 0x49 (positive = discharge) and is
+  // negated once; a battery's and a black box's are left alone (the black-box
+  // rows recorded before d7187e4 stay as they were — owner: 「不轉號」).
+  group('v33: power-bank history re-signed', () {
+    test('power-bank rows flip, every other row is untouched', () async {
+      final dir = await Directory.systemTemp.createTemp('osb_v33_pb');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = p.join(dir.path, 'v21.db');
+      final legacy = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 21,
+          onCreate: (db, _) async {
+            for (final stmt in _v21Schema) {
+              await db.execute(stmt);
+            }
+            await db.execute("INSERT INTO saved_devices (id, product_class) "
+                "VALUES ('PB', 'powerBank'), ('BAT', 'smartBattery'), "
+                "('BOX', 'blackBox')");
+            for (final r in [
+              ['PB', 2.5], ['PB', -0.4], ['PB', null], ['PB', 0.0],
+              ['BAT', -35.0], ['BOX', 102.0], ['GONE', 1.5],
+            ]) {
+              await db.insert('history',
+                  {'timestamp': 1, 'device_id': r[0], 'ampere': r[1]});
+            }
+          },
+        ),
+      );
+      await legacy.close();
+      final upgraded =
+          await AppDatabase.open(path: path, factory: databaseFactoryFfi);
+      addTearDown(upgraded.close);
+      final rows = await upgraded.db.rawQuery(
+          'SELECT device_id, ampere FROM history ORDER BY id');
+      expect(rows.map((r) => [r['device_id'], r['ampere']]).toList(), [
+        ['PB', -2.5], ['PB', 0.4], ['PB', null], ['PB', 0.0],
+        ['BAT', -35.0], ['BOX', 102.0], ['GONE', 1.5],
+      ]);
     });
   });
 }
